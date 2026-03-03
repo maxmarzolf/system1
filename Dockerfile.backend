@@ -1,0 +1,26 @@
+# Backend Dockerfile - Node.js + Express
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json ./
+
+# Install dependencies including native modules
+RUN npm ci --omit=dev
+
+# Copy backend code
+COPY backend ./backend
+
+# Create data directory
+RUN mkdir -p backend/data
+
+# Expose port
+EXPOSE 3001
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=3001
+
+# Start the server
+CMD ["node", "backend/server.js"]

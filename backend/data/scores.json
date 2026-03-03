@@ -112,5 +112,35 @@
     "mode": "typing-race",
     "correct": false,
     "timestamp": "2026-02-26T23:25:01.306Z"
+  },
+  {
+    "cardId": "94",
+    "mode": "multiple-choice",
+    "correct": true,
+    "timestamp": "2026-03-03T01:08:36.003Z"
+  },
+  {
+    "cardId": "94",
+    "mode": "multiple-choice",
+    "correct": false,
+    "timestamp": "2026-03-03T01:09:31.470Z"
+  },
+  {
+    "cardId": "144",
+    "mode": "multiple-choice",
+    "correct": false,
+    "timestamp": "2026-03-03T01:09:33.604Z"
+  },
+  {
+    "cardId": "145",
+    "mode": "multiple-choice",
+    "correct": false,
+    "timestamp": "2026-03-03T01:09:34.916Z"
+  },
+  {
+    "cardId": "589",
+    "mode": "multiple-choice",
+    "correct": false,
+    "timestamp": "2026-03-03T01:09:36.648Z"
   }
 ]

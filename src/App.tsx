@@ -64,6 +64,9 @@ type SolutionOption = {
   full: string
 }
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
+const apiUrl = (path: string) => `${API_BASE_URL}${path}`
+
 const normalizeTyping = (value: string) =>
   value
     .replace(/\r\n/g, '\n')
@@ -261,13 +264,45 @@ function App() {
     resetInteraction()
   }, [questionType])
 
-  const submitAttemptToServer = async (correct: boolean) => {
+  const submitAttemptToServer = async (
+    correct: boolean,
+    userAnswer?: string
+  ) => {
     try {
-      await fetch('/api/attempts', {
+      // Determine the correct answer and user's answer based on game mode
+      let correctAnswer = ''
+      let recordedUserAnswer = userAnswer || ''
+      let optionsData: { text: string; isCorrect: boolean }[] | undefined
+
+      if (gameMode === 'multiple-choice' && rawOptions.length > 0) {
+        const correctOption = rawOptions.find(opt => opt.correct)
+        correctAnswer = correctOption?.code || ''
+        if (selectedOption !== null && shuffledOptions[selectedOption]) {
+          recordedUserAnswer = shuffledOptions[selectedOption].code
+        }
+        optionsData = rawOptions.map(opt => ({ text: opt.code, isCorrect: opt.correct }))
+      } else if (gameMode === 'full-solution' && solutionOptions.length > 0) {
+        const correctOption = solutionOptions.find(opt => opt.correct)
+        correctAnswer = correctOption?.full || ''
+        if (selectedOption !== null && shuffledSolutionOptions[selectedOption]) {
+          recordedUserAnswer = shuffledSolutionOptions[selectedOption].full
+        }
+        optionsData = solutionOptions.map(opt => ({ text: opt.full, isCorrect: opt.correct }))
+      } else if (gameMode === 'typing-race') {
+        correctAnswer = card.missing
+        recordedUserAnswer = userAnswer || typingInput
+      }
+
+      await fetch(apiUrl('/api/attempts'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cardId: card.id,
+          cardTitle: card.title,
+          question: card.prompt,
+          options: optionsData,
+          correctAnswer,
+          userAnswer: recordedUserAnswer,
           mode: gameMode,
           correct,
         }),
@@ -277,8 +312,8 @@ function App() {
     }
   }
 
-  const submitAttempt = (correct: boolean) => {
-    void submitAttemptToServer(correct)
+  const submitAttempt = (correct: boolean, userAnswer?: string) => {
+    void submitAttemptToServer(correct, userAnswer)
   }
 
   const goNext = () => {
@@ -373,10 +408,10 @@ function App() {
     setTypingScore(computedScore)
     setTypingResult({ accuracy, wpm })
     setCheckState(isCorrect ? 'correct' : 'incorrect')
-    submitAttempt(isCorrect)
+    submitAttempt(isCorrect, inputValue)
 
     // Persist detailed typing session to SQLite
-    void fetch('/api/typing-sessions', {
+    void fetch(apiUrl('/api/typing-sessions'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

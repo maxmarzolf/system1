@@ -90,6 +90,9 @@ type TypingActivityResponse = {
   streak: number
 }
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
+const apiUrl = (path: string) => `${API_BASE_URL}${path}`
+
 const defaultTypingActivity: TypingActivityResponse = {
   activity: [],
   summary: {
@@ -129,7 +132,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await fetch('/api/stats')
+        const response = await fetch(apiUrl('/api/stats'))
         if (!response.ok) throw new Error('Unable to load stats')
         const payload = (await response.json()) as StatsResponse
         setStats(payload)
@@ -143,7 +146,7 @@ export default function DashboardPage() {
 
     const fetchTypingActivity = async () => {
       try {
-        const response = await fetch('/api/typing-activity')
+        const response = await fetch(apiUrl('/api/typing-activity'))
         if (!response.ok) throw new Error('Unable to load typing activity')
         const payload = (await response.json()) as TypingActivityResponse
         setTypingActivity(payload)

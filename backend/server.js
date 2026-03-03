@@ -10,6 +10,11 @@ import {
   getRecentSessions,
   getCurrentStreak,
 } from './db.js'
+import {
+  saveScoreAttempt,
+  getScoreAttempts,
+  getRecentAttempts,
+} from './db-postgres.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -108,7 +113,16 @@ app.get('/api/stats', async (_req, res) => {
 })
 
 app.post('/api/attempts', async (req, res) => {
-  const { cardId, mode, correct } = req.body ?? {}
+  const { 
+    cardId, 
+    cardTitle,
+    question,
+    options,
+    correctAnswer,
+    userAnswer,
+    mode, 
+    correct 
+  } = req.body ?? {}
 
   if (typeof cardId !== 'string' || !cardId.trim()) {
     return res.status(400).json({ error: 'cardId is required' })
@@ -122,20 +136,38 @@ app.post('/api/attempts', async (req, res) => {
     return res.status(400).json({ error: 'correct must be boolean' })
   }
 
-  const attempts = await readAttempts()
-  attempts.push({
-    cardId,
-    mode,
-    correct,
-    timestamp: new Date().toISOString(),
-  })
+  try {
+    // Save to PostgreSQL with full details
+    await saveScoreAttempt({
+      cardId,
+      cardTitle,
+      question,
+      options,
+      correctAnswer,
+      userAnswer,
+      mode,
+      correct,
+      timestamp: new Date().toISOString(),
+    })
 
-  await writeAttempts(attempts)
+    // Also maintain legacy JSON file for backward compatibility
+    const attempts = await readAttempts()
+    attempts.push({
+      cardId,
+      mode,
+      correct,
+      timestamp: new Date().toISOString(),
+    })
+    await writeAttempts(attempts)
 
-  return res.status(201).json({
-    saved: true,
-    stats: aggregateStats(attempts),
-  })
+    return res.status(201).json({
+      saved: true,
+      stats: aggregateStats(attempts),
+    })
+  } catch (error) {
+    console.error('Error saving attempt:', error)
+    return res.status(500).json({ error: 'Failed to save attempt' })
+  }
 })
 
 // ─── Typing Session Endpoints ───
@@ -186,6 +218,17 @@ app.get('/api/typing-activity', (_req, res) => {
   } catch (err) {
     console.error('Error fetching typing activity:', err)
     return res.status(500).json({ error: 'Failed to fetch typing activity' })
+  }
+})
+
+app.get('/api/score-attempts', async (_req, res) => {
+  try {
+    const limit = Number(_req.query.limit) || 100
+    const attempts = await getRecentAttempts(limit)
+    return res.json({ attempts })
+  } catch (err) {
+    console.error('Error fetching score attempts:', err)
+    return res.status(500).json({ error: 'Failed to fetch score attempts' })
   }
 })
 

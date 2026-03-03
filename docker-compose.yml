@@ -1,0 +1,77 @@
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    container_name: flashcard-postgres
+    environment:
+      POSTGRES_DB: flashcard_db
+      POSTGRES_USER: flashcard_user
+      POSTGRES_PASSWORD: flashcard_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - flashcard-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flashcard_user -d flashcard_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: flashcard-backend
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://flashcard_user:flashcard_password@postgres:5432/flashcard_db
+    volumes:
+      - ./backend/data:/app/backend/data
+    networks:
+      - flashcard-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/health', (r) => {if (r.statusCode === 200) process.exit(0); process.exit(1)})"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_URL: http://localhost:3001
+    container_name: flashcard-frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - flashcard-network
+
+  adminer:
+    image: adminer:latest
+    container_name: flashcard-adminer
+    ports:
+      - "8080:8080"
+    networks:
+      - flashcard-network
+    depends_on:
+      - postgres
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+
+networks:
+  flashcard-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
