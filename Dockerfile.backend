@@ -1,26 +1,21 @@
-# Backend Dockerfile - Node.js + Express
-FROM node:22-alpine
+# Backend Dockerfile - Python + FastAPI
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json ./
-
-# Install dependencies including native modules
-RUN npm ci --omit=dev
+# Install dependencies
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend code
-COPY backend ./backend
-
-# Create data directory
-RUN mkdir -p backend/data
+COPY backend/main.py .
+COPY backend/app/ ./app/
 
 # Expose port
 EXPOSE 3001
 
 # Set environment variables
-ENV NODE_ENV=production
 ENV PORT=3001
 
 # Start the server
-CMD ["node", "backend/server.js"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3001"]
