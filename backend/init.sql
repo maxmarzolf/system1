@@ -115,3 +115,108 @@ INSERT INTO game_modes (mode_name, description) VALUES
     ('full-solution', 'Choose the correct complete solution from multiple options'),
     ('typing-race', 'Type the correct code to complete the solution')
 ON CONFLICT (mode_name) DO NOTHING;
+
+-- ============================================================================
+-- Questions Table
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS questions (
+    id SERIAL PRIMARY KEY,
+    question_text TEXT NOT NULL,
+    difficulty VARCHAR(20) NOT NULL CHECK (difficulty IN ('Easy', 'Med.', 'Hard')),
+    leetcode_number INTEGER,
+    mode VARCHAR(50),
+    solution TEXT,
+    hint_1 TEXT,
+    hint_2 TEXT,
+    hint_3 TEXT,
+    archived BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_questions_archived
+    ON questions(archived);
+
+CREATE INDEX IF NOT EXISTS idx_questions_difficulty
+    ON questions(difficulty);
+
+CREATE INDEX IF NOT EXISTS idx_questions_mode
+    ON questions(mode);
+
+-- ============================================================================
+-- Answers Table
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS answers (
+    id SERIAL PRIMARY KEY,
+    question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+    answer_text TEXT,
+    answer_label VARCHAR(10),
+    is_correct BOOLEAN NOT NULL DEFAULT FALSE,
+    archived BOOLEAN NOT NULL DEFAULT FALSE,
+    created_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    changed_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_answers_question
+    ON answers(question_id);
+
+CREATE INDEX IF NOT EXISTS idx_answers_archived
+    ON answers(archived);
+
+CREATE INDEX IF NOT EXISTS idx_answers_correct
+    ON answers(is_correct);
+
+-- ============================================================================
+-- Topics Table
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS topics (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    description TEXT,
+    archived BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_topics_name
+    ON topics(name);
+
+CREATE INDEX IF NOT EXISTS idx_topics_archived
+    ON topics(archived);
+
+-- ============================================================================
+-- Question Topics Junction Table
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS question_topics (
+    question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+    topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (question_id, topic_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_question_topics_question
+    ON question_topics(question_id);
+
+CREATE INDEX IF NOT EXISTS idx_question_topics_topic
+    ON question_topics(topic_id);
+
+-- ============================================================================
+-- Submissions Table
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS submissions (
+    id SERIAL PRIMARY KEY,
+    question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+    correct_answer_id INTEGER NOT NULL REFERENCES answers(id) ON DELETE CASCADE,
+    selected_answer_id INTEGER NOT NULL REFERENCES answers(id) ON DELETE CASCADE,
+    is_correct BOOLEAN NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_submissions_question
+    ON submissions(question_id);
+
+CREATE INDEX IF NOT EXISTS idx_submissions_correct
+    ON submissions(is_correct);
+
+CREATE INDEX IF NOT EXISTS idx_submissions_created
+    ON submissions(created_at DESC);

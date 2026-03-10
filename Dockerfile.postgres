@@ -1,8 +1,10 @@
 # PostgreSQL Dockerfile
 FROM postgres:16-alpine
 
-# Copy initialization SQL script
-COPY backend/init.sql /docker-entrypoint-initdb.d/
+# Copy initialization SQL scripts
+# Files in /docker-entrypoint-initdb.d/ are executed in alphabetical order
+COPY backend/init.sql /docker-entrypoint-initdb.d/01-init.sql
+COPY backend/data.sql /docker-entrypoint-initdb.d/02-data.sql
 
 # Expose default PostgreSQL port
 EXPOSE 5432
