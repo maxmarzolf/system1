@@ -20,7 +20,7 @@ Completion-style flashcards to practice key steps in common LeetCode tree proble
 - Start frontend + backend: `npm run dev` (or `npm start`)
 - Build for production: `npm run build`
 
-Backend API runs on `http://localhost:3001` and persists score attempts in `backend/data/scores.json`.
+Backend API runs on `http://localhost:3001` and persists data in PostgreSQL.
 
 ### Docker Deployment
 
@@ -36,20 +36,19 @@ docker-compose up --build
 
 This will:
 - Build the frontend (React + Vite) container
-- Build the backend (Node.js + Express) container
+- Build the backend (Python + FastAPI) container
 - Start both services simultaneously with the frontend dependent on the backend
 - Expose the frontend on `http://localhost:5173`
 - Expose the backend API on `http://localhost:3001`
 - Share a common network for inter-service communication
-- Persist backend data in `backend/data/` directory
 
 **Service Details:**
 - **Frontend**: Built with multi-stage Docker build, serves optimized production build with Node.js serve
-- **Backend**: Runs Express server with all npm dependencies installed
+- **Backend**: Python FastAPI server with uvicorn
 - **PostgreSQL**: Transactional database (port 5432, not exposed externally - only accessible from backend via Docker network)
 - **Adminer**: Database management UI at `http://localhost:8080` for querying PostgreSQL
 - All services communicate over a shared Docker network
-- Backend persistence: local SQLite in `backend/data/`, PostgreSQL data persisted in `postgres_data` volume
+- PostgreSQL data persisted in `postgres_data` volume
 
 **Accessing the Database:**
 1. Open Adminer at `http://localhost:8080`

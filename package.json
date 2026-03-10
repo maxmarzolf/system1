@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently \"npm:dev:client\" \"npm:dev:server\"",
     "dev:client": "vite",
-    "dev:server": "node backend/server.js",
+    "dev:server": "cd backend && venv/bin/python main.py",
     "start": "npm run dev",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
@@ -14,10 +14,7 @@
   },
   "dependencies": {
     "@types/react-syntax-highlighter": "^15.5.13",
-    "better-sqlite3": "^12.6.2",
-    "cors": "^2.8.5",
-    "express": "^5.1.0",
-    "pg": "^8.13.1",
+
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.1",
