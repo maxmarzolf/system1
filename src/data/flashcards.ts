@@ -1,7 +1,7 @@
 export type Flashcard = {
   id: string
   title: string
-  difficulty: 'Easy' | 'Med.' | 'Hard' | 'Hard'
+  difficulty: 'Easy' | 'Med.' | 'Hard'
   prompt: string
   solution: string
   missing: string
