@@ -9,7 +9,19 @@ CREATE TABLE IF NOT EXISTS score_attempts (
     options JSONB,
     correct_answer TEXT,
     user_answer TEXT,
-    mode VARCHAR(50) NOT NULL CHECK (mode IN ('multiple-choice', 'full-solution', 'typing-race')),
+    mode VARCHAR(50) NOT NULL CHECK (
+        mode IN (
+            'main-recall',
+            'snap-classify',
+            'template-hunt',
+            'gut-check',
+            'no-go-trap',
+            'near-miss-duel',
+            'multiple-choice',
+            'full-solution',
+            'typing-race'
+        )
+    ),
     correct BOOLEAN NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -79,6 +91,32 @@ CREATE INDEX IF NOT EXISTS idx_typing_sessions_correct
     ON typing_sessions(correct);
 
 -- ============================================================================
+-- System1 Session Analytics Table
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS system1_sessions (
+    id SERIAL PRIMARY KEY,
+    mode VARCHAR(50) NOT NULL,
+    question_type VARCHAR(50) NOT NULL DEFAULT '',
+    order_type VARCHAR(20) NOT NULL CHECK (order_type IN ('shuffled', 'original')),
+    card_count INTEGER NOT NULL DEFAULT 0 CHECK (card_count >= 0),
+    attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    correct_count INTEGER NOT NULL DEFAULT 0 CHECK (correct_count >= 0),
+    accuracy REAL NOT NULL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100),
+    duration_ms INTEGER NOT NULL DEFAULT 0 CHECK (duration_ms >= 0),
+    total_score INTEGER NOT NULL DEFAULT 0,
+    avg_automaticity REAL NOT NULL DEFAULT 0 CHECK (avg_automaticity >= 0 AND avg_automaticity <= 100),
+    started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_system1_sessions_completed
+    ON system1_sessions(completed_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_system1_sessions_mode
+    ON system1_sessions(mode);
+
+-- ============================================================================
 -- Score Tracking Table (for aggregated stats)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS daily_scores (
@@ -111,6 +149,12 @@ CREATE TABLE IF NOT EXISTS game_modes (
 );
 
 INSERT INTO game_modes (mode_name, description) VALUES
+    ('main-recall', 'Show full answer, hide it, then type from immediate recall'),
+    ('snap-classify', 'Fast classification of patterns with strict timing'),
+    ('template-hunt', 'Identify shared algorithmic structure across different forms'),
+    ('gut-check', 'Rapid estimate plus confidence calibration with feedback'),
+    ('no-go-trap', 'Go/No-Go inhibition challenge with near-miss distractors'),
+    ('near-miss-duel', 'Choose between highly similar candidate solutions'),
     ('multiple-choice', 'Select the correct complete solution'),
     ('full-solution', 'Choose the correct complete solution from multiple options'),
     ('typing-race', 'Type the correct code to complete the solution')

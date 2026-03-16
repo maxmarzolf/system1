@@ -1658,7 +1658,7 @@ def zigzagLevelOrder(root):
   // ===== GRAPH =====
   {
     id: '200',
-    title: 'Number of Islands',
+    title: 'Number of Islands (Core)',
     difficulty: 'Med.',
     prompt: 'Given a 2D grid of "1"s (land) and "0"s (water), count the number of islands.',
     solution: `def numIslands(grid):
@@ -1676,7 +1676,7 @@ def zigzagLevelOrder(root):
     return count`,
     missing: "grid[i][j] = '0'",
     hint: 'Sink visited land by marking it as water to avoid revisiting.',
-    tags: ['top150', 'graph'],
+    tags: ['top150', 'graph', 'core'],
   },
   {
     id: '130',
@@ -1708,7 +1708,7 @@ def zigzagLevelOrder(root):
   },
   {
     id: '133',
-    title: 'Clone Graph',
+    title: 'Clone Graph (Core)',
     difficulty: 'Med.',
     prompt: 'Given a reference of a node in a connected undirected graph, return a deep copy.',
     solution: `def cloneGraph(node):
@@ -1725,7 +1725,7 @@ def zigzagLevelOrder(root):
     return dfs(node)`,
     missing: 'clones[n] = clone',
     hint: 'Cache cloned nodes in a dictionary to handle cycles.',
-    tags: ['top150', 'graph'],
+    tags: ['top150', 'graph', 'core'],
   },
   {
     id: '399',
@@ -1758,7 +1758,7 @@ def calcEquation(equations, values, queries):
   },
   {
     id: '207',
-    title: 'Course Schedule',
+    title: 'Course Schedule (Core)',
     difficulty: 'Med.',
     prompt: 'There are numCourses courses with prerequisites. Determine if you can finish all courses (no cycles).',
     solution: `def canFinish(numCourses, prerequisites):
@@ -1779,7 +1779,7 @@ def calcEquation(equations, values, queries):
     return count == numCourses`,
     missing: 'if indegree[nei] == 0:',
     hint: 'Topological sort via BFS (Kahn\'s): enqueue nodes when their in-degree drops to 0.',
-    tags: ['top150', 'graph'],
+    tags: ['top150', 'graph', 'core'],
   },
   {
     id: '210',
@@ -1805,6 +1805,38 @@ def calcEquation(equations, values, queries):
     missing: 'order.append(node)',
     hint: 'Topological sort: collect nodes in the order they reach in-degree 0.',
     tags: ['top150', 'graph'],
+  },
+  {
+    id: '684',
+    title: 'Redundant Connection (Core)',
+    difficulty: 'Med.',
+    prompt: 'Given a tree with one extra edge, return the edge that creates a cycle.',
+    solution: `def findRedundantConnection(edges):
+    parent = list(range(len(edges) + 1))
+    size = [1] * (len(edges) + 1)
+
+    def find(x):
+        while x != parent[x]:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra == rb:
+            return False
+        if size[ra] < size[rb]:
+            ra, rb = rb, ra
+        {{missing}}
+        size[ra] += size[rb]
+        return True
+
+    for a, b in edges:
+        if not union(a, b):
+            return [a, b]`,
+    missing: 'parent[rb] = ra',
+    hint: 'Union-Find is a core graph pattern: if two nodes already share a root, that edge is redundant.',
+    tags: ['top150', 'graph', 'core'],
   },
 
   // ===== GRAPH BFS =====
@@ -1839,7 +1871,7 @@ def snakesAndLadders(board):
     return -1`,
     missing: 'visited.add(ns)',
     hint: 'BFS from square 1. Map square numbers to board coordinates, follow snakes/ladders.',
-    tags: ['top150', 'graph-bfs'],
+    tags: ['top150', 'graph', 'graph-bfs'],
   },
   {
     id: '433',
@@ -1867,11 +1899,11 @@ def minMutation(startGene, endGene, bank):
     return -1`,
     missing: "mutation = gene[:i] + c + gene[i + 1:]",
     hint: 'BFS: at each step try all single-character mutations from ACGT at each position.',
-    tags: ['top150', 'graph-bfs'],
+    tags: ['top150', 'graph', 'graph-bfs'],
   },
   {
     id: '127',
-    title: 'Word Ladder',
+    title: 'Word Ladder (Core)',
     difficulty: 'Hard',
     prompt: 'Given beginWord, endWord, and a wordList, find the length of the shortest transformation sequence (each step changes one letter).',
     solution: `from collections import deque
@@ -1895,7 +1927,7 @@ def ladderLength(beginWord, endWord, wordList):
     return 0`,
     missing: "nw = word[:i] + c + word[i + 1:]",
     hint: 'BFS: try all single-letter changes at each position from a-z.',
-    tags: ['top150', 'graph-bfs'],
+    tags: ['top150', 'graph', 'graph-bfs', 'core'],
   },
 
   // ===== TRIE =====

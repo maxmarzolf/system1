@@ -9,7 +9,7 @@ from app.models import StatsResponse
 
 router = APIRouter(prefix="/api", tags=["stats"])
 
-_MODE_KEYS = ("multiple-choice", "full-solution", "typing-race")
+_MODE_KEYS = ("main-recall", "snap-classify", "template-hunt", "gut-check", "no-go-trap", "near-miss-duel", "multiple-choice", "full-solution", "typing-race")
 
 
 def _mode_stats_default() -> dict[str, dict[str, int]]:
@@ -54,7 +54,7 @@ async def get_stats() -> dict[str, Any]:
                 SUM(CASE WHEN correct THEN 1 ELSE 0 END)  AS correct,
                 SUM(CASE WHEN NOT correct THEN 1 ELSE 0 END) AS incorrect
             FROM score_attempts
-            WHERE created_at >= CURRENT_DATE - INTERVAL '14 days'
+            WHERE created_at >= CURRENT_DATE - INTERVAL '365 days'
             GROUP BY created_at::date
             ORDER BY date ASC
             """

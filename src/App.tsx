@@ -7,172 +7,113 @@ import { flashcards as baseFlashcards } from './data/flashcards'
 import { cardOptions as baseCardOptions } from './data/flashcard-options'
 import { top150Flashcards } from './data/flashcards-top150'
 import { top150CardOptions } from './data/flashcard-options-top150'
+import {
+  SYSTEM1_MODE_ORDER,
+  defaultCardProgress,
+  modeDescription,
+  modeShortLabel,
+  modeTitle,
+  scoreAttempt,
+  updateAutomaticity,
+  type CardProgress,
+  type System1Mode,
+} from './system1Modes'
 
 const flashcards = [...baseFlashcards, ...top150Flashcards]
 const cardOptions: Record<string, { code: string; correct: boolean }[]> = { ...baseCardOptions, ...top150CardOptions }
 
 type CheckState = 'correct' | 'incorrect' | null
-type GameMode = 'multiple-choice' | 'full-solution' | 'typing-race'
+type QuestionType = 'tree' | 'stack' | 'graph' | 'top150'
+type SessionOrder = 'shuffled' | 'original'
+type PracticeTrack = 'main-recall' | 'legacy'
+type StoredProgress = Record<string, CardProgress>
 
-/** Minimal Python logo SVG — high-contrast monochrome */
-function PythonIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 110 110"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className="vscode-tab-icon"
-      aria-hidden="true"
-    >
-      <path
-        d="M54.5 2C36.3 2 25 7.5 25 20.5v13h30v5H18C8.6 38.5 1 47.5 1 63.5c0 16 7.6 23 17 23h11v-16c0-10.5 8.8-19 19-19h30c9 0 16-7.3 16-16.5V20.5C94 8.2 83.2 2 54.5 2ZM39 13a5 5 0 110 10 5 5 0 010-10Z"
-        fill="var(--hc-accent)"
-        opacity="0.85"
-      />
-      <path
-        d="M55.5 108C73.7 108 85 102.5 85 89.5v-13H55v-5h37c9.4 0 17-9 17-25s-7.6-23-17-23H81v16c0 10.5-8.8 19-19 19H32c-9 0-16 7.3-16 16.5v14.5C16 101.8 26.8 108 55.5 108ZM71 97a5 5 0 110-10 5 5 0 010 10Z"
-        fill="var(--hc-accent)"
-        opacity="0.55"
-      />
-    </svg>
-  )
-}
-
-/** Diff/compare icon SVG — high-contrast monochrome */
-function DiffIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className="vscode-tab-icon"
-      aria-hidden="true"
-    >
-      <path d="M3 1h4l5 5v9H3V1z" stroke="var(--hc-accent)" strokeWidth="1.2" opacity="0.6" />
-      <path d="M5.5 7.5h5M8 5v5" stroke="var(--hc-accent)" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  )
-}
-type QuestionType = 'tree' | 'stack' | 'top150'
-type SolutionOption = {
-  code: string
+type AttemptPayload = {
+  mode: System1Mode | 'main-recall'
   correct: boolean
-  full: string
+  correctAnswer: string
+  userAnswer: string
+  options?: { text: string; isCorrect: boolean }[]
+}
+
+type CoachAttemptFeedback = {
+  diagnosis: string
+  primaryFocus: string
+  immediateCorrection: string
+  microDrill: string
+  nextRepTarget: string
+  strengths: string[]
+  errorTags: string[]
+  llmUsed: boolean
+}
+
+type CoachSessionPlan = {
+  headline: string
+  focusTheme: string
+  warmup: string
+  mainSet: string
+  cooldown: string
+  note: string
+  llmUsed: boolean
+}
+
+type LineReviewStatus = 'match' | 'mismatch' | 'missing' | 'extra'
+
+type LineReview = {
+  lineNumber: number
+  status: LineReviewStatus
+  expected: string
+  actual: string
+}
+
+type InvariantCheck = {
+  label: string
+  anchor: string
+  matched: boolean
+}
+
+type InlineCoachComment = {
+  lineNumber: number
+  text: string
+  tone: 'good' | 'fix' | 'guide'
+}
+
+type AnnotatedDisplayLine = {
+  text: string
+  sourceLineNumber: number | null
+  isComment: boolean
+  tone?: InlineCoachComment['tone']
+}
+
+type RecallAttemptSnapshot = {
+  attemptNumber: number
+  accuracy: number
+  exact: boolean
+  elapsedMs: number
+  usedPlaceholder: boolean
+  hasGuard: boolean
+  hasBookkeeping: boolean
+  hasTraversal: boolean
+  hasLoop: boolean
+}
+
+type DraftStructure = {
+  nonEmptyLines: number
+  hasSignature: boolean
+  hasGuard: boolean
+  traversalKind: 'dfs' | 'bfs' | 'queue' | 'stack' | null
+  hasLoop: boolean
+  hasPlaceholder: boolean
+  hasBookkeeping: boolean
+  milestoneKey: string
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 const apiUrl = (path: string) => `${API_BASE_URL}${path}`
+const PROGRESS_KEY = 'system1-progress-v1'
+const MAIN_RECALL_CLOSE_ENOUGH_ACCURACY = 90
 
-const normalizeTyping = (value: string) =>
-  value
-    .replace(/\r\n/g, '\n')
-    .split('\n')
-    .map((line) => line.trimEnd())
-    .join('\n')
-    .trimEnd()
-
-/**
- * Normalize indentation to PEP 8 (4-space) levels.
- * Detects the smallest indent unit used in the code and re-maps
- * every line so each indent level becomes exactly 4 spaces.
- */
-function normalizePep8(code: string): string {
-  const lines = code.split('\n')
-  const indents: number[] = []
-  for (const line of lines) {
-    const match = line.match(/^( +)\S/)
-    if (match) indents.push(match[1].length)
-  }
-  if (indents.length === 0) return code
-  // Already PEP 8 if every indented line is a multiple of 4
-  if (indents.every((n) => n % 4 === 0)) return code
-  // Map each unique indent depth to a PEP 8 level (1, 2, 3…)
-  const unique = [...new Set(indents)].sort((a, b) => a - b)
-  const levelMap = new Map<number, number>()
-  unique.forEach((indent, i) => levelMap.set(indent, i + 1))
-  return lines
-    .map((line) => {
-      const match = line.match(/^( +)/)
-      if (!match) return line
-      const spaces = match[1].length
-      const level = levelMap.get(spaces) ?? Math.round(spaces / unique[0])
-      return '    '.repeat(level) + line.slice(spaces)
-    })
-    .join('\n')
-}
-
-type DiffSegment = { type: 'correct' | 'wrong' | 'missing' | 'extra'; text: string }
-type DiffLine = {
-  lineNum: number
-  expectedNum: number | null
-  segments: DiffSegment[]
-  status: 'correct' | 'wrong' | 'missing' | 'extra'
-}
-
-function computeLineDiff(input: string, target: string): DiffLine[] {
-  const inputLines = normalizeTyping(input).split('\n')
-  const targetLines = normalizeTyping(target).split('\n')
-  const maxLen = Math.max(inputLines.length, targetLines.length)
-  const result: DiffLine[] = []
-
-  for (let i = 0; i < maxLen; i++) {
-    const got = inputLines[i]
-    const expected = targetLines[i]
-
-    if (got === undefined) {
-      result.push({
-        lineNum: i + 1,
-        expectedNum: i + 1,
-        segments: [{ type: 'missing', text: expected }],
-        status: 'missing',
-      })
-    } else if (expected === undefined) {
-      result.push({
-        lineNum: i + 1,
-        expectedNum: null,
-        segments: [{ type: 'extra', text: got }],
-        status: 'extra',
-      })
-    } else if (got === expected) {
-      result.push({
-        lineNum: i + 1,
-        expectedNum: i + 1,
-        segments: [{ type: 'correct', text: got }],
-        status: 'correct',
-      })
-    } else {
-      const segments: DiffSegment[] = []
-      const mLen = Math.max(got.length, expected.length)
-      let runType: DiffSegment['type'] | null = null
-      let runText = ''
-      for (let j = 0; j < mLen; j++) {
-        const g = got[j]
-        const e = expected[j]
-        let segType: DiffSegment['type']
-        if (g === undefined) segType = 'missing'
-        else if (e === undefined) segType = 'extra'
-        else if (g === e) segType = 'correct'
-        else segType = 'wrong'
-        if (segType === runType) {
-          runText += g ?? e
-        } else {
-          if (runType !== null) segments.push({ type: runType, text: runText })
-          runType = segType
-          runText = g ?? e ?? ''
-        }
-      }
-      if (runType !== null) segments.push({ type: runType, text: runText })
-      result.push({ lineNum: i + 1, expectedNum: i + 1, segments, status: 'wrong' })
-    }
-  }
-  return result
-}
-
-function shuffle<T>(array: T[]): T[] {
+const shuffle = <T,>(array: T[]): T[] => {
   const shuffled = [...array]
   for (let i = shuffled.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1))
@@ -181,118 +122,647 @@ function shuffle<T>(array: T[]): T[] {
   return shuffled
 }
 
-function App() {
-  const [questionType, setQuestionType] = useState<QuestionType>('tree')
-  const [deck, setDeck] = useState(() =>
-    flashcards.filter((item) => item.tags.includes('tree'))
-  )
-  const [index, setIndex] = useState(0)
-  const [showAnswer, setShowAnswer] = useState(false)
-  const [showHint, setShowHint] = useState(false)
-  const [checkState, setCheckState] = useState<CheckState>(null)
-  const [gameMode, setGameMode] = useState<GameMode>('multiple-choice')
-  const [selectedOption, setSelectedOption] = useState<number | null>(null)
-  const [typingInput, setTypingInput] = useState('')
-  const [typingStartAt, setTypingStartAt] = useState<number | null>(null)
-  const [typingElapsed, setTypingElapsed] = useState(0)
-  const [typingMistakes, setTypingMistakes] = useState(0)
-  const [typingBackspaces, setTypingBackspaces] = useState(0)
-  const [typingScore, setTypingScore] = useState<number | null>(null)
-  const [typingResult, setTypingResult] = useState<{ accuracy: number; wpm: number } | null>(null)
-  const [typingFinished, setTypingFinished] = useState(false)
-  const typingInputRef = useRef<HTMLTextAreaElement | null>(null)
-  const highlightRef = useRef<HTMLDivElement | null>(null)
-  const gutterRef = useRef<HTMLDivElement | null>(null)
+const normalizeTyping = (value: string) =>
+  value
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .join('\n')
+    .trim()
 
-  const handleScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
-    if (highlightRef.current) {
-      highlightRef.current.scrollTop = e.currentTarget.scrollTop
-      highlightRef.current.scrollLeft = e.currentTarget.scrollLeft
+const buildSolutionOptions = (solution: string, options: { code: string; correct: boolean }[]) =>
+  options.map((option) => ({
+    ...option,
+    full: solution.replace('{{missing}}', option.code),
+  }))
+
+const accuracyLevel = (accuracy: number): string => {
+  if (accuracy === 100) return 'Exact'
+  if (accuracy >= 95) return 'Near Exact'
+  if (accuracy >= 85) return 'Strong'
+  if (accuracy >= 70) return 'Developing'
+  return 'Needs Work'
+}
+
+const stripPrefixedLabel = (text: string, label: string) =>
+  text.replace(new RegExp(`^${label}:\\s*`, 'i'), '').trim()
+
+const compactCodeLine = (line: string, max = 72) => {
+  const cleaned = line.trim()
+  if (cleaned.length <= max) return cleaned
+  return `${cleaned.slice(0, max - 1)}…`
+}
+
+const wrapCommentText = (text: string, indent: string, maxWidth = 78) => {
+  const words = text.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean)
+  if (words.length === 0) return [`${indent}│`]
+
+  const lines: string[] = []
+  let current = '│'
+
+  for (const word of words) {
+    const next = current === '│' ? `│ ${word}` : `${current} ${word}`
+    if (indent.length + next.length <= maxWidth) {
+      current = next
+      continue
     }
-    if (gutterRef.current) {
-      gutterRef.current.scrollTop = e.currentTarget.scrollTop
+    lines.push(`${indent}${current}`)
+    current = `│ ${word}`
+  }
+
+  lines.push(`${indent}${current}`)
+  return lines
+}
+
+const isPlaceholderLine = (line: string) => /\b(pass|something|todo|tbd)\b/i.test(line.trim())
+
+const summarizeRecallAttempt = (
+  actualLines: string[],
+  accuracy: number,
+  exact: boolean,
+  elapsedMs: number,
+  attemptNumber: number
+): RecallAttemptSnapshot => ({
+  attemptNumber,
+  accuracy,
+  exact,
+  elapsedMs,
+  usedPlaceholder: actualLines.some((line) => isPlaceholderLine(line)),
+  hasGuard: actualLines.some((line) => /^\s*if\b/.test(line) && /not|visited|seen|< 0|>=/.test(line)),
+  hasBookkeeping: actualLines.some((line) =>
+    /(graph|visited|seen|indegree|parent|dist|rows|cols|queue|deque|stack|\bm\b|\bn\b)/.test(line)
+  ),
+  hasTraversal: actualLines.some((line) => /\bdfs\b|\bbfs\b|queue|deque|stack/.test(line)),
+  hasLoop: actualLines.some((line) => /^\s*(for|while)\b/.test(line)),
+})
+
+const analyzeDraftStructure = (code: string): DraftStructure => {
+  const lines = code.replace(/\r\n/g, '\n').split('\n')
+  const nonEmptyLines = lines.filter((line) => line.trim().length > 0).length
+  const hasSignature = lines.some((line) => /^\s*def\s+/.test(line))
+  const hasGuard = lines.some((line) => /^\s*if\b/.test(line) && /not|visited|seen|< 0|>=/.test(line))
+  const traversalKind = lines.some((line) => /\bdfs\b/.test(line))
+    ? 'dfs'
+    : lines.some((line) => /\bbfs\b/.test(line))
+      ? 'bfs'
+      : lines.some((line) => /\bqueue\b|\bdeque\b|\bq\b/.test(line))
+        ? 'queue'
+        : lines.some((line) => /\bstack\b/.test(line))
+          ? 'stack'
+          : null
+  const hasLoop = lines.some((line) => /^\s*(for|while)\b/.test(line))
+  const hasPlaceholder = lines.some((line) => isPlaceholderLine(line))
+  const hasBookkeeping = lines.some((line) =>
+    /(graph|visited|seen|indegree|parent|dist|rows|cols|queue|deque|stack|\bm\b|\bn\b)/.test(line)
+  )
+
+  return {
+    nonEmptyLines,
+    hasSignature,
+    hasGuard,
+    traversalKind,
+    hasLoop,
+    hasPlaceholder,
+    hasBookkeeping,
+    milestoneKey: [
+      hasSignature ? 'sig' : 'no-sig',
+      hasGuard ? 'guard' : 'no-guard',
+      traversalKind ?? 'no-traversal',
+      hasLoop ? 'loop' : 'no-loop',
+      hasPlaceholder ? 'placeholder' : 'no-placeholder',
+      hasBookkeeping ? 'state' : 'no-state',
+      `lines-${Math.min(nonEmptyLines, 8)}`,
+    ].join('|'),
+  }
+}
+
+const buildLiveCoachFallback = (draft: DraftStructure, isGraphQuestion: boolean) => {
+  if (isGraphQuestion) {
+    if (!draft.hasSignature) return 'Start by writing the function signature and naming the graph state you expect to maintain.'
+    if (!draft.hasBookkeeping) return 'Before coding the traversal, define the bookkeeping: representation, visited state, and any per-node metadata.'
+    if (!draft.traversalKind) return 'Choose the traversal deliberately. In graph interviews, say DFS or BFS and what the frontier means.'
+    if (draft.hasPlaceholder) return 'Replace placeholders with the core invariant: reject bad states, mark the current one, then expand neighbors.'
+    if (!draft.hasGuard) return 'Add the guard condition next. Graph code usually gets clearer once invalid or already-seen states fail fast.'
+    if (!draft.hasLoop) return 'You have the setup; now add the loop or recursion that repeatedly advances the frontier.'
+    return 'Good draft. Keep the model, visited rule, and frontier update explicit as you fill in the body.'
+  }
+
+  if (!draft.hasSignature) return 'Start with the function signature and identify the state the solution needs to preserve.'
+  if (draft.hasPlaceholder) return 'Replace placeholders with the actual state transition so the invariant stays checkable.'
+  return 'Keep the next step small and structural: make the state and its update explicit.'
+}
+
+const buildLiveCoachPrinciple = (draft: DraftStructure, isGraphQuestion: boolean) => {
+  if (isGraphQuestion) {
+    if (draft.traversalKind === 'dfs') {
+      return 'In graph DFS, decide exactly when a node becomes visited and do that before exploring neighbors.'
+    }
+    if (draft.traversalKind === 'bfs' || draft.traversalKind === 'queue') {
+      return 'In graph BFS, initialize the frontier with valid start states, then pop one item at a time and enqueue only unseen neighbors.'
+    }
+    if (draft.traversalKind === 'stack') {
+      return 'In iterative graph traversals, the stack only works if your visited rule is consistent from the moment a node is scheduled.'
+    }
+    return 'For graph problems, three things are almost always worth deciding early: representation, visited rule, and how neighbors enter the frontier.'
+  }
+
+  return 'A strong interview habit is to make the invariant explicit before you optimize the code around it.'
+}
+
+const buildGraphCoachHeadline = (
+  actualLines: string[],
+  reviews: LineReview[],
+  history: RecallAttemptSnapshot[]
+) => {
+  const latestPrevious = history[history.length - 1]
+
+  if (actualLines.some((line) => isPlaceholderLine(line))) {
+    if (latestPrevious?.usedPlaceholder) {
+      return 'For graph problems, stop repeating placeholders and make the traversal state explicit.'
+    }
+    return 'For graph problems, lock down the model and traversal invariant before coding details.'
+  }
+
+  if (
+    latestPrevious &&
+    !latestPrevious.hasTraversal &&
+    actualLines.some((line) => /\bdfs\b|\bbfs\b|queue|deque|stack/.test(line))
+  ) {
+    return 'Better. Now keep the graph bookkeeping as explicit as the traversal choice.'
+  }
+
+  if (
+    reviews.some(
+      (review) =>
+        review.status !== 'match' &&
+        /(graph|visited|indegree|queue|deque|stack|\bm\b|\bn\b)/.test(
+          `${review.actual} ${review.expected}`
+        )
+    )
+  ) {
+    return 'For graph problems, get the bookkeeping right first: representation, visited rule, and start states.'
+  }
+
+  return 'For graph problems, lead with the model, the visited rule, and neighbor expansion.'
+}
+
+const buildInlineCoachComments = (
+  actualLines: string[],
+  reviews: LineReview[],
+  isGraphQuestion: boolean,
+  history: RecallAttemptSnapshot[]
+): InlineCoachComment[] => {
+  const comments: InlineCoachComment[] = []
+  const usedLines = new Set<number>()
+  const fallbackLine = Math.max(actualLines.findIndex((line) => line.trim().length > 0) + 1, 1)
+  const latestPrevious = history[history.length - 1]
+
+  const addComment = (
+    lineNumber: number,
+    text: string,
+    tone: InlineCoachComment['tone']
+  ) => {
+    const normalized = text.replace(/\s+/g, ' ').trim()
+    if (!normalized) return
+    const safeLine = Math.max(1, Math.min(lineNumber, Math.max(actualLines.length, 1)))
+    if (usedLines.has(safeLine)) return
+    usedLines.add(safeLine)
+    comments.push({ lineNumber: safeLine, text: normalized, tone })
+  }
+
+  if (isGraphQuestion) {
+    const guardLine = reviews.find(
+      (review) =>
+        review.status === 'match' &&
+        review.actual.trim().startsWith('if ') &&
+        /not|< 0|>=|visited|seen/.test(review.actual)
+    )
+    if (guardLine) {
+      addComment(
+        guardLine.lineNumber,
+        'Good start. In graph problems, an early guard usually makes the traversal logic much simpler.',
+        'good'
+      )
+    }
+
+    const setupLine = reviews.find(
+      (review) =>
+        review.status !== 'match' &&
+        /(graph|visited|indegree|queue|deque|stack|\bm\b|\bn\b)/.test(
+          `${review.actual} ${review.expected}`
+        )
+    )
+    if (setupLine) {
+      addComment(
+        setupLine.lineNumber,
+        'For graph problems, define the bookkeeping before the loops: representation, visited state, and any metadata that drives the traversal.',
+        'guide'
+      )
+    }
+
+    const traversalLine = reviews.find(
+      (review) =>
+        /def (dfs|bfs)|while .*q|while .*queue|deque|queue/.test(
+          `${review.actual} ${review.expected}`
+        )
+    )
+    if (traversalLine) {
+      addComment(
+        traversalLine.lineNumber,
+        'Once you choose DFS or BFS, keep the invariant explicit: reject bad states, mark the current one, then expand neighbors.',
+        'good'
+      )
+    }
+
+    const placeholderReview = reviews.find((review) => isPlaceholderLine(review.actual))
+    if (placeholderReview) {
+      addComment(
+        placeholderReview.lineNumber,
+        latestPrevious?.usedPlaceholder
+          ? 'Same pattern as the last try: placeholders are hiding the algorithm. In graph interviews, name what gets visited, queued, or expanded.'
+          : 'In senior interviews, placeholders hide the algorithm. Even rough code should say what gets visited, queued, or expanded.',
+        'fix'
+      )
+    }
+
+    const phaseLine = reviews.find(
+      (review) =>
+        review.actual.trim().startsWith('for ') ||
+        review.expected.trim().startsWith('for ') ||
+        review.actual.trim().startsWith('while ')
+    )
+    if (phaseLine) {
+      addComment(
+        phaseLine.lineNumber,
+        'A common graph pattern is two phases: identify the start states, then traverse until the frontier is exhausted.',
+        'guide'
+      )
+    }
+
+    if (
+      latestPrevious &&
+      latestPrevious.accuracy < history[history.length]?.accuracy &&
+      !latestPrevious.hasBookkeeping &&
+      actualLines.some((line) =>
+        /(graph|visited|seen|indegree|parent|dist|queue|deque|stack|\bm\b|\bn\b)/.test(line)
+      )
+    ) {
+      addComment(
+        fallbackLine,
+        'This is better than the last attempt because you are naming the graph state. Keep pushing toward a clear visited rule and frontier update.',
+        'good'
+      )
+    }
+
+    if (comments.length === 0) {
+      addComment(
+        fallbackLine,
+        'For graph problems, explain the model, the visited rule, and the traversal order before coding details.',
+        'guide'
+      )
+    }
+
+    return comments.slice(0, 4)
+  }
+
+  for (const review of reviews) {
+    const expected = review.expected.trim()
+    const actual = review.actual.trim()
+    if (review.status === 'match') continue
+    if (!expected && !actual) continue
+
+    if (isPlaceholderLine(review.actual)) {
+      addComment(
+        review.lineNumber,
+        'Avoid placeholders in interview code. Name the state transition explicitly, even in a rough first pass.',
+        'fix'
+      )
+      continue
+    }
+
+    if (review.status === 'missing') {
+      addComment(
+        review.lineNumber,
+        'There is a missing logical step here. In interviews, it helps to say the invariant this line is maintaining before you type it.',
+        'guide'
+      )
+      continue
+    }
+
+    if (review.status === 'mismatch') {
+      addComment(
+        review.lineNumber,
+        'The structure is close, but the state update is drifting. Focus on what this line is supposed to preserve.',
+        'guide'
+      )
+      continue
     }
   }
 
-  const card = deck[index] ?? deck[0] ?? flashcards[0]
+  if (comments.length === 0) {
+    addComment(
+      fallbackLine,
+      'Keep the invariant explicit: what state exists, how it changes, and what makes the loop or recursion correct.',
+      'guide'
+    )
+  }
 
-  const rawOptions = useMemo(() => cardOptions[card.id] || [], [card.id])
+  return comments.slice(0, 4)
+}
 
-  const shuffledOptions = useMemo(
-    () => shuffle(rawOptions),
-    [rawOptions]
+const buildAnnotatedDisplayLines = (
+  actualLines: string[],
+  comments: InlineCoachComment[]
+): AnnotatedDisplayLine[] => {
+  const grouped = new Map<number, InlineCoachComment[]>()
+  for (const comment of comments) {
+    const list = grouped.get(comment.lineNumber) ?? []
+    list.push(comment)
+    grouped.set(comment.lineNumber, list)
+  }
+
+  const displayLines: AnnotatedDisplayLine[] = []
+  const safeActualLines = actualLines.length > 0 ? actualLines : ['']
+
+  for (let idx = 0; idx < safeActualLines.length; idx += 1) {
+    const sourceLineNumber = idx + 1
+    const sourceLine = safeActualLines[idx] ?? ''
+    const indent = sourceLine.match(/^\s*/)?.[0] ?? ''
+    for (const comment of grouped.get(sourceLineNumber) ?? []) {
+      for (const wrappedLine of wrapCommentText(comment.text, indent)) {
+        displayLines.push({
+          text: wrappedLine,
+          sourceLineNumber,
+          isComment: true,
+          tone: comment.tone,
+        })
+      }
+    }
+    displayLines.push({
+      text: sourceLine,
+      sourceLineNumber,
+      isComment: false,
+    })
+  }
+
+  return displayLines
+}
+
+const computeLineReview = (expectedCode: string, actualCode: string) => {
+  const expectedLines = expectedCode.replace(/\r\n/g, '\n').split('\n').map((line) => line.trimEnd())
+  const actualLines = actualCode.replace(/\r\n/g, '\n').split('\n').map((line) => line.trimEnd())
+  const maxLines = Math.max(expectedLines.length, actualLines.length, 1)
+  const reviews: LineReview[] = []
+
+  for (let i = 0; i < maxLines; i += 1) {
+    const expected = expectedLines[i] ?? ''
+    const actual = actualLines[i] ?? ''
+    let status: LineReviewStatus = 'match'
+    if (expected !== actual) {
+      if (!actual && expected) status = 'missing'
+      else if (actual && !expected) status = 'extra'
+      else status = 'mismatch'
+    }
+    reviews.push({ lineNumber: i + 1, status, expected, actual })
+  }
+
+  return { reviews, actualStatuses: reviews.slice(0, actualLines.length).map((line) => line.status) }
+}
+
+const deriveInvariantChecks = (expectedCode: string, actualCode: string): InvariantCheck[] => {
+  const expectedLines = expectedCode
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const actualSet = new Set(
+    actualCode
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
   )
 
-  const solutionOptions = useMemo<SolutionOption[]>(
-    () =>
-      rawOptions.map((option) => ({
-        ...option,
-        full: card.solution.replace('{{missing}}', option.code),
-      })),
-    [card.solution, rawOptions]
+  const checks: InvariantCheck[] = []
+  const pushIfNew = (check: InvariantCheck | null) => {
+    if (!check) return
+    if (checks.some((item) => item.label === check.label)) return
+    checks.push(check)
+  }
+
+  const signature = expectedLines.find((line) => line.startsWith('def '))
+  pushIfNew(
+    signature
+      ? { label: 'Function signature', anchor: signature, matched: actualSet.has(signature) }
+      : null
   )
 
-  const shuffledSolutionOptions = useMemo(
-    () => shuffle(solutionOptions),
-    [solutionOptions]
+  const baseCase = expectedLines.find((line) => /^if .+:$/.test(line))
+  pushIfNew(
+    baseCase
+      ? { label: 'Base-case guard', anchor: baseCase, matched: actualSet.has(baseCase) }
+      : null
   )
 
-  const typingTarget = useMemo(
-    () => normalizePep8(card.solution.replace('{{missing}}', card.missing)),
-    [card.missing, card.solution]
+  const loopGuard = expectedLines.find((line) => line.startsWith('for ') || line.startsWith('while '))
+  pushIfNew(
+    loopGuard
+      ? { label: 'Traversal step', anchor: loopGuard, matched: actualSet.has(loopGuard) }
+      : null
   )
 
-  const resetInteraction = () => {
-    setShowAnswer(false)
+  const stateUpdate = expectedLines.find((line) => /(\+=|-=|append\(|pop\(|return )/.test(line))
+  pushIfNew(
+    stateUpdate
+      ? { label: 'State transition', anchor: stateUpdate, matched: actualSet.has(stateUpdate) }
+      : null
+  )
+
+  const fnName = signature?.match(/^def\s+([A-Za-z_]\w*)\s*\(/)?.[1]
+  if (fnName) {
+    const recursiveStep = expectedLines.find(
+      (line) => line.includes(`${fnName}(`) && !line.startsWith('def ')
+    )
+    pushIfNew(
+      recursiveStep
+        ? { label: 'Recurrence call', anchor: recursiveStep, matched: actualSet.has(recursiveStep) }
+        : null
+    )
+  }
+
+  return checks.slice(0, 3)
+}
+
+function App() {
+  const [questionType, setQuestionType] = useState<QuestionType>('tree')
+  const [practiceTrack, setPracticeTrack] = useState<PracticeTrack>('main-recall')
+  const [gameMode, setGameMode] = useState<System1Mode>('snap-classify')
+  const [sessionOrderType, setSessionOrderType] = useState<SessionOrder>('original')
+
+  const [sessionOrder, setSessionOrder] = useState<number[]>([])
+  const [sessionPosition, setSessionPosition] = useState(0)
+  const [sessionFinished, setSessionFinished] = useState(false)
+  const [sessionStartedAt, setSessionStartedAt] = useState(Date.now())
+  const [sessionCompletedAt, setSessionCompletedAt] = useState<number | null>(null)
+  const [sessionResults, setSessionResults] = useState<Record<string, boolean>>({})
+  const [sessionAccuracyByCard, setSessionAccuracyByCard] = useState<Record<string, number>>({})
+  const [sessionElapsedByCard, setSessionElapsedByCard] = useState<Record<string, number>>({})
+  const [sessionPersistedId, setSessionPersistedId] = useState<number | null>(null)
+  const [sessionPersisting, setSessionPersisting] = useState(false)
+  const [sessionPersistAttempted, setSessionPersistAttempted] = useState(false)
+  const [sessionPlanRequested, setSessionPlanRequested] = useState(false)
+
+  const [showHint, setShowHint] = useState(false)
+  const [showAnswer, setShowAnswer] = useState(false)
+  const [checkState, setCheckState] = useState<CheckState>(null)
+  const [selectedOption, setSelectedOption] = useState<number | null>(null)
+  const [templateMisses, setTemplateMisses] = useState<number[]>([])
+  const [gutConfidence, setGutConfidence] = useState<number | null>(null)
+  const [trapOptionIndex, setTrapOptionIndex] = useState(0)
+  const [duelPair, setDuelPair] = useState<[number, number]>([0, 1])
+  const [promptStartAt, setPromptStartAt] = useState<number>(Date.now())
+
+  const [modeScore, setModeScore] = useState(0)
+  const [streak, setStreak] = useState(0)
+  const [automaticityIndex, setAutomaticityIndex] = useState(0)
+  const [sessionAutomaticityTotal, setSessionAutomaticityTotal] = useState(0)
+
+  const [mainPhase, setMainPhase] = useState<'preview' | 'typing' | 'submitted'>('preview')
+  const [mainInput, setMainInput] = useState('')
+  const [mainStartedAt, setMainStartedAt] = useState<number | null>(null)
+  const [mainElapsedMs, setMainElapsedMs] = useState(0)
+  const [mainAccuracy, setMainAccuracy] = useState(0)
+  const [mainLevel, setMainLevel] = useState('')
+  const [mainCloseEnough, setMainCloseEnough] = useState(false)
+  const [mainRecallHistoryByCard, setMainRecallHistoryByCard] = useState<Record<string, RecallAttemptSnapshot[]>>({})
+  const [liveCoachFeedback, setLiveCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
+  const [liveCoachLoading, setLiveCoachLoading] = useState(false)
+  const [liveCoachError, setLiveCoachError] = useState('')
+  const [coachFeedback, setCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
+  const [coachLoading, setCoachLoading] = useState(false)
+  const [coachError, setCoachError] = useState('')
+  const [sessionPlan, setSessionPlan] = useState<CoachSessionPlan | null>(null)
+  const [sessionPlanLoading, setSessionPlanLoading] = useState(false)
+  const [sessionPlanError, setSessionPlanError] = useState('')
+  const mainInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const mainHighlightRef = useRef<HTMLDivElement | null>(null)
+  const mainGutterRef = useRef<HTMLDivElement | null>(null)
+  const currentCardIdRef = useRef('')
+  const liveCoachRequestVersionRef = useRef(0)
+  const lastLiveCoachMilestoneRef = useRef('')
+  const lastLiveCoachLengthRef = useRef(0)
+  const coachRequestVersionRef = useRef(0)
+
+  const [progressByCard, setProgressByCard] = useState<StoredProgress>(() => {
+    try {
+      const raw = localStorage.getItem(PROGRESS_KEY)
+      return raw ? (JSON.parse(raw) as StoredProgress) : {}
+    } catch {
+      return {}
+    }
+  })
+
+  useEffect(() => {
+    localStorage.setItem(PROGRESS_KEY, JSON.stringify(progressByCard))
+  }, [progressByCard])
+
+  const filteredDeck = useMemo(
+    () => flashcards.filter((item) => item.tags.includes(questionType)),
+    [questionType]
+  )
+
+  const startSession = () => {
+    const baseOrder = Array.from({ length: filteredDeck.length }, (_, idx) => idx)
+    const nextOrder = sessionOrderType === 'shuffled' ? shuffle(baseOrder) : baseOrder
+
+    setSessionOrder(nextOrder)
+    setSessionPosition(0)
+    setSessionFinished(false)
+    setSessionStartedAt(Date.now())
+    setSessionCompletedAt(null)
+    setSessionResults({})
+    setSessionAccuracyByCard({})
+    setSessionElapsedByCard({})
+    setSessionPersistedId(null)
+    setSessionPersisting(false)
+    setSessionPersistAttempted(false)
+    setSessionPlanRequested(false)
+
+    setModeScore(0)
+    setStreak(0)
+    setAutomaticityIndex(0)
+    setSessionAutomaticityTotal(0)
+
     setShowHint(false)
+    setShowAnswer(false)
     setCheckState(null)
     setSelectedOption(null)
-    setTypingInput('')
-    setTypingStartAt(null)
-    setTypingElapsed(0)
-    setTypingMistakes(0)
-    setTypingBackspaces(0)
-    setTypingScore(null)
-    setTypingResult(null)
-    setTypingFinished(false)
+    setTemplateMisses([])
+    setGutConfidence(null)
+    setPromptStartAt(Date.now())
+
+    setMainPhase('preview')
+    setMainInput('')
+    setMainStartedAt(null)
+    setMainElapsedMs(0)
+    setMainAccuracy(0)
+    setMainLevel('')
+    setMainCloseEnough(false)
+    setMainRecallHistoryByCard({})
+    setLiveCoachFeedback(null)
+    setLiveCoachLoading(false)
+    setLiveCoachError('')
+    liveCoachRequestVersionRef.current = 0
+    lastLiveCoachMilestoneRef.current = ''
+    lastLiveCoachLengthRef.current = 0
+    setCoachFeedback(null)
+    setCoachLoading(false)
+    setCoachError('')
+    setSessionPlan(null)
+    setSessionPlanLoading(false)
+    setSessionPlanError('')
   }
 
   useEffect(() => {
-    const filteredCards = flashcards.filter((item) => item.tags.includes(questionType))
-    setDeck(filteredCards)
-    setIndex(0)
-    resetInteraction()
-  }, [questionType])
+    startSession()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questionType, practiceTrack, gameMode, sessionOrderType])
 
-  const submitAttemptToServer = async (
-    correct: boolean,
-    userAnswer?: string
-  ) => {
-    try {
-      // Determine the correct answer and user's answer based on game mode
-      let correctAnswer = ''
-      let recordedUserAnswer = userAnswer || ''
-      let optionsData: { text: string; isCorrect: boolean }[] | undefined
+  const currentDeckIndex = sessionOrder[sessionPosition] ?? 0
+  const card = filteredDeck[currentDeckIndex] ?? filteredDeck[0] ?? flashcards[0]
+  const fullSolutionTarget = useMemo(
+    () => normalizeTyping(card.solution.replace('{{missing}}', card.missing)),
+    [card.missing, card.solution]
+  )
 
-      if (gameMode === 'multiple-choice' && rawOptions.length > 0) {
-        const correctOption = rawOptions.find(opt => opt.correct)
-        correctAnswer = correctOption?.code || ''
-        if (selectedOption !== null && shuffledOptions[selectedOption]) {
-          recordedUserAnswer = shuffledOptions[selectedOption].code
-        }
-        optionsData = rawOptions.map(opt => ({ text: opt.code, isCorrect: opt.correct }))
-      } else if (gameMode === 'full-solution' && solutionOptions.length > 0) {
-        const correctOption = solutionOptions.find(opt => opt.correct)
-        correctAnswer = correctOption?.full || ''
-        if (selectedOption !== null && shuffledSolutionOptions[selectedOption]) {
-          recordedUserAnswer = shuffledSolutionOptions[selectedOption].full
-        }
-        optionsData = solutionOptions.map(opt => ({ text: opt.full, isCorrect: opt.correct }))
-      } else if (gameMode === 'typing-race') {
-        correctAnswer = card.missing
-        recordedUserAnswer = userAnswer || typingInput
+  const rawOptions = useMemo(() => cardOptions[card.id] || [], [card.id])
+  const shuffledOptions = useMemo(() => shuffle(rawOptions), [rawOptions])
+  const solutionOptions = useMemo(() => buildSolutionOptions(card.solution, rawOptions), [card.solution, rawOptions])
+  const shuffledSolutionOptions = useMemo(() => shuffle(solutionOptions), [solutionOptions])
+
+  const trapOption = rawOptions[trapOptionIndex] ?? rawOptions[0]
+  const duelOptions = [rawOptions[duelPair[0]], rawOptions[duelPair[1]]].filter(Boolean) as { code: string; correct: boolean }[]
+  currentCardIdRef.current = card.id
+
+  const hasAnsweredCurrent = Object.prototype.hasOwnProperty.call(sessionResults, card.id)
+
+  const completeCardInSession = (isCorrect: boolean, accuracy: number, elapsedMs?: number) => {
+    setSessionResults((prevResults) => {
+      const next = { ...prevResults, [card.id]: isCorrect }
+      if (Object.keys(next).length >= sessionOrder.length) {
+        setSessionFinished(true)
+        setSessionCompletedAt(Date.now())
       }
+      return next
+    })
+    setSessionAccuracyByCard((prev) => ({ ...prev, [card.id]: accuracy }))
+    if (elapsedMs !== undefined) {
+      setSessionElapsedByCard((prev) => ({ ...prev, [card.id]: elapsedMs }))
+    }
+  }
 
+  const submitAttemptToServer = async (payload: AttemptPayload) => {
+    try {
       await fetch(apiUrl('/api/attempts'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -300,11 +770,11 @@ function App() {
           cardId: card.id,
           cardTitle: card.title,
           question: card.prompt,
-          options: optionsData,
-          correctAnswer,
-          userAnswer: recordedUserAnswer,
-          mode: gameMode,
-          correct,
+          options: payload.options,
+          correctAnswer: payload.correctAnswer,
+          userAnswer: payload.userAnswer,
+          mode: payload.mode,
+          correct: payload.correct,
         }),
       })
     } catch {
@@ -312,254 +782,789 @@ function App() {
     }
   }
 
-  const submitAttempt = (correct: boolean, userAnswer?: string) => {
-    void submitAttemptToServer(correct, userAnswer)
-  }
+  const resetPerCardInteraction = () => {
+    setShowHint(false)
+    setShowAnswer(false)
+    setCheckState(null)
+    setSelectedOption(null)
+    setTemplateMisses([])
+    setGutConfidence(null)
+    setPromptStartAt(Date.now())
 
-  const goNext = () => {
-    setIndex((prev) => (prev + 1) % deck.length)
-    resetInteraction()
-  }
+    setMainPhase('preview')
+    setMainInput('')
+    setMainStartedAt(null)
+    setMainElapsedMs(0)
+    setMainAccuracy(0)
+    setMainLevel('')
+    setMainCloseEnough(false)
+    setLiveCoachFeedback(null)
+    setLiveCoachLoading(false)
+    setLiveCoachError('')
+    liveCoachRequestVersionRef.current = 0
+    lastLiveCoachMilestoneRef.current = ''
+    lastLiveCoachLengthRef.current = 0
 
-  const goPrev = () => {
-    setIndex((prev) => (prev - 1 + deck.length) % deck.length)
-    resetInteraction()
-  }
-
-  const shuffleDeck = () => {
-    const shuffled = [...deck]
-    for (let i = shuffled.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    if (rawOptions.length > 0) {
+      setTrapOptionIndex(Math.floor(Math.random() * rawOptions.length))
+      const correctIdx = rawOptions.findIndex((opt) => opt.correct)
+      const wrongIndices = rawOptions
+        .map((opt, idx) => ({ opt, idx }))
+        .filter(({ opt }) => !opt.correct)
+        .map(({ idx }) => idx)
+      const randomWrong = wrongIndices[Math.floor(Math.random() * Math.max(wrongIndices.length, 1))] ?? 0
+      setDuelPair(Math.random() > 0.5 ? [correctIdx, randomWrong] : [randomWrong, correctIdx])
     }
-    setDeck(shuffled)
-    setIndex(0)
-    resetInteraction()
-  }
-
-  const selectOption = (
-    idx: number,
-    options: Array<{ correct: boolean }>,
-    revealAnswer = true
-  ) => {
-    if (selectedOption !== null) return
-    setSelectedOption(idx)
-    const option = options[idx]
-    setCheckState(option.correct ? 'correct' : 'incorrect')
-    void submitAttempt(option.correct)
-    if (revealAnswer) setShowAnswer(true)
-  }
-
-  const switchMode = (mode: GameMode) => {
-    setGameMode(mode)
-    resetInteraction()
   }
 
   useEffect(() => {
-    if (gameMode !== 'typing-race' || typingStartAt === null || typingFinished) return
-    const timer = window.setInterval(() => {
-      setTypingElapsed(Date.now() - typingStartAt)
-    }, 100)
+    resetPerCardInteraction()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card.id, sessionPosition, practiceTrack, gameMode])
 
-    return () => {
-      window.clearInterval(timer)
-    }
-  }, [gameMode, typingFinished, typingStartAt])
+  const finalizeLegacyAttempt = (input: {
+    correct: boolean
+    userAnswer: string
+    correctAnswer: string
+    options?: { text: string; isCorrect: boolean }[]
+    falseAlarm?: boolean
+    confidence?: number
+    secondTry?: boolean
+  }) => {
+    if (sessionFinished || hasAnsweredCurrent) return
 
-  const countTypingMistakes = (value: string) => {
-    let mismatches = 0
-    for (let i = 0; i < value.length; i += 1) {
-      if (value[i] !== typingTarget[i]) mismatches += 1
-    }
-    return mismatches
-  }
-
-  const finalizeTypingAttempt = (
-    inputValue: string,
-    mistakes = countTypingMistakes(inputValue),
-    backspaces = typingBackspaces
-  ) => {
-    if (typingFinished) return
-    const completedAt = Date.now()
-    const elapsedMs = typingStartAt ? completedAt - typingStartAt : 0
-    const normalizedInput = normalizeTyping(inputValue)
-    const normalizedTarget = normalizeTyping(typingTarget)
-    const isCorrect = normalizedInput === normalizedTarget
-
-    const compareLength = Math.max(normalizedTarget.length, normalizedInput.length, 1)
-    let exactMatches = 0
-    for (let i = 0; i < compareLength; i += 1) {
-      if (normalizedInput[i] === normalizedTarget[i]) exactMatches += 1
-    }
-
-    const accuracy = Math.round((exactMatches / compareLength) * 100)
-    const secondsUsed = Math.max(elapsedMs / 1000, 1)
-    const typedWords = inputValue.trim() ? inputValue.trim().split(/\s+/).length : 0
-    const wpm = Math.round((typedWords / secondsUsed) * 60)
-
-    const baseScore = 1000
-    const accuracyBonus = Math.round((accuracy / 100) * 500)
-    const speedBonus = Math.max(0, Math.round((120 - secondsUsed) * 10))
-    const penalty = mistakes * 15 + backspaces * 2
-    const computedScore = Math.max(0, baseScore + accuracyBonus + speedBonus - penalty)
-
-    setTypingElapsed(elapsedMs)
-    setTypingFinished(true)
-    setTypingScore(computedScore)
-    setTypingResult({ accuracy, wpm })
-    setCheckState(isCorrect ? 'correct' : 'incorrect')
-    submitAttempt(isCorrect, inputValue)
-
-    // Persist detailed typing session to SQLite
-    void fetch(apiUrl('/api/typing-sessions'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        cardId: card.id,
-        cardTitle: card.title,
-        questionType,
-        categoryTags: card.tags.join(','),
-        correct: isCorrect,
-        accuracy,
-        wpm,
-        score: computedScore,
+    const elapsedMs = Math.max(Date.now() - promptStartAt, 1)
+    const now = new Date()
+    const prev = progressByCard[card.id] ?? defaultCardProgress()
+    const outcome = scoreAttempt(
+      prev,
+      {
+        mode: gameMode,
+        correct: input.correct,
         elapsedMs,
-        mistakes,
-        backspaces,
-        charsTyped: inputValue.length,
-      }),
-    }).catch(() => { /* silently fail */ })
-  }
+        confidence: input.confidence,
+        falseAlarm: input.falseAlarm,
+        secondTry: input.secondTry,
+      },
+      now
+    )
 
-  const handleTypingInputChange = (nextValue: string) => {
-    if (typingFinished) return
-
-    if (typingStartAt === null && nextValue.length > 0) {
-      setTypingStartAt(Date.now())
+    const nextProgressBase: CardProgress = {
+      ...prev,
+      strength: outcome.nextStrength,
+      dueByMode: {
+        ...prev.dueByMode,
+        [gameMode]: outcome.nextDueIso,
+      },
     }
 
-    setTypingInput(nextValue)
-    setTypingMistakes(countTypingMistakes(nextValue))
-  }
+    setProgressByCard((prevState) => ({
+      ...prevState,
+      [card.id]: updateAutomaticity(nextProgressBase, outcome.wasFastCorrect, now),
+    }))
 
-  const applyTypingEdit = (nextValue: string, cursorPosition: number) => {
-    handleTypingInputChange(nextValue)
-    window.requestAnimationFrame(() => {
-      if (!typingInputRef.current) return
-      typingInputRef.current.selectionStart = cursorPosition
-      typingInputRef.current.selectionEnd = cursorPosition
+    setCheckState(input.correct ? 'correct' : 'incorrect')
+    setShowAnswer(true)
+    setAutomaticityIndex(outcome.automaticityIndex)
+    setSessionAutomaticityTotal((prevTotal) => prevTotal + outcome.automaticityIndex)
+    setModeScore((prevScore) => prevScore + outcome.pointsDelta)
+    setStreak((prevStreak) => (input.correct ? prevStreak + 1 : 0))
+
+    completeCardInSession(input.correct, input.correct ? 100 : 0, elapsedMs)
+
+    void submitAttemptToServer({
+      mode: gameMode,
+      correct: input.correct,
+      correctAnswer: input.correctAnswer,
+      userAnswer: input.userAnswer,
+      options: input.options,
     })
   }
 
-  const handleTypingKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (typingFinished) return
+  const startMainRecall = () => {
+    if (hasAnsweredCurrent || sessionFinished) return
+    setMainPhase('typing')
+    setMainStartedAt(Date.now())
+    setMainInput('')
+  }
+
+  const handleMainEditorScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    if (mainHighlightRef.current) {
+      mainHighlightRef.current.scrollTop = e.currentTarget.scrollTop
+      mainHighlightRef.current.scrollLeft = e.currentTarget.scrollLeft
+    }
+    if (mainGutterRef.current) {
+      mainGutterRef.current.scrollTop = e.currentTarget.scrollTop
+    }
+  }
+
+  const applyMainEdit = (nextValue: string, cursorPosition: number) => {
+    setMainInput(nextValue)
+    window.requestAnimationFrame(() => {
+      if (!mainInputRef.current) return
+      mainInputRef.current.selectionStart = cursorPosition
+      mainInputRef.current.selectionEnd = cursorPosition
+    })
+  }
+
+  const handleMainInputChange = (nextValue: string) => {
+    if (mainPhase !== 'typing') return
+    setMainInput(nextValue)
+  }
+
+  const handleMainKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mainPhase !== 'typing') return
+
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault()
+      if (mainInput.trim().length > 0) submitMainRecall()
+      return
+    }
 
     const inputElement = event.currentTarget
     const start = inputElement.selectionStart
     const end = inputElement.selectionEnd
 
-    if (event.key === 'Backspace') {
-      setTypingBackspaces((prev) => prev + 1)
-      // Dedent: if cursor is in leading whitespace, delete back to previous 4-space boundary
-      if (start === end && start > 0) {
-        const lineStart = typingInput.lastIndexOf('\n', Math.max(0, start - 1)) + 1
-        const beforeCursor = typingInput.slice(lineStart, start)
-        if (beforeCursor.length > 0 && /^ +$/.test(beforeCursor)) {
-          const currentIndent = beforeCursor.length
-          const newIndent = Math.max(0, (Math.ceil(currentIndent / 4) - 1) * 4)
-          if (newIndent < currentIndent) {
-            event.preventDefault()
-            const nextValue = typingInput.slice(0, lineStart) + ' '.repeat(newIndent) + typingInput.slice(start)
-            applyTypingEdit(nextValue, lineStart + newIndent)
-            return
-          }
+    if (event.key === 'Tab') {
+      event.preventDefault()
+      if (event.shiftKey) {
+        const lineStart = mainInput.lastIndexOf('\n', Math.max(0, start - 1)) + 1
+        const leading = mainInput.slice(lineStart).match(/^ +/)?.[0].length ?? 0
+        const removeCount = Math.min(4, leading, Math.max(start - lineStart, 0))
+        if (removeCount > 0) {
+          const nextValue = mainInput.slice(0, lineStart) + mainInput.slice(lineStart + removeCount)
+          applyMainEdit(nextValue, start - removeCount)
         }
+      } else {
+        const spaces = '    '
+        const nextValue = `${mainInput.slice(0, start)}${spaces}${mainInput.slice(end)}`
+        applyMainEdit(nextValue, start + 4)
       }
       return
     }
 
-    if (event.key === 'Tab') {
-      event.preventDefault()
-      const spaces = '    '
-      const nextValue = `${typingInput.slice(0, start)}${spaces}${typingInput.slice(end)}`
-      applyTypingEdit(nextValue, start + 4)
-      return
-    }
-
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-      event.preventDefault()
-      if (typingInput.length > 0 && !typingFinished) {
-        finalizeTypingAttempt(typingInput)
+    if (event.key === 'Backspace') {
+      if (start === end && start > 0) {
+        const lineStart = mainInput.lastIndexOf('\n', Math.max(0, start - 1)) + 1
+        const beforeCursor = mainInput.slice(lineStart, start)
+        const leading = beforeCursor.match(/^ +/)?.[0] ?? ''
+        const cursorInLeading = beforeCursor.length <= leading.length
+        if (cursorInLeading && beforeCursor.length > 0) {
+          event.preventDefault()
+          const currentIndent = beforeCursor.length
+          const nextIndent = Math.max(0, Math.floor((currentIndent - 1) / 4) * 4)
+          const nextValue = `${mainInput.slice(0, lineStart)}${' '.repeat(nextIndent)}${mainInput.slice(start)}`
+          applyMainEdit(nextValue, lineStart + nextIndent)
+        }
       }
       return
     }
 
     if (event.key === 'Enter') {
       event.preventDefault()
-      const lineStart = typingInput.lastIndexOf('\n', Math.max(0, start - 1)) + 1
-      const currentLine = typingInput.slice(lineStart, start)
+      const lineStart = mainInput.lastIndexOf('\n', Math.max(0, start - 1)) + 1
+      const currentLine = mainInput.slice(lineStart, start)
       const indent = currentLine.match(/^\s*/)?.[0] ?? ''
-      const insertion = `\n${indent}`
-      const nextValue = `${typingInput.slice(0, start)}${insertion}${typingInput.slice(end)}`
-      applyTypingEdit(nextValue, start + insertion.length)
+      const extraIndent = currentLine.trimEnd().endsWith(':') ? '    ' : ''
+      const insertion = `\n${indent}${extraIndent}`
+      const nextValue = `${mainInput.slice(0, start)}${insertion}${mainInput.slice(end)}`
+      applyMainEdit(nextValue, start + insertion.length)
     }
   }
 
-  const typingExactMatch = normalizeTyping(typingInput) === normalizeTyping(typingTarget)
-  const typingProgress = Math.min(100, Math.round((typingInput.length / Math.max(typingTarget.length, 1)) * 100))
+  const fetchLiveCoachFeedback = async (payload: {
+    expectedAnswer: string
+    userAnswer: string
+    elapsedMs: number
+    accuracy: number
+    exact: boolean
+    previousAttempts: RecallAttemptSnapshot[]
+    draft: DraftStructure
+  }) => {
+    const requestCardId = card.id
+    liveCoachRequestVersionRef.current += 1
+    const requestVersion = liveCoachRequestVersionRef.current
+    setLiveCoachLoading(true)
+    setLiveCoachError('')
+    try {
+      const response = await fetch(apiUrl('/api/coach/attempt-feedback'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cardId: card.id,
+          cardTitle: card.title,
+          prompt: card.prompt,
+          expectedAnswer: payload.expectedAnswer,
+          userAnswer: payload.userAnswer,
+          elapsedMs: payload.elapsedMs,
+          accuracy: payload.accuracy,
+          exact: payload.exact,
+          previousAttempts: payload.previousAttempts.map((attempt) => ({
+            attemptNumber: attempt.attemptNumber,
+            accuracy: attempt.accuracy,
+            exact: attempt.exact,
+            elapsedMs: attempt.elapsedMs,
+          })),
+          questionType,
+          mode: 'main-recall',
+          draftMode: true,
+          draftMilestones: {
+            nonEmptyLines: payload.draft.nonEmptyLines,
+            hasSignature: payload.draft.hasSignature,
+            hasGuard: payload.draft.hasGuard,
+            traversalKind: payload.draft.traversalKind ?? '',
+            hasLoop: payload.draft.hasLoop,
+            hasPlaceholder: payload.draft.hasPlaceholder,
+            hasBookkeeping: payload.draft.hasBookkeeping,
+          },
+        }),
+      })
+      if (!response.ok) throw new Error('Unable to load live coach feedback')
+      const feedback = (await response.json()) as CoachAttemptFeedback
+      if (currentCardIdRef.current !== requestCardId || liveCoachRequestVersionRef.current !== requestVersion) return
+      setLiveCoachFeedback(feedback)
+    } catch {
+      if (currentCardIdRef.current !== requestCardId || liveCoachRequestVersionRef.current !== requestVersion) return
+      setLiveCoachError('Live coach unavailable right now.')
+      setLiveCoachFeedback(null)
+    } finally {
+      if (currentCardIdRef.current !== requestCardId || liveCoachRequestVersionRef.current !== requestVersion) return
+      setLiveCoachLoading(false)
+    }
+  }
 
-  // Global keyboard shortcuts
+  const fetchCoachAttemptFeedback = async (
+    payload: {
+      expectedAnswer: string
+      userAnswer: string
+      elapsedMs: number
+      accuracy: number
+      exact: boolean
+      previousAttempts: RecallAttemptSnapshot[]
+    }
+  ) => {
+    const requestCardId = card.id
+    coachRequestVersionRef.current += 1
+    const requestVersion = coachRequestVersionRef.current
+    setCoachLoading(true)
+    setCoachError('')
+    try {
+      const response = await fetch(apiUrl('/api/coach/attempt-feedback'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cardId: card.id,
+          cardTitle: card.title,
+          prompt: card.prompt,
+          expectedAnswer: payload.expectedAnswer,
+          userAnswer: payload.userAnswer,
+          elapsedMs: payload.elapsedMs,
+          accuracy: payload.accuracy,
+          exact: payload.exact,
+          previousAttempts: payload.previousAttempts.map((attempt) => ({
+            attemptNumber: attempt.attemptNumber,
+            accuracy: attempt.accuracy,
+            exact: attempt.exact,
+            elapsedMs: attempt.elapsedMs,
+          })),
+          questionType,
+          mode: 'main-recall',
+        }),
+      })
+      if (!response.ok) throw new Error('Unable to load coach feedback')
+      const feedback = (await response.json()) as CoachAttemptFeedback
+      if (currentCardIdRef.current !== requestCardId || coachRequestVersionRef.current !== requestVersion) return
+      setCoachFeedback(feedback)
+    } catch {
+      if (currentCardIdRef.current !== requestCardId || coachRequestVersionRef.current !== requestVersion) return
+      setCoachError('Coach feedback unavailable for this attempt.')
+      setCoachFeedback(null)
+    } finally {
+      if (currentCardIdRef.current !== requestCardId || coachRequestVersionRef.current !== requestVersion) return
+      setCoachLoading(false)
+    }
+  }
+
+  const fetchSessionPlan = async () => {
+    if (sessionPlanRequested) return
+    setSessionPlanRequested(true)
+    setSessionPlanLoading(true)
+    setSessionPlanError('')
+
+    try {
+      const weakCards = Object.entries(sessionAccuracyByCard)
+        .map(([cardId, accuracy]) => {
+          const found = filteredDeck.find((item) => item.id === cardId)
+          return {
+            cardId,
+            cardTitle: found?.title ?? '',
+            accuracy,
+            elapsedMs: sessionElapsedByCard[cardId] ?? 0,
+          }
+        })
+        .sort((a, b) => a.accuracy - b.accuracy)
+        .slice(0, 5)
+
+      const response = await fetch(apiUrl('/api/coach/session-plan'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'main-recall',
+          questionType,
+          orderType: sessionOrderType,
+          attempts,
+          correctCount,
+          avgAccuracy,
+          avgElapsedMs:
+            attempts > 0
+              ? Math.round(
+                  Object.values(sessionElapsedByCard).reduce((sum, value) => sum + value, 0) /
+                    attempts
+                )
+              : 0,
+          weakestCards: weakCards,
+        }),
+      })
+      if (!response.ok) throw new Error('Unable to load coach session plan')
+      const plan = (await response.json()) as CoachSessionPlan
+      setSessionPlan(plan)
+    } catch {
+      setSessionPlanError('Coach session plan unavailable right now.')
+      setSessionPlan(null)
+    } finally {
+      setSessionPlanLoading(false)
+    }
+  }
+
+  const submitMainRecall = () => {
+    if (hasAnsweredCurrent || sessionFinished || mainPhase !== 'typing') return
+
+    const startedAt = mainStartedAt ?? Date.now()
+    const elapsedMs = Math.max(Date.now() - startedAt, 1)
+    const normalizedInput = normalizeTyping(mainInput)
+    const normalizedInputLines = normalizedInput.split('\n')
+    const normalizedTarget = fullSolutionTarget
+
+    const compareLength = Math.max(normalizedInput.length, normalizedTarget.length, 1)
+    let exactMatches = 0
+    for (let i = 0; i < compareLength; i += 1) {
+      if (normalizedInput[i] === normalizedTarget[i]) exactMatches += 1
+    }
+
+    const accuracy = Math.round((exactMatches / compareLength) * 100)
+    const exact = normalizedInput === normalizedTarget
+    const closeEnough = exact || accuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY
+    const currentHistory = mainRecallHistoryByCard[card.id] ?? []
+    const attemptSnapshot = summarizeRecallAttempt(
+      normalizedInputLines,
+      accuracy,
+      exact,
+      elapsedMs,
+      currentHistory.length + 1
+    )
+
+    setMainElapsedMs(elapsedMs)
+    setMainAccuracy(accuracy)
+    setMainLevel(accuracyLevel(accuracy))
+    setMainCloseEnough(closeEnough)
+    setMainPhase('submitted')
+    setCheckState(exact ? 'correct' : 'incorrect')
+    setMainRecallHistoryByCard((prev) => ({
+      ...prev,
+      [card.id]: [...(prev[card.id] ?? []), attemptSnapshot],
+    }))
+
+    if (closeEnough) {
+      completeCardInSession(exact, accuracy, elapsedMs)
+    }
+
+    void submitAttemptToServer({
+      mode: 'main-recall',
+      correct: exact,
+      correctAnswer: normalizedTarget,
+      userAnswer: normalizedInput,
+    })
+    void fetchCoachAttemptFeedback({
+      expectedAnswer: normalizedTarget,
+      userAnswer: normalizedInput,
+      elapsedMs,
+      accuracy,
+      exact,
+      previousAttempts: currentHistory,
+    })
+  }
+
+  const reviseMainRecall = () => {
+    if (hasAnsweredCurrent || sessionFinished || mainPhase !== 'submitted' || mainCloseEnough) return
+    setMainPhase('typing')
+    setMainStartedAt(Date.now())
+  }
+
+  const goNext = () => {
+    if (sessionFinished) return
+    setSessionPosition((prev) => Math.min(prev + 1, Math.max(sessionOrder.length - 1, 0)))
+  }
+
+  const goPrev = () => {
+    setSessionPosition((prev) => Math.max(prev - 1, 0))
+  }
+
+  const switchLegacyMode = (mode: System1Mode) => {
+    setGameMode(mode)
+  }
+
+  const resolveSnapClassify = (idx: number) => {
+    if (selectedOption !== null || hasAnsweredCurrent) return
+    setSelectedOption(idx)
+
+    const option = shuffledOptions[idx]
+    const correctOption = rawOptions.find((opt) => opt.correct)
+
+    finalizeLegacyAttempt({
+      correct: option?.correct ?? false,
+      userAnswer: option?.code ?? '',
+      correctAnswer: correctOption?.code ?? '',
+      options: rawOptions.map((opt) => ({ text: opt.code, isCorrect: opt.correct })),
+    })
+  }
+
+  const resolveTemplateHunt = (idx: number) => {
+    if (checkState || hasAnsweredCurrent) return
+    const option = shuffledSolutionOptions[idx]
+    if (!option) return
+
+    if (option.correct) {
+      setSelectedOption(idx)
+      finalizeLegacyAttempt({
+        correct: true,
+        userAnswer: option.full,
+        correctAnswer: solutionOptions.find((opt) => opt.correct)?.full ?? '',
+        options: solutionOptions.map((opt) => ({ text: opt.full, isCorrect: opt.correct })),
+        secondTry: templateMisses.length > 0,
+      })
+      return
+    }
+
+    if (templateMisses.includes(idx)) return
+    const misses = [...templateMisses, idx]
+    setTemplateMisses(misses)
+
+    if (misses.length >= 2) {
+      setSelectedOption(idx)
+      finalizeLegacyAttempt({
+        correct: false,
+        userAnswer: option.full,
+        correctAnswer: solutionOptions.find((opt) => opt.correct)?.full ?? '',
+        options: solutionOptions.map((opt) => ({ text: opt.full, isCorrect: opt.correct })),
+        secondTry: true,
+      })
+    }
+  }
+
+  const resolveGutCheck = (idx: number) => {
+    if (selectedOption !== null || gutConfidence === null || hasAnsweredCurrent) return
+    const option = shuffledOptions[idx]
+    const correctOption = rawOptions.find((opt) => opt.correct)
+    if (!option) return
+    setSelectedOption(idx)
+
+    finalizeLegacyAttempt({
+      correct: option.correct,
+      userAnswer: option.code,
+      correctAnswer: correctOption?.code ?? '',
+      options: rawOptions.map((opt) => ({ text: opt.code, isCorrect: opt.correct })),
+      confidence: gutConfidence,
+    })
+  }
+
+  const resolveNoGo = (goSignal: boolean) => {
+    if (checkState || hasAnsweredCurrent) return
+    const shouldGo = trapOption?.correct ?? false
+
+    finalizeLegacyAttempt({
+      correct: shouldGo === goSignal,
+      userAnswer: goSignal ? 'GO' : 'NO-GO',
+      correctAnswer: shouldGo ? 'GO' : 'NO-GO',
+      options: rawOptions.map((opt) => ({ text: opt.code, isCorrect: opt.correct })),
+      falseAlarm: !shouldGo && goSignal,
+    })
+  }
+
+  const resolveDuel = (idx: number) => {
+    if (selectedOption !== null || hasAnsweredCurrent) return
+    const option = duelOptions[idx]
+    const correctOption = duelOptions.find((opt) => opt.correct)
+    if (!option) return
+    setSelectedOption(idx)
+
+    finalizeLegacyAttempt({
+      correct: option.correct,
+      userAnswer: option.code,
+      correctAnswer: correctOption?.code ?? '',
+      options: duelOptions.map((opt) => ({ text: opt.code, isCorrect: opt.correct })),
+    })
+  }
+
+  const attempts = Object.keys(sessionResults).length
+  const correctCount = Object.values(sessionResults).filter(Boolean).length
+  const exactAccuracy = attempts > 0 ? Math.round((correctCount / attempts) * 100) : 0
+  const avgAccuracy =
+    attempts > 0
+      ? Math.round(
+          (Object.values(sessionAccuracyByCard).reduce((sum, value) => sum + value, 0) / attempts) * 10
+        ) / 10
+      : 0
+
+  const avgAutomaticity = attempts > 0 ? Math.round((sessionAutomaticityTotal / attempts) * 10) / 10 : 0
+  const sessionDurationMs = Math.max((sessionCompletedAt ?? Date.now()) - sessionStartedAt, 0)
+  const canAdvance = hasAnsweredCurrent && !sessionFinished && sessionPosition < sessionOrder.length - 1
+  const canGoNext = sessionPosition < sessionOrder.length - 1
+  const canGoPrev = sessionPosition > 0
+
   useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName
-      const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+    if (!sessionFinished || sessionCompletedAt === null || sessionPersistedId !== null || sessionPersisting || sessionPersistAttempted) return
 
-      // Arrow keys for prev/next (only when not typing in an input)
-      if (!isInput && e.key === 'ArrowLeft' && !e.metaKey && !e.ctrlKey) {
-        e.preventDefault()
-        goPrev()
-      }
-      if (!isInput && e.key === 'ArrowRight' && !e.metaKey && !e.ctrlKey) {
-        e.preventDefault()
-        goNext()
+    const persist = async () => {
+      setSessionPersistAttempted(true)
+      setSessionPersisting(true)
+      try {
+        const response = await fetch(apiUrl('/api/system1-sessions'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: practiceTrack === 'main-recall' ? 'main-recall' : gameMode,
+            questionType,
+            orderType: sessionOrderType,
+            cardCount: sessionOrder.length,
+            attempts,
+            correctCount,
+            accuracy: avgAccuracy,
+            durationMs: sessionDurationMs,
+            totalScore: practiceTrack === 'main-recall' ? Math.round(avgAccuracy) : modeScore,
+            avgAutomaticity: practiceTrack === 'main-recall' ? avgAccuracy : avgAutomaticity,
+            startedAt: new Date(sessionStartedAt).toISOString(),
+            completedAt: new Date(sessionCompletedAt).toISOString(),
+          }),
+        })
+        if (!response.ok) throw new Error('Unable to persist session')
+        const payload = (await response.json()) as { sessionId: number }
+        setSessionPersistedId(payload.sessionId)
+      } catch {
+        // silently fail
+      } finally {
+        setSessionPersisting(false)
       }
     }
-    window.addEventListener('keydown', handleGlobalKeyDown)
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
-  })
+
+    void persist()
+  }, [
+    attempts,
+    avgAccuracy,
+    avgAutomaticity,
+    correctCount,
+    gameMode,
+    modeScore,
+    practiceTrack,
+    questionType,
+    sessionCompletedAt,
+    sessionDurationMs,
+    sessionFinished,
+    sessionOrder.length,
+    sessionOrderType,
+    sessionPersistAttempted,
+    sessionPersistedId,
+    sessionPersisting,
+    sessionStartedAt,
+  ])
+
+  useEffect(() => {
+    if (!sessionFinished || practiceTrack !== 'main-recall') return
+    void fetchSessionPlan()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionFinished, practiceTrack])
+
+  const normalizedMainLines = useMemo(
+    () => mainInput.replace(/\r\n/g, '\n').split('\n'),
+    [mainInput]
+  )
+  const draftStructure = useMemo(
+    () => analyzeDraftStructure(mainInput),
+    [mainInput]
+  )
+  const lineReview = useMemo(
+    () => computeLineReview(fullSolutionTarget, mainInput.replace(/\r\n/g, '\n')),
+    [fullSolutionTarget, mainInput]
+  )
+  const isGraphQuestion =
+    questionType === 'graph' || card.tags.includes('graph') || card.tags.includes('graph-bfs')
+  const currentCardRecallHistory = mainRecallHistoryByCard[card.id] ?? []
+  const priorCardRecallHistory =
+    mainPhase === 'submitted' ? currentCardRecallHistory.slice(0, -1) : currentCardRecallHistory
+  const invariantChecks = useMemo(
+    () => deriveInvariantChecks(fullSolutionTarget, normalizeTyping(mainInput)),
+    [fullSolutionTarget, mainInput]
+  )
+  const inlineCoachComments = useMemo(
+    () => buildInlineCoachComments(normalizedMainLines, lineReview.reviews, isGraphQuestion, priorCardRecallHistory),
+    [isGraphQuestion, lineReview.reviews, normalizedMainLines, priorCardRecallHistory]
+  )
+  const commentedSourceLines = useMemo(
+    () => new Set(inlineCoachComments.map((item) => item.lineNumber)),
+    [inlineCoachComments]
+  )
+  const displayLines = useMemo(() => {
+    if (mainPhase === 'submitted') {
+      return buildAnnotatedDisplayLines(normalizedMainLines, inlineCoachComments)
+    }
+
+    return (mainInput || '# Type the full solution from memory...')
+      .split('\n')
+      .map(
+        (line, index): AnnotatedDisplayLine => ({
+          text: line,
+          sourceLineNumber: mainInput.length > 0 ? index + 1 : null,
+          isComment: false,
+        })
+      )
+  }, [inlineCoachComments, mainInput, mainPhase, normalizedMainLines])
+  const displayCode = useMemo(
+    () => displayLines.map((line) => line.text).join('\n'),
+    [displayLines]
+  )
+  const liveCoachText =
+    liveCoachFeedback?.primaryFocus ||
+    liveCoachFeedback?.immediateCorrection ||
+    buildLiveCoachFallback(draftStructure, isGraphQuestion)
+  const liveCoachPrinciple = buildLiveCoachPrinciple(draftStructure, isGraphQuestion)
+  const coachFocusText = coachFeedback ? stripPrefixedLabel(coachFeedback.primaryFocus, 'Primary focus') : ''
+  const coachHeadline = isGraphQuestion
+    ? buildGraphCoachHeadline(normalizedMainLines, lineReview.reviews, priorCardRecallHistory)
+    : coachFocusText || 'Tighten the drifted lines and go again.'
+
+  const progress = progressByCard[card.id] ?? defaultCardProgress()
+
+  useEffect(() => {
+    if (practiceTrack !== 'main-recall' || mainPhase !== 'typing' || sessionFinished || hasAnsweredCurrent) return
+
+    const trimmedInput = normalizeTyping(mainInput)
+    if (trimmedInput.length < 12 || draftStructure.nonEmptyLines < 2) {
+      setLiveCoachFeedback(null)
+      setLiveCoachLoading(false)
+      setLiveCoachError('')
+      lastLiveCoachMilestoneRef.current = ''
+      lastLiveCoachLengthRef.current = 0
+      return
+    }
+
+    const shouldRefresh =
+      draftStructure.milestoneKey !== lastLiveCoachMilestoneRef.current ||
+      Math.abs(trimmedInput.length - lastLiveCoachLengthRef.current) >= 24
+
+    if (!shouldRefresh) return
+
+    const timeoutId = window.setTimeout(() => {
+      const target = fullSolutionTarget
+      const compareLength = Math.max(trimmedInput.length, target.length, 1)
+      let exactMatches = 0
+      for (let i = 0; i < compareLength; i += 1) {
+        if (trimmedInput[i] === target[i]) exactMatches += 1
+      }
+      const accuracy = Math.round((exactMatches / compareLength) * 100)
+
+      lastLiveCoachMilestoneRef.current = draftStructure.milestoneKey
+      lastLiveCoachLengthRef.current = trimmedInput.length
+
+      void fetchLiveCoachFeedback({
+        expectedAnswer: target,
+        userAnswer: trimmedInput,
+        elapsedMs: Math.max((mainStartedAt ? Date.now() - mainStartedAt : 0), 0),
+        accuracy,
+        exact: trimmedInput === target,
+        previousAttempts: currentCardRecallHistory,
+        draft: draftStructure,
+      })
+    }, 900)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [
+    currentCardRecallHistory,
+    draftStructure,
+    fullSolutionTarget,
+    hasAnsweredCurrent,
+    mainInput,
+    mainPhase,
+    mainStartedAt,
+    practiceTrack,
+    sessionFinished,
+  ])
 
   return (
     <div className="app">
       <nav className="navbar">
         <div className="navbar-left">
-          <span className="navbar-brand">LC Flashcards</span>
+          <span className="navbar-brand">System 1 Trainer</span>
           <span className="navbar-divider" />
           <div className="navbar-group">
-            {(['tree', 'stack', 'top150'] as QuestionType[]).map((qt) => (
+            {(['tree', 'stack', 'graph', 'top150'] as QuestionType[]).map((qt) => (
               <button
                 key={qt}
                 className={questionType === qt ? 'nav-tab active' : 'nav-tab'}
                 onClick={() => setQuestionType(qt)}
               >
-                {qt === 'tree' ? 'Tree' : qt === 'stack' ? 'Stack' : 'Top 150'}
+                {qt === 'tree' ? 'Tree' : qt === 'stack' ? 'Stack' : qt === 'graph' ? 'Graph' : 'Top 150'}
               </button>
             ))}
           </div>
           <span className="navbar-divider" />
           <div className="navbar-group">
-            {(['multiple-choice', 'full-solution', 'typing-race'] as GameMode[]).map((gm) => (
-              <button
-                key={gm}
-                className={gameMode === gm ? 'nav-tab active' : 'nav-tab'}
-                onClick={() => switchMode(gm)}
-              >
-                {gm === 'multiple-choice' ? 'MC' : gm === 'full-solution' ? 'Full' : 'Type'}
-              </button>
-            ))}
+            <button
+              className={practiceTrack === 'main-recall' ? 'nav-tab active' : 'nav-tab'}
+              onClick={() => setPracticeTrack('main-recall')}
+            >
+              Main Recall
+            </button>
+            <button
+              className={practiceTrack === 'legacy' ? 'nav-tab active' : 'nav-tab'}
+              onClick={() => setPracticeTrack('legacy')}
+            >
+              Legacy
+            </button>
           </div>
+          <span className="navbar-divider" />
+          <div className="navbar-group">
+            <button
+              className={sessionOrderType === 'shuffled' ? 'nav-tab active' : 'nav-tab'}
+              onClick={() => setSessionOrderType('shuffled')}
+            >
+              Randomize
+            </button>
+            <button
+              className={sessionOrderType === 'original' ? 'nav-tab active' : 'nav-tab'}
+              onClick={() => setSessionOrderType('original')}
+            >
+              Original
+            </button>
+          </div>
+          {practiceTrack === 'legacy' && (
+            <>
+              <span className="navbar-divider" />
+              <div className="navbar-group">
+                {SYSTEM1_MODE_ORDER.map((mode) => (
+                  <button
+                    key={mode}
+                    className={gameMode === mode ? 'nav-tab active' : 'nav-tab'}
+                    onClick={() => switchLegacyMode(mode)}
+                    title={modeTitle(mode)}
+                  >
+                    {modeShortLabel(mode)}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
         <div className="navbar-right">
-          <span className="navbar-counter">{index + 1} / {deck.length}</span>
+          <span className="navbar-counter">{Math.min(sessionPosition + 1, Math.max(sessionOrder.length, 1))} / {sessionOrder.length}</span>
           <Link to="/dashboard" className="navbar-dashboard">Dashboard</Link>
         </div>
       </nav>
@@ -577,6 +1582,49 @@ function App() {
           </div>
         </div>
 
+        <div className="typing-metrics" style={{ marginBottom: '1.5rem' }}>
+          <p><strong>Track:</strong> {practiceTrack === 'main-recall' ? 'Main Recall' : 'Legacy Modes'}</p>
+          <p><strong>Mode:</strong> {practiceTrack === 'main-recall' ? 'Prompt → Recall Full Answer' : modeTitle(gameMode)}</p>
+          <p><strong>Order:</strong> {sessionOrderType === 'shuffled' ? 'Randomized' : 'Original'}</p>
+          <p><strong>Session:</strong> {attempts}/{sessionOrder.length}</p>
+          <p><strong>Exact Accuracy:</strong> {exactAccuracy}%</p>
+          <p><strong>Avg Accuracy:</strong> {avgAccuracy}%</p>
+          <p><strong>Duration:</strong> {(sessionDurationMs / 1000).toFixed(1)}s</p>
+          <p><strong>Persisted:</strong> {sessionPersistedId ? `Yes (#${sessionPersistedId})` : sessionFinished ? (sessionPersisting ? 'Saving…' : sessionPersistAttempted ? 'Save failed' : 'Pending') : 'No'}</p>
+          {practiceTrack === 'legacy' && (
+            <>
+              <p><strong>Score:</strong> {modeScore}</p>
+              <p><strong>Streak:</strong> {streak}</p>
+              <p><strong>Automaticity:</strong> {automaticityIndex}</p>
+              <p><strong>Strength:</strong> {Math.round(progress.strength)}</p>
+            </>
+          )}
+        </div>
+
+        {sessionFinished && (
+          <p className="status success" style={{ marginTop: 0, marginBottom: '1.5rem' }}>
+            Session complete. {attempts} cards answered. Avg accuracy: {avgAccuracy}%.
+          </p>
+        )}
+        {sessionFinished && practiceTrack === 'main-recall' && (
+          <div className="hint" style={{ marginTop: 0, marginBottom: '1.5rem' }}>
+            <strong>Coach Session Plan</strong>
+            {sessionPlanLoading && <p style={{ margin: '0.5rem 0 0' }}>Building your next-session plan...</p>}
+            {sessionPlanError && <p style={{ margin: '0.5rem 0 0' }}>{sessionPlanError}</p>}
+            {sessionPlan && (
+              <div style={{ marginTop: '0.6rem' }}>
+                <p style={{ margin: '0.3rem 0' }}><strong>{sessionPlan.headline}</strong></p>
+                <p style={{ margin: '0.3rem 0' }}><strong>Focus:</strong> {sessionPlan.focusTheme}</p>
+                <p style={{ margin: '0.3rem 0' }}><strong>Warmup:</strong> {sessionPlan.warmup}</p>
+                <p style={{ margin: '0.3rem 0' }}><strong>Main Set:</strong> {sessionPlan.mainSet}</p>
+                <p style={{ margin: '0.3rem 0' }}><strong>Cooldown:</strong> {sessionPlan.cooldown}</p>
+                <p style={{ margin: '0.3rem 0' }}><strong>Note:</strong> {sessionPlan.note}</p>
+                <p style={{ margin: '0.3rem 0', opacity: 0.8 }}>Generated by {sessionPlan.llmUsed ? 'LLM coach + rules' : 'rules coach'}.</p>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="card-grid">
           <div className="panel">
             <h3>Prompt</h3>
@@ -585,350 +1633,413 @@ function App() {
               {showHint ? 'Hide hint' : 'Show hint'}
             </button>
             {showHint && <p className="hint">{card.hint}</p>}
+            {practiceTrack === 'legacy' && <p className="hint" style={{ marginTop: '1rem' }}>{modeDescription(gameMode)}</p>}
           </div>
 
           <div className="panel">
-            {gameMode === 'multiple-choice' && (
+            {practiceTrack === 'main-recall' ? (
               <>
-                <h3>Solution (missing one key step)</h3>
-                <div className="code-container">
-                  {card.solution
-                    .split('{{missing}}')
-                    .map((part, index, array) => {
-                      return (
-                        <div key={index} style={{ display: 'contents' }}>
-                          <SyntaxHighlighter
-                            language="python"
-                            style={vscDarkPlus}
-                            customStyle={{
-                              margin: 0,
-                              padding: 0,
-                              background: 'transparent', // Make background transparent so container handles it
-                              display: 'inline',
-                            }}
-                            codeTagProps={{
-                              style: {
-                                background: 'transparent',
-                              },
-                            }}
-                            PreTag="span"
-                          >
-                            {part}
-                          </SyntaxHighlighter>
-                          {index < array.length - 1 && (
-                            <span className={showAnswer ? 'missing filled' : 'missing'}>
-                              {showAnswer ? card.missing : '____'}
-                            </span>
-                          )}
-                        </div>
-                      )
-                    })}
-                </div>
-              </>
-            )}
-
-            {gameMode === 'typing-race' ? (
-              <>
-                <h3>Reference solution</h3>
-                <div className="vscode-editor-container">
-                  <div className="vscode-tabs">
-                    <div className="vscode-tab active">
-                      <PythonIcon />
-                      reference.py
+                <h3>Main Recall Flow</h3>
+                {mainPhase === 'preview' && (
+                  <>
+                    <p className="answer-label">Study the full answer, then hide it and recall from memory.</p>
+                    <div className="code-container">
+                      <SyntaxHighlighter
+                        language="python"
+                        style={vscDarkPlus}
+                        customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
+                        codeTagProps={{ style: { background: 'transparent' } }}
+                      >
+                        {fullSolutionTarget}
+                      </SyntaxHighlighter>
                     </div>
-                  </div>
-                  <div className="code-container" style={{ margin: 0, padding: 0, border: 'none', borderRadius: 0, boxShadow: 'none' }}>
-                    <SyntaxHighlighter
-                      language="python"
-                      style={vscDarkPlus}
-                      showLineNumbers={true}
-                      lineNumberStyle={{
-                        minWidth: '2.5rem',
-                        paddingRight: '1rem',
-                        color: '#858585',
-                        textAlign: 'right',
-                        fontFamily: "'Menlo', 'Monaco', 'Courier New', monospace",
-                        fontSize: '0.95rem'
-                      }}
-                      customStyle={{
-                        margin: 0,
-                        padding: '1rem 1.25rem',
-                        background: 'transparent',
-                        fontFamily: "'Menlo', 'Monaco', 'Courier New', monospace",
-                        fontSize: '0.95rem',
-                        lineHeight: 1.6
-                      }}
-                      codeTagProps={{
-                        style: {
-                          background: 'transparent',
-                          fontFamily: "'Menlo', 'Monaco', 'Courier New', monospace",
-                          fontSize: '0.95rem',
-                          lineHeight: 1.6,
-                          tabSize: 4,
-                          MozTabSize: 4
-                        },
-                      }}
-                    >
-                      {typingTarget}
-                    </SyntaxHighlighter>
-                  </div>
-                </div>
-                <label className="answer-label" htmlFor="typing-race-input" style={{ marginTop: '1.5rem' }}>
-                  Type the solution exactly
-                </label>
-                <div className="vscode-editor-container">
-                  <div className="vscode-tabs">
-                    <div className="vscode-tab active">
-                      <PythonIcon />
-                      solution.py
+                    <div className="actions">
+                      <button onClick={startMainRecall} disabled={hasAnsweredCurrent || sessionFinished}>Hide answer and start recall</button>
                     </div>
-                  </div>
-                  <div className="typing-editor">
-                    <div className="typing-gutter" aria-hidden="true" ref={gutterRef}>
-                      {(typingInput || ' ').split('\n').map((_, i) => (
-                        <div key={i} className="typing-line-number">{i + 1}</div>
-                      ))}
-                    </div>
-                    <div className="typing-code-area">
-                      <div className="typing-highlight" aria-hidden="true" ref={highlightRef}>
-                        <SyntaxHighlighter
-                          language="python"
-                          style={vscDarkPlus}
-                          customStyle={{
-                            margin: 0,
-                            padding: 0,
-                            background: 'transparent',
-                            fontFamily: "'Menlo', 'Monaco', 'Courier New', monospace",
-                            fontSize: '0.95rem',
-                            lineHeight: '1.6',
-                            whiteSpace: 'pre',
-                            wordSpacing: 'normal',
-                            letterSpacing: 'normal',
-                          }}
-                          codeTagProps={{
-                            style: {
-                              background: 'transparent',
-                              fontFamily: "'Menlo', 'Monaco', 'Courier New', monospace",
-                              fontSize: '0.95rem',
-                              lineHeight: '1.6',
-                              whiteSpace: 'pre',
-                              wordSpacing: 'normal',
-                              letterSpacing: 'normal',
-                            },
-                          }}
-                        >
-                          {typingInput || '# Start typing the full solution...'}
-                        </SyntaxHighlighter>
-                      </div>
-                      <textarea
-                        id="typing-race-input"
-                        ref={typingInputRef}
-                        className="typing-answer-overlay"
-                        rows={10}
-                        value={typingInput}
-                        onChange={(event) => handleTypingInputChange(event.target.value)}
-                        onKeyDown={handleTypingKeyDown}
-                        onScroll={handleScroll}
-                        placeholder="Start typing the full solution..."
-                        spellCheck={false}
-                        autoCapitalize="off"
-                        autoCorrect="off"
-                        autoComplete="off"
-                        disabled={typingFinished}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {typingFinished && checkState === 'incorrect' && (
-                  <div className="vscode-editor-container" style={{ marginTop: '1rem' }}>
-                    <div className="vscode-tabs">
-                      <div className="vscode-tab active">
-                        <DiffIcon />
-                        diff-view.py
-                      </div>
-                    </div>
-                    <div className="diff-view">
-                      {computeLineDiff(typingInput, typingTarget).map((line) => (
-                        <div
-                          key={`${line.status}-${line.lineNum}`}
-                          className={`diff-line diff-${line.status}`}
-                        >
-                          <span className="diff-line-num">{line.expectedNum ?? '+'}</span>
-                          <span className="diff-indicator">
-                            {line.status === 'missing' ? '-' : line.status === 'extra' ? '+' : line.status === 'correct' ? ' ' : '~'}
-                          </span>
-                          <span className="diff-content">
-                            {line.segments.map((seg, si) => (
-                              <span key={si} className={`diff-seg diff-seg-${seg.type}`}>
-                                {seg.text || ' '}
-                              </span>
-                            ))}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  </>
                 )}
 
-                <p className="typing-help">
-                  Tab inserts 4 spaces &middot; Enter auto-indents &middot; <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter</kbd> to submit
-                </p>
-                <div className="typing-metrics">
-                  <p><strong>Time:</strong> {(typingElapsed / 1000).toFixed(1)}s</p>
-                  <p><strong>Progress:</strong> {typingProgress}%</p>
-                  <p><strong>Mistakes:</strong> {typingMistakes}</p>
-                  <p><strong>Backspaces:</strong> {typingBackspaces}</p>
-                  <p><strong>Exact match:</strong> {typingExactMatch ? 'Yes' : 'No'}</p>
-                  <p><strong>Accuracy:</strong> {typingResult ? `${typingResult.accuracy}%` : '—'}</p>
-                  <p><strong>WPM:</strong> {typingResult ? typingResult.wpm : '—'}</p>
-                  <p><strong>Score:</strong> {typingScore ?? '—'}</p>
-                </div>
-                <div className="actions">
-                  <button
-                    onClick={() => finalizeTypingAttempt(typingInput)}
-                    disabled={typingFinished || typingInput.length === 0}
-                  >
-                    Submit typing run
-                  </button>
-                  <button className="secondary" onClick={resetInteraction}>
-                    Reset run
-                  </button>
-                  {typingFinished && (
-                    <button className="secondary" onClick={goNext}>
-                      Next card →
-                    </button>
-                  )}
-                </div>
-              </>
-            ) : gameMode === 'multiple-choice' ? (
-              <>
-                <label className="answer-label">
-                  Pick the correct missing line
-                </label>
-                <div className="options-list">
-                  {shuffledOptions.map((option, idx) => {
-                    const letter = String.fromCharCode(65 + idx)
-                    let cls = 'option-btn'
-                    if (selectedOption !== null) {
-                      if (option.correct) cls += ' option-correct'
-                      else if (idx === selectedOption) cls += ' option-incorrect'
-                      else cls += ' option-dimmed'
-                    }
-                    return (
-                      <button
-                        key={idx}
-                        className={cls}
-                        onClick={() => selectOption(idx, shuffledOptions)}
-                        disabled={selectedOption !== null}
-                      >
-                        <span className="option-letter">{letter}</span>
-                        <SyntaxHighlighter
-                          language="python"
-                          style={vscDarkPlus}
-                          customStyle={{
-                            margin: 0,
-                            padding: '0.5rem 0.75rem',
-                            borderRadius: '4px',
-                            flex: 1, // Ensure it takes remaining space
-                            minWidth: 0, // Allow flex shrinking
-                          }}
-                          PreTag="div"
-                        >
-                          {option.code}
-                        </SyntaxHighlighter>
-                      </button>
-                    )
-                  })}
-                </div>
-                {selectedOption !== null && (
-                  <div className="actions" style={{ marginTop: '0.5rem' }}>
-                    <button className="secondary" onClick={goNext}>
-                      Next card →
-                    </button>
-                  </div>
+                {mainPhase !== 'preview' && (
+                  <>
+                    <label className="answer-label" htmlFor="main-recall-input">
+                      Type the full answer from memory
+                    </label>
+                    <div className="vscode-editor-container">
+                      <div className="vscode-tabs">
+                        <div className="vscode-tab active">recall.py</div>
+                      </div>
+                      <div className="typing-editor-shell">
+                        {mainPhase === 'submitted' && (
+                          <div className="coach-banner">
+                            <div className="coach-banner-main">
+                              <span className="coach-banner-label">Coach focus</span>
+                              <p>{coachHeadline}</p>
+                            </div>
+                            <div className="coach-banner-stats">
+                              <span>{mainLevel}</span>
+                              <span>{mainAccuracy}%</span>
+                              <span>{(mainElapsedMs / 1000).toFixed(1)}s</span>
+                              <span>{checkState === 'correct' ? 'Exact' : 'Drift'}</span>
+                            </div>
+                          </div>
+                        )}
+                        <div className="typing-editor">
+                          <div className="typing-gutter" aria-hidden="true" ref={mainGutterRef}>
+                            {displayLines.map((line, i) => {
+                              const status =
+                                mainPhase === 'submitted' && line.sourceLineNumber
+                                  ? lineReview.actualStatuses[line.sourceLineNumber - 1] ?? 'match'
+                                  : null
+                              const hasComment =
+                                mainPhase === 'submitted' &&
+                                !line.isComment &&
+                                line.sourceLineNumber !== null &&
+                                commentedSourceLines.has(line.sourceLineNumber)
+                              return (
+                                <div
+                                  key={i}
+                                  className={`typing-line-number${status ? ` line-${status}` : ''}${hasComment ? ' line-reviewed' : ''}${line.isComment ? ' line-comment' : ''}`}
+                                >
+                                  {i + 1}
+                                  {hasComment && <span className="typing-line-marker" />}
+                                </div>
+                              )
+                            })}
+                          </div>
+                          <div className="typing-code-area">
+                            <div className="typing-highlight" aria-hidden="true" ref={mainHighlightRef}>
+                              <SyntaxHighlighter
+                                language="python"
+                                style={vscDarkPlus}
+                                wrapLines
+                                lineProps={(lineNumber) => {
+                                  const line = displayLines[lineNumber - 1]
+                                  if (!line) {
+                                    return { className: 'typing-highlight-line' }
+                                  }
+                                  if (line.isComment) {
+                                    return {
+                                      className: `typing-highlight-line inline-comment-line tone-${line.tone ?? 'guide'}`,
+                                    }
+                                  }
+
+                                  const status =
+                                    mainPhase === 'submitted' && line.sourceLineNumber
+                                      ? lineReview.actualStatuses[line.sourceLineNumber - 1] ?? 'match'
+                                      : null
+                                  const hasComment =
+                                    mainPhase === 'submitted' &&
+                                    line.sourceLineNumber !== null &&
+                                    commentedSourceLines.has(line.sourceLineNumber)
+                                  return {
+                                    className: `typing-highlight-line${status ? ` line-${status}` : ''}${hasComment ? ' line-reviewed' : ''}`,
+                                  }
+                                }}
+                                customStyle={{
+                                  margin: 0,
+                                  padding: 0,
+                                  background: 'transparent',
+                                  fontFamily: "'Menlo', 'Monaco', 'Courier New', monospace",
+                                  fontSize: '0.95rem',
+                                  lineHeight: '1.6',
+                                  whiteSpace: 'pre',
+                                }}
+                                codeTagProps={{
+                                  style: {
+                                    background: 'transparent',
+                                    fontFamily: "'Menlo', 'Monaco', 'Courier New', monospace",
+                                    fontSize: '0.95rem',
+                                    lineHeight: '1.6',
+                                    whiteSpace: 'pre',
+                                  },
+                                }}
+                              >
+                                {displayCode}
+                              </SyntaxHighlighter>
+                            </div>
+                            {mainPhase === 'typing' && (
+                              <textarea
+                                id="main-recall-input"
+                                ref={mainInputRef}
+                                className="typing-answer-overlay"
+                                rows={12}
+                                value={mainInput}
+                                onChange={(event) => handleMainInputChange(event.target.value)}
+                                onKeyDown={handleMainKeyDown}
+                                onScroll={handleMainEditorScroll}
+                                disabled={hasAnsweredCurrent || sessionFinished}
+                                spellCheck={false}
+                                autoCapitalize="off"
+                                autoCorrect="off"
+                                autoComplete="off"
+                                placeholder="Type the full solution from memory..."
+                              />
+                            )}
+                          </div>
+                        </div>
+                        {mainPhase === 'typing' && (
+                          <div className="coach-docked-panel coach-docked-panel-idle">
+                            <div className="coach-docked-card">
+                              <div className="coach-card-header">
+                                <h4>Live Coach</h4>
+                                <span className="live-coach-indicator" aria-label="Live coach active">
+                                  <span className="live-coach-dot" />
+                                </span>
+                              </div>
+                              <p className="coach-panel-copy">{liveCoachText}</p>
+                              <p className="coach-muted">
+                                <strong>Always remember:</strong> {liveCoachPrinciple}
+                              </p>
+                              {liveCoachLoading && <p className="coach-muted">Refreshing live guidance...</p>}
+                              {liveCoachError && <p className="coach-error">{liveCoachError}</p>}
+                            </div>
+                          </div>
+                        )}
+                        {mainPhase === 'submitted' && (
+                          <div className="coach-docked-panel">
+                            <div className="coach-docked-card">
+                              <h4>Invariants</h4>
+                              {coachLoading && <p className="coach-muted">Refining comment wording...</p>}
+                              {coachError && <p className="coach-error">{coachError}</p>}
+                              <ul className="coach-micro-list">
+                                {invariantChecks.length > 0 ? (
+                                  invariantChecks.map((item) => (
+                                    <li key={item.label}>
+                                      <strong>{item.matched ? 'Hold:' : 'Miss:'}</strong> {item.label} - {compactCodeLine(item.anchor, 72)}
+                                    </li>
+                                  ))
+                                ) : (
+                                  <li>No invariant detected yet.</li>
+                                )}
+                              </ul>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <p className="typing-help">
+                      Tab inserts 4 spaces · Shift+Tab outdents · Enter auto-indents · <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter</kbd> to submit
+                    </p>
+                    {mainPhase === 'typing' && (
+                      <div className="actions">
+                        <button onClick={submitMainRecall} disabled={mainInput.trim().length === 0}>Submit recall</button>
+                      </div>
+                    )}
+                    {mainPhase === 'submitted' && !mainCloseEnough && (
+                      <div className="actions">
+                        <button onClick={reviseMainRecall} disabled={sessionFinished}>Revise and resubmit</button>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             ) : (
               <>
-                <h3>Solution options</h3>
-                <label className="answer-label">
-                  Pick the correct full solution
-                </label>
-                <div className="options-list">
-                  {shuffledSolutionOptions.map((option, idx) => {
-                    const letter = String.fromCharCode(65 + idx)
-                    let cls = 'option-btn solution-option'
-                    if (selectedOption !== null) {
-                      if (option.correct) cls += ' option-correct'
-                      else if (idx === selectedOption) cls += ' option-incorrect'
-                      else cls += ' option-dimmed'
-                    }
-                    return (
-                      <button
-                        key={idx}
-                        className={cls}
-                        onClick={() => selectOption(idx, shuffledSolutionOptions, false)}
-                        disabled={selectedOption !== null}
-                      >
-                        <span className="option-letter">{letter}</span>
-                        <div className="option-solution">
-                          <SyntaxHighlighter
-                            language="python"
-                            style={vscDarkPlus}
-                            customStyle={{
-                              margin: 0,
-                              padding: 0,
-                              background: 'transparent',
-                            }}
-                            codeTagProps={{
-                              style: {
-                                background: 'transparent',
-                              },
-                            }}
+                {(gameMode === 'snap-classify' || gameMode === 'gut-check') && (
+                  <>
+                    <h3>Fill the missing line</h3>
+                    <div className="code-container">
+                      {card.solution
+                        .split('{{missing}}')
+                        .map((part, i, array) => (
+                          <div key={i} style={{ display: 'contents' }}>
+                            <SyntaxHighlighter
+                              language="python"
+                              style={vscDarkPlus}
+                              customStyle={{ margin: 0, padding: 0, background: 'transparent', display: 'inline' }}
+                              PreTag="span"
+                            >
+                              {part}
+                            </SyntaxHighlighter>
+                            {i < array.length - 1 && (
+                              <span className={showAnswer ? 'missing filled' : 'missing'}>
+                                {showAnswer ? card.missing : '____'}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                    </div>
+
+                    {gameMode === 'gut-check' && (
+                      <div className="actions" style={{ marginBottom: '1rem' }}>
+                        {[0.6, 0.75, 0.9].map((value) => (
+                          <button
+                            key={value}
+                            className={gutConfidence === value ? '' : 'secondary'}
+                            onClick={() => setGutConfidence(value)}
+                            disabled={hasAnsweredCurrent}
                           >
-                            {option.full}
-                          </SyntaxHighlighter>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-                {selectedOption !== null && (
-                  <div className="actions" style={{ marginTop: '0.5rem' }}>
-                    <button className="secondary" onClick={goNext}>
-                      Next card →
-                    </button>
-                  </div>
+                            {Math.round(value * 100)}% confidence
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="options-list">
+                      {shuffledOptions.map((option, idx) => {
+                        const letter = String.fromCharCode(65 + idx)
+                        let cls = 'option-btn'
+                        if (selectedOption !== null || hasAnsweredCurrent) {
+                          if (option.correct) cls += ' option-correct'
+                          else if (idx === selectedOption) cls += ' option-incorrect'
+                          else cls += ' option-dimmed'
+                        }
+                        return (
+                          <button
+                            key={idx}
+                            className={cls}
+                            onClick={() => (gameMode === 'gut-check' ? resolveGutCheck(idx) : resolveSnapClassify(idx))}
+                            disabled={hasAnsweredCurrent || (gameMode === 'gut-check' && gutConfidence === null)}
+                          >
+                            <span className="option-letter">{letter}</span>
+                            <SyntaxHighlighter
+                              language="python"
+                              style={vscDarkPlus}
+                              customStyle={{ margin: 0, padding: '0.5rem 0.75rem', borderRadius: '4px', flex: 1, minWidth: 0 }}
+                              PreTag="div"
+                            >
+                              {option.code}
+                            </SyntaxHighlighter>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
+
+                {gameMode === 'template-hunt' && (
+                  <>
+                    <h3>Template Hunt</h3>
+                    <div className="options-list">
+                      {shuffledSolutionOptions.map((option, idx) => {
+                        const letter = String.fromCharCode(65 + idx)
+                        let cls = 'option-btn solution-option'
+                        if (checkState || hasAnsweredCurrent) {
+                          if (option.correct) cls += ' option-correct'
+                          else if (idx === selectedOption || templateMisses.includes(idx)) cls += ' option-incorrect'
+                          else cls += ' option-dimmed'
+                        } else if (templateMisses.includes(idx)) {
+                          cls += ' option-incorrect'
+                        }
+                        return (
+                          <button
+                            key={idx}
+                            className={cls}
+                            onClick={() => resolveTemplateHunt(idx)}
+                            disabled={hasAnsweredCurrent || checkState !== null || templateMisses.includes(idx)}
+                          >
+                            <span className="option-letter">{letter}</span>
+                            <div className="option-solution">
+                              <SyntaxHighlighter
+                                language="python"
+                                style={vscDarkPlus}
+                                customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
+                                codeTagProps={{ style: { background: 'transparent' } }}
+                              >
+                                {option.full}
+                              </SyntaxHighlighter>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
+
+                {gameMode === 'no-go-trap' && (
+                  <>
+                    <h3>No-Go Trap</h3>
+                    <div className="code-container" style={{ marginBottom: '1rem' }}>
+                      <SyntaxHighlighter
+                        language="python"
+                        style={vscDarkPlus}
+                        customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
+                        PreTag="div"
+                      >
+                        {trapOption?.code ?? card.missing}
+                      </SyntaxHighlighter>
+                    </div>
+                    <div className="actions">
+                      <button onClick={() => resolveNoGo(true)} disabled={hasAnsweredCurrent}>GO</button>
+                      <button className="secondary" onClick={() => resolveNoGo(false)} disabled={hasAnsweredCurrent}>NO-GO</button>
+                    </div>
+                  </>
+                )}
+
+                {gameMode === 'near-miss-duel' && (
+                  <>
+                    <h3>Near-Miss Duel</h3>
+                    <div className="options-list">
+                      {duelOptions.map((option, idx) => {
+                        const letter = String.fromCharCode(65 + idx)
+                        let cls = 'option-btn'
+                        if (selectedOption !== null || hasAnsweredCurrent) {
+                          if (option.correct) cls += ' option-correct'
+                          else if (idx === selectedOption) cls += ' option-incorrect'
+                          else cls += ' option-dimmed'
+                        }
+                        return (
+                          <button
+                            key={idx}
+                            className={cls}
+                            onClick={() => resolveDuel(idx)}
+                            disabled={hasAnsweredCurrent}
+                          >
+                            <span className="option-letter">{letter}</span>
+                            <SyntaxHighlighter
+                              language="python"
+                              style={vscDarkPlus}
+                              customStyle={{ margin: 0, padding: '0.5rem 0.75rem', borderRadius: '4px', flex: 1, minWidth: 0 }}
+                              PreTag="div"
+                            >
+                              {option.code}
+                            </SyntaxHighlighter>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </>
                 )}
               </>
             )}
-            {checkState && (
-              <p className={checkState === 'correct' ? 'status success' : 'status error'}>
-                {checkState === 'correct'
-                  ? 'Correct! Great job.'
-                  : gameMode === 'multiple-choice'
-                      ? 'Not quite — the correct answer is highlighted above.'
-                      : gameMode === 'typing-race'
-                        ? 'Not quite — keep practicing accuracy and speed.'
-                      : 'Not quite — the correct solution is highlighted above.'}
+
+            {practiceTrack === 'main-recall' && mainPhase === 'submitted' && (
+              <p className={mainCloseEnough ? 'status success' : 'status error'}>
+                {mainCloseEnough
+                  ? sessionResults[card.id]
+                    ? 'Exact match recorded.'
+                    : `Close enough recorded at ${mainAccuracy}% (threshold ${MAIN_RECALL_CLOSE_ENOUGH_ACCURACY}%).`
+                  : `Not close enough yet. Stay on this card and iterate until you reach ${MAIN_RECALL_CLOSE_ENOUGH_ACCURACY}% or exact.`}
               </p>
+            )}
+            {practiceTrack !== 'main-recall' && hasAnsweredCurrent && (
+              <p className={sessionResults[card.id] ? 'status success' : 'status error'}>
+                {sessionResults[card.id] ? 'Exact match recorded.' : 'Attempt recorded. Keep rehearsing this one.'}
+              </p>
+            )}
+
+            {canAdvance && (
+              <div className="actions" style={{ marginTop: '0.5rem' }}>
+                <button className="secondary" onClick={goNext}>Next card →</button>
+              </div>
             )}
           </div>
         </div>
 
-        <div className="card-footer">
+          <div className="card-footer">
           <div className="card-footer-left">
-            <button className="secondary" onClick={goPrev}>
+            <button className="secondary" onClick={goPrev} disabled={!canGoPrev}>
               <kbd>←</kbd> Previous
             </button>
-            <button className="secondary" onClick={goNext}>
+            <button className="secondary" onClick={goNext} disabled={!canGoNext}>
               Next <kbd>→</kbd>
             </button>
-            <button className="secondary" onClick={shuffleDeck}>Shuffle</button>
+            <button className="secondary" onClick={startSession}>Restart session</button>
           </div>
           <p className="card-footer-hint">
-            Use <kbd>←</kbd> <kbd>→</kbd> arrow keys to navigate
+            {practiceTrack === 'main-recall'
+              ? 'Sessions start in original order by default. Use Randomize when you want mixed reps; progress is persisted at session completion.'
+              : 'Sessions start in original order by default. Use Randomize when you want mixed reps; progress is persisted at session completion.'}
           </p>
         </div>
       </section>

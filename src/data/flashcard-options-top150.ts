@@ -687,6 +687,14 @@ export const top150CardOptions: Record<string, { code: string; correct: boolean 
     { code: 'order.append(indegree[node])', correct: false },
   ],
 
+  // 684 – Redundant Connection
+  '684': [
+    { code: 'parent[rb] = ra', correct: true },
+    { code: 'parent[ra] = rb', correct: false },
+    { code: 'size[rb] += size[ra]', correct: false },
+    { code: 'parent[b] = a', correct: false },
+  ],
+
   // 909 – Snakes and Ladders
   '909': [
     { code: 'visited.add(ns)', correct: true },

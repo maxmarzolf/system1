@@ -27,9 +27,17 @@ services:
     container_name: flashcard-backend
     ports:
       - "3001:3001"
+    env_file:
+      - ./backend/.env
     environment:
       PORT: 3001
       DATABASE_URL: postgresql://flashcard_user:flashcard_password@postgres:5432/flashcard_db
+      COACH_OPENAI_MODEL: ${COACH_OPENAI_MODEL:-gpt-5.2}
+      COACH_OPENAI_BASE_URL: ${COACH_OPENAI_BASE_URL:-https://api.openai.com/v1}
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/main.py:/app/main.py
+    command: uvicorn app.main:app --host 0.0.0.0 --port 3001 --reload
     networks:
       - flashcard-network
     depends_on:
@@ -50,6 +58,12 @@ services:
     container_name: flashcard-frontend
     ports:
       - "5173:5173"
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+      - ./index.html:/app/index.html
+    environment:
+      VITE_API_URL: http://localhost:3001
     depends_on:
       backend:
         condition: service_healthy
