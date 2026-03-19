@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS score_attempts (
     card_id VARCHAR(50) NOT NULL,
     card_title VARCHAR(255),
     question TEXT,
+    question_type VARCHAR(50) NOT NULL DEFAULT '',
+    category_tags TEXT[] DEFAULT '{}',
     options JSONB,
     correct_answer TEXT,
     user_answer TEXT,
@@ -23,6 +25,11 @@ CREATE TABLE IF NOT EXISTS score_attempts (
         )
     ),
     correct BOOLEAN NOT NULL,
+    accuracy REAL NOT NULL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100),
+    exact BOOLEAN NOT NULL DEFAULT FALSE,
+    elapsed_ms INTEGER NOT NULL DEFAULT 0 CHECK (elapsed_ms >= 0),
+    generated_card JSONB,
+    coach_feedback JSONB,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -33,11 +40,40 @@ CREATE INDEX IF NOT EXISTS idx_score_attempts_card
 CREATE INDEX IF NOT EXISTS idx_score_attempts_mode
     ON score_attempts(mode);
 
+CREATE INDEX IF NOT EXISTS idx_score_attempts_question_type
+    ON score_attempts(question_type);
+
+CREATE INDEX IF NOT EXISTS idx_score_attempts_category_tags
+    ON score_attempts USING GIN(category_tags);
+
 CREATE INDEX IF NOT EXISTS idx_score_attempts_correct
     ON score_attempts(correct);
 
 CREATE INDEX IF NOT EXISTS idx_score_attempts_created
     ON score_attempts(created_at DESC);
+
+-- ============================================================================
+-- Generated Skill Map Cards
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS generated_skill_map_cards (
+    id VARCHAR(80) PRIMARY KEY,
+    question_type VARCHAR(50) NOT NULL DEFAULT 'skill-map',
+    title VARCHAR(255) NOT NULL,
+    difficulty VARCHAR(20) NOT NULL CHECK (difficulty IN ('Easy', 'Med.', 'Hard')),
+    prompt TEXT NOT NULL,
+    solution TEXT NOT NULL,
+    missing TEXT NOT NULL,
+    hint TEXT NOT NULL DEFAULT '',
+    tags TEXT[] DEFAULT '{}',
+    llm_used BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_generated_skill_map_cards_created
+    ON generated_skill_map_cards(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_generated_skill_map_cards_tags
+    ON generated_skill_map_cards USING GIN(tags);
 
 -- ============================================================================
 -- Flashcards Table
@@ -60,105 +96,6 @@ CREATE INDEX IF NOT EXISTS idx_flashcards_difficulty
 
 CREATE INDEX IF NOT EXISTS idx_flashcards_tags
     ON flashcards USING GIN(tags);
-
--- ============================================================================
--- Typing Sessions / Attempts Table
--- ============================================================================
-CREATE TABLE IF NOT EXISTS typing_sessions (
-    id SERIAL PRIMARY KEY,
-    card_id VARCHAR(50) NOT NULL REFERENCES flashcards(id) ON DELETE CASCADE,
-    card_title VARCHAR(255) NOT NULL,
-    question_type VARCHAR(50) DEFAULT '',
-    category_tags TEXT DEFAULT '',
-    correct SMALLINT NOT NULL DEFAULT 0 CHECK (correct IN (0, 1)),
-    accuracy REAL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100),
-    wpm INTEGER DEFAULT 0 CHECK (wpm >= 0),
-    score INTEGER DEFAULT 0 CHECK (score >= 0),
-    elapsed_ms INTEGER DEFAULT 0 CHECK (elapsed_ms >= 0),
-    mistakes INTEGER DEFAULT 0 CHECK (mistakes >= 0),
-    backspaces INTEGER DEFAULT 0 CHECK (backspaces >= 0),
-    chars_typed INTEGER DEFAULT 0 CHECK (chars_typed >= 0),
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_typing_sessions_date
-    ON typing_sessions(created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_typing_sessions_card
-    ON typing_sessions(card_id);
-
-CREATE INDEX IF NOT EXISTS idx_typing_sessions_correct
-    ON typing_sessions(correct);
-
--- ============================================================================
--- System1 Session Analytics Table
--- ============================================================================
-CREATE TABLE IF NOT EXISTS system1_sessions (
-    id SERIAL PRIMARY KEY,
-    mode VARCHAR(50) NOT NULL,
-    question_type VARCHAR(50) NOT NULL DEFAULT '',
-    order_type VARCHAR(20) NOT NULL CHECK (order_type IN ('shuffled', 'original')),
-    card_count INTEGER NOT NULL DEFAULT 0 CHECK (card_count >= 0),
-    attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
-    correct_count INTEGER NOT NULL DEFAULT 0 CHECK (correct_count >= 0),
-    accuracy REAL NOT NULL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100),
-    duration_ms INTEGER NOT NULL DEFAULT 0 CHECK (duration_ms >= 0),
-    total_score INTEGER NOT NULL DEFAULT 0,
-    avg_automaticity REAL NOT NULL DEFAULT 0 CHECK (avg_automaticity >= 0 AND avg_automaticity <= 100),
-    started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    completed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_system1_sessions_completed
-    ON system1_sessions(completed_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_system1_sessions_mode
-    ON system1_sessions(mode);
-
--- ============================================================================
--- Score Tracking Table (for aggregated stats)
--- ============================================================================
-CREATE TABLE IF NOT EXISTS daily_scores (
-    id SERIAL PRIMARY KEY,
-    score_date DATE NOT NULL,
-    mode VARCHAR(50),
-    correct_count INTEGER NOT NULL DEFAULT 0 CHECK (correct_count >= 0),
-    incorrect_count INTEGER NOT NULL DEFAULT 0 CHECK (incorrect_count >= 0),
-    total_attempts INTEGER NOT NULL DEFAULT 0 CHECK (total_attempts >= 0),
-    accuracy REAL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100),
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(score_date, mode)
-);
-
-CREATE INDEX IF NOT EXISTS idx_daily_scores_date
-    ON daily_scores(score_date DESC);
-
-CREATE INDEX IF NOT EXISTS idx_daily_scores_mode
-    ON daily_scores(mode);
-
--- ============================================================================
--- Game Modes Reference Table
--- ============================================================================
-CREATE TABLE IF NOT EXISTS game_modes (
-    id SERIAL PRIMARY KEY,
-    mode_name VARCHAR(50) NOT NULL UNIQUE,
-    description TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-INSERT INTO game_modes (mode_name, description) VALUES
-    ('main-recall', 'Show full answer, hide it, then type from immediate recall'),
-    ('snap-classify', 'Fast classification of patterns with strict timing'),
-    ('template-hunt', 'Identify shared algorithmic structure across different forms'),
-    ('gut-check', 'Rapid estimate plus confidence calibration with feedback'),
-    ('no-go-trap', 'Go/No-Go inhibition challenge with near-miss distractors'),
-    ('near-miss-duel', 'Choose between highly similar candidate solutions'),
-    ('multiple-choice', 'Select the correct complete solution'),
-    ('full-solution', 'Choose the correct complete solution from multiple options'),
-    ('typing-race', 'Type the correct code to complete the solution')
-ON CONFLICT (mode_name) DO NOTHING;
 
 -- ============================================================================
 -- Questions Table

@@ -11,7 +11,7 @@ async def connect() -> asyncpg.Pool:
     global pool
     pool = await asyncpg.create_pool(settings.database_url)
     await _apply_mode_migration(pool)
-    await _ensure_system1_session_table(pool)
+    await _ensure_recall_history_schema(pool)
     return pool
 
 
@@ -58,31 +58,55 @@ async def _apply_mode_migration(db_pool: asyncpg.Pool) -> None:
         )
 
 
-async def _ensure_system1_session_table(db_pool: asyncpg.Pool) -> None:
+async def _ensure_recall_history_schema(db_pool: asyncpg.Pool) -> None:
     async with db_pool.acquire() as conn:
         await conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS system1_sessions (
-                id SERIAL PRIMARY KEY,
-                mode VARCHAR(50) NOT NULL,
-                question_type VARCHAR(50) NOT NULL DEFAULT '',
-                order_type VARCHAR(20) NOT NULL CHECK (order_type IN ('shuffled', 'original')),
-                card_count INTEGER NOT NULL DEFAULT 0 CHECK (card_count >= 0),
-                attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
-                correct_count INTEGER NOT NULL DEFAULT 0 CHECK (correct_count >= 0),
-                accuracy REAL NOT NULL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100),
-                duration_ms INTEGER NOT NULL DEFAULT 0 CHECK (duration_ms >= 0),
-                total_score INTEGER NOT NULL DEFAULT 0,
-                avg_automaticity REAL NOT NULL DEFAULT 0 CHECK (avg_automaticity >= 0 AND avg_automaticity <= 100),
-                started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                completed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            ALTER TABLE score_attempts
+            ADD COLUMN IF NOT EXISTS question_type VARCHAR(50) NOT NULL DEFAULT '';
+
+            ALTER TABLE score_attempts
+            ADD COLUMN IF NOT EXISTS category_tags TEXT[] DEFAULT '{}';
+
+            ALTER TABLE score_attempts
+            ADD COLUMN IF NOT EXISTS accuracy REAL NOT NULL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100);
+
+            ALTER TABLE score_attempts
+            ADD COLUMN IF NOT EXISTS exact BOOLEAN NOT NULL DEFAULT FALSE;
+
+            ALTER TABLE score_attempts
+            ADD COLUMN IF NOT EXISTS elapsed_ms INTEGER NOT NULL DEFAULT 0 CHECK (elapsed_ms >= 0);
+
+            ALTER TABLE score_attempts
+            ADD COLUMN IF NOT EXISTS generated_card JSONB;
+
+            ALTER TABLE score_attempts
+            ADD COLUMN IF NOT EXISTS coach_feedback JSONB;
+
+            CREATE INDEX IF NOT EXISTS idx_score_attempts_question_type
+                ON score_attempts(question_type);
+
+            CREATE INDEX IF NOT EXISTS idx_score_attempts_category_tags
+                ON score_attempts USING GIN(category_tags);
+
+            CREATE TABLE IF NOT EXISTS generated_skill_map_cards (
+                id VARCHAR(80) PRIMARY KEY,
+                question_type VARCHAR(50) NOT NULL DEFAULT 'skill-map',
+                title VARCHAR(255) NOT NULL,
+                difficulty VARCHAR(20) NOT NULL CHECK (difficulty IN ('Easy', 'Med.', 'Hard')),
+                prompt TEXT NOT NULL,
+                solution TEXT NOT NULL,
+                missing TEXT NOT NULL,
+                hint TEXT NOT NULL DEFAULT '',
+                tags TEXT[] DEFAULT '{}',
+                llm_used BOOLEAN NOT NULL DEFAULT FALSE,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
-            CREATE INDEX IF NOT EXISTS idx_system1_sessions_completed
-                ON system1_sessions(completed_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_generated_skill_map_cards_created
+                ON generated_skill_map_cards(created_at DESC);
 
-            CREATE INDEX IF NOT EXISTS idx_system1_sessions_mode
-                ON system1_sessions(mode);
+            CREATE INDEX IF NOT EXISTS idx_generated_skill_map_cards_tags
+                ON generated_skill_map_cards USING GIN(tags);
             """
         )

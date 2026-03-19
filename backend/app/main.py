@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import connect, disconnect
-from app.routers import attempts, coach, sessions, stats, typing
+from app.routers import attempts, coach
 
 
 @asynccontextmanager
@@ -26,10 +26,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.include_router(stats.router)
     app.include_router(attempts.router)
-    app.include_router(typing.router)
-    app.include_router(sessions.router)
     app.include_router(coach.router)
 
     @app.get("/api/health", tags=["health"])

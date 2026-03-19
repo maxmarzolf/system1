@@ -3,16 +3,15 @@ from __future__ import annotations
 import json as _json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter
 
 from app.database import get_pool
-from app.models import AttemptCreate, AttemptSavedResponse, ScoreAttemptsResponse
-from app.routers.stats import get_stats
+from app.models import AttemptCreate
 
 router = APIRouter(prefix="/api", tags=["attempts"])
 
 
-@router.post("/attempts", status_code=201, response_model=AttemptSavedResponse)
+@router.post("/attempts", status_code=201)
 async def create_attempt(body: AttemptCreate):
     pool = get_pool()
     now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
@@ -21,48 +20,28 @@ async def create_attempt(body: AttemptCreate):
         await conn.execute(
             """
             INSERT INTO score_attempts
-                (card_id, card_title, question, options,
-                 correct_answer, user_answer, mode, correct, created_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                (card_id, card_title, question, question_type, category_tags, options,
+                 correct_answer, user_answer, mode, correct, accuracy, exact, elapsed_ms,
+                 generated_card, coach_feedback, created_at, updated_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
             """,
             body.cardId,
             body.cardTitle,
             body.question,
+            body.questionType,
+            body.categoryTags,
             _json.dumps(body.options) if body.options else None,
             body.correctAnswer,
             body.userAnswer,
             body.mode.value,
             body.correct,
+            body.accuracy,
+            body.exact,
+            body.elapsedMs,
+            _json.dumps(body.generatedCard) if body.generatedCard else None,
+            _json.dumps(body.coachFeedback) if body.coachFeedback else None,
+            now,
             now,
         )
 
-    stats = await get_stats()
-    return {"saved": True, "stats": stats}
-
-
-@router.get("/score-attempts", response_model=ScoreAttemptsResponse)
-async def list_score_attempts(limit: int = Query(default=100, ge=1, le=1000)):
-    pool = get_pool()
-
-    async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT
-                id,
-                card_id   AS "cardId",
-                card_title AS "cardTitle",
-                question,
-                options,
-                correct_answer AS "correctAnswer",
-                user_answer    AS "userAnswer",
-                mode,
-                correct,
-                created_at AS "timestamp"
-            FROM score_attempts
-            ORDER BY created_at DESC
-            LIMIT $1
-            """,
-            limit,
-        )
-
-    return {"attempts": [dict(r) for r in rows]}
+    return {"saved": True}

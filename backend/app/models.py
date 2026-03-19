@@ -10,11 +10,6 @@ from pydantic import BaseModel, Field
 
 
 class GameMode(str, Enum):
-    snap_classify = "snap-classify"
-    template_hunt = "template-hunt"
-    gut_check = "gut-check"
-    no_go_trap = "no-go-trap"
-    near_miss_duel = "near-miss-duel"
     main_recall = "main-recall"
     multiple_choice = "multiple-choice"
     full_solution = "full-solution"
@@ -28,11 +23,18 @@ class AttemptCreate(BaseModel):
     cardId: str = Field(min_length=1)
     cardTitle: str | None = None
     question: str | None = None
+    questionType: str = ""
+    categoryTags: list[str] = []
     options: list[dict] | None = None
     correctAnswer: str | None = None
     userAnswer: str | None = None
     mode: GameMode
     correct: bool
+    accuracy: float = Field(default=0, ge=0, le=100)
+    exact: bool = False
+    elapsedMs: int = Field(default=0, ge=0)
+    generatedCard: dict[str, Any] | None = None
+    coachFeedback: dict[str, Any] | None = None
 
 
 class TypingSessionCreate(BaseModel):
@@ -53,136 +55,6 @@ class TypingSessionCreate(BaseModel):
 # ─── Response schemas ───
 
 
-class ModeStats(BaseModel):
-    correct: int = 0
-    incorrect: int = 0
-    attempts: int = 0
-    accuracy: int = 0
-
-
-class Totals(BaseModel):
-    correct: int = 0
-    incorrect: int = 0
-    attempts: int = 0
-    accuracy: int = 0
-
-
-class DayStats(BaseModel):
-    date: str
-    correct: int
-    incorrect: int
-    attempts: int
-    accuracy: int
-
-
-class RecentAttempt(BaseModel):
-    cardId: str
-    mode: str
-    correct: bool
-    timestamp: str
-
-
-class StatsResponse(BaseModel):
-    totals: Totals
-    byMode: dict[str, ModeStats]
-    byDay: list[DayStats]
-    recent: list[RecentAttempt]
-
-
-class AttemptSavedResponse(BaseModel):
-    saved: bool = True
-    stats: StatsResponse
-
-
-class TypingSessionSavedResponse(BaseModel):
-    saved: bool = True
-    sessionId: int
-
-
-class ActivityDay(BaseModel):
-    day: str
-    sessions: int
-    total_ms: int
-    avg_accuracy: float
-    avg_wpm: float
-    total_chars: int
-    correct_count: int
-    question_types: str
-    category_tags: str
-
-
-class TypingSummary(BaseModel):
-    total_sessions: int
-    total_ms: int
-    total_chars: int
-    avg_accuracy: float
-    avg_wpm: float
-    total_correct: int
-    best_score: int
-    best_wpm: int
-
-
-class TypingActivityResponse(BaseModel):
-    activity: list[ActivityDay]
-    summary: TypingSummary
-    recent: list[dict]
-    streak: int
-
-
-class ScoreAttemptsResponse(BaseModel):
-    attempts: list[dict]
-
-
-class System1SessionCreate(BaseModel):
-    mode: GameMode
-    questionType: str = ""
-    orderType: str = Field(default="shuffled")
-    cardCount: int = Field(default=0, ge=0)
-    attempts: int = Field(default=0, ge=0)
-    correctCount: int = Field(default=0, ge=0)
-    accuracy: float = Field(default=0, ge=0, le=100)
-    durationMs: int = Field(default=0, ge=0)
-    totalScore: int = 0
-    avgAutomaticity: float = Field(default=0, ge=0, le=100)
-    startedAt: str | None = None
-    completedAt: str | None = None
-
-
-class System1SessionSavedResponse(BaseModel):
-    saved: bool = True
-    sessionId: int
-
-
-class System1SessionSummary(BaseModel):
-    total_sessions: int = 0
-    avg_accuracy: float = 0
-    avg_duration_ms: int = 0
-    avg_score: float = 0
-    best_accuracy: float = 0
-    best_score: int = 0
-
-
-class System1SessionActivityDay(BaseModel):
-    date: str
-    sessions: int
-    avg_accuracy: float
-    avg_score: float
-    avg_duration_ms: int
-
-
-class System1SessionModeStats(BaseModel):
-    sessions: int = 0
-    avg_accuracy: float = 0
-    avg_score: float = 0
-
-
-class System1SessionActivityResponse(BaseModel):
-    summary: System1SessionSummary
-    byDay: list[System1SessionActivityDay]
-    byMode: dict[str, System1SessionModeStats]
-    recent: list[dict]
-
-
 class CoachAttemptFeedbackRequest(BaseModel):
     cardId: str = Field(min_length=1)
     cardTitle: str = ""
@@ -193,6 +65,7 @@ class CoachAttemptFeedbackRequest(BaseModel):
     accuracy: float = Field(default=0, ge=0, le=100)
     exact: bool = False
     questionType: str = ""
+    skillTags: list[str] = []
     mode: GameMode = GameMode.main_recall
     previousAttempts: list[dict] = []
     draftMode: bool = False
@@ -207,6 +80,8 @@ class CoachAttemptFeedbackResponse(BaseModel):
     nextRepTarget: str
     strengths: list[str] = []
     errorTags: list[str] = []
+    fullFeedback: str = ""
+    correctedVersion: str = ""
     llmUsed: bool = False
 
 
@@ -220,7 +95,7 @@ class SessionWeakCard(BaseModel):
 class CoachSessionPlanRequest(BaseModel):
     mode: GameMode = GameMode.main_recall
     questionType: str = ""
-    orderType: str = "shuffled"
+    orderType: str = "original"
     attempts: int = Field(default=0, ge=0)
     correctCount: int = Field(default=0, ge=0)
     avgAccuracy: float = Field(default=0, ge=0, le=100)
@@ -235,4 +110,31 @@ class CoachSessionPlanResponse(BaseModel):
     mainSet: str
     cooldown: str
     note: str
+    llmUsed: bool = False
+
+
+class SkillMapNode(BaseModel):
+    pattern: str = Field(min_length=1)
+    methods: list[str] = []
+
+
+class SkillMapDrillCard(BaseModel):
+    id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    difficulty: str = Field(default="Med.")
+    prompt: str = Field(min_length=1)
+    solution: str = Field(min_length=1)
+    missing: str = Field(min_length=1)
+    hint: str = ""
+    tags: list[str] = []
+
+
+class SkillMapDrillsRequest(BaseModel):
+    questionType: str = "skill-map"
+    count: int = Field(default=12, ge=1, le=20)
+    skillMap: list[SkillMapNode] = []
+
+
+class SkillMapDrillsResponse(BaseModel):
+    drills: list[SkillMapDrillCard]
     llmUsed: bool = False
