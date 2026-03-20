@@ -1341,6 +1341,9 @@ function App() {
                           <p className="coach-muted">
                             <strong>Keep in mind:</strong> {liveCoachPrinciple}
                           </p>
+                          <p className="coach-muted">
+                            If you stay stuck, this guidance will get more explicit after a bit more time.
+                          </p>
                           {liveCoachLoading && <p className="coach-muted">Refreshing live guidance...</p>}
                           {liveCoachError && <p className="coach-error">{liveCoachError}</p>}
                         </div>

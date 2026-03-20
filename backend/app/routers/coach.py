@@ -656,6 +656,116 @@ def _draft_value(body: CoachAttemptFeedbackRequest, key: str, default: Any = "")
     return body.draftMilestones.get(key, default)
 
 
+def _live_feedback_stage(elapsed_ms: int) -> str:
+    if elapsed_ms >= 90_000:
+        return "very-late"
+    if elapsed_ms >= 60_000:
+        return "late"
+    if elapsed_ms >= 30_000:
+        return "mid"
+    return "early"
+
+
+def _primary_pattern_tag(skill_tags: list[str]) -> str:
+    for tag in (
+        "sliding-window",
+        "two-pointers",
+        "binary-search",
+        "dfs-bfs",
+        "graph-traversal",
+        "backtracking",
+        "heap",
+        "union-find",
+        "dynamic-programming",
+        "dp",
+        "intervals",
+        "prefix-sums",
+        "monotonic-stack",
+        "stack",
+    ):
+        if tag in skill_tags:
+            return tag
+    return ""
+
+
+def _live_window_next_step(stage: str) -> str:
+    if stage == "very-late":
+        return (
+            "The very next step is to add `while len(count) > k:` after you increment the incoming value, "
+            "then shrink from the left by decrementing `count[nums[left]]`, deleting empty entries, and moving `left`."
+        )
+    if stage == "late":
+        return (
+            "The very next step is to add the shrink loop after you expand the window, and have that loop move `left` "
+            "while updating the counts until the window is valid again."
+        )
+    if stage == "mid":
+        return (
+            "The very next step is to add the control flow that restores the window invariant whenever the window becomes invalid."
+        )
+    return (
+        "The very next step is to decide what makes the window valid and add the logic that restores that rule after each expand step."
+    )
+
+
+def _live_two_pointer_next_step(stage: str) -> str:
+    if stage == "very-late":
+        return (
+            "The very next step is to add the comparison branches that move `left` when the value is too small and `right` when it is too large."
+        )
+    if stage == "late":
+        return (
+            "The very next step is to write the branch logic that updates exactly one pointer based on whether the current comparison is too small or too large."
+        )
+    if stage == "mid":
+        return (
+            "The very next step is to state the comparison rule and connect it to one pointer movement."
+        )
+    return (
+        "The very next step is to decide which pointer should move when the current pair does not satisfy the invariant."
+    )
+
+
+def _live_binary_search_next_step(stage: str) -> str:
+    if stage == "very-late":
+        return (
+            "The very next step is to write the branch that discards one half from `mid`, updating only the bound that can no longer contain the answer."
+        )
+    if stage == "late":
+        return (
+            "The very next step is to add the bound-update branch from `mid` so the interval invariant stays true after each comparison."
+        )
+    if stage == "mid":
+        return (
+            "The very next step is to define what `left` and `right` mean, then update the bound that is definitely impossible."
+        )
+    return (
+        "The very next step is to restate the search interval invariant before you move either bound."
+    )
+
+
+def _general_next_step(stage: str, has_loop: bool) -> str:
+    if not has_loop:
+        if stage in ("late", "very-late"):
+            return "The very next step is to add the main control flow that advances the state once."
+        if stage == "mid":
+            return "The very next step is to write the control flow that makes the algorithm move instead of just setting up state."
+        return "The very next step is to choose the control flow that repeatedly applies your invariant."
+    if stage in ("late", "very-late"):
+        return "The very next step is to add the single state-update line that makes the loop or recursion do real work."
+    return "The very next step is to add one concrete state update, not three."
+
+
+def _live_next_step_for_pattern(pattern_tag: str, stage: str, has_loop: bool) -> str:
+    if pattern_tag == "sliding-window":
+        return _live_window_next_step(stage)
+    if pattern_tag == "two-pointers":
+        return _live_two_pointer_next_step(stage)
+    if pattern_tag == "binary-search":
+        return _live_binary_search_next_step(stage)
+    return _general_next_step(stage, has_loop)
+
+
 def _heuristic_live_feedback(
     body: CoachAttemptFeedbackRequest, history_summary: dict[str, Any]
 ) -> dict[str, Any]:
@@ -669,6 +779,8 @@ def _heuristic_live_feedback(
     has_bookkeeping = _draft_flag(body, "hasBookkeeping")
     traversal_kind = str(_draft_value(body, "traversalKind", "")).strip()
     non_empty_lines = int(_draft_value(body, "nonEmptyLines", 0) or 0)
+    stage = _live_feedback_stage(body.elapsedMs)
+    pattern_tag = _primary_pattern_tag(body.skillTags)
 
     error_tags: list[str] = []
     diagnosis = ""
@@ -707,7 +819,7 @@ def _heuristic_live_feedback(
         )
         primary_focus = "Replace the placeholder with the real state change."
         immediate = (
-            "The very next step is to replace the placeholder with the exact update that makes the invariant move forward."
+            "The very next step is to replace the placeholder with the real update that makes the invariant move forward."
         )
         error_tags.append("placeholder")
     elif is_graph_question and not has_guard:
@@ -724,18 +836,14 @@ def _heuristic_live_feedback(
             "You have enough setup now. What is missing is the line of control flow that actually advances the solution."
         )
         primary_focus = "Start the main control flow."
-        immediate = (
-            "The very next step is to write the main loop or recursive call that advances the state once."
-        )
+        immediate = _live_next_step_for_pattern(pattern_tag, stage, has_loop)
         error_tags.append("control-flow")
     else:
         diagnosis = (
             "This is a real draft now. It does not need a big rewrite; it needs one more concrete structural line."
         )
         primary_focus = "Keep the next move small and structural."
-        immediate = (
-            "The very next step is to add the single line that updates your main state, then pause and check whether the invariant still makes sense."
-        )
+        immediate = _live_next_step_for_pattern(pattern_tag, stage, has_loop)
 
     if history_summary["attemptCount"] > 0 and history_summary["weakestTag"]:
         diagnosis += f" This pattern has drifted before on `{history_summary['weakestTag']}`, so keep the next move deliberately small."
@@ -764,6 +872,8 @@ def _heuristic_live_feedback(
         "llmUsed": False,
         "signals": {
             "draft_mode": True,
+            "live_stage": stage,
+            "pattern_tag": pattern_tag,
             "history_summary": history_summary,
             "draft_milestones": body.draftMilestones,
         },
@@ -1175,12 +1285,18 @@ async def _attempt_feedback_with_optional_llm(
     if not settings.coach_openai_api_key:
         return heuristic
 
+    live_stage = _live_feedback_stage(body.elapsedMs) if body.draftMode else ""
+
     system_prompt = (
         "You are a live coding coach watching a draft in progress. Return strict JSON with keys: "
         "diagnosis, primaryFocus, immediateCorrection, microDrill, nextRepTarget, strengths, errorTags. "
         "Be concise, human, and specific about the very next step. Do not give full solutions, code skeletons, or line-by-line rewrites. "
         "Prefer advice that generalizes to this approach and would still feel like a helpful pair-programmer. "
-        "Make immediateCorrection a single concrete next move that begins with 'The very next step is to...'."
+        "Make immediateCorrection a single concrete next move that begins with 'The very next step is to...'. "
+        "If the user is in the early stage, keep the advice true for most valid approaches and avoid revealing hidden conditions or exact next lines. "
+        "In the mid stage, you may mention the kind of control flow or invariant to add, but still avoid giving the literal answer. "
+        "In the late stage, you may be more concrete about the next structure or comparison. "
+        "In the very-late stage, the user is likely stuck, so you may be explicit about the immediate next step, but only that one step."
         if body.draftMode
         else "I am prepping for a Senior Level Tech Interview. Give me feedback on my attempt."
     )
@@ -1202,7 +1318,11 @@ async def _attempt_feedback_with_optional_llm(
             "accuracy": body.accuracy,
             "exact": body.exact,
             "elapsedMs": body.elapsedMs,
-            "expectedAnswer": body.expectedAnswer[:1200],
+            "expectedAnswer": (
+                body.expectedAnswer[:1200]
+                if not body.draftMode or live_stage in ("late", "very-late")
+                else ""
+            ),
             "userAnswer": body.userAnswer[:1200],
         },
         "skillTags": body.skillTags,
@@ -1225,6 +1345,7 @@ async def _attempt_feedback_with_optional_llm(
         ],
         "previousAttempts": body.previousAttempts[-3:],
         "draftMode": body.draftMode,
+        "liveStage": live_stage,
         "draftMilestones": body.draftMilestones,
         "responseShape": response_shape,
         "heuristic": {
