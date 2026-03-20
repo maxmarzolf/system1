@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -27,6 +27,7 @@ type AttemptPayload = {
   accuracy: number
   exact: boolean
   elapsedMs: number
+  interactionId: string
   coachFeedback?: CoachAttemptFeedback | null
 }
 
@@ -56,6 +57,37 @@ type CoachSessionPlan = {
 type SkillMapDrillsResponse = {
   drills: Flashcard[]
   llmUsed: boolean
+}
+
+type PracticeHistoryEntry = {
+  attemptId: number
+  interactionId: string
+  cardId: string
+  cardTitle: string
+  question: string
+  correctAnswer: string
+  userAnswer: string
+  accuracy: number
+  exact: boolean
+  elapsedMs: number
+  categoryTags: string[]
+  generatedCard: Partial<Flashcard>
+  liveFeedbackCount: number
+  latestLiveFeedback: Partial<CoachAttemptFeedback>
+  submissionFeedback: Partial<CoachAttemptFeedback>
+  createdAt: string
+}
+
+type PracticeHistorySummary = {
+  attemptCount: number
+  recentAvgAccuracy: number
+  weakestTag: string
+  repeatedErrorTags: string[]
+}
+
+type PracticeHistoryResponse = {
+  summary: PracticeHistorySummary
+  entries: PracticeHistoryEntry[]
 }
 
 type LineReviewStatus = 'match' | 'mismatch' | 'missing' | 'extra'
@@ -121,6 +153,25 @@ const stripPrefixedLabel = (text: string, label: string) =>
 
 const isPlaceholderLine = (line: string) => /\b(pass|something|todo|tbd)\b/i.test(line.trim())
 
+const createInteractionId = () =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `interaction-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+
+const summarizeHistoryText = (entry: PracticeHistoryEntry) => {
+  const submissionSummary =
+    entry.submissionFeedback.fullFeedback ||
+    entry.submissionFeedback.diagnosis ||
+    entry.submissionFeedback.primaryFocus ||
+    ''
+  if (submissionSummary.trim()) return submissionSummary.trim()
+  const liveSummary =
+    entry.latestLiveFeedback.primaryFocus ||
+    entry.latestLiveFeedback.immediateCorrection ||
+    ''
+  return liveSummary.trim() || 'No stored feedback yet for this submission.'
+}
+
 const summarizeRecallAttempt = (
   actualLines: string[],
   accuracy: number,
@@ -183,18 +234,36 @@ const analyzeDraftStructure = (code: string): DraftStructure => {
 
 const buildLiveCoachFallback = (draft: DraftStructure, isGraphQuestion: boolean) => {
   if (isGraphQuestion) {
-    if (!draft.hasSignature) return 'Start by writing the function signature and naming the graph state you expect to maintain.'
-    if (!draft.hasBookkeeping) return 'Before coding the traversal, define the bookkeeping: representation, visited state, and any per-node metadata.'
-    if (!draft.traversalKind) return 'Choose the traversal deliberately. In graph interviews, say DFS or BFS and what the frontier means.'
-    if (draft.hasPlaceholder) return 'Replace placeholders with the core invariant: reject bad states, mark the current one, then expand neighbors.'
-    if (!draft.hasGuard) return 'Add the guard condition next. Graph code usually gets clearer once invalid or already-seen states fail fast.'
-    if (!draft.hasLoop) return 'You have the setup; now add the loop or recursion that repeatedly advances the frontier.'
-    return 'Good draft. Keep the model, visited rule, and frontier update explicit as you fill in the body.'
+    if (!draft.hasSignature) return 'The very next step is to write the function signature and name the graph inputs you will reason about.'
+    if (!draft.hasBookkeeping) return 'The very next step is to add the visited or frontier state right under the signature.'
+    if (!draft.traversalKind) return 'The very next step is to choose DFS or BFS and write the line that creates that traversal.'
+    if (draft.hasPlaceholder) return 'The very next step is to replace the placeholder with the real state update.'
+    if (!draft.hasGuard) return 'The very next step is to add the guard that skips invalid or already-seen states.'
+    if (!draft.hasLoop) return 'The very next step is to write the loop or recursive call that advances the traversal once.'
+    return 'The very next step is to add one concrete state-update line and then check that the traversal invariant still holds.'
   }
 
-  if (!draft.hasSignature) return 'Start with the function signature and identify the state the solution needs to preserve.'
-  if (draft.hasPlaceholder) return 'Replace placeholders with the actual state transition so the invariant stays checkable.'
-  return 'Keep the next step small and structural: make the state and its update explicit.'
+  if (!draft.hasSignature) return 'The very next step is to write the function signature and name the state you will track.'
+  if (draft.hasPlaceholder) return 'The very next step is to replace the placeholder with the actual state transition.'
+  if (!draft.hasLoop) return 'The very next step is to write the main loop or recursive call that moves the algorithm forward.'
+  return 'The very next step is to add one concrete state-update line instead of expanding the whole solution at once.'
+}
+
+const buildLiveCoachWhy = (draft: DraftStructure, isGraphQuestion: boolean) => {
+  if (isGraphQuestion) {
+    if (!draft.hasSignature) return 'Once the opening anchor is on the page, the rest of the graph logic has somewhere stable to attach.'
+    if (!draft.hasBookkeeping) return 'Right now the traversal has no concrete state to update, so extra control flow will feel vague.'
+    if (!draft.traversalKind) return 'Committing to the traversal first makes every later line easier to justify.'
+    if (draft.hasPlaceholder) return 'A placeholder hides the real algorithmic move, so the draft cannot become trustworthy yet.'
+    if (!draft.hasGuard) return 'The stop or skip rule usually makes graph code feel immediately cleaner.'
+    if (!draft.hasLoop) return 'You already have enough setup; now the draft needs motion.'
+    return 'You are close enough that one good structural line is more valuable than a rewrite.'
+  }
+
+  if (!draft.hasSignature) return 'A clear entry point makes the rest of the draft easier to reason about.'
+  if (draft.hasPlaceholder) return 'The placeholder is the one spot where the algorithm still is not real.'
+  if (!draft.hasLoop) return 'The setup is there; now the algorithm needs one line of movement.'
+  return 'At this point, a single concrete line will help more than broad advice.'
 }
 
 const buildLiveCoachPrinciple = (draft: DraftStructure, isGraphQuestion: boolean) => {
@@ -297,6 +366,7 @@ function App() {
   const [mainStartedAt, setMainStartedAt] = useState<number | null>(null)
   const [mainAccuracy, setMainAccuracy] = useState(0)
   const [mainCloseEnough, setMainCloseEnough] = useState(false)
+  const [currentInteractionId, setCurrentInteractionId] = useState('')
   const [mainRecallHistoryByCard, setMainRecallHistoryByCard] = useState<Record<string, RecallAttemptSnapshot[]>>({})
   const [liveCoachFeedback, setLiveCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
   const [liveCoachLoading, setLiveCoachLoading] = useState(false)
@@ -304,6 +374,10 @@ function App() {
   const [coachFeedback, setCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
   const [coachLoading, setCoachLoading] = useState(false)
   const [coachError, setCoachError] = useState('')
+  const [practiceHistory, setPracticeHistory] = useState<PracticeHistoryEntry[]>([])
+  const [practiceHistorySummary, setPracticeHistorySummary] = useState<PracticeHistorySummary | null>(null)
+  const [practiceHistoryLoading, setPracticeHistoryLoading] = useState(false)
+  const [practiceHistoryError, setPracticeHistoryError] = useState('')
   const [sessionPlan, setSessionPlan] = useState<CoachSessionPlan | null>(null)
   const [sessionPlanLoading, setSessionPlanLoading] = useState(false)
   const [sessionPlanError, setSessionPlanError] = useState('')
@@ -345,8 +419,9 @@ function App() {
       setSkillMapDeck([])
       setSkillMapError('Skill map drill generation is unavailable right now.')
     } finally {
-      if (skillMapDeckRequestVersionRef.current !== requestVersion) return
-      setSkillMapLoading(false)
+      if (skillMapDeckRequestVersionRef.current === requestVersion) {
+        setSkillMapLoading(false)
+      }
     }
   }
 
@@ -371,6 +446,7 @@ function App() {
     setMainStartedAt(null)
     setMainAccuracy(0)
     setMainCloseEnough(false)
+    setCurrentInteractionId('')
     setMainRecallHistoryByCard({})
     setLiveCoachFeedback(null)
     setLiveCoachLoading(false)
@@ -381,6 +457,10 @@ function App() {
     setCoachFeedback(null)
     setCoachLoading(false)
     setCoachError('')
+    setPracticeHistory([])
+    setPracticeHistorySummary(null)
+    setPracticeHistoryLoading(false)
+    setPracticeHistoryError('')
     setSessionPlan(null)
     setSessionPlanLoading(false)
     setSessionPlanError('')
@@ -388,7 +468,6 @@ function App() {
 
   useEffect(() => {
     void fetchSkillMapDeck()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skillMapRefreshToken])
 
   useEffect(() => {
@@ -445,12 +524,43 @@ function App() {
           accuracy: payload.accuracy,
           exact: payload.exact,
           elapsedMs: payload.elapsedMs,
+          interactionId: payload.interactionId,
+          generatedCardId: card.id,
           generatedCard: card,
           coachFeedback: payload.coachFeedback ?? null,
         }),
       })
     } catch {
       // silently fail
+    }
+  }
+
+  const fetchPracticeHistory = async () => {
+    if (!hasDeck) return
+    setPracticeHistoryLoading(true)
+    setPracticeHistoryError('')
+
+    try {
+      const response = await fetch(apiUrl('/api/coach/history'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cardId: card.id,
+          questionType,
+          skillTags: card.tags,
+          limit: 6,
+        }),
+      })
+      if (!response.ok) throw new Error('Unable to load practice history')
+      const payload = (await response.json()) as PracticeHistoryResponse
+      setPracticeHistory(payload.entries)
+      setPracticeHistorySummary(payload.summary)
+    } catch {
+      setPracticeHistory([])
+      setPracticeHistorySummary(null)
+      setPracticeHistoryError('Practice history is unavailable right now.')
+    } finally {
+      setPracticeHistoryLoading(false)
     }
   }
 
@@ -462,6 +572,7 @@ function App() {
     setMainStartedAt(null)
     setMainAccuracy(0)
     setMainCloseEnough(false)
+    setCurrentInteractionId('')
     setLiveCoachFeedback(null)
     setLiveCoachLoading(false)
     setLiveCoachError('')
@@ -472,14 +583,20 @@ function App() {
 
   useEffect(() => {
     resetPerCardInteraction()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card.id, sessionPosition])
+
+  useEffect(() => {
+    if (!hasDeck) return
+    void fetchPracticeHistory()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card.id, hasDeck])
 
   const startMainRecall = () => {
     if (!hasDeck || hasAnsweredCurrent || sessionFinished) return
     setMainPhase('typing')
     setMainStartedAt(Date.now())
     setMainInput('')
+    setCurrentInteractionId(createInteractionId())
   }
 
   const handleMainEditorScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
@@ -567,6 +684,7 @@ function App() {
   }
 
   const fetchLiveCoachFeedback = async (payload: {
+    interactionId: string
     expectedAnswer: string
     userAnswer: string
     elapsedMs: number
@@ -593,6 +711,7 @@ function App() {
           elapsedMs: payload.elapsedMs,
           accuracy: payload.accuracy,
           exact: payload.exact,
+          interactionId: payload.interactionId,
           skillTags: card.tags,
           previousAttempts: payload.previousAttempts.map((attempt) => ({
             attemptNumber: attempt.attemptNumber,
@@ -623,13 +742,17 @@ function App() {
       setLiveCoachError('Live coach unavailable right now.')
       setLiveCoachFeedback(null)
     } finally {
-      if (currentCardIdRef.current !== requestCardId || liveCoachRequestVersionRef.current !== requestVersion) return
-      setLiveCoachLoading(false)
+      if (currentCardIdRef.current === requestCardId && liveCoachRequestVersionRef.current === requestVersion) {
+        setLiveCoachLoading(false)
+      }
     }
   }
 
+  const requestLiveCoachFeedback = useEffectEvent(fetchLiveCoachFeedback)
+
   const fetchCoachAttemptFeedback = async (
     payload: {
+      interactionId: string
       expectedAnswer: string
       userAnswer: string
       elapsedMs: number
@@ -656,6 +779,7 @@ function App() {
           elapsedMs: payload.elapsedMs,
           accuracy: payload.accuracy,
           exact: payload.exact,
+          interactionId: payload.interactionId,
           skillTags: card.tags,
           previousAttempts: payload.previousAttempts.map((attempt) => ({
             attemptNumber: attempt.attemptNumber,
@@ -739,6 +863,8 @@ function App() {
     if (!hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'typing') return
 
     const startedAt = mainStartedAt ?? Date.now()
+    const interactionId = currentInteractionId || createInteractionId()
+    if (!currentInteractionId) setCurrentInteractionId(interactionId)
     const elapsedMs = Math.max(Date.now() - startedAt, 1)
     const normalizedInput = normalizeTyping(mainInput)
     const normalizedInputLines = normalizedInput.split('\n')
@@ -775,6 +901,7 @@ function App() {
     }
 
     const feedback = await fetchCoachAttemptFeedback({
+      interactionId,
       expectedAnswer: normalizedTarget,
       userAnswer: normalizedInput,
       elapsedMs,
@@ -783,7 +910,7 @@ function App() {
       previousAttempts: currentHistory,
     })
 
-    void submitAttemptToServer({
+    await submitAttemptToServer({
       mode: 'main-recall',
       correct: exact,
       correctAnswer: normalizedTarget,
@@ -791,14 +918,17 @@ function App() {
       accuracy,
       exact,
       elapsedMs,
+      interactionId,
       coachFeedback: feedback,
     })
+    await fetchPracticeHistory()
   }
 
   const reviseMainRecall = () => {
     if (!hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'submitted' || mainCloseEnough) return
     setMainPhase('typing')
     setMainStartedAt(Date.now())
+    setCurrentInteractionId(createInteractionId())
   }
 
   const restartSession = () => {
@@ -849,7 +979,10 @@ function App() {
   )
   const isGraphQuestion =
     card.tags.includes('graph') || card.tags.includes('graph-bfs')
-  const currentCardRecallHistory = mainRecallHistoryByCard[card.id] ?? []
+  const currentCardRecallHistory = useMemo(
+    () => mainRecallHistoryByCard[card.id] ?? [],
+    [card.id, mainRecallHistoryByCard]
+  )
   const priorCardRecallHistory =
     mainPhase === 'submitted' ? currentCardRecallHistory.slice(0, -1) : currentCardRecallHistory
   const displayLines = useMemo(() => {
@@ -870,10 +1003,14 @@ function App() {
     () => displayLines.map((line) => line.text).join('\n'),
     [displayLines]
   )
-  const liveCoachText =
-    liveCoachFeedback?.primaryFocus ||
+  const liveCoachNextStep =
     liveCoachFeedback?.immediateCorrection ||
+    liveCoachFeedback?.primaryFocus ||
     buildLiveCoachFallback(draftStructure, isGraphQuestion)
+  const liveCoachWhy =
+    liveCoachFeedback?.diagnosis ||
+    liveCoachFeedback?.primaryFocus ||
+    buildLiveCoachWhy(draftStructure, isGraphQuestion)
   const liveCoachPrinciple = buildLiveCoachPrinciple(draftStructure, isGraphQuestion)
   const coachFocusText = coachFeedback ? stripPrefixedLabel(coachFeedback.primaryFocus, 'Primary focus') : ''
   const coachHeadline = isGraphQuestion
@@ -904,6 +1041,7 @@ function App() {
     : mainCloseEnough
       ? 'warning'
       : 'error'
+  const historyWeakestTag = practiceHistorySummary?.weakestTag?.trim() || ''
 
   useEffect(() => {
     if (!hasDeck || mainPhase !== 'typing' || sessionFinished || hasAnsweredCurrent) return
@@ -925,6 +1063,8 @@ function App() {
     if (!shouldRefresh) return
 
     const timeoutId = window.setTimeout(() => {
+      const interactionId = currentInteractionId || createInteractionId()
+      if (!currentInteractionId) setCurrentInteractionId(interactionId)
       const target = fullSolutionTarget
       const compareLength = Math.max(trimmedInput.length, target.length, 1)
       let exactMatches = 0
@@ -936,7 +1076,8 @@ function App() {
       lastLiveCoachMilestoneRef.current = draftStructure.milestoneKey
       lastLiveCoachLengthRef.current = trimmedInput.length
 
-      void fetchLiveCoachFeedback({
+      void requestLiveCoachFeedback({
+        interactionId,
         expectedAnswer: target,
         userAnswer: trimmedInput,
         elapsedMs: Math.max((mainStartedAt ? Date.now() - mainStartedAt : 0), 0),
@@ -957,6 +1098,7 @@ function App() {
     mainInput,
     mainPhase,
     mainStartedAt,
+    currentInteractionId,
     sessionFinished,
   ])
 
@@ -1191,9 +1333,13 @@ function App() {
                               <span className="live-coach-dot" />
                             </span>
                           </div>
-                          <p className="coach-panel-copy">{liveCoachText}</p>
+                          <p className="coach-muted"><strong>Very next step</strong></p>
+                          <p className="coach-panel-copy">{liveCoachNextStep}</p>
                           <p className="coach-muted">
-                            <strong>Always remember:</strong> {liveCoachPrinciple}
+                            <strong>Why:</strong> {liveCoachWhy}
+                          </p>
+                          <p className="coach-muted">
+                            <strong>Keep in mind:</strong> {liveCoachPrinciple}
                           </p>
                           {liveCoachLoading && <p className="coach-muted">Refreshing live guidance...</p>}
                           {liveCoachError && <p className="coach-error">{liveCoachError}</p>}
@@ -1282,7 +1428,56 @@ function App() {
           </div>
         </div>
 
-          <div className="card-footer">
+        <div className="practice-history-panel panel">
+          <div className="practice-history-header">
+            <div>
+              <h3>Recent Submission History</h3>
+              <p className="hint" style={{ marginTop: '0.35rem' }}>
+                The backend now keeps generated questions, live coach snapshots, and final submission feedback together so future prompts can adapt.
+              </p>
+            </div>
+            {practiceHistorySummary && (
+              <div className="practice-history-summary">
+                <span className="coach-metric-chip">{practiceHistorySummary.attemptCount} related attempts</span>
+                <span className="coach-metric-chip">Avg {practiceHistorySummary.recentAvgAccuracy}%</span>
+                {historyWeakestTag && (
+                  <span className="coach-metric-chip">Weakest {historyWeakestTag}</span>
+                )}
+              </div>
+            )}
+          </div>
+          {practiceHistoryLoading && <p className="coach-muted">Loading recent submissions...</p>}
+          {!practiceHistoryLoading && practiceHistoryError && <p className="coach-error">{practiceHistoryError}</p>}
+          {!practiceHistoryLoading && !practiceHistoryError && practiceHistory.length === 0 && (
+            <p className="coach-muted">No stored submission history yet for this skill pattern.</p>
+          )}
+          {!practiceHistoryLoading && practiceHistory.length > 0 && (
+            <div className="practice-history-list">
+              {practiceHistory.map((entry) => {
+                const entryTone = entry.exact ? 'success' : entry.accuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY ? 'warning' : 'error'
+                return (
+                  <article key={`${entry.attemptId}-${entry.createdAt}`} className="practice-history-entry">
+                    <div className="practice-history-entry-top">
+                      <div>
+                        <p className="practice-history-title">{entry.cardTitle || entry.cardId}</p>
+                        <p className="practice-history-meta">
+                          {entry.liveFeedbackCount} live feedback {entry.liveFeedbackCount === 1 ? 'snapshot' : 'snapshots'} · {(entry.elapsedMs / 1000).toFixed(1)}s
+                        </p>
+                      </div>
+                      <span className={`coach-status-chip coach-status-chip-${entryTone}`}>
+                        {entry.exact ? 'Exact' : `${entry.accuracy}%`}
+                      </span>
+                    </div>
+                    <p className="practice-history-question">{entry.question || entry.generatedCard.prompt || 'Stored generated question'}</p>
+                    <p className="practice-history-feedback">{summarizeHistoryText(entry)}</p>
+                  </article>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="card-footer">
           <div className="card-footer-left">
             <button className="secondary" onClick={goPrev} disabled={!canGoPrev}>
               <kbd>←</kbd> Previous

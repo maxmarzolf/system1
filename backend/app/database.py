@@ -12,6 +12,7 @@ async def connect() -> asyncpg.Pool:
     pool = await asyncpg.create_pool(settings.database_url)
     await _apply_mode_migration(pool)
     await _ensure_recall_history_schema(pool)
+    await _ensure_practice_history_schema(pool)
     return pool
 
 
@@ -108,5 +109,64 @@ async def _ensure_recall_history_schema(db_pool: asyncpg.Pool) -> None:
 
             CREATE INDEX IF NOT EXISTS idx_generated_skill_map_cards_tags
                 ON generated_skill_map_cards USING GIN(tags);
+            """
+        )
+
+
+async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            """
+            ALTER TABLE score_attempts
+            ADD COLUMN IF NOT EXISTS interaction_id VARCHAR(80);
+
+            ALTER TABLE score_attempts
+            ADD COLUMN IF NOT EXISTS generated_card_id VARCHAR(80);
+
+            CREATE INDEX IF NOT EXISTS idx_score_attempts_interaction_id
+                ON score_attempts(interaction_id);
+
+            CREATE INDEX IF NOT EXISTS idx_score_attempts_generated_card_id
+                ON score_attempts(generated_card_id);
+
+            ALTER TABLE generated_skill_map_cards
+            ADD COLUMN IF NOT EXISTS generation_context JSONB;
+
+            CREATE TABLE IF NOT EXISTS coach_feedback_events (
+                id SERIAL PRIMARY KEY,
+                interaction_id VARCHAR(80),
+                card_id VARCHAR(80) NOT NULL,
+                generated_card_id VARCHAR(80),
+                question_type VARCHAR(50) NOT NULL DEFAULT '',
+                feedback_stage VARCHAR(20) NOT NULL CHECK (feedback_stage IN ('live', 'submission')),
+                draft_mode BOOLEAN NOT NULL DEFAULT FALSE,
+                prompt TEXT,
+                expected_answer TEXT,
+                user_answer TEXT,
+                accuracy REAL NOT NULL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100),
+                exact BOOLEAN NOT NULL DEFAULT FALSE,
+                elapsed_ms INTEGER NOT NULL DEFAULT 0 CHECK (elapsed_ms >= 0),
+                skill_tags TEXT[] DEFAULT '{}',
+                previous_attempts JSONB,
+                draft_milestones JSONB,
+                feedback JSONB NOT NULL DEFAULT '{}'::jsonb,
+                llm_used BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_interaction
+                ON coach_feedback_events(interaction_id);
+
+            CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_card
+                ON coach_feedback_events(card_id);
+
+            CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_generated_card
+                ON coach_feedback_events(generated_card_id);
+
+            CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_stage_created
+                ON coach_feedback_events(feedback_stage, created_at DESC);
+
+            CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_skill_tags
+                ON coach_feedback_events USING GIN(skill_tags);
             """
         )

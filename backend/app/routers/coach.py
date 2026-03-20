@@ -17,6 +17,8 @@ from app.database import get_pool
 from app.models import (
     CoachAttemptFeedbackRequest,
     CoachAttemptFeedbackResponse,
+    CoachPracticeHistoryRequest,
+    CoachPracticeHistoryResponse,
     CoachSessionPlanRequest,
     CoachSessionPlanResponse,
     SkillMapDrillsRequest,
@@ -319,68 +321,166 @@ def _build_submission_feedback(
 
 
 async def _load_attempt_history(body: CoachAttemptFeedbackRequest) -> list[dict[str, Any]]:
+    return await _load_practice_history(body.cardId, body.questionType, body.skillTags, limit=20)
+
+
+def _parse_json_field(value: Any, fallback: Any) -> Any:
+    if isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            return fallback
+        return parsed if isinstance(parsed, type(fallback)) else fallback
+    return fallback
+
+
+async def _load_practice_history(
+    card_id: str, question_type: str, skill_tags: list[str], limit: int = 20
+) -> list[dict[str, Any]]:
     pool = get_pool()
 
     async with pool.acquire() as conn:
-        if body.skillTags:
+        if skill_tags:
             rows = await conn.fetch(
                 """
                 SELECT
-                    card_id AS "cardId",
-                    card_title AS "cardTitle",
-                    accuracy,
-                    exact,
-                    elapsed_ms AS "elapsedMs",
-                    category_tags AS "categoryTags",
-                    coach_feedback AS "coachFeedback",
-                    created_at
-                FROM score_attempts
-                WHERE mode = 'main-recall'
-                  AND (card_id = $1 OR category_tags && $2::text[])
-                ORDER BY created_at DESC
-                LIMIT 20
+                    sa.id AS "attemptId",
+                    COALESCE(sa.interaction_id, '') AS "interactionId",
+                    sa.card_id AS "cardId",
+                    sa.card_title AS "cardTitle",
+                    sa.question,
+                    sa.correct_answer AS "correctAnswer",
+                    sa.user_answer AS "userAnswer",
+                    sa.accuracy,
+                    sa.exact,
+                    sa.elapsed_ms AS "elapsedMs",
+                    sa.category_tags AS "categoryTags",
+                    sa.generated_card AS "generatedCard",
+                    sa.coach_feedback AS "submissionFeedback",
+                    sa.created_at,
+                    COALESCE(live.live_feedback_count, 0) AS "liveFeedbackCount",
+                    latest.feedback AS "latestLiveFeedback"
+                FROM score_attempts sa
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*)::int AS live_feedback_count
+                    FROM coach_feedback_events fe
+                    WHERE fe.feedback_stage = 'live'
+                      AND (
+                        (sa.interaction_id IS NOT NULL AND fe.interaction_id = sa.interaction_id)
+                        OR (
+                            sa.interaction_id IS NULL
+                            AND fe.card_id = sa.card_id
+                            AND fe.question_type = sa.question_type
+                            AND fe.created_at <= sa.created_at
+                        )
+                      )
+                ) live ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT fe.feedback
+                    FROM coach_feedback_events fe
+                    WHERE fe.feedback_stage = 'live'
+                      AND (
+                        (sa.interaction_id IS NOT NULL AND fe.interaction_id = sa.interaction_id)
+                        OR (
+                            sa.interaction_id IS NULL
+                            AND fe.card_id = sa.card_id
+                            AND fe.question_type = sa.question_type
+                            AND fe.created_at <= sa.created_at
+                        )
+                      )
+                    ORDER BY fe.created_at DESC
+                    LIMIT 1
+                ) latest ON TRUE
+                WHERE sa.mode = 'main-recall'
+                  AND (sa.card_id = $1 OR sa.generated_card_id = $1 OR sa.category_tags && $2::text[])
+                ORDER BY sa.created_at DESC
+                LIMIT $3
                 """,
-                body.cardId,
-                body.skillTags,
+                card_id,
+                skill_tags,
+                limit,
             )
         else:
             rows = await conn.fetch(
                 """
                 SELECT
-                    card_id AS "cardId",
-                    card_title AS "cardTitle",
-                    accuracy,
-                    exact,
-                    elapsed_ms AS "elapsedMs",
-                    category_tags AS "categoryTags",
-                    coach_feedback AS "coachFeedback",
-                    created_at
-                FROM score_attempts
-                WHERE mode = 'main-recall'
-                  AND (card_id = $1 OR question_type = $2)
-                ORDER BY created_at DESC
-                LIMIT 20
+                    sa.id AS "attemptId",
+                    COALESCE(sa.interaction_id, '') AS "interactionId",
+                    sa.card_id AS "cardId",
+                    sa.card_title AS "cardTitle",
+                    sa.question,
+                    sa.correct_answer AS "correctAnswer",
+                    sa.user_answer AS "userAnswer",
+                    sa.accuracy,
+                    sa.exact,
+                    sa.elapsed_ms AS "elapsedMs",
+                    sa.category_tags AS "categoryTags",
+                    sa.generated_card AS "generatedCard",
+                    sa.coach_feedback AS "submissionFeedback",
+                    sa.created_at,
+                    COALESCE(live.live_feedback_count, 0) AS "liveFeedbackCount",
+                    latest.feedback AS "latestLiveFeedback"
+                FROM score_attempts sa
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*)::int AS live_feedback_count
+                    FROM coach_feedback_events fe
+                    WHERE fe.feedback_stage = 'live'
+                      AND (
+                        (sa.interaction_id IS NOT NULL AND fe.interaction_id = sa.interaction_id)
+                        OR (
+                            sa.interaction_id IS NULL
+                            AND fe.card_id = sa.card_id
+                            AND fe.question_type = sa.question_type
+                            AND fe.created_at <= sa.created_at
+                        )
+                      )
+                ) live ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT fe.feedback
+                    FROM coach_feedback_events fe
+                    WHERE fe.feedback_stage = 'live'
+                      AND (
+                        (sa.interaction_id IS NOT NULL AND fe.interaction_id = sa.interaction_id)
+                        OR (
+                            sa.interaction_id IS NULL
+                            AND fe.card_id = sa.card_id
+                            AND fe.question_type = sa.question_type
+                            AND fe.created_at <= sa.created_at
+                        )
+                      )
+                    ORDER BY fe.created_at DESC
+                    LIMIT 1
+                ) latest ON TRUE
+                WHERE sa.mode = 'main-recall'
+                  AND (sa.card_id = $1 OR sa.generated_card_id = $1 OR sa.question_type = $2)
+                ORDER BY sa.created_at DESC
+                LIMIT $3
                 """,
-                body.cardId,
-                body.questionType,
+                card_id,
+                question_type,
+                limit,
             )
 
     history: list[dict[str, Any]] = []
     for row in rows:
-        feedback = row["coachFeedback"]
-        if isinstance(feedback, str):
-            try:
-                feedback = json.loads(feedback)
-            except ValueError:
-                feedback = {}
         history.append({
+            "attemptId": int(row["attemptId"]),
+            "interactionId": str(row["interactionId"] or ""),
             "cardId": row["cardId"],
             "cardTitle": row["cardTitle"],
+            "question": row["question"] or "",
+            "correctAnswer": row["correctAnswer"] or "",
+            "userAnswer": row["userAnswer"] or "",
             "accuracy": float(row["accuracy"] or 0),
             "exact": bool(row["exact"]),
             "elapsedMs": int(row["elapsedMs"] or 0),
             "categoryTags": list(row["categoryTags"] or []),
-            "coachFeedback": feedback if isinstance(feedback, dict) else {},
+            "generatedCard": _parse_json_field(row["generatedCard"], {}),
+            "liveFeedbackCount": int(row["liveFeedbackCount"] or 0),
+            "latestLiveFeedback": _parse_json_field(row["latestLiveFeedback"], {}),
+            "submissionFeedback": _parse_json_field(row["submissionFeedback"], {}),
             "createdAt": row["created_at"].isoformat() if row["created_at"] else "",
         })
     return history
@@ -393,17 +493,25 @@ def _summarize_attempt_history(history: list[dict[str, Any]]) -> dict[str, Any]:
             "recentAvgAccuracy": 0,
             "weakestTag": "",
             "repeatedErrorTags": [],
+            "recentPrimaryFocuses": [],
+            "recentQuestions": [],
         }
 
     accuracies = [float(item.get("accuracy", 0)) for item in history]
     tag_scores: dict[str, list[float]] = {}
     error_counts: Counter[str] = Counter()
+    primary_focuses: list[str] = []
+    recent_questions: list[str] = []
     for item in history:
         for tag in item.get("categoryTags", []):
             tag_scores.setdefault(tag, []).append(float(item.get("accuracy", 0)))
-        feedback = item.get("coachFeedback", {})
+        feedback = item.get("submissionFeedback", {})
         for tag in feedback.get("errorTags", []) if isinstance(feedback, dict) else []:
             error_counts[str(tag)] += 1
+        if isinstance(feedback, dict) and feedback.get("primaryFocus"):
+            primary_focuses.append(str(feedback["primaryFocus"]))
+        if item.get("question"):
+            recent_questions.append(str(item["question"]))
 
     weakest_tag = ""
     weakest_avg = 101.0
@@ -420,12 +528,254 @@ def _summarize_attempt_history(history: list[dict[str, Any]]) -> dict[str, Any]:
         "recentAvgAccuracy": round(sum(accuracies) / len(accuracies), 1),
         "weakestTag": weakest_tag,
         "repeatedErrorTags": [tag for tag, count in error_counts.most_common(3) if count >= 2],
+        "recentPrimaryFocuses": primary_focuses[:3],
+        "recentQuestions": recent_questions[:3],
+    }
+
+
+def _summarize_skill_map_progress(
+    skill_map: list[Any], history: list[dict[str, Any]]
+) -> dict[str, Any]:
+    progress_by_pattern: dict[str, dict[str, Any]] = {}
+
+    for node in skill_map:
+        slug = _pattern_slug(getattr(node, "pattern", ""))
+        if not slug:
+            continue
+        progress_by_pattern[slug] = {
+            "pattern": getattr(node, "pattern", slug),
+            "attemptCount": 0,
+            "avgAccuracy": 0.0,
+            "exactRate": 0.0,
+            "repeatedErrorTags": [],
+            "latestPrimaryFocus": "",
+            "latestQuestion": "",
+        }
+
+    accuracy_buckets: dict[str, list[float]] = {slug: [] for slug in progress_by_pattern}
+    exact_counts: Counter[str] = Counter()
+    error_counts: dict[str, Counter[str]] = {slug: Counter() for slug in progress_by_pattern}
+
+    for item in history:
+        item_tags = {str(tag) for tag in item.get("categoryTags", [])}
+        feedback = item.get("submissionFeedback", {})
+        for slug, summary in progress_by_pattern.items():
+            if slug not in item_tags:
+                continue
+            summary["attemptCount"] += 1
+            accuracy_buckets[slug].append(float(item.get("accuracy", 0)))
+            if item.get("exact"):
+                exact_counts[slug] += 1
+            for tag in feedback.get("errorTags", []) if isinstance(feedback, dict) else []:
+                error_counts[slug][str(tag)] += 1
+            if not summary["latestPrimaryFocus"] and isinstance(feedback, dict):
+                summary["latestPrimaryFocus"] = str(feedback.get("primaryFocus", "")).strip()
+            if not summary["latestQuestion"]:
+                summary["latestQuestion"] = str(item.get("question", "")).strip()
+
+    weak_patterns: list[str] = []
+    for slug, summary in progress_by_pattern.items():
+        accuracies = accuracy_buckets[slug]
+        attempts = int(summary["attemptCount"])
+        if accuracies:
+            summary["avgAccuracy"] = round(sum(accuracies) / len(accuracies), 1)
+            summary["exactRate"] = round((exact_counts[slug] / len(accuracies)) * 100, 1)
+        summary["repeatedErrorTags"] = [tag for tag, count in error_counts[slug].most_common(3) if count >= 2]
+        if attempts > 0 and float(summary["avgAccuracy"]) < 90:
+            weak_patterns.append(slug)
+
+    overall_attempts = len(history)
+    overall_avg_accuracy = round(
+        sum(float(item.get("accuracy", 0)) for item in history) / overall_attempts, 1
+    ) if overall_attempts else 0.0
+
+    return {
+        "overall": {
+            "attemptCount": overall_attempts,
+            "avgAccuracy": overall_avg_accuracy,
+            "weakPatterns": weak_patterns[:5],
+        },
+        "patterns": progress_by_pattern,
+    }
+
+
+def _progress_focus_note(progress: dict[str, Any]) -> str:
+    if not progress or int(progress.get("attemptCount", 0)) == 0:
+        return ""
+    repeated = [str(tag) for tag in progress.get("repeatedErrorTags", []) if str(tag).strip()]
+    if repeated:
+        return f"Recent weak spot: {', '.join(repeated[:2])}."
+    latest_focus = str(progress.get("latestPrimaryFocus", "")).strip()
+    if latest_focus:
+        return latest_focus
+    return ""
+
+
+async def _persist_feedback_event(
+    body: CoachAttemptFeedbackRequest, feedback: dict[str, Any]
+) -> None:
+    pool = get_pool()
+    now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO coach_feedback_events
+                (interaction_id, card_id, generated_card_id, question_type, feedback_stage, draft_mode,
+                 prompt, expected_answer, user_answer, accuracy, exact, elapsed_ms, skill_tags,
+                 previous_attempts, draft_milestones, feedback, llm_used, created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+            """,
+            body.interactionId,
+            body.cardId,
+            body.cardId,
+            body.questionType,
+            "live" if body.draftMode else "submission",
+            body.draftMode,
+            body.prompt,
+            body.expectedAnswer,
+            body.userAnswer,
+            body.accuracy,
+            body.exact,
+            body.elapsedMs,
+            body.skillTags,
+            json.dumps(body.previousAttempts),
+            json.dumps(body.draftMilestones),
+            json.dumps(feedback),
+            bool(feedback.get("llmUsed")),
+            now,
+        )
+
+
+def _draft_flag(body: CoachAttemptFeedbackRequest, key: str, default: bool = False) -> bool:
+    value = body.draftMilestones.get(key, default)
+    return bool(value)
+
+
+def _draft_value(body: CoachAttemptFeedbackRequest, key: str, default: Any = "") -> Any:
+    return body.draftMilestones.get(key, default)
+
+
+def _heuristic_live_feedback(
+    body: CoachAttemptFeedbackRequest, history_summary: dict[str, Any]
+) -> dict[str, Any]:
+    is_graph_question = any(
+        tag in body.skillTags for tag in ("graph", "dfs-bfs", "graph-traversal", "union-find")
+    )
+    has_signature = _draft_flag(body, "hasSignature")
+    has_guard = _draft_flag(body, "hasGuard")
+    has_loop = _draft_flag(body, "hasLoop")
+    has_placeholder = _draft_flag(body, "hasPlaceholder")
+    has_bookkeeping = _draft_flag(body, "hasBookkeeping")
+    traversal_kind = str(_draft_value(body, "traversalKind", "")).strip()
+    non_empty_lines = int(_draft_value(body, "nonEmptyLines", 0) or 0)
+
+    error_tags: list[str] = []
+    diagnosis = ""
+    primary_focus = ""
+    immediate = ""
+
+    if not has_signature:
+        diagnosis = (
+            "You are still at the blank-page stage, which is normal. The draft needs an opening anchor "
+            "before the rest of the solution can settle."
+        )
+        primary_focus = "Anchor the solution first."
+        immediate = "The very next step is to type the function signature and name the inputs you will reason about."
+        error_tags.append("opening-anchor")
+    elif is_graph_question and not has_bookkeeping:
+        diagnosis = (
+            "You have the shell of the solution, but the graph state is still missing, so the traversal has "
+            "nothing concrete to update yet."
+        )
+        primary_focus = "Make the graph bookkeeping explicit before you add more flow."
+        immediate = (
+            "The very next step is to add the visited/frontier state right under the signature so each later line "
+            "has something real to work with."
+        )
+        error_tags.append("state-setup")
+    elif is_graph_question and not traversal_kind:
+        diagnosis = (
+            "The setup has started, but the draft still has not committed to how nodes move through the graph."
+        )
+        primary_focus = "Choose the traversal before writing more logic."
+        immediate = "The very next step is to commit to DFS or BFS and write the line that creates that frontier."
+        error_tags.append("traversal-choice")
+    elif has_placeholder:
+        diagnosis = (
+            "The structure is forming, but a placeholder is still hiding the real algorithmic move."
+        )
+        primary_focus = "Replace the placeholder with the real state change."
+        immediate = (
+            "The very next step is to replace the placeholder with the exact update that makes the invariant move forward."
+        )
+        error_tags.append("placeholder")
+    elif is_graph_question and not has_guard:
+        diagnosis = (
+            "The traversal is taking shape, but the stop or skip rule is still implicit, which makes the draft feel slippery."
+        )
+        primary_focus = "Write the fail-fast rule before expanding neighbors."
+        immediate = (
+            "The very next step is to add the guard that skips invalid or already-seen states before you explore neighbors."
+        )
+        error_tags.append("guard")
+    elif not has_loop and (traversal_kind or not is_graph_question):
+        diagnosis = (
+            "You have enough setup now. What is missing is the line of control flow that actually advances the solution."
+        )
+        primary_focus = "Start the main control flow."
+        immediate = (
+            "The very next step is to write the main loop or recursive call that advances the state once."
+        )
+        error_tags.append("control-flow")
+    else:
+        diagnosis = (
+            "This is a real draft now. It does not need a big rewrite; it needs one more concrete structural line."
+        )
+        primary_focus = "Keep the next move small and structural."
+        immediate = (
+            "The very next step is to add the single line that updates your main state, then pause and check whether the invariant still makes sense."
+        )
+
+    if history_summary["attemptCount"] > 0 and history_summary["weakestTag"]:
+        diagnosis += f" This pattern has drifted before on `{history_summary['weakestTag']}`, so keep the next move deliberately small."
+
+    strengths: list[str] = []
+    if non_empty_lines >= 2:
+        strengths.append("You have enough structure on the page to make the next move concrete.")
+    if has_signature:
+        strengths.append("The solution already has an entry point.")
+    if traversal_kind:
+        strengths.append(f"You have committed to a {traversal_kind.upper()}-style traversal.")
+
+    micro_drill = "Write just that next line, then stop and ask what state it changes."
+    next_target = "After that line, the code should read more like a real algorithm than a blank template."
+
+    return {
+        "diagnosis": diagnosis,
+        "primaryFocus": primary_focus,
+        "immediateCorrection": immediate,
+        "microDrill": micro_drill,
+        "nextRepTarget": next_target,
+        "strengths": strengths[:3],
+        "errorTags": error_tags,
+        "fullFeedback": "",
+        "correctedVersion": "",
+        "llmUsed": False,
+        "signals": {
+            "draft_mode": True,
+            "history_summary": history_summary,
+            "draft_milestones": body.draftMilestones,
+        },
     }
 
 
 def _heuristic_attempt_feedback(
     body: CoachAttemptFeedbackRequest, history_summary: dict[str, Any]
 ) -> dict[str, Any]:
+    if body.draftMode:
+        return _heuristic_live_feedback(body, history_summary)
+
     expected_lines = _normalize_code(body.expectedAnswer)
     actual_lines = _normalize_code(body.userAnswer)
     first_mismatch = _first_mismatch_line(expected_lines, actual_lines)
@@ -649,7 +999,9 @@ def _generic_skill_drill(pattern: str, methods: list[str], index: int) -> dict[s
     }
 
 
-def _fallback_skill_map_drills(body: SkillMapDrillsRequest) -> dict[str, Any]:
+def _fallback_skill_map_drills(
+    body: SkillMapDrillsRequest, progress_summary: dict[str, Any] | None = None
+) -> dict[str, Any]:
     templates: dict[str, dict[str, Any]] = {
         "sliding-window": {
             "title": "Skill Map • Sliding Window: Window Score Update",
@@ -750,18 +1102,33 @@ def _fallback_skill_map_drills(body: SkillMapDrillsRequest) -> dict[str, Any]:
     }
 
     drills: list[dict[str, Any]] = []
+    progress_by_pattern = progress_summary.get("patterns", {}) if isinstance(progress_summary, dict) else {}
     nodes = body.skillMap[: body.count] or []
     for index, node in enumerate(nodes):
         slug = _pattern_slug(node.pattern)
         template = templates.get(slug) or _generic_skill_drill(node.pattern, node.methods, index)
+        progress = progress_by_pattern.get(slug, {})
+        focus_note = _progress_focus_note(progress)
+        difficulty = template["difficulty"] if "difficulty" in template else "Med."
+        prompt = template["prompt"]
+        hint = template["hint"]
+
+        if int(progress.get("attemptCount", 0)) > 0 and float(progress.get("avgAccuracy", 0)) < 85:
+            difficulty = "Easy"
+            if focus_note:
+                hint = f"{hint} {focus_note}".strip()
+        elif int(progress.get("attemptCount", 0)) >= 2 and float(progress.get("avgAccuracy", 0)) >= 95:
+            difficulty = "Hard"
+            prompt = f"{prompt} Keep this rep tight and exact with fewer mental cues."
+
         drills.append({
             "id": f"skill-{slug}-{index + 1}",
             "title": template["title"],
-            "difficulty": template["difficulty"] if "difficulty" in template else "Med.",
-            "prompt": template["prompt"],
+            "difficulty": difficulty,
+            "prompt": prompt,
             "solution": template["solution"],
             "missing": template["missing"],
-            "hint": template["hint"],
+            "hint": hint,
             "tags": template["tags"],
         })
 
@@ -811,9 +1178,9 @@ async def _attempt_feedback_with_optional_llm(
     system_prompt = (
         "You are a live coding coach watching a draft in progress. Return strict JSON with keys: "
         "diagnosis, primaryFocus, immediateCorrection, microDrill, nextRepTarget, strengths, errorTags. "
-        "Be concise, structural, and general. Do not give full solutions, code skeletons, or line-by-line rewrites. "
-        "Prefer advice that generalizes to this approach and would still be useful on similar interview problems. "
-        "Give one high-value next structural move."
+        "Be concise, human, and specific about the very next step. Do not give full solutions, code skeletons, or line-by-line rewrites. "
+        "Prefer advice that generalizes to this approach and would still feel like a helpful pair-programmer. "
+        "Make immediateCorrection a single concrete next move that begins with 'The very next step is to...'."
         if body.draftMode
         else "I am prepping for a Senior Level Tech Interview. Give me feedback on my attempt."
     )
@@ -839,7 +1206,23 @@ async def _attempt_feedback_with_optional_llm(
             "userAnswer": body.userAnswer[:1200],
         },
         "skillTags": body.skillTags,
-        "historicalAttempts": history[:8],
+        "historicalAttempts": [
+            {
+                "cardId": item.get("cardId", ""),
+                "question": str(item.get("question", ""))[:280],
+                "correctAnswer": str(item.get("correctAnswer", ""))[:320],
+                "userAnswer": str(item.get("userAnswer", ""))[:320],
+                "accuracy": item.get("accuracy", 0),
+                "exact": item.get("exact", False),
+                "elapsedMs": item.get("elapsedMs", 0),
+                "categoryTags": item.get("categoryTags", []),
+                "liveFeedbackCount": item.get("liveFeedbackCount", 0),
+                "latestLiveFeedback": item.get("latestLiveFeedback", {}),
+                "submissionFeedback": item.get("submissionFeedback", {}),
+                "createdAt": item.get("createdAt", ""),
+            }
+            for item in history[:8]
+        ],
         "previousAttempts": body.previousAttempts[-3:],
         "draftMode": body.draftMode,
         "draftMilestones": body.draftMilestones,
@@ -940,8 +1323,14 @@ async def _session_plan_with_optional_llm(
     }
 
 
+async def _load_skill_map_generation_summary(body: SkillMapDrillsRequest) -> dict[str, Any]:
+    pattern_tags = [_pattern_slug(node.pattern) for node in body.skillMap[: body.count] if _pattern_slug(node.pattern)]
+    history = await _load_practice_history("", body.questionType, pattern_tags, limit=max(20, body.count * 6))
+    return _summarize_skill_map_progress(body.skillMap[: body.count], history)
+
+
 async def _skill_map_drills_with_optional_llm(
-    body: SkillMapDrillsRequest, heuristic: dict[str, Any]
+    body: SkillMapDrillsRequest, heuristic: dict[str, Any], progress_summary: dict[str, Any]
 ) -> dict[str, Any]:
     if not settings.coach_openai_api_key:
         return heuristic
@@ -960,6 +1349,7 @@ async def _skill_map_drills_with_optional_llm(
         "questionType": body.questionType,
         "count": body.count,
         "skillMap": [node.model_dump() for node in body.skillMap[: body.count]],
+        "practiceHistory": progress_summary,
         "fallbackExample": heuristic["drills"][:3],
     }
 
@@ -1011,17 +1401,27 @@ def _stamp_skill_map_drills(drills: list[dict[str, Any]]) -> list[dict[str, Any]
     return stamped
 
 
-async def _persist_skill_map_drills(drills: list[dict[str, Any]], llm_used: bool) -> None:
+async def _persist_skill_map_drills(
+    drills: list[dict[str, Any]], llm_used: bool, progress_summary: dict[str, Any]
+) -> None:
     pool = get_pool()
     now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
 
     async with pool.acquire() as conn:
         for drill in drills:
+            tags = [str(tag) for tag in drill.get("tags", []) if str(tag).strip()]
+            pattern_slug = next((tag for tag in tags if tag != "skill-map"), "")
+            generation_context = {
+                "llmUsed": llm_used,
+                "historySummary": progress_summary.get("overall", {}),
+                "patternProgress": progress_summary.get("patterns", {}).get(pattern_slug, {}),
+            }
             await conn.execute(
                 """
                 INSERT INTO generated_skill_map_cards
-                    (id, question_type, title, difficulty, prompt, solution, missing, hint, tags, llm_used, created_at)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                    (id, question_type, title, difficulty, prompt, solution, missing, hint, tags,
+                     llm_used, generation_context, created_at)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
                 ON CONFLICT (id) DO NOTHING
                 """,
                 drill["id"],
@@ -1034,6 +1434,7 @@ async def _persist_skill_map_drills(drills: list[dict[str, Any]], llm_used: bool
                 drill["hint"],
                 drill["tags"],
                 llm_used,
+                json.dumps(generation_context),
                 now,
             )
 
@@ -1044,6 +1445,7 @@ async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
     history_summary = _summarize_attempt_history(history)
     heuristic = _heuristic_attempt_feedback(body, history_summary)
     feedback = await _attempt_feedback_with_optional_llm(body, heuristic, history)
+    await _persist_feedback_event(body, feedback)
     feedback.pop("signals", None)
     return feedback
 
@@ -1055,10 +1457,20 @@ async def coach_session_plan(body: CoachSessionPlanRequest):
     return plan
 
 
+@router.post("/history", response_model=CoachPracticeHistoryResponse)
+async def coach_practice_history(body: CoachPracticeHistoryRequest):
+    history = await _load_practice_history(body.cardId, body.questionType, body.skillTags, limit=body.limit)
+    return {
+        "summary": _summarize_attempt_history(history),
+        "entries": history,
+    }
+
+
 @router.post("/skill-map-drills", response_model=SkillMapDrillsResponse)
 async def coach_skill_map_drills(body: SkillMapDrillsRequest):
-    heuristic = _fallback_skill_map_drills(body)
-    drills = await _skill_map_drills_with_optional_llm(body, heuristic)
+    progress_summary = await _load_skill_map_generation_summary(body)
+    heuristic = _fallback_skill_map_drills(body, progress_summary)
+    drills = await _skill_map_drills_with_optional_llm(body, heuristic, progress_summary)
     stamped = _stamp_skill_map_drills(drills["drills"])
-    await _persist_skill_map_drills(stamped, bool(drills.get("llmUsed")))
+    await _persist_skill_map_drills(stamped, bool(drills.get("llmUsed")), progress_summary)
     return {"drills": stamped, "llmUsed": bool(drills.get("llmUsed"))}

@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     )
     port: int = 3001
     allowed_origins: list[str] = ["*"]
+    admin_reset_token: str = "reset-practice-history"
     coach_openai_api_key: str = Field(
         default="",
         validation_alias=AliasChoices("COACH_OPENAI_API_KEY", "OPENAI_API_KEY"),

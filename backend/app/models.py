@@ -33,6 +33,8 @@ class AttemptCreate(BaseModel):
     accuracy: float = Field(default=0, ge=0, le=100)
     exact: bool = False
     elapsedMs: int = Field(default=0, ge=0)
+    interactionId: str | None = None
+    generatedCardId: str | None = None
     generatedCard: dict[str, Any] | None = None
     coachFeedback: dict[str, Any] | None = None
 
@@ -64,6 +66,7 @@ class CoachAttemptFeedbackRequest(BaseModel):
     elapsedMs: int = Field(default=0, ge=0)
     accuracy: float = Field(default=0, ge=0, le=100)
     exact: bool = False
+    interactionId: str | None = None
     questionType: str = ""
     skillTags: list[str] = []
     mode: GameMode = GameMode.main_recall
@@ -138,3 +141,44 @@ class SkillMapDrillsRequest(BaseModel):
 class SkillMapDrillsResponse(BaseModel):
     drills: list[SkillMapDrillCard]
     llmUsed: bool = False
+
+
+class CoachPracticeHistoryRequest(BaseModel):
+    cardId: str = ""
+    questionType: str = ""
+    skillTags: list[str] = []
+    limit: int = Field(default=6, ge=1, le=20)
+
+
+class CoachPracticeHistoryEntry(BaseModel):
+    attemptId: int
+    interactionId: str = ""
+    cardId: str = ""
+    cardTitle: str = ""
+    question: str = ""
+    correctAnswer: str = ""
+    userAnswer: str = ""
+    accuracy: float = Field(default=0, ge=0, le=100)
+    exact: bool = False
+    elapsedMs: int = Field(default=0, ge=0)
+    categoryTags: list[str] = []
+    generatedCard: dict[str, Any] = {}
+    liveFeedbackCount: int = Field(default=0, ge=0)
+    latestLiveFeedback: dict[str, Any] = {}
+    submissionFeedback: dict[str, Any] = {}
+    createdAt: str = ""
+
+
+class CoachPracticeHistoryResponse(BaseModel):
+    summary: dict[str, Any] = {}
+    entries: list[CoachPracticeHistoryEntry] = []
+
+
+class AdminResetPracticeHistoryRequest(BaseModel):
+    confirm: str = Field(min_length=1)
+
+
+class AdminResetPracticeHistoryResponse(BaseModel):
+    clearedTables: list[str] = []
+    before: dict[str, int] = {}
+    after: dict[str, int] = {}

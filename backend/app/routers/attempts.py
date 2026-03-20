@@ -17,13 +17,14 @@ async def create_attempt(body: AttemptCreate):
     now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
 
     async with pool.acquire() as conn:
-        await conn.execute(
+        row = await conn.fetchrow(
             """
             INSERT INTO score_attempts
                 (card_id, card_title, question, question_type, category_tags, options,
                  correct_answer, user_answer, mode, correct, accuracy, exact, elapsed_ms,
-                 generated_card, coach_feedback, created_at, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+                 interaction_id, generated_card_id, generated_card, coach_feedback, created_at, updated_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+            RETURNING id
             """,
             body.cardId,
             body.cardTitle,
@@ -38,13 +39,15 @@ async def create_attempt(body: AttemptCreate):
             body.accuracy,
             body.exact,
             body.elapsedMs,
+            body.interactionId,
+            body.generatedCardId,
             _json.dumps(body.generatedCard) if body.generatedCard else None,
             _json.dumps(body.coachFeedback) if body.coachFeedback else None,
             now,
             now,
         )
 
-    return {"saved": True}
+    return {"saved": True, "attemptId": row["id"] if row else None}
 
 
 @router.get("/skill-map", response_model=list[SkillMapNode])
