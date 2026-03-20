@@ -29,6 +29,9 @@ __pycache__/
 *.seed
 *.pid.lock
 
+# Database - ignore only postgres data, not init scripts
+backend/data/postgres/
+
 # Optional package manager lockfiles (uncomment if not used)
 # yarn.lock
 # pnpm-lock.yaml
