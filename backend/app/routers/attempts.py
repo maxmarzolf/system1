@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter
 
 from app.database import get_pool
-from app.models import AttemptCreate
+from app.models import AttemptCreate, SkillMapNode
 
 router = APIRouter(prefix="/api", tags=["attempts"])
 
@@ -45,3 +45,36 @@ async def create_attempt(body: AttemptCreate):
         )
 
     return {"saved": True}
+
+
+@router.get("/skill-map", response_model=list[SkillMapNode])
+async def get_skill_map():
+    pool = get_pool()
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                p.id AS pattern_id,
+                p.name AS pattern_name,
+                m.id AS method_id,
+                m.name AS method_name
+            FROM patterns p
+            LEFT JOIN methods m ON m.pattern_id = p.id
+            ORDER BY p.id ASC, m.id ASC
+            """
+        )
+
+    grouped: dict[int, SkillMapNode] = {}
+    for row in rows:
+        pattern_id = int(row["pattern_id"])
+        pattern_name = str(row["pattern_name"])
+        method_name = row["method_name"]
+
+        if pattern_id not in grouped:
+            grouped[pattern_id] = SkillMapNode(pattern=pattern_name, methods=[])
+
+        if method_name:
+            grouped[pattern_id].methods.append(str(method_name))
+
+    return list(grouped.values())
