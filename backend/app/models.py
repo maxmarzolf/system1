@@ -79,6 +79,7 @@ class CoachAttemptFeedbackResponse(BaseModel):
     diagnosis: str
     primaryFocus: str
     immediateCorrection: str
+    keepInMind: str = ""
     microDrill: str
     nextRepTarget: str
     strengths: list[str] = []

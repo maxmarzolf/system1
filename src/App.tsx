@@ -35,6 +35,7 @@ type CoachAttemptFeedback = {
   diagnosis: string
   primaryFocus: string
   immediateCorrection: string
+  keepInMind?: string
   microDrill: string
   nextRepTarget: string
   strengths: string[]
@@ -266,7 +267,7 @@ const buildLiveCoachWhy = (draft: DraftStructure, isGraphQuestion: boolean) => {
   return 'At this point, a single concrete line will help more than broad advice.'
 }
 
-const buildLiveCoachPrinciple = (draft: DraftStructure, isGraphQuestion: boolean) => {
+const buildLiveCoachPrinciple = (draft: DraftStructure, tags: string[], isGraphQuestion: boolean) => {
   if (isGraphQuestion) {
     if (draft.traversalKind === 'dfs') {
       return 'In graph DFS, decide exactly when a node becomes visited and do that before exploring neighbors.'
@@ -278,6 +279,21 @@ const buildLiveCoachPrinciple = (draft: DraftStructure, isGraphQuestion: boolean
       return 'In iterative graph traversals, the stack only works if your visited rule is consistent from the moment a node is scheduled.'
     }
     return 'For graph problems, three things are almost always worth deciding early: representation, visited rule, and how neighbors enter the frontier.'
+  }
+
+  if (tags.includes('sliding-window')) {
+    if (draft.hasLoop) {
+      return 'In sliding window, the rhythm is expand, restore validity, then score the valid window.'
+    }
+    return 'In sliding window, every line should support one of three jobs: expand, restore validity, or score.'
+  }
+
+  if (tags.includes('two-pointers')) {
+    return 'With two pointers, each comparison should justify moving exactly one side of the search.'
+  }
+
+  if (tags.includes('binary-search')) {
+    return 'In binary search, protect the interval invariant first and let every bound update follow from that meaning.'
   }
 
   return 'A strong interview habit is to make the invariant explicit before you optimize the code around it.'
@@ -1011,7 +1027,9 @@ function App() {
     liveCoachFeedback?.diagnosis ||
     liveCoachFeedback?.primaryFocus ||
     buildLiveCoachWhy(draftStructure, isGraphQuestion)
-  const liveCoachPrinciple = buildLiveCoachPrinciple(draftStructure, isGraphQuestion)
+  const liveCoachKeepInMind =
+    liveCoachFeedback?.keepInMind ||
+    buildLiveCoachPrinciple(draftStructure, card.tags, isGraphQuestion)
   const coachFocusText = coachFeedback ? stripPrefixedLabel(coachFeedback.primaryFocus, 'Primary focus') : ''
   const coachHeadline = isGraphQuestion
     ? buildGraphCoachHeadline(normalizedMainLines, lineReview.reviews, priorCardRecallHistory)
@@ -1329,22 +1347,16 @@ function App() {
                         <div className="coach-docked-card">
                           <div className="coach-card-header">
                             <h4>Live Feedback</h4>
-                            <span className="live-coach-indicator" aria-label="Live coach active">
+                            <span
+                              className="live-coach-indicator"
+                              aria-label={liveCoachLoading ? 'Live coach refreshing' : 'Live coach active'}
+                            >
                               <span className="live-coach-dot" />
                             </span>
                           </div>
-                          <p className="coach-muted"><strong>Very next step</strong></p>
                           <p className="coach-panel-copy">{liveCoachNextStep}</p>
-                          <p className="coach-muted">
-                            <strong>Why:</strong> {liveCoachWhy}
-                          </p>
-                          <p className="coach-muted">
-                            <strong>Keep in mind:</strong> {liveCoachPrinciple}
-                          </p>
-                          <p className="coach-muted">
-                            If you stay stuck, this guidance will get more explicit after a bit more time.
-                          </p>
-                          {liveCoachLoading && <p className="coach-muted">Refreshing live guidance...</p>}
+                          <p className="coach-panel-copy">{liveCoachWhy}</p>
+                          <p className="coach-panel-copy">{liveCoachKeepInMind}</p>
                           {liveCoachError && <p className="coach-error">{liveCoachError}</p>}
                         </div>
                       </div>

@@ -656,6 +656,23 @@ def _draft_value(body: CoachAttemptFeedbackRequest, key: str, default: Any = "")
     return body.draftMilestones.get(key, default)
 
 
+def _limit_words(text: str, limit: int = 30) -> str:
+    words = text.strip().split()
+    if len(words) <= limit:
+        return " ".join(words)
+    return " ".join(words[:limit]).rstrip(".,;:") + "..."
+
+
+def _truncate_live_feedback_fields(feedback: dict[str, Any]) -> dict[str, Any]:
+    limited = {**feedback}
+    for key in ("diagnosis", "primaryFocus", "immediateCorrection", "keepInMind", "microDrill", "nextRepTarget"):
+        if key in limited:
+            limited[key] = _limit_words(str(limited.get(key, "")), 30)
+    if "strengths" in limited and isinstance(limited["strengths"], list):
+        limited["strengths"] = [_limit_words(str(item), 30) for item in limited["strengths"][:3]]
+    return limited
+
+
 def _live_feedback_stage(elapsed_ms: int) -> str:
     if elapsed_ms >= 90_000:
         return "very-late"
@@ -766,9 +783,223 @@ def _live_next_step_for_pattern(pattern_tag: str, stage: str, has_loop: bool) ->
     return _general_next_step(stage, has_loop)
 
 
+def _has_line(lines: list[str], pattern: str) -> bool:
+    return any(re.search(pattern, line) for line in lines)
+
+
+def _sliding_window_progress(lines: list[str]) -> dict[str, bool]:
+    return {
+        "has_expand": _has_line(lines, r"\b(count|counts)\[.+\]\s*=\s*\1\.get\(.+\)\s*\+\s*1"),
+        "has_shrink_loop": _has_line(lines, r"^\s*while\s+.+:"),
+        "has_shrink_update": _has_line(lines, r"\b(count|counts)\[nums\[left\]\]\s*[-+*/]?="),
+        "has_cleanup": _has_line(lines, r"\bdel\s+(count|counts)\[nums\[left\]\]|\b(count|counts)\.pop\("),
+        "has_left_move": _has_line(lines, r"\bleft\s*\+=\s*1\b"),
+        "has_score": _has_line(lines, r"\b(best|answer|result)\s*=\s*max\("),
+    }
+
+
+def _two_pointer_progress(lines: list[str]) -> dict[str, bool]:
+    return {
+        "has_pair_value": _has_line(lines, r"nums\[left\].+nums\[right\]|nums\[right\].+nums\[left\]"),
+        "has_compare": _has_line(lines, r"^\s*if\s+.+target.+:|^\s*elif\s+.+target.+:"),
+        "has_left_move": _has_line(lines, r"\bleft\s*\+=\s*1\b"),
+        "has_right_move": _has_line(lines, r"\bright\s*-=\s*1\b"),
+        "has_success_path": _has_line(lines, r"^\s*return\s+True\b|^\s*return\s+\[left,\s*right\]"),
+    }
+
+
+def _binary_search_progress(lines: list[str]) -> dict[str, bool]:
+    return {
+        "has_mid": _has_line(lines, r"\bmid\s*="),
+        "has_compare": _has_line(lines, r"^\s*if\s+.+mid.+:|^\s*if\s+nums\[mid\]"),
+        "has_left_update": _has_line(lines, r"\bleft\s*=\s*mid(\s*\+\s*1)?\b"),
+        "has_right_update": _has_line(lines, r"\bright\s*=\s*mid\b|\bright\s*=\s*mid\s*-\s*1\b"),
+        "has_return": _has_line(lines, r"^\s*return\b"),
+    }
+
+
+def _sliding_window_guidance(lines: list[str], stage: str) -> tuple[str, str, str]:
+    progress = _sliding_window_progress(lines)
+    keep = "In sliding window, the rhythm is always expand, restore validity, then score the now-valid window."
+
+    if not progress["has_expand"]:
+        return (
+            "The very next step is to make the current iteration update the window state for the incoming value.",
+            "You already have the loop shell, but the draft still is not recording that the window actually grew.",
+            keep,
+        )
+
+    if not progress["has_shrink_loop"]:
+        if stage == "very-late":
+            next_step = (
+                "The very next step is to add `while len(count) > k:` after the expand step so the window shrinks until it is valid again."
+            )
+        elif stage == "late":
+            next_step = (
+                "The very next step is to add the shrink loop that restores the window invariant after an expand step."
+            )
+        else:
+            next_step = (
+                "The very next step is to add the control flow that brings the window back to a valid state when it drifts."
+            )
+        why = (
+            "You already have the expand step in place. What is missing is the repair step that makes the window trustworthy before you use it."
+        )
+        return next_step, why, keep
+
+    if not progress["has_shrink_update"] or not progress["has_left_move"]:
+        if stage == "very-late":
+            next_step = (
+                "The very next step is to make the shrink loop update the left side of the window by adjusting the stored counts and moving `left`."
+            )
+        elif stage == "late":
+            next_step = (
+                "The very next step is to make the shrink loop actually change the left side of the window state."
+            )
+        else:
+            next_step = (
+                "The very next step is to connect the shrink loop to the pieces of state that represent the left edge of the window."
+            )
+        why = (
+            "Right now the draft knows when the window is invalid, but it does not yet know how to repair that invalid state."
+        )
+        return next_step, why, keep
+
+    if not progress["has_cleanup"]:
+        return (
+            "The very next step is to make the bookkeeping forget values that are no longer in the window.",
+            "Without cleanup, the data structure can stop matching the real contents of the window even if the pointers move correctly.",
+            "For count-based sliding windows, the bookkeeping should always describe the current window and nothing else.",
+        )
+
+    if not progress["has_score"]:
+        return (
+            "The very next step is to add the line that scores or records the current window once it is valid.",
+            "You already have expand and repair. The draft now needs the line that turns a valid window into an answer candidate.",
+            "Only score the window after the validity rule has been restored.",
+        )
+
+    return (
+        "The very next step is to check that each loop iteration follows one clean rhythm instead of mixing expand, repair, and scoring out of order.",
+        "The core pieces are present, so the biggest risk now is breaking the order that keeps the invariant true.",
+        keep,
+    )
+
+
+def _two_pointer_guidance(lines: list[str], stage: str) -> tuple[str, str, str]:
+    progress = _two_pointer_progress(lines)
+    keep = "With two pointers, each comparison should justify moving exactly one side of the search."
+
+    if not progress["has_pair_value"]:
+        return (
+            "The very next step is to compute or name the value formed by the current left and right pointers.",
+            "Until the draft makes the current pair explicit, there is nothing concrete to compare or react to.",
+            keep,
+        )
+
+    if not progress["has_compare"]:
+        return (
+            "The very next step is to compare the current pair against the target condition.",
+            "You already know what the pointers are looking at. The missing piece is the rule that decides whether the current pair is too small, too large, or done.",
+            keep,
+        )
+
+    if not progress["has_left_move"] or not progress["has_right_move"]:
+        next_step = (
+            "The very next step is to connect each comparison outcome to the pointer movement that improves the search."
+            if stage in ("early", "mid")
+            else "The very next step is to finish the comparison branches so one branch moves `left` and the other moves `right`."
+        )
+        why = (
+            "The comparison is on the page, but the algorithm still needs the movement rule that turns that comparison into progress."
+        )
+        return next_step, why, keep
+
+    if not progress["has_success_path"]:
+        return (
+            "The very next step is to add the success path for the case where the current pair satisfies the condition.",
+            "The movement logic is there, but the draft still needs a clear exit when the answer is found.",
+            keep,
+        )
+
+    return (
+        "The very next step is to verify that every pointer movement preserves the meaning of the search.",
+        "The structure is mostly there, so correctness now depends on whether each branch moves the side that can actually improve the comparison.",
+        keep,
+    )
+
+
+def _binary_search_guidance(lines: list[str], stage: str) -> tuple[str, str, str]:
+    progress = _binary_search_progress(lines)
+    keep = "In binary search, protect the interval invariant first and let every bound update follow from that meaning."
+
+    if not progress["has_mid"]:
+        return (
+            "The very next step is to compute the middle of the current search interval.",
+            "The loop exists, but without a middle element the search cannot decide which half is impossible.",
+            keep,
+        )
+
+    if not progress["has_compare"]:
+        return (
+            "The very next step is to compare the middle value to the target condition.",
+            "You have the interval and the midpoint. The missing piece is the comparison that tells the search which half can be discarded.",
+            keep,
+        )
+
+    if not progress["has_left_update"] or not progress["has_right_update"]:
+        next_step = (
+            "The very next step is to turn the comparison into a bound update that discards the impossible half."
+            if stage in ("early", "mid")
+            else "The very next step is to finish the comparison branches so one branch updates `left` and the other updates `right` according to the interval meaning."
+        )
+        why = (
+            "The search can now inspect the midpoint, but it still is not shrinking the interval in a principled way."
+        )
+        return next_step, why, keep
+
+    if not progress["has_return"]:
+        return (
+            "The very next step is to add the return that matches what the final interval means.",
+            "Once the interval logic is done, the function still needs a clear way to turn that invariant into an answer.",
+            keep,
+        )
+
+    return (
+        "The very next step is to sanity-check that each bound update matches the interval invariant you intended.",
+        "Binary search often looks complete before it is correct, so the remaining work is making sure the bound semantics and return value agree.",
+        keep,
+    )
+
+
+def _graph_keep_in_mind(traversal_kind: str, has_guard: bool) -> str:
+    if traversal_kind == "dfs":
+        return "In DFS, decide when a node becomes visited and apply that rule before exploring neighbors."
+    if traversal_kind in ("bfs", "queue"):
+        return "In BFS, every queued item should already be valid, and unseen neighbors should enter the frontier exactly once."
+    if has_guard:
+        return "For graph code, keep three things stable: representation, visited rule, and how neighbors enter the frontier."
+    return "For graph code, the visited rule is what keeps the traversal from becoming ambiguous."
+
+
+def _live_primary_focus(pattern_tag: str, is_graph_question: bool, has_loop: bool) -> str:
+    if is_graph_question:
+        return "Clarify the graph traversal structure."
+    if pattern_tag == "sliding-window":
+        return "Advance the sliding-window invariant."
+    if pattern_tag == "two-pointers":
+        return "Connect the pointer logic to the comparison."
+    if pattern_tag == "binary-search":
+        return "Protect the search interval invariant."
+    if not has_loop:
+        return "Start the control flow that moves the algorithm."
+    return "Advance the current structure one clear step."
+
+
 def _heuristic_live_feedback(
     body: CoachAttemptFeedbackRequest, history_summary: dict[str, Any]
 ) -> dict[str, Any]:
+    actual_lines = _normalize_code(body.userAnswer)
     is_graph_question = any(
         tag in body.skillTags for tag in ("graph", "dfs-bfs", "graph-traversal", "union-find")
     )
@@ -786,6 +1017,7 @@ def _heuristic_live_feedback(
     diagnosis = ""
     primary_focus = ""
     immediate = ""
+    keep_in_mind = ""
 
     if not has_signature:
         diagnosis = (
@@ -794,6 +1026,7 @@ def _heuristic_live_feedback(
         )
         primary_focus = "Anchor the solution first."
         immediate = "The very next step is to type the function signature and name the inputs you will reason about."
+        keep_in_mind = "A clear entry point gives every later line a stable job."
         error_tags.append("opening-anchor")
     elif is_graph_question and not has_bookkeeping:
         diagnosis = (
@@ -805,6 +1038,7 @@ def _heuristic_live_feedback(
             "The very next step is to add the visited/frontier state right under the signature so each later line "
             "has something real to work with."
         )
+        keep_in_mind = _graph_keep_in_mind(traversal_kind, has_guard)
         error_tags.append("state-setup")
     elif is_graph_question and not traversal_kind:
         diagnosis = (
@@ -812,6 +1046,7 @@ def _heuristic_live_feedback(
         )
         primary_focus = "Choose the traversal before writing more logic."
         immediate = "The very next step is to commit to DFS or BFS and write the line that creates that frontier."
+        keep_in_mind = _graph_keep_in_mind(traversal_kind, has_guard)
         error_tags.append("traversal-choice")
     elif has_placeholder:
         diagnosis = (
@@ -821,6 +1056,7 @@ def _heuristic_live_feedback(
         immediate = (
             "The very next step is to replace the placeholder with the real update that makes the invariant move forward."
         )
+        keep_in_mind = _pattern_principle(body.skillTags)
         error_tags.append("placeholder")
     elif is_graph_question and not has_guard:
         diagnosis = (
@@ -830,20 +1066,33 @@ def _heuristic_live_feedback(
         immediate = (
             "The very next step is to add the guard that skips invalid or already-seen states before you explore neighbors."
         )
+        keep_in_mind = _graph_keep_in_mind(traversal_kind, has_guard)
         error_tags.append("guard")
-    elif not has_loop and (traversal_kind or not is_graph_question):
-        diagnosis = (
-            "You have enough setup now. What is missing is the line of control flow that actually advances the solution."
-        )
-        primary_focus = "Start the main control flow."
-        immediate = _live_next_step_for_pattern(pattern_tag, stage, has_loop)
-        error_tags.append("control-flow")
     else:
-        diagnosis = (
-            "This is a real draft now. It does not need a big rewrite; it needs one more concrete structural line."
-        )
-        primary_focus = "Keep the next move small and structural."
-        immediate = _live_next_step_for_pattern(pattern_tag, stage, has_loop)
+        if pattern_tag == "sliding-window":
+            immediate, diagnosis, keep_in_mind = _sliding_window_guidance(actual_lines, stage)
+        elif pattern_tag == "two-pointers":
+            immediate, diagnosis, keep_in_mind = _two_pointer_guidance(actual_lines, stage)
+        elif pattern_tag == "binary-search":
+            immediate, diagnosis, keep_in_mind = _binary_search_guidance(actual_lines, stage)
+        elif not has_loop and (traversal_kind or not is_graph_question):
+            diagnosis = (
+                "You have enough setup now. What is missing is the line of control flow that actually advances the solution."
+            )
+            primary_focus = "Start the main control flow."
+            immediate = _live_next_step_for_pattern(pattern_tag, stage, has_loop)
+            keep_in_mind = _pattern_principle(body.skillTags)
+            error_tags.append("control-flow")
+        else:
+            diagnosis = (
+                "This is a real draft now. It does not need a big rewrite; it needs one more concrete structural line."
+            )
+            primary_focus = "Keep the next move small and structural."
+            immediate = _live_next_step_for_pattern(pattern_tag, stage, has_loop)
+            keep_in_mind = _pattern_principle(body.skillTags)
+
+        if not primary_focus:
+            primary_focus = _live_primary_focus(pattern_tag, is_graph_question, has_loop)
 
     if history_summary["attemptCount"] > 0 and history_summary["weakestTag"]:
         diagnosis += f" This pattern has drifted before on `{history_summary['weakestTag']}`, so keep the next move deliberately small."
@@ -859,10 +1108,11 @@ def _heuristic_live_feedback(
     micro_drill = "Write just that next line, then stop and ask what state it changes."
     next_target = "After that line, the code should read more like a real algorithm than a blank template."
 
-    return {
+    return _truncate_live_feedback_fields({
         "diagnosis": diagnosis,
         "primaryFocus": primary_focus,
         "immediateCorrection": immediate,
+        "keepInMind": keep_in_mind,
         "microDrill": micro_drill,
         "nextRepTarget": next_target,
         "strengths": strengths[:3],
@@ -877,7 +1127,7 @@ def _heuristic_live_feedback(
             "history_summary": history_summary,
             "draft_milestones": body.draftMilestones,
         },
-    }
+    })
 
 
 def _heuristic_attempt_feedback(
@@ -1022,6 +1272,7 @@ def _heuristic_attempt_feedback(
         "diagnosis": diagnosis,
         "primaryFocus": primary_focus,
         "immediateCorrection": immediate,
+        "keepInMind": principle,
         "microDrill": micro_drill,
         "nextRepTarget": next_target,
         "strengths": strengths[:3],
@@ -1289,10 +1540,11 @@ async def _attempt_feedback_with_optional_llm(
 
     system_prompt = (
         "You are a live coding coach watching a draft in progress. Return strict JSON with keys: "
-        "diagnosis, primaryFocus, immediateCorrection, microDrill, nextRepTarget, strengths, errorTags. "
+        "diagnosis, primaryFocus, immediateCorrection, keepInMind, microDrill, nextRepTarget, strengths, errorTags. "
         "Be concise, human, and specific about the very next step. Do not give full solutions, code skeletons, or line-by-line rewrites. "
         "Prefer advice that generalizes to this approach and would still feel like a helpful pair-programmer. "
         "Make immediateCorrection a single concrete next move that begins with 'The very next step is to...'. "
+        "Every live-feedback string field must be 30 words or fewer. "
         "If the user is in the early stage, keep the advice true for most valid approaches and avoid revealing hidden conditions or exact next lines. "
         "In the mid stage, you may mention the kind of control flow or invariant to add, but still avoid giving the literal answer. "
         "In the late stage, you may be more concrete about the next structure or comparison. "
@@ -1309,6 +1561,8 @@ async def _attempt_feedback_with_optional_llm(
         "strengths",
         "errorTags",
     ]
+    if body.draftMode:
+        response_shape.append("keepInMind")
     if not body.draftMode:
         response_shape.extend(["fullFeedback", "correctedVersion"])
 
@@ -1378,6 +1632,8 @@ async def _attempt_feedback_with_optional_llm(
         return heuristic
 
     required = ["diagnosis", "primaryFocus", "immediateCorrection", "microDrill", "nextRepTarget"]
+    if body.draftMode:
+        required.append("keepInMind")
     if not body.draftMode:
         required.append("fullFeedback")
     if any(key not in llm_response for key in required):
@@ -1386,11 +1642,12 @@ async def _attempt_feedback_with_optional_llm(
     corrected_version = str(llm_response.get("correctedVersion", heuristic.get("correctedVersion", ""))).strip()
     corrected_version = corrected_version.removeprefix("```python").removeprefix("```").removesuffix("```").strip()
 
-    return {
+    response = {
         **heuristic,
         "diagnosis": str(llm_response.get("diagnosis", heuristic["diagnosis"])),
         "primaryFocus": str(llm_response.get("primaryFocus", heuristic["primaryFocus"])),
         "immediateCorrection": str(llm_response.get("immediateCorrection", heuristic["immediateCorrection"])),
+        "keepInMind": str(llm_response.get("keepInMind", heuristic.get("keepInMind", ""))),
         "microDrill": str(llm_response.get("microDrill", heuristic["microDrill"])),
         "nextRepTarget": str(llm_response.get("nextRepTarget", heuristic["nextRepTarget"])),
         "strengths": [str(x) for x in llm_response.get("strengths", heuristic["strengths"])][:3],
@@ -1399,6 +1656,9 @@ async def _attempt_feedback_with_optional_llm(
         "correctedVersion": corrected_version or str(heuristic.get("correctedVersion", "")),
         "llmUsed": True,
     }
+    if body.draftMode:
+        return _truncate_live_feedback_fields(response)
+    return response
 
 
 async def _session_plan_with_optional_llm(
