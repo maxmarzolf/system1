@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import builtins
+import difflib
 import json
+import keyword
 import re
 import urllib.error
 import urllib.request
@@ -15,6 +18,8 @@ from fastapi import APIRouter
 from app.config import settings
 from app.database import get_pool
 from app.models import (
+    CoachAttemptEvaluationRequest,
+    CoachAttemptEvaluationResponse,
     CoachAttemptFeedbackRequest,
     CoachAttemptFeedbackResponse,
     CoachPracticeHistoryRequest,
@@ -27,6 +32,23 @@ from app.models import (
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])
 
+LIVE_STAGE_ORDER = {"early": 0, "mid": 1, "late": 2, "very-late": 3}
+PYTHON_BUILTIN_NAMES = set(dir(builtins))
+PYTHON_KEYWORDS = set(keyword.kwlist)
+LIVE_TUNING_DEFAULTS: dict[str, Any] = {
+    "focusMode": "memorization",
+    "tone": "calm",
+    "singleIssue": True,
+    "showPatternNames": False,
+    "specificitySource": "time-and-quality",
+    "allowExactEditsWhenStuck": True,
+    "canonicalAnswerStage": "late",
+    "affirmationMode": "stable-only",
+    "driftThresholdAttempts": 3,
+    "drillDownEnabled": True,
+    "stallThresholdSeconds": 40,
+}
+
 
 def _normalize_code(code: str) -> str:
     return (
@@ -37,6 +59,171 @@ def _normalize_code(code: str) -> str:
 
 def _trim_line(line: str) -> str:
     return line.rstrip()
+
+
+class _IdentifierCanonicalizer(ast.NodeTransformer):
+    def __init__(self):
+        self._scopes: list[dict[str, str]] = [{}]
+        self._counters = {"func": 0, "var": 0}
+
+    def _push_scope(self):
+        self._scopes.append({})
+
+    def _pop_scope(self):
+        self._scopes.pop()
+
+    def _lookup(self, name: str) -> str | None:
+        for scope in reversed(self._scopes):
+            if name in scope:
+                return scope[name]
+        return None
+
+    def _bind(self, name: str, kind: str = "var") -> str:
+        existing = self._scopes[-1].get(name)
+        if existing:
+            return existing
+        self._counters[kind] += 1
+        placeholder = f"{kind}_{self._counters[kind]}"
+        self._scopes[-1][name] = placeholder
+        return placeholder
+
+    def visit_FunctionDef(self, node: ast.FunctionDef):
+        node.name = self._bind(node.name, "func")
+        node.decorator_list = [self.visit(item) for item in node.decorator_list]
+        if node.returns:
+            node.returns = self.visit(node.returns)
+        self._push_scope()
+        node.args = self.visit(node.args)
+        node.body = [self.visit(statement) for statement in node.body]
+        self._pop_scope()
+        return node
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
+        node.name = self._bind(node.name, "func")
+        node.decorator_list = [self.visit(item) for item in node.decorator_list]
+        if node.returns:
+            node.returns = self.visit(node.returns)
+        self._push_scope()
+        node.args = self.visit(node.args)
+        node.body = [self.visit(statement) for statement in node.body]
+        self._pop_scope()
+        return node
+
+    def visit_Lambda(self, node: ast.Lambda):
+        self._push_scope()
+        node.args = self.visit(node.args)
+        node.body = self.visit(node.body)
+        self._pop_scope()
+        return node
+
+    def visit_arg(self, node: ast.arg):
+        node.arg = self._bind(node.arg, "var")
+        return node
+
+    def visit_Name(self, node: ast.Name):
+        if isinstance(node.ctx, (ast.Store, ast.Del)):
+            node.id = self._bind(node.id, "var")
+            return node
+
+        existing = self._lookup(node.id)
+        if existing:
+            node.id = existing
+            return node
+
+        if node.id in PYTHON_KEYWORDS or node.id in PYTHON_BUILTIN_NAMES:
+            return node
+
+        return node
+
+
+def _canonicalize_identifier_names(code: str) -> str | None:
+    try:
+        parsed = ast.parse(code if code.endswith("\n") else f"{code}\n")
+    except SyntaxError:
+        return None
+
+    canonicalizer = _IdentifierCanonicalizer()
+    canonical_tree = canonicalizer.visit(parsed)
+    ast.fix_missing_locations(canonical_tree)
+    return ast.dump(canonical_tree, annotate_fields=True, include_attributes=False)
+
+
+def _evaluate_attempt_soundness(expected_answer: str, user_answer: str) -> dict[str, Any]:
+    normalized_expected = expected_answer.strip()
+    normalized_user = user_answer.strip()
+    syntax_valid = not _has_syntax_error(user_answer) if normalized_user else False
+    expected_ast = _canonicalize_identifier_names(normalized_expected)
+    user_ast = _canonicalize_identifier_names(normalized_user) if syntax_valid else None
+
+    if not normalized_user:
+        return {"accuracy": 0.0, "sound": False, "syntaxValid": False}
+
+    if expected_ast and user_ast and expected_ast == user_ast:
+        return {"accuracy": 100.0, "sound": True, "syntaxValid": True}
+
+    similarity = difflib.SequenceMatcher(a=expected_ast or normalized_expected, b=user_ast or normalized_user).ratio()
+    return {
+        "accuracy": round(similarity * 100, 1),
+        "sound": False,
+        "syntaxValid": syntax_valid,
+    }
+
+
+def _live_stage_rank(stage: str) -> int:
+    return LIVE_STAGE_ORDER.get(stage, 0)
+
+
+def _live_stage_from_rank(rank: int) -> str:
+    normalized = max(0, min(rank, max(LIVE_STAGE_ORDER.values())))
+    for stage, stage_rank in LIVE_STAGE_ORDER.items():
+        if stage_rank == normalized:
+            return stage
+    return "early"
+
+
+def _merged_live_tuning(body: CoachAttemptFeedbackRequest) -> dict[str, Any]:
+    raw = body.liveCoachTuning if isinstance(body.liveCoachTuning, dict) else {}
+    tuning = {**LIVE_TUNING_DEFAULTS}
+
+    tuning["focusMode"] = str(raw.get("focusMode", tuning["focusMode"])).strip() or tuning["focusMode"]
+    tuning["tone"] = str(raw.get("tone", tuning["tone"])).strip() or tuning["tone"]
+    tuning["singleIssue"] = bool(raw.get("singleIssue", tuning["singleIssue"]))
+    tuning["showPatternNames"] = bool(raw.get("showPatternNames", tuning["showPatternNames"]))
+    specificity = str(raw.get("specificitySource", tuning["specificitySource"])).strip()
+    tuning["specificitySource"] = specificity or tuning["specificitySource"]
+    tuning["allowExactEditsWhenStuck"] = bool(
+        raw.get("allowExactEditsWhenStuck", tuning["allowExactEditsWhenStuck"])
+    )
+    canonical_stage = str(raw.get("canonicalAnswerStage", tuning["canonicalAnswerStage"])).strip()
+    tuning["canonicalAnswerStage"] = (
+        canonical_stage if canonical_stage in LIVE_STAGE_ORDER else tuning["canonicalAnswerStage"]
+    )
+    affirmation_mode = str(raw.get("affirmationMode", tuning["affirmationMode"])).strip()
+    tuning["affirmationMode"] = affirmation_mode or tuning["affirmationMode"]
+    try:
+        tuning["driftThresholdAttempts"] = max(1, int(raw.get("driftThresholdAttempts", tuning["driftThresholdAttempts"])))
+    except (TypeError, ValueError):
+        pass
+    tuning["drillDownEnabled"] = bool(raw.get("drillDownEnabled", tuning["drillDownEnabled"]))
+    try:
+        tuning["stallThresholdSeconds"] = max(15, int(raw.get("stallThresholdSeconds", tuning["stallThresholdSeconds"])))
+    except (TypeError, ValueError):
+        pass
+    return tuning
+
+
+def _ignored_drill_down_key(body: CoachAttemptFeedbackRequest) -> str:
+    context = body.liveCoachContext if isinstance(body.liveCoachContext, dict) else {}
+    return str(context.get("ignoredDrillDownKey", "")).strip()
+
+
+def _completed_drill_down_key(body: CoachAttemptFeedbackRequest) -> str:
+    context = body.liveCoachContext if isinstance(body.liveCoachContext, dict) else {}
+    return str(context.get("completedDrillDownKey", "")).strip()
+
+
+def _stage_at_least(stage: str, minimum_stage: str) -> bool:
+    return _live_stage_rank(stage) >= _live_stage_rank(minimum_stage)
 
 
 def _line_similarity(expected: str, actual: str) -> float:
@@ -486,6 +673,36 @@ async def _load_practice_history(
     return history
 
 
+async def _load_live_feedback_history(interaction_id: str | None, limit: int = 16) -> list[dict[str, Any]]:
+    if not interaction_id:
+        return []
+
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT feedback, elapsed_ms AS "elapsedMs", created_at
+            FROM coach_feedback_events
+            WHERE interaction_id = $1
+              AND feedback_stage = 'live'
+            ORDER BY created_at ASC
+            LIMIT $2
+            """,
+            interaction_id,
+            limit,
+        )
+
+    history: list[dict[str, Any]] = []
+    for row in rows:
+        feedback = _parse_json_field(row["feedback"], {})
+        history.append({
+            "elapsedMs": int(row["elapsedMs"] or 0),
+            "feedback": feedback,
+            "createdAt": row["created_at"].isoformat() if row["created_at"] else "",
+        })
+    return history
+
+
 def _summarize_attempt_history(history: list[dict[str, Any]]) -> dict[str, Any]:
     if not history:
         return {
@@ -531,6 +748,34 @@ def _summarize_attempt_history(history: list[dict[str, Any]]) -> dict[str, Any]:
         "recentPrimaryFocuses": primary_focuses[:3],
         "recentQuestions": recent_questions[:3],
     }
+
+
+def _consecutive_blocker_duration_ms(
+    live_history: list[dict[str, Any]], blocker_key: str, current_elapsed_ms: int
+) -> int:
+    if not blocker_key or not live_history:
+        return 0
+
+    matching_elapsed_ms: list[int] = []
+    for item in reversed(live_history):
+        feedback = item.get("feedback", {})
+        signals = feedback.get("signals", {}) if isinstance(feedback, dict) else {}
+        history_key = str(signals.get("live_blocker_key", "")).strip()
+        if history_key != blocker_key:
+            break
+        matching_elapsed_ms.append(int(item.get("elapsedMs", 0) or 0))
+
+    if not matching_elapsed_ms:
+        return 0
+
+    oldest_elapsed_ms = min(matching_elapsed_ms)
+    return max(0, current_elapsed_ms - oldest_elapsed_ms)
+
+
+def _should_mention_repeated_drift(history_summary: dict[str, Any], tuning: dict[str, Any]) -> bool:
+    attempt_count = int(history_summary.get("attemptCount", 0) or 0)
+    weakest_tag = str(history_summary.get("weakestTag", "")).strip()
+    return bool(weakest_tag) and attempt_count >= int(tuning["driftThresholdAttempts"])
 
 
 def _summarize_skill_map_progress(
@@ -665,11 +910,24 @@ def _limit_words(text: str, limit: int = 30) -> str:
 
 def _truncate_live_feedback_fields(feedback: dict[str, Any]) -> dict[str, Any]:
     limited = {**feedback}
-    for key in ("diagnosis", "primaryFocus", "immediateCorrection", "keepInMind", "microDrill", "nextRepTarget"):
+    for key in (
+        "diagnosis",
+        "primaryFocus",
+        "immediateCorrection",
+        "keepInMind",
+        "microDrill",
+        "nextRepTarget",
+        "affirmation",
+        "nextMove",
+        "why",
+        "drillDownTitle",
+        "drillDownPrompt",
+    ):
         if key in limited:
-            limited[key] = _limit_words(str(limited.get(key, "")), 30)
+            word_limit = 24 if key == "drillDownPrompt" else 20
+            limited[key] = _limit_words(str(limited.get(key, "")), word_limit)
     if "strengths" in limited and isinstance(limited["strengths"], list):
-        limited["strengths"] = [_limit_words(str(item), 30) for item in limited["strengths"][:3]]
+        limited["strengths"] = [_limit_words(str(item), 20) for item in limited["strengths"][:3]]
     return limited
 
 
@@ -818,70 +1076,80 @@ def _binary_search_progress(lines: list[str]) -> dict[str, bool]:
     }
 
 
+def _dp_progress(lines: list[str]) -> dict[str, bool]:
+    return {
+        "has_state_array": _has_line(lines, r"\bdp\s*=\s*\[") or _has_line(lines, r"\bdp\s*=\s*list\("),
+        "has_base_case": _has_line(lines, r"\bdp\[[^\]]+\]\s*=") or _has_line(lines, r"^\s*if\s+not\s+"),
+        "has_loop": _has_line(lines, r"^\s*(for|while)\b"),
+        "has_transition": _has_line(lines, r"\bdp\[[^\]]+\]\s*=.*dp\[[^\]]+\]"),
+        "has_return": _has_line(lines, r"^\s*return\b"),
+    }
+
+
 def _sliding_window_guidance(lines: list[str], stage: str) -> tuple[str, str, str]:
     progress = _sliding_window_progress(lines)
-    keep = "In sliding window, the rhythm is always expand, restore validity, then score the now-valid window."
+    keep = "Sliding window rhythm: expand, restore validity, then score."
 
     if not progress["has_expand"]:
         return (
-            "The very next step is to make the current iteration update the window state for the incoming value.",
-            "You already have the loop shell, but the draft still is not recording that the window actually grew.",
+            "Add the outer traversal over `right` so each step adds the incoming value to `counts`.",
+            "The window doesn't expand or shrink yet; it only sets up state.",
             keep,
         )
 
     if not progress["has_shrink_loop"]:
         if stage == "very-late":
             next_step = (
-                "The very next step is to add `while len(count) > k:` after the expand step so the window shrinks until it is valid again."
+                "Add `while len(counts) > k:` after expanding so the window shrinks back to valid."
             )
         elif stage == "late":
             next_step = (
-                "The very next step is to add the shrink loop that restores the window invariant after an expand step."
+                "Add the shrink loop after expanding so the window becomes valid again."
             )
         else:
             next_step = (
-                "The very next step is to add the control flow that brings the window back to a valid state when it drifts."
+                "Add control flow that restores the window invariant after each expand."
             )
         why = (
-            "You already have the expand step in place. What is missing is the repair step that makes the window trustworthy before you use it."
+            "The window expands, but nothing repairs it before scoring."
         )
         return next_step, why, keep
 
     if not progress["has_shrink_update"] or not progress["has_left_move"]:
         if stage == "very-late":
             next_step = (
-                "The very next step is to make the shrink loop update the left side of the window by adjusting the stored counts and moving `left`."
+                "Update counts for `nums[left]` and move `left` inside the shrink loop."
             )
         elif stage == "late":
             next_step = (
-                "The very next step is to make the shrink loop actually change the left side of the window state."
+                "Make the shrink loop change the left side of the window."
             )
         else:
             next_step = (
-                "The very next step is to connect the shrink loop to the pieces of state that represent the left edge of the window."
+                "Connect the shrink loop to `counts` and `left`."
             )
         why = (
-            "Right now the draft knows when the window is invalid, but it does not yet know how to repair that invalid state."
+            "The draft notices invalid windows, but it doesn't repair them yet."
         )
         return next_step, why, keep
 
     if not progress["has_cleanup"]:
         return (
-            "The very next step is to make the bookkeeping forget values that are no longer in the window.",
-            "Without cleanup, the data structure can stop matching the real contents of the window even if the pointers move correctly.",
-            "For count-based sliding windows, the bookkeeping should always describe the current window and nothing else.",
+            "Remove values from `counts` when their frequency reaches zero.",
+            "Without cleanup, `counts` can stop matching the actual window.",
+            "Counts should describe only the current window.",
         )
 
     if not progress["has_score"]:
         return (
-            "The very next step is to add the line that scores or records the current window once it is valid.",
-            "You already have expand and repair. The draft now needs the line that turns a valid window into an answer candidate.",
-            "Only score the window after the validity rule has been restored.",
+            "Update `best` after the window is valid.",
+            "The window now moves correctly, but nothing records an answer.",
+            "Score only after restoring validity.",
         )
 
     return (
-        "The very next step is to check that each loop iteration follows one clean rhythm instead of mixing expand, repair, and scoring out of order.",
-        "The core pieces are present, so the biggest risk now is breaking the order that keeps the invariant true.",
+        "Keep each iteration ordered: expand, repair, then score.",
+        "The pieces are there; preserving that order keeps the invariant true.",
         keep,
     )
 
@@ -972,6 +1240,56 @@ def _binary_search_guidance(lines: list[str], stage: str) -> tuple[str, str, str
     )
 
 
+def _dp_guidance(lines: list[str], stage: str) -> tuple[str, str, str]:
+    progress = _dp_progress(lines)
+    keep = "For DP recall, lock down the state meaning first, then let each update read from that meaning."
+
+    if not progress["has_state_array"]:
+        next_step = (
+            "Define the DP state array before you write more control flow."
+            if stage in ("early", "mid")
+            else "Instantiate the DP state array so the rest of the draft has real state to update."
+        )
+        why = "The draft has structure, but the state container is not on the page yet."
+        return next_step, why, keep
+
+    if not progress["has_base_case"]:
+        return (
+            "Add the base case that gives the DP array its first true value.",
+            "The state array exists, but nothing anchors what its entries mean yet.",
+            keep,
+        )
+
+    if not progress["has_loop"]:
+        return (
+            "Add the traversal that fills the state from the base case outward.",
+            "The state meaning is starting to settle, but the draft has no update path yet.",
+            keep,
+        )
+
+    if not progress["has_transition"]:
+        next_step = (
+            "Write the transition that computes one DP entry from earlier state."
+            if stage in ("early", "mid")
+            else "Make the loop update each DP entry from the prior state it depends on."
+        )
+        why = "The scaffold is there, but the recurrence has not become a concrete update yet."
+        return next_step, why, keep
+
+    if not progress["has_return"]:
+        return (
+            "Add the return that reads the answer from the DP state you built.",
+            "The recurrence is taking shape, but the function still needs to expose the final state.",
+            keep,
+        )
+
+    return (
+        "Keep each DP line tied to the state meaning you chose.",
+        "The structure is taking shape, so the main risk now is losing the state definition as the loop grows.",
+        keep,
+    )
+
+
 def _graph_keep_in_mind(traversal_kind: str, has_guard: bool) -> str:
     if traversal_kind == "dfs":
         return "In DFS, decide when a node becomes visited and apply that rule before exploring neighbors."
@@ -980,6 +1298,240 @@ def _graph_keep_in_mind(traversal_kind: str, has_guard: bool) -> str:
     if has_guard:
         return "For graph code, keep three things stable: representation, visited rule, and how neighbors enter the frontier."
     return "For graph code, the visited rule is what keeps the traversal from becoming ambiguous."
+
+
+def _stable_live_affirmation(
+    pattern_tag: str,
+    is_graph_question: bool,
+    has_signature: bool,
+    has_bookkeeping: bool,
+    has_loop: bool,
+    lines: list[str],
+    tuning: dict[str, Any],
+) -> str:
+    if tuning["affirmationMode"] == "never":
+        return ""
+
+    if is_graph_question:
+        if has_bookkeeping and has_loop:
+            return "Your graph state and traversal shell are a common setup."
+        if has_bookkeeping:
+            return "Your graph state variables are on the page and are a common approach."
+        if has_signature:
+            return "Your graph entry point is on the page and is ready for traversal logic."
+        return ""
+
+    if pattern_tag == "sliding-window":
+        progress = _sliding_window_progress(lines)
+        if progress["has_expand"] and progress["has_shrink_loop"]:
+            return "Your outer traversal and repair step are a common setup."
+        if progress["has_expand"]:
+            return "Your outer traversal is on the page and is a common approach."
+    elif pattern_tag == "two-pointers":
+        progress = _two_pointer_progress(lines)
+        if progress["has_pair_value"] and progress["has_compare"]:
+            return "Your pointer setup and comparison rule are a common approach."
+        if progress["has_pair_value"]:
+            return "Your pointer setup is on the page and is a common approach."
+    elif pattern_tag == "binary-search":
+        progress = _binary_search_progress(lines)
+        if progress["has_mid"] and progress["has_compare"]:
+            return "Your interval and midpoint structure are a common approach."
+    elif pattern_tag in ("dynamic-programming", "dp"):
+        progress = _dp_progress(lines)
+        if progress["has_state_array"] and progress["has_loop"]:
+            return "Your state array and outer traversal are a common approach."
+        if progress["has_state_array"]:
+            return "Your state variables are on the page and are a common approach."
+
+    if has_signature and has_loop:
+        return "Your outer structure is on the page and is a workable start."
+    if has_signature:
+        return "Your entry point is on the page and is ready for the next move."
+    return ""
+
+
+def _live_drill_down_details(blocker_key: str, pattern_tag: str) -> dict[str, str]:
+    mapping = {
+        "dp-state-array": {
+            "title": "Focus Drill: DP State Setup",
+            "prompt": "Focus on defining the state array first.",
+            "question": "Write a one-dimensional DP array initialization for length n.",
+            "target": "dp = [0] * n",
+            "hint": "Keep it to the state container only.",
+        },
+        "dp-base-case": {
+            "title": "Focus Drill: DP Base Case",
+            "prompt": "Focus on writing the first state value before you grow the table.",
+            "question": "Write the base-case assignment for the first DP entry.",
+            "target": "dp[0] = 1",
+            "hint": "Anchor exactly one state value.",
+        },
+        "dp-transition": {
+            "title": "Focus Drill: DP Transition",
+            "prompt": "Focus on one DP update before you rebuild the whole recurrence.",
+            "question": "Write one DP transition that updates the current state from earlier state.",
+            "target": "dp[i] = dp[i - 1] + value",
+            "hint": "Use the current slot and one earlier slot.",
+        },
+        "window-expand": {
+            "title": "Focus Drill: Window Traversal",
+            "prompt": "Focus on making the outer window traversal real before changing the inner logic.",
+            "question": "Write the outer traversal for a sliding window over nums.",
+            "target": "for right, value in enumerate(nums):",
+            "hint": "Make the traversal name both the index and the incoming value.",
+        },
+        "window-shrink-loop": {
+            "title": "Focus Drill: Window Repair",
+            "prompt": "Focus on restoring validity after each expand step before you score the window.",
+            "question": "Write the shrink-loop header that restores window validity.",
+            "target": "while len(counts) > k:",
+            "hint": "This drill is only the repair condition.",
+        },
+        "window-shrink-update": {
+            "title": "Focus Drill: Left-Side Repair",
+            "prompt": "Focus on making the shrink step change the left side of the window.",
+            "question": "Write the left-side repair step for the shrink loop.",
+            "target": "counts[nums[left]] -= 1\nif counts[nums[left]] == 0:\n    del counts[nums[left]]\nleft += 1",
+            "hint": "Update the count, clean up zeroes, then move left.",
+        },
+        "window-score": {
+            "title": "Focus Drill: Window Scoring",
+            "prompt": "Focus on recording the answer only after the window is valid.",
+            "question": "Write the scoring line for the valid window.",
+            "target": "best = max(best, right - left + 1)",
+            "hint": "Score the current valid span.",
+        },
+        "graph-bookkeeping": {
+            "title": "Focus Drill: Graph State Setup",
+            "prompt": "Focus on making the visited or frontier state explicit before adding more flow.",
+            "question": "Write the basic frontier and visited setup for graph traversal from start.",
+            "target": "visited = {start}\nqueue = deque([start])",
+            "hint": "Name both the visited state and the initial frontier.",
+        },
+        "graph-traversal-choice": {
+            "title": "Focus Drill: Traversal Choice",
+            "prompt": "Focus on choosing the frontier structure before you code more graph detail.",
+            "question": "Write the line that creates a BFS frontier from start.",
+            "target": "queue = deque([start])",
+            "hint": "Commit to one frontier structure.",
+        },
+        "graph-guard": {
+            "title": "Focus Drill: Graph Guard",
+            "prompt": "Focus on writing the skip rule before exploring neighbors.",
+            "question": "Write the guard that skips an already seen neighbor.",
+            "target": "if nei in visited:\n    continue",
+            "hint": "This drill is only the skip rule.",
+        },
+        "signature": {
+            "title": "Focus Drill: Entry Point",
+            "prompt": "Focus on writing the function signature and naming the state you will track.",
+            "question": "Write a simple Python function signature for the current recall snippet.",
+            "target": "def solve(nums):",
+            "hint": "Keep the signature minimal.",
+        },
+        "placeholder": {
+            "title": "Focus Drill: Real State Update",
+            "prompt": "Focus on replacing the placeholder with the real state update.",
+            "question": "Write one concrete state update instead of a placeholder.",
+            "target": "count[value] = count.get(value, 0) + 1",
+            "hint": "Pick a real update that changes tracked state.",
+        },
+        "control-flow": {
+            "title": "Focus Drill: Main Control Flow",
+            "prompt": "Focus on the loop or recursion that applies the invariant once.",
+            "question": "Write the main traversal loop for a sequence named nums.",
+            "target": "for value in nums:",
+            "hint": "Only write the outer control flow.",
+        },
+        "pointer-movement": {
+            "title": "Focus Drill: Pointer Movement",
+            "prompt": "Focus on the pointer move that improves the comparison.",
+            "question": "Write the branch that moves the left pointer when the pair is too small.",
+            "target": "left += 1",
+            "hint": "This drill is only the improving move.",
+        },
+        "bound-update": {
+            "title": "Focus Drill: Bound Update",
+            "prompt": "Focus on shrinking the binary-search interval with one bound update.",
+            "question": "Write the update that discards the left half after a too-small midpoint.",
+            "target": "left = mid + 1",
+            "hint": "Use one bound update only.",
+        },
+    }
+    details = mapping.get(blocker_key, {})
+    if details:
+        return details
+    if pattern_tag in ("dynamic-programming", "dp"):
+        return {
+            "title": "Focus Drill: DP State",
+            "prompt": "Focus on one DP move at a time until the state meaning feels automatic.",
+            "question": "Write a one-dimensional DP array initialization for length n.",
+            "target": "dp = [0] * n",
+            "hint": "Start by creating the state container.",
+        }
+    return {
+        "title": "Focus Drill",
+        "prompt": "Focus on one structural move before you add more lines.",
+        "question": "Write one structural line that makes the draft move forward.",
+        "target": "for value in nums:",
+        "hint": "Keep it to one reusable line.",
+    }
+
+
+def _compose_live_feedback(
+    blocker_key: str,
+    primary_focus: str,
+    next_move: str,
+    why: str,
+    keep_in_mind: str,
+    affirmation: str,
+    error_tags: list[str],
+    history_summary: dict[str, Any],
+    tuning: dict[str, Any],
+    stalled: bool,
+    pattern_tag: str,
+    ignored_drill_down_key: str,
+    completed_drill_down_key: str,
+) -> dict[str, Any]:
+    why_text = why.strip()
+    if _should_mention_repeated_drift(history_summary, tuning):
+        weakest_tag = str(history_summary.get("weakestTag", "")).strip()
+        why_text = f"{why_text.rstrip('.')} Recent attempts have drifted on {weakest_tag} too."
+
+    drill_down_active = bool(
+        tuning["drillDownEnabled"]
+        and stalled
+        and blocker_key
+        and blocker_key != ignored_drill_down_key
+        and blocker_key != completed_drill_down_key
+    )
+    drill_down = _live_drill_down_details(blocker_key, pattern_tag) if drill_down_active else {"title": "", "prompt": ""}
+
+    return _truncate_live_feedback_fields({
+        "diagnosis": why_text,
+        "primaryFocus": primary_focus,
+        "immediateCorrection": next_move,
+        "keepInMind": keep_in_mind,
+        "affirmation": affirmation,
+        "nextMove": next_move,
+        "why": why_text,
+        "microDrill": drill_down["prompt"] if drill_down_active else "Repeat just this move once before adding more.",
+        "nextRepTarget": "Keep this move stable on the next rep.",
+        "strengths": [affirmation] if affirmation else [],
+        "errorTags": error_tags[:1] if tuning["singleIssue"] else error_tags[:6],
+        "fullFeedback": "",
+        "correctedVersion": "",
+        "drillDownActive": drill_down_active,
+        "drillDownTitle": drill_down.get("title", ""),
+        "drillDownPrompt": drill_down.get("prompt", ""),
+        "drillDownQuestion": drill_down.get("question", ""),
+        "drillDownTarget": drill_down.get("target", ""),
+        "drillDownHint": drill_down.get("hint", ""),
+        "drillDownKey": blocker_key if drill_down_active else "",
+        "drillDownOverrideLabel": "Ignore this drill-down" if drill_down_active else "",
+        "llmUsed": False,
+    })
 
 
 def _live_primary_focus(pattern_tag: str, is_graph_question: bool, has_loop: bool) -> str:
@@ -997,9 +1549,14 @@ def _live_primary_focus(pattern_tag: str, is_graph_question: bool, has_loop: boo
 
 
 def _heuristic_live_feedback(
-    body: CoachAttemptFeedbackRequest, history_summary: dict[str, Any]
+    body: CoachAttemptFeedbackRequest,
+    history_summary: dict[str, Any],
+    live_history: list[dict[str, Any]],
 ) -> dict[str, Any]:
     actual_lines = _normalize_code(body.userAnswer)
+    tuning = _merged_live_tuning(body)
+    ignored_drill_down_key = _ignored_drill_down_key(body)
+    completed_drill_down_key = _completed_drill_down_key(body)
     is_graph_question = any(
         tag in body.skillTags for tag in ("graph", "dfs-bfs", "graph-traversal", "union-find")
     )
@@ -1009,132 +1566,213 @@ def _heuristic_live_feedback(
     has_placeholder = _draft_flag(body, "hasPlaceholder")
     has_bookkeeping = _draft_flag(body, "hasBookkeeping")
     traversal_kind = str(_draft_value(body, "traversalKind", "")).strip()
-    non_empty_lines = int(_draft_value(body, "nonEmptyLines", 0) or 0)
-    stage = _live_feedback_stage(body.elapsedMs)
+    base_stage = _live_feedback_stage(body.elapsedMs)
     pattern_tag = _primary_pattern_tag(body.skillTags)
 
-    error_tags: list[str] = []
-    diagnosis = ""
+    blocker_key = ""
     primary_focus = ""
-    immediate = ""
+    next_move = ""
+    why = ""
     keep_in_mind = ""
+    error_tags: list[str] = []
 
     if not has_signature:
-        diagnosis = (
-            "You are still at the blank-page stage, which is normal. The draft needs an opening anchor "
-            "before the rest of the solution can settle."
-        )
+        blocker_key = "signature"
         primary_focus = "Anchor the solution first."
-        immediate = "The very next step is to type the function signature and name the inputs you will reason about."
+        next_move = "Write the function signature and name the state you will track."
+        why = "The draft needs an entry point before the algorithm can settle."
         keep_in_mind = "A clear entry point gives every later line a stable job."
         error_tags.append("opening-anchor")
     elif is_graph_question and not has_bookkeeping:
-        diagnosis = (
-            "You have the shell of the solution, but the graph state is still missing, so the traversal has "
-            "nothing concrete to update yet."
-        )
-        primary_focus = "Make the graph bookkeeping explicit before you add more flow."
-        immediate = (
-            "The very next step is to add the visited/frontier state right under the signature so each later line "
-            "has something real to work with."
-        )
+        blocker_key = "graph-bookkeeping"
+        primary_focus = "Make the graph state explicit."
+        next_move = "Put the visited or frontier state on the page before adding more graph flow."
+        why = "The traversal shell is present, but it has no concrete state to update yet."
         keep_in_mind = _graph_keep_in_mind(traversal_kind, has_guard)
         error_tags.append("state-setup")
     elif is_graph_question and not traversal_kind:
-        diagnosis = (
-            "The setup has started, but the draft still has not committed to how nodes move through the graph."
-        )
-        primary_focus = "Choose the traversal before writing more logic."
-        immediate = "The very next step is to commit to DFS or BFS and write the line that creates that frontier."
+        blocker_key = "graph-traversal-choice"
+        primary_focus = "Choose the traversal."
+        next_move = "Commit to one frontier structure before you add more graph detail."
+        why = "The setup has started, but the graph still has no clear movement model."
         keep_in_mind = _graph_keep_in_mind(traversal_kind, has_guard)
         error_tags.append("traversal-choice")
     elif has_placeholder:
-        diagnosis = (
-            "The structure is forming, but a placeholder is still hiding the real algorithmic move."
-        )
-        primary_focus = "Replace the placeholder with the real state change."
-        immediate = (
-            "The very next step is to replace the placeholder with the real update that makes the invariant move forward."
-        )
+        blocker_key = "placeholder"
+        primary_focus = "Replace the placeholder with a real update."
+        next_move = "Replace the placeholder with the real state change for this step."
+        why = "The draft has structure, but one placeholder is still carrying algorithmic work."
         keep_in_mind = _pattern_principle(body.skillTags)
         error_tags.append("placeholder")
     elif is_graph_question and not has_guard:
-        diagnosis = (
-            "The traversal is taking shape, but the stop or skip rule is still implicit, which makes the draft feel slippery."
-        )
-        primary_focus = "Write the fail-fast rule before expanding neighbors."
-        immediate = (
-            "The very next step is to add the guard that skips invalid or already-seen states before you explore neighbors."
-        )
+        blocker_key = "graph-guard"
+        primary_focus = "Write the skip rule."
+        next_move = "Add the guard that decides which states should be skipped before expanding neighbors."
+        why = "The traversal shape is there, but the draft still needs the rule that keeps exploration clean."
         keep_in_mind = _graph_keep_in_mind(traversal_kind, has_guard)
         error_tags.append("guard")
     else:
+        stage_rank = _live_stage_rank(base_stage)
+        if tuning["specificitySource"] == "time-and-quality":
+            quality_penalty = 0
+            if body.accuracy < 35:
+                quality_penalty += 1
+            if not has_loop:
+                quality_penalty += 1
+            if pattern_tag in ("dynamic-programming", "dp") and not _dp_progress(actual_lines)["has_state_array"]:
+                quality_penalty += 1
+            if pattern_tag == "sliding-window" and not _sliding_window_progress(actual_lines)["has_shrink_loop"]:
+                quality_penalty += 1
+            if quality_penalty >= 2:
+                stage_rank += 1
+        stage = _live_stage_from_rank(stage_rank)
+
         if pattern_tag == "sliding-window":
-            immediate, diagnosis, keep_in_mind = _sliding_window_guidance(actual_lines, stage)
+            progress = _sliding_window_progress(actual_lines)
+            next_move, why, keep_in_mind = _sliding_window_guidance(actual_lines, stage)
+            if not progress["has_expand"]:
+                blocker_key = "window-expand"
+                error_tags.append("control-flow")
+            elif not progress["has_shrink_loop"]:
+                blocker_key = "window-shrink-loop"
+                error_tags.append("invariant")
+            elif not progress["has_shrink_update"] or not progress["has_left_move"]:
+                blocker_key = "window-shrink-update"
+                error_tags.append("state-update")
+            elif not progress["has_cleanup"]:
+                blocker_key = "window-cleanup"
+                error_tags.append("state-update")
+            elif not progress["has_score"]:
+                blocker_key = "window-score"
+                error_tags.append("answer-recording")
+            else:
+                blocker_key = "window-order"
+                error_tags.append("invariant")
         elif pattern_tag == "two-pointers":
-            immediate, diagnosis, keep_in_mind = _two_pointer_guidance(actual_lines, stage)
+            progress = _two_pointer_progress(actual_lines)
+            next_move, why, keep_in_mind = _two_pointer_guidance(actual_lines, stage)
+            if not progress["has_pair_value"]:
+                blocker_key = "pair-value"
+                error_tags.append("comparison-setup")
+            elif not progress["has_compare"]:
+                blocker_key = "pair-compare"
+                error_tags.append("comparison")
+            elif not progress["has_left_move"] or not progress["has_right_move"]:
+                blocker_key = "pointer-movement"
+                error_tags.append("pointer-movement")
+            elif not progress["has_success_path"]:
+                blocker_key = "success-path"
+                error_tags.append("return-path")
+            else:
+                blocker_key = "pointer-invariant"
+                error_tags.append("invariant")
         elif pattern_tag == "binary-search":
-            immediate, diagnosis, keep_in_mind = _binary_search_guidance(actual_lines, stage)
+            progress = _binary_search_progress(actual_lines)
+            next_move, why, keep_in_mind = _binary_search_guidance(actual_lines, stage)
+            if not progress["has_mid"]:
+                blocker_key = "midpoint"
+                error_tags.append("midpoint")
+            elif not progress["has_compare"]:
+                blocker_key = "mid-compare"
+                error_tags.append("comparison")
+            elif not progress["has_left_update"] or not progress["has_right_update"]:
+                blocker_key = "bound-update"
+                error_tags.append("interval-update")
+            elif not progress["has_return"]:
+                blocker_key = "return-path"
+                error_tags.append("return-path")
+            else:
+                blocker_key = "interval-invariant"
+                error_tags.append("invariant")
+        elif pattern_tag in ("dynamic-programming", "dp"):
+            progress = _dp_progress(actual_lines)
+            next_move, why, keep_in_mind = _dp_guidance(actual_lines, stage)
+            if not progress["has_state_array"]:
+                blocker_key = "dp-state-array"
+                error_tags.append("state-setup")
+            elif not progress["has_base_case"]:
+                blocker_key = "dp-base-case"
+                error_tags.append("base-case")
+            elif not progress["has_loop"]:
+                blocker_key = "control-flow"
+                error_tags.append("control-flow")
+            elif not progress["has_transition"]:
+                blocker_key = "dp-transition"
+                error_tags.append("transition")
+            elif not progress["has_return"]:
+                blocker_key = "return-path"
+                error_tags.append("return-path")
+            else:
+                blocker_key = "dp-state-meaning"
+                error_tags.append("state-meaning")
         elif not has_loop and (traversal_kind or not is_graph_question):
-            diagnosis = (
-                "You have enough setup now. What is missing is the line of control flow that actually advances the solution."
-            )
+            blocker_key = "control-flow"
             primary_focus = "Start the main control flow."
-            immediate = _live_next_step_for_pattern(pattern_tag, stage, has_loop)
+            next_move = _live_next_step_for_pattern(pattern_tag, stage, has_loop)
+            why = "The setup is on the page, but the algorithm still needs the move that advances state."
             keep_in_mind = _pattern_principle(body.skillTags)
             error_tags.append("control-flow")
         else:
-            diagnosis = (
-                "This is a real draft now. It does not need a big rewrite; it needs one more concrete structural line."
-            )
-            primary_focus = "Keep the next move small and structural."
-            immediate = _live_next_step_for_pattern(pattern_tag, stage, has_loop)
+            blocker_key = "state-update"
+            primary_focus = "Keep the next move structural."
+            next_move = _live_next_step_for_pattern(pattern_tag, stage, has_loop)
+            why = "The draft has enough structure now, so one concrete update will help more than a rewrite."
             keep_in_mind = _pattern_principle(body.skillTags)
+            error_tags.append("state-update")
 
         if not primary_focus:
             primary_focus = _live_primary_focus(pattern_tag, is_graph_question, has_loop)
 
-    if history_summary["attemptCount"] > 0 and history_summary["weakestTag"]:
-        diagnosis += f" This pattern has drifted before on `{history_summary['weakestTag']}`, so keep the next move deliberately small."
+    stalled_duration_ms = _consecutive_blocker_duration_ms(live_history, blocker_key, body.elapsedMs)
+    stalled = stalled_duration_ms >= int(tuning["stallThresholdSeconds"]) * 1000
 
-    strengths: list[str] = []
-    if non_empty_lines >= 2:
-        strengths.append("You have enough structure on the page to make the next move concrete.")
-    if has_signature:
-        strengths.append("The solution already has an entry point.")
-    if traversal_kind:
-        strengths.append(f"You have committed to a {traversal_kind.upper()}-style traversal.")
+    if stalled and tuning["allowExactEditsWhenStuck"]:
+        why = why.rstrip(".") + "."
 
-    micro_drill = "Write just that next line, then stop and ask what state it changes."
-    next_target = "After that line, the code should read more like a real algorithm than a blank template."
+    affirmation = _stable_live_affirmation(
+        pattern_tag,
+        is_graph_question,
+        has_signature,
+        has_bookkeeping,
+        has_loop,
+        actual_lines,
+        tuning,
+    )
 
-    return _truncate_live_feedback_fields({
-        "diagnosis": diagnosis,
-        "primaryFocus": primary_focus,
-        "immediateCorrection": immediate,
-        "keepInMind": keep_in_mind,
-        "microDrill": micro_drill,
-        "nextRepTarget": next_target,
-        "strengths": strengths[:3],
-        "errorTags": error_tags,
-        "fullFeedback": "",
-        "correctedVersion": "",
-        "llmUsed": False,
-        "signals": {
-            "draft_mode": True,
-            "live_stage": stage,
-            "pattern_tag": pattern_tag,
-            "history_summary": history_summary,
-            "draft_milestones": body.draftMilestones,
-        },
-    })
+    response = _compose_live_feedback(
+        blocker_key=blocker_key,
+        primary_focus=primary_focus or _live_primary_focus(pattern_tag, is_graph_question, has_loop),
+        next_move=next_move,
+        why=why,
+        keep_in_mind=keep_in_mind,
+        affirmation=affirmation,
+        error_tags=error_tags,
+        history_summary=history_summary,
+        tuning=tuning,
+        stalled=stalled,
+        pattern_tag=pattern_tag,
+        ignored_drill_down_key=ignored_drill_down_key,
+        completed_drill_down_key=completed_drill_down_key,
+    )
+    response["signals"] = {
+        "draft_mode": True,
+        "live_stage": base_stage,
+        "effective_live_stage": stage if "stage" in locals() else base_stage,
+        "pattern_tag": pattern_tag,
+        "history_summary": history_summary,
+        "draft_milestones": body.draftMilestones,
+        "live_blocker_key": blocker_key,
+        "stalled_duration_ms": stalled_duration_ms,
+        "live_tuning": tuning,
+    }
+    return response
 
 
 def _heuristic_attempt_feedback(
-    body: CoachAttemptFeedbackRequest, history_summary: dict[str, Any]
+    body: CoachAttemptFeedbackRequest, history_summary: dict[str, Any], live_history: list[dict[str, Any]]
 ) -> dict[str, Any]:
     if body.draftMode:
-        return _heuristic_live_feedback(body, history_summary)
+        return _heuristic_live_feedback(body, history_summary, live_history)
 
     expected_lines = _normalize_code(body.expectedAnswer)
     actual_lines = _normalize_code(body.userAnswer)
@@ -1162,13 +1800,13 @@ def _heuristic_attempt_feedback(
     if body.elapsedMs > 90_000:
         error_tags.append("slow-recall")
     if body.exact:
-        error_tags.append("exact")
+        error_tags.append("sound")
 
     strengths: list[str] = []
     if structure["matched"]:
         strengths.append(f"You preserved key structure: {', '.join(structure['matched'][:3])}.")
     if body.accuracy >= 90:
-        strengths.append("High token-level accuracy under recall pressure.")
+        strengths.append("High structural similarity under recall pressure.")
     if not syntax_error and body.userAnswer.strip():
         strengths.append("Python syntax remained valid.")
     if body.elapsedMs <= 45_000 and body.userAnswer.strip():
@@ -1213,15 +1851,15 @@ def _heuristic_attempt_feedback(
         primary_focus = "Increase recall speed without accuracy loss."
         immediate = "Run one timed rep with a 20% lower time cap than this attempt."
     else:
-        primary_focus = "Push from near-exact to exact recall."
-        immediate = "Re-run now and target zero character drift."
+        primary_focus = "Push from almost-right to a sound solution."
+        immediate = "Re-run now and fix the logical step that is still unsound."
 
     diagnosis = (
         f"Accuracy {round(body.accuracy)}% in {body.elapsedMs / 1000:.1f}s; "
         f"first drift at line {first_mismatch if first_mismatch is not None else 'none'}."
     )
     if body.exact:
-        diagnosis += " Exact recall achieved."
+        diagnosis += " Sound solution achieved."
     elif submission_issues:
         diagnosis += f" Main issue: {submission_issues[0]}"
     elif indent_errors > 0:
@@ -1258,7 +1896,7 @@ def _heuristic_attempt_feedback(
     )
     if body.exact:
         next_target = (
-            f"Next rep target: exact recall again under {max(15, int((body.elapsedMs / 1000) * 0.85))}s."
+            f"Next rep target: another sound solution under {max(15, int((body.elapsedMs / 1000) * 0.85))}s."
         )
 
     full_feedback = _build_submission_feedback(
@@ -1300,25 +1938,25 @@ def _heuristic_session_plan(body: CoachSessionPlanRequest) -> dict[str, Any]:
     weak_labels = ", ".join(f"#{c.cardId} ({round(c.accuracy)}%)" for c in weak_cards) or "none"
 
     if body.avgAccuracy >= 95:
-        focus_theme = "Speed compression while protecting exactness."
-        warmup = "2 cards, one untimed exact rep each."
-        main_set = "6 timed reps at 85% of today’s average time. Stop if exactness drops twice."
+        focus_theme = "Speed compression while protecting soundness."
+        warmup = "2 cards, one untimed sound rep each."
+        main_set = "6 timed reps at 85% of today’s average time. Stop if soundness drops twice."
     elif body.avgAccuracy >= 85:
         focus_theme = "Close the last precision gaps."
         warmup = "3 opening-anchor drills (signature + base case)."
         main_set = f"8 reps: alternate weak cards ({weak_labels}) with one strong card."
     else:
         focus_theme = "Stabilize structure before speed."
-        warmup = "3 slow exact reps with full compare after each attempt."
+        warmup = "3 slow sound reps with full compare after each attempt."
         main_set = f"10 reps focused on weak cards ({weak_labels}); untimed until >90%."
 
-    cooldown = "1 exact rep on your easiest card to end with a clean memory trace."
+    cooldown = "1 sound rep on your easiest card to end with a clean memory trace."
     note = (
         "Keep one coaching focus per session. If accuracy falls for two consecutive reps, "
-        "drop speed pressure and rebuild exactness."
+        "drop speed pressure and rebuild soundness."
     )
     headline = (
-        f"{body.mode.value} session: {body.correctCount}/{body.attempts} exact, "
+        f"{body.mode.value} session: {body.correctCount}/{body.attempts} sound, "
         f"{round(body.avgAccuracy)}% avg accuracy."
     )
 
@@ -1531,28 +2169,62 @@ def _call_chat_completion_json(system_prompt: str, user_payload: dict[str, Any])
 
 
 async def _attempt_feedback_with_optional_llm(
-    body: CoachAttemptFeedbackRequest, heuristic: dict[str, Any], history: list[dict[str, Any]]
+    body: CoachAttemptFeedbackRequest,
+    heuristic: dict[str, Any],
+    history: list[dict[str, Any]],
+    live_history: list[dict[str, Any]],
 ) -> dict[str, Any]:
     if not settings.coach_openai_api_key:
         return heuristic
 
-    live_stage = _live_feedback_stage(body.elapsedMs) if body.draftMode else ""
+    tuning = _merged_live_tuning(body)
+    live_stage = str(heuristic.get("signals", {}).get("effective_live_stage") or _live_feedback_stage(body.elapsedMs)) if body.draftMode else ""
+    live_blocker_key = str(heuristic.get("signals", {}).get("live_blocker_key", "")).strip()
+    stalled_duration_ms = _consecutive_blocker_duration_ms(live_history, live_blocker_key, body.elapsedMs)
+    stalled = stalled_duration_ms >= int(tuning["stallThresholdSeconds"]) * 1000
+    reveal_expected_answer = (
+        not body.draftMode
+        or _stage_at_least(live_stage, str(tuning["canonicalAnswerStage"]))
+    )
+    tone_instruction = {
+        "calm": "Use calm language.",
+        "direct": "Use direct language.",
+        "technical": "Use precise technical language.",
+    }.get(str(tuning["tone"]), "Use calm language.")
+    focus_instruction = (
+        "Optimize for memorized reproduction rather than interview polish."
+        if str(tuning["focusMode"]) == "memorization"
+        else "Optimize for interview-ready structure."
+    )
+    pattern_name_instruction = (
+        "You may name the pattern when it materially clarifies the move."
+        if tuning["showPatternNames"]
+        else "Do not name the pattern explicitly."
+    )
+    explicit_edit_instruction = (
+        "If the user is clearly stalled, you may name the exact edit for one step."
+        if tuning["allowExactEditsWhenStuck"]
+        else "Do not give exact code edits."
+    )
 
     system_prompt = (
-        "You are a live coding coach watching a draft in progress. Return strict JSON with keys: "
-        "diagnosis, primaryFocus, immediateCorrection, keepInMind, microDrill, nextRepTarget, strengths, errorTags. "
-        "Be concise, human, and specific about the very next step. Do not give full solutions, code skeletons, or line-by-line rewrites. "
-        "Prefer advice that generalizes to this approach and would still feel like a helpful pair-programmer. "
-        "Make immediateCorrection a single concrete next move that begins with 'The very next step is to...'. "
-        "Every live-feedback string field must be 30 words or fewer. "
-        "If the user is in the early stage, keep the advice true for most valid approaches and avoid revealing hidden conditions or exact next lines. "
-        "In the mid stage, you may mention the kind of control flow or invariant to add, but still avoid giving the literal answer. "
-        "In the late stage, you may be more concrete about the next structure or comparison. "
-        "In the very-late stage, the user is likely stuck, so you may be explicit about the immediate next step, but only that one step."
+        "You are a calm memorization coach watching a draft in progress. Return strict JSON with keys: "
+        "affirmation, nextMove, why, diagnosis, primaryFocus, immediateCorrection, keepInMind, microDrill, nextRepTarget, strengths, errorTags. "
+        "Teach the pattern through one structural blocker only. Do not mention multiple issues. "
+        "Describe what is already on the page when there is something stable to reinforce; otherwise leave affirmation empty. "
+        f"{tone_instruction} {focus_instruction} {pattern_name_instruction} "
+        "Avoid the phrase 'still missing'. Avoid coachy filler. Avoid full solutions, code skeletons, and line-by-line rewrites. "
+        f"Prefer higher-level phrasing over literal edits unless the user is clearly stalled and explicit edits are allowed. {explicit_edit_instruction} "
+        "Make nextMove a single concrete structural move. Make why a single calm sentence explaining that move. "
+        "Set diagnosis equal to why and immediateCorrection equal to nextMove. "
+        "Every live-feedback string field must be 20 words or fewer."
         if body.draftMode
         else "I am prepping for a Senior Level Tech Interview. Give me feedback on my attempt."
     )
     response_shape = [
+        "affirmation",
+        "nextMove",
+        "why",
         "diagnosis",
         "primaryFocus",
         "immediateCorrection",
@@ -1574,7 +2246,7 @@ async def _attempt_feedback_with_optional_llm(
             "elapsedMs": body.elapsedMs,
             "expectedAnswer": (
                 body.expectedAnswer[:1200]
-                if not body.draftMode or live_stage in ("late", "very-late")
+                if reveal_expected_answer
                 else ""
             ),
             "userAnswer": body.userAnswer[:1200],
@@ -1600,9 +2272,15 @@ async def _attempt_feedback_with_optional_llm(
         "previousAttempts": body.previousAttempts[-3:],
         "draftMode": body.draftMode,
         "liveStage": live_stage,
+        "stalledOnSameBlocker": stalled,
+        "stalledDurationMs": stalled_duration_ms,
         "draftMilestones": body.draftMilestones,
+        "liveTuning": tuning,
         "responseShape": response_shape,
         "heuristic": {
+            "affirmation": heuristic.get("affirmation", ""),
+            "nextMove": heuristic.get("nextMove", heuristic["immediateCorrection"]),
+            "why": heuristic.get("why", heuristic["diagnosis"]),
             "diagnosis": heuristic["diagnosis"],
             "primaryFocus": heuristic["primaryFocus"],
             "signals": heuristic["signals"],
@@ -1633,7 +2311,7 @@ async def _attempt_feedback_with_optional_llm(
 
     required = ["diagnosis", "primaryFocus", "immediateCorrection", "microDrill", "nextRepTarget"]
     if body.draftMode:
-        required.append("keepInMind")
+        required.extend(["keepInMind", "nextMove", "why"])
     if not body.draftMode:
         required.append("fullFeedback")
     if any(key not in llm_response for key in required):
@@ -1644,6 +2322,9 @@ async def _attempt_feedback_with_optional_llm(
 
     response = {
         **heuristic,
+        "affirmation": str(llm_response.get("affirmation", heuristic.get("affirmation", ""))),
+        "nextMove": str(llm_response.get("nextMove", heuristic.get("nextMove", heuristic["immediateCorrection"]))),
+        "why": str(llm_response.get("why", heuristic.get("why", heuristic["diagnosis"]))),
         "diagnosis": str(llm_response.get("diagnosis", heuristic["diagnosis"])),
         "primaryFocus": str(llm_response.get("primaryFocus", heuristic["primaryFocus"])),
         "immediateCorrection": str(llm_response.get("immediateCorrection", heuristic["immediateCorrection"])),
@@ -1657,6 +2338,12 @@ async def _attempt_feedback_with_optional_llm(
         "llmUsed": True,
     }
     if body.draftMode:
+        if not response["affirmation"]:
+            response["affirmation"] = str(response["strengths"][0]) if response["strengths"] else ""
+        response["nextMove"] = response["nextMove"] or response["immediateCorrection"]
+        response["why"] = response["why"] or response["diagnosis"]
+        response["diagnosis"] = response["why"]
+        response["immediateCorrection"] = response["nextMove"]
         return _truncate_live_feedback_fields(response)
     return response
 
@@ -1820,12 +2507,18 @@ async def _persist_skill_map_drills(
             )
 
 
+@router.post("/evaluate-attempt", response_model=CoachAttemptEvaluationResponse)
+async def coach_attempt_evaluation(body: CoachAttemptEvaluationRequest):
+    return _evaluate_attempt_soundness(body.expectedAnswer, body.userAnswer)
+
+
 @router.post("/attempt-feedback", response_model=CoachAttemptFeedbackResponse)
 async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
     history = await _load_attempt_history(body)
+    live_history = await _load_live_feedback_history(body.interactionId)
     history_summary = _summarize_attempt_history(history)
-    heuristic = _heuristic_attempt_feedback(body, history_summary)
-    feedback = await _attempt_feedback_with_optional_llm(body, heuristic, history)
+    heuristic = _heuristic_attempt_feedback(body, history_summary, live_history)
+    feedback = await _attempt_feedback_with_optional_llm(body, heuristic, history, live_history)
     await _persist_feedback_event(body, feedback)
     feedback.pop("signals", None)
     return feedback

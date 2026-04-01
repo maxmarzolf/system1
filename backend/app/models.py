@@ -73,6 +73,8 @@ class CoachAttemptFeedbackRequest(BaseModel):
     previousAttempts: list[dict] = []
     draftMode: bool = False
     draftMilestones: dict[str, Any] = {}
+    liveCoachTuning: dict[str, Any] = {}
+    liveCoachContext: dict[str, Any] = {}
 
 
 class CoachAttemptFeedbackResponse(BaseModel):
@@ -80,13 +82,35 @@ class CoachAttemptFeedbackResponse(BaseModel):
     primaryFocus: str
     immediateCorrection: str
     keepInMind: str = ""
+    affirmation: str = ""
+    nextMove: str = ""
+    why: str = ""
     microDrill: str
     nextRepTarget: str
     strengths: list[str] = []
     errorTags: list[str] = []
     fullFeedback: str = ""
     correctedVersion: str = ""
+    drillDownActive: bool = False
+    drillDownTitle: str = ""
+    drillDownPrompt: str = ""
+    drillDownQuestion: str = ""
+    drillDownTarget: str = ""
+    drillDownHint: str = ""
+    drillDownKey: str = ""
+    drillDownOverrideLabel: str = ""
     llmUsed: bool = False
+
+
+class CoachAttemptEvaluationRequest(BaseModel):
+    expectedAnswer: str = ""
+    userAnswer: str = ""
+
+
+class CoachAttemptEvaluationResponse(BaseModel):
+    accuracy: float = Field(default=0, ge=0, le=100)
+    sound: bool = False
+    syntaxValid: bool = False
 
 
 class SessionWeakCard(BaseModel):

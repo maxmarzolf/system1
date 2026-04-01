@@ -2,15 +2,20 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import './index.css'
+import './App.css'
 import App from './App.tsx'
+import CoachTuningPage from './CoachTuningPage.tsx'
 import DashboardPage from './DashboardPage.tsx'
+import PracticeHistoryPage from './PracticeHistoryPage.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<App />} />
+        <Route path="/coach-tuning" element={<CoachTuningPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/practice-history" element={<PracticeHistoryPage />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>,

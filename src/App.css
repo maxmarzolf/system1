@@ -829,6 +829,67 @@ button.link:hover {
   line-height: 1.45;
 }
 
+.coach-live-block + .coach-live-block {
+  margin-top: 0.85rem;
+}
+
+.coach-live-label {
+  margin: 0 0 0.35rem;
+  color: var(--hc-accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.coach-drilldown-card {
+  margin-top: 0.9rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(154, 212, 255, 0.18);
+  background: linear-gradient(180deg, rgba(16, 29, 42, 0.92), rgba(8, 13, 19, 0.96));
+}
+
+.coach-drilldown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.45rem;
+}
+
+.coach-drilldown-question,
+.coach-drilldown-hint {
+  margin: 0 0 0.6rem;
+  line-height: 1.5;
+}
+
+.coach-drilldown-question {
+  color: var(--hc-fg);
+  font-weight: 600;
+}
+
+.coach-drilldown-hint {
+  color: var(--hc-fg-dim);
+  font-size: 0.8rem;
+}
+
+.coach-drilldown-code {
+  margin: 0.75rem 0;
+}
+
+.coach-drilldown-input {
+  width: 100%;
+  min-height: 7rem;
+  resize: vertical;
+  border: 1px solid var(--hc-border-dim);
+  background: rgba(7, 11, 15, 0.98);
+  color: var(--hc-fg);
+  padding: 0.75rem;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 .coach-metric-row {
   display: flex;
   flex-wrap: wrap;
@@ -1268,8 +1329,76 @@ button.link:hover {
   background: transparent;
 }
 
+.coach-tuning-panel {
+  margin: 0 0 1.5rem;
+}
+
+.coach-tuning-page-header {
+  align-items: flex-start;
+}
+
+.coach-tuning-page-intro {
+  margin: 0.5rem 0 0;
+  max-width: 42rem;
+}
+
+.coach-tuning-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.coach-tuning-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.coach-tuning-field,
+.coach-tuning-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.8rem;
+  border: 1px solid var(--hc-border-dim);
+  background: linear-gradient(180deg, rgba(12, 18, 25, 0.92), rgba(7, 11, 15, 0.98));
+}
+
+.coach-tuning-field span,
+.coach-tuning-toggle span {
+  color: var(--hc-fg);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.coach-tuning-field select,
+.coach-tuning-field input[type='range'] {
+  width: 100%;
+}
+
+.coach-tuning-toggle {
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.coach-tuning-toggle input {
+  margin-top: 0.15rem;
+}
+
 .practice-history-panel {
   margin-top: 1.5rem;
+}
+
+.practice-history-page-header {
+  align-items: flex-start;
+}
+
+.practice-history-page-intro {
+  margin: 0.5rem 0 0;
+  max-width: 42rem;
 }
 
 .practice-history-header {
@@ -1284,6 +1413,13 @@ button.link:hover {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.practice-history-focuses {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.9rem;
 }
 
 .practice-history-list {

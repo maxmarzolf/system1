@@ -2,9 +2,9 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import './App.css'
 import type { Flashcard } from './data/flashcards'
 import { skillMap } from './data/skill-map'
+import { loadStoredLiveCoachTuning } from './liveCoachTuning'
 
 const emptySkillMapCard: Flashcard = {
   id: 'skill-map-loading',
@@ -35,6 +35,9 @@ type CoachAttemptFeedback = {
   diagnosis: string
   primaryFocus: string
   immediateCorrection: string
+  affirmation?: string
+  nextMove?: string
+  why?: string
   keepInMind?: string
   microDrill: string
   nextRepTarget: string
@@ -42,6 +45,14 @@ type CoachAttemptFeedback = {
   errorTags: string[]
   fullFeedback?: string
   correctedVersion?: string
+  drillDownActive?: boolean
+  drillDownTitle?: string
+  drillDownPrompt?: string
+  drillDownQuestion?: string
+  drillDownTarget?: string
+  drillDownHint?: string
+  drillDownKey?: string
+  drillDownOverrideLabel?: string
   llmUsed: boolean
 }
 
@@ -60,35 +71,10 @@ type SkillMapDrillsResponse = {
   llmUsed: boolean
 }
 
-type PracticeHistoryEntry = {
-  attemptId: number
-  interactionId: string
-  cardId: string
-  cardTitle: string
-  question: string
-  correctAnswer: string
-  userAnswer: string
+type AttemptEvaluationResponse = {
   accuracy: number
-  exact: boolean
-  elapsedMs: number
-  categoryTags: string[]
-  generatedCard: Partial<Flashcard>
-  liveFeedbackCount: number
-  latestLiveFeedback: Partial<CoachAttemptFeedback>
-  submissionFeedback: Partial<CoachAttemptFeedback>
-  createdAt: string
-}
-
-type PracticeHistorySummary = {
-  attemptCount: number
-  recentAvgAccuracy: number
-  weakestTag: string
-  repeatedErrorTags: string[]
-}
-
-type PracticeHistoryResponse = {
-  summary: PracticeHistorySummary
-  entries: PracticeHistoryEntry[]
+  sound: boolean
+  syntaxValid: boolean
 }
 
 type LineReviewStatus = 'match' | 'mismatch' | 'missing' | 'extra'
@@ -128,6 +114,8 @@ type DraftStructure = {
   milestoneKey: string
 }
 
+type FocusDrillPhase = 'preview' | 'typing' | 'submitted'
+
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 const apiUrl = (path: string) => `${API_BASE_URL}${path}`
 const MAIN_RECALL_CLOSE_ENOUGH_ACCURACY = 90
@@ -158,20 +146,6 @@ const createInteractionId = () =>
   typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
     : `interaction-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-
-const summarizeHistoryText = (entry: PracticeHistoryEntry) => {
-  const submissionSummary =
-    entry.submissionFeedback.fullFeedback ||
-    entry.submissionFeedback.diagnosis ||
-    entry.submissionFeedback.primaryFocus ||
-    ''
-  if (submissionSummary.trim()) return submissionSummary.trim()
-  const liveSummary =
-    entry.latestLiveFeedback.primaryFocus ||
-    entry.latestLiveFeedback.immediateCorrection ||
-    ''
-  return liveSummary.trim() || 'No stored feedback yet for this submission.'
-}
 
 const summarizeRecallAttempt = (
   actualLines: string[],
@@ -380,20 +354,22 @@ function App() {
   const [mainPhase, setMainPhase] = useState<'preview' | 'typing' | 'submitted'>('preview')
   const [mainInput, setMainInput] = useState('')
   const [mainStartedAt, setMainStartedAt] = useState<number | null>(null)
-  const [mainAccuracy, setMainAccuracy] = useState(0)
   const [mainCloseEnough, setMainCloseEnough] = useState(false)
   const [currentInteractionId, setCurrentInteractionId] = useState('')
   const [mainRecallHistoryByCard, setMainRecallHistoryByCard] = useState<Record<string, RecallAttemptSnapshot[]>>({})
   const [liveCoachFeedback, setLiveCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
   const [liveCoachLoading, setLiveCoachLoading] = useState(false)
   const [liveCoachError, setLiveCoachError] = useState('')
+  const liveCoachTuning = useMemo(() => loadStoredLiveCoachTuning(), [])
+  const [ignoredDrillDownKey, setIgnoredDrillDownKey] = useState('')
+  const [completedDrillDownKey, setCompletedDrillDownKey] = useState('')
+  const [focusDrillPhase, setFocusDrillPhase] = useState<FocusDrillPhase>('preview')
+  const [focusDrillInput, setFocusDrillInput] = useState('')
+  const [focusDrillAccuracy, setFocusDrillAccuracy] = useState(0)
+  const [focusDrillExact, setFocusDrillExact] = useState(false)
   const [coachFeedback, setCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
   const [coachLoading, setCoachLoading] = useState(false)
   const [coachError, setCoachError] = useState('')
-  const [practiceHistory, setPracticeHistory] = useState<PracticeHistoryEntry[]>([])
-  const [practiceHistorySummary, setPracticeHistorySummary] = useState<PracticeHistorySummary | null>(null)
-  const [practiceHistoryLoading, setPracticeHistoryLoading] = useState(false)
-  const [practiceHistoryError, setPracticeHistoryError] = useState('')
   const [sessionPlan, setSessionPlan] = useState<CoachSessionPlan | null>(null)
   const [sessionPlanLoading, setSessionPlanLoading] = useState(false)
   const [sessionPlanError, setSessionPlanError] = useState('')
@@ -404,6 +380,9 @@ function App() {
   const liveCoachRequestVersionRef = useRef(0)
   const lastLiveCoachMilestoneRef = useRef('')
   const lastLiveCoachLengthRef = useRef(0)
+  const lastMainInputEditAtRef = useRef(0)
+  const lastIdleLiveCoachRefreshAtRef = useRef(0)
+  const currentDrillDownKeyRef = useRef('')
   const coachRequestVersionRef = useRef(0)
   const skillMapDeckRequestVersionRef = useRef(0)
 
@@ -460,23 +439,27 @@ function App() {
     setMainPhase('preview')
     setMainInput('')
     setMainStartedAt(null)
-    setMainAccuracy(0)
     setMainCloseEnough(false)
     setCurrentInteractionId('')
     setMainRecallHistoryByCard({})
     setLiveCoachFeedback(null)
     setLiveCoachLoading(false)
     setLiveCoachError('')
+    setIgnoredDrillDownKey('')
+    setCompletedDrillDownKey('')
+    setFocusDrillPhase('preview')
+    setFocusDrillInput('')
+    setFocusDrillAccuracy(0)
+    setFocusDrillExact(false)
     liveCoachRequestVersionRef.current = 0
     lastLiveCoachMilestoneRef.current = ''
     lastLiveCoachLengthRef.current = 0
+    lastMainInputEditAtRef.current = 0
+    lastIdleLiveCoachRefreshAtRef.current = 0
+    currentDrillDownKeyRef.current = ''
     setCoachFeedback(null)
     setCoachLoading(false)
     setCoachError('')
-    setPracticeHistory([])
-    setPracticeHistorySummary(null)
-    setPracticeHistoryLoading(false)
-    setPracticeHistoryError('')
     setSessionPlan(null)
     setSessionPlanLoading(false)
     setSessionPlanError('')
@@ -506,6 +489,21 @@ function App() {
     sessionOrder.length === 0
       ? '0 / 0'
       : `${Math.min(sessionPosition + 1, Math.max(sessionOrder.length, 1))} / ${sessionOrder.length}`
+  const practiceHistoryHref = useMemo(() => {
+    if (!hasDeck) return '/practice-history'
+
+    const searchParams = new URLSearchParams({
+      cardId: card.id,
+      cardTitle: card.title,
+      questionType,
+    })
+
+    card.tags.forEach((tag) => {
+      searchParams.append('tag', tag)
+    })
+
+    return `/practice-history?${searchParams.toString()}`
+  }, [card.id, card.tags, card.title, hasDeck, questionType])
 
   const completeCardInSession = (isCorrect: boolean, accuracy: number, elapsedMs?: number) => {
     setSessionResults((prevResults) => {
@@ -551,32 +549,30 @@ function App() {
     }
   }
 
-  const fetchPracticeHistory = async () => {
-    if (!hasDeck) return
-    setPracticeHistoryLoading(true)
-    setPracticeHistoryError('')
-
+  const evaluateSubmittedRecall = async (expectedAnswer: string, userAnswer: string) => {
     try {
-      const response = await fetch(apiUrl('/api/coach/history'), {
+      const response = await fetch(apiUrl('/api/coach/evaluate-attempt'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cardId: card.id,
-          questionType,
-          skillTags: card.tags,
-          limit: 6,
+          expectedAnswer,
+          userAnswer,
         }),
       })
-      if (!response.ok) throw new Error('Unable to load practice history')
-      const payload = (await response.json()) as PracticeHistoryResponse
-      setPracticeHistory(payload.entries)
-      setPracticeHistorySummary(payload.summary)
+      if (!response.ok) throw new Error('Unable to evaluate attempt')
+      return (await response.json()) as AttemptEvaluationResponse
     } catch {
-      setPracticeHistory([])
-      setPracticeHistorySummary(null)
-      setPracticeHistoryError('Practice history is unavailable right now.')
-    } finally {
-      setPracticeHistoryLoading(false)
+      const compareLength = Math.max(userAnswer.length, expectedAnswer.length, 1)
+      let exactMatches = 0
+      for (let i = 0; i < compareLength; i += 1) {
+        if (userAnswer[i] === expectedAnswer[i]) exactMatches += 1
+      }
+
+      return {
+        accuracy: Math.round((exactMatches / compareLength) * 100),
+        sound: userAnswer === expectedAnswer,
+        syntaxValid: true,
+      }
     }
   }
 
@@ -586,26 +582,28 @@ function App() {
     setMainPhase('preview')
     setMainInput('')
     setMainStartedAt(null)
-    setMainAccuracy(0)
     setMainCloseEnough(false)
     setCurrentInteractionId('')
     setLiveCoachFeedback(null)
     setLiveCoachLoading(false)
     setLiveCoachError('')
+    setIgnoredDrillDownKey('')
+    setCompletedDrillDownKey('')
+    setFocusDrillPhase('preview')
+    setFocusDrillInput('')
+    setFocusDrillAccuracy(0)
+    setFocusDrillExact(false)
     liveCoachRequestVersionRef.current = 0
     lastLiveCoachMilestoneRef.current = ''
     lastLiveCoachLengthRef.current = 0
+    lastMainInputEditAtRef.current = 0
+    lastIdleLiveCoachRefreshAtRef.current = 0
+    currentDrillDownKeyRef.current = ''
   }
 
   useEffect(() => {
     resetPerCardInteraction()
   }, [card.id, sessionPosition])
-
-  useEffect(() => {
-    if (!hasDeck) return
-    void fetchPracticeHistory()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [card.id, hasDeck])
 
   const startMainRecall = () => {
     if (!hasDeck || hasAnsweredCurrent || sessionFinished) return
@@ -613,6 +611,15 @@ function App() {
     setMainStartedAt(Date.now())
     setMainInput('')
     setCurrentInteractionId(createInteractionId())
+    setIgnoredDrillDownKey('')
+    setCompletedDrillDownKey('')
+    setFocusDrillPhase('preview')
+    setFocusDrillInput('')
+    setFocusDrillAccuracy(0)
+    setFocusDrillExact(false)
+    lastMainInputEditAtRef.current = Date.now()
+    lastIdleLiveCoachRefreshAtRef.current = 0
+    currentDrillDownKeyRef.current = ''
   }
 
   const handleMainEditorScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
@@ -627,6 +634,7 @@ function App() {
 
   const applyMainEdit = (nextValue: string, cursorPosition: number) => {
     setMainInput(nextValue)
+    lastMainInputEditAtRef.current = Date.now()
     window.requestAnimationFrame(() => {
       if (!mainInputRef.current) return
       mainInputRef.current.selectionStart = cursorPosition
@@ -637,6 +645,7 @@ function App() {
   const handleMainInputChange = (nextValue: string) => {
     if (mainPhase !== 'typing') return
     setMainInput(nextValue)
+    lastMainInputEditAtRef.current = Date.now()
   }
 
   const handleMainKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -746,6 +755,11 @@ function App() {
             hasLoop: payload.draft.hasLoop,
             hasPlaceholder: payload.draft.hasPlaceholder,
             hasBookkeeping: payload.draft.hasBookkeeping,
+          },
+          liveCoachTuning,
+          liveCoachContext: {
+            ignoredDrillDownKey,
+            completedDrillDownKey,
           },
         }),
       })
@@ -885,26 +899,19 @@ function App() {
     const normalizedInput = normalizeTyping(mainInput)
     const normalizedInputLines = normalizedInput.split('\n')
     const normalizedTarget = fullSolutionTarget
-
-    const compareLength = Math.max(normalizedInput.length, normalizedTarget.length, 1)
-    let exactMatches = 0
-    for (let i = 0; i < compareLength; i += 1) {
-      if (normalizedInput[i] === normalizedTarget[i]) exactMatches += 1
-    }
-
-    const accuracy = Math.round((exactMatches / compareLength) * 100)
-    const exact = normalizedInput === normalizedTarget
-    const closeEnough = exact || accuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY
+    const evaluation = await evaluateSubmittedRecall(normalizedTarget, normalizedInput)
+    const accuracy = Math.round(evaluation.accuracy)
+    const sound = evaluation.sound
+    const closeEnough = sound
     const currentHistory = mainRecallHistoryByCard[card.id] ?? []
     const attemptSnapshot = summarizeRecallAttempt(
       normalizedInputLines,
       accuracy,
-      exact,
+      sound,
       elapsedMs,
       currentHistory.length + 1
     )
 
-    setMainAccuracy(accuracy)
     setMainCloseEnough(closeEnough)
     setMainPhase('submitted')
     setMainRecallHistoryByCard((prev) => ({
@@ -913,7 +920,7 @@ function App() {
     }))
 
     if (closeEnough) {
-      completeCardInSession(exact, accuracy, elapsedMs)
+      completeCardInSession(sound, accuracy, elapsedMs)
     }
 
     const feedback = await fetchCoachAttemptFeedback({
@@ -922,22 +929,21 @@ function App() {
       userAnswer: normalizedInput,
       elapsedMs,
       accuracy,
-      exact,
+      exact: sound,
       previousAttempts: currentHistory,
     })
 
     await submitAttemptToServer({
       mode: 'main-recall',
-      correct: exact,
+      correct: sound,
       correctAnswer: normalizedTarget,
       userAnswer: normalizedInput,
       accuracy,
-      exact,
+      exact: sound,
       elapsedMs,
       interactionId,
       coachFeedback: feedback,
     })
-    await fetchPracticeHistory()
   }
 
   const reviseMainRecall = () => {
@@ -945,6 +951,80 @@ function App() {
     setMainPhase('typing')
     setMainStartedAt(Date.now())
     setCurrentInteractionId(createInteractionId())
+    setIgnoredDrillDownKey('')
+    setCompletedDrillDownKey('')
+    setFocusDrillPhase('preview')
+    setFocusDrillInput('')
+    setFocusDrillAccuracy(0)
+    setFocusDrillExact(false)
+    lastMainInputEditAtRef.current = Date.now()
+    lastIdleLiveCoachRefreshAtRef.current = 0
+    currentDrillDownKeyRef.current = ''
+  }
+
+  const ignoreLiveCoachDrillDown = () => {
+    const key = liveCoachFeedback?.drillDownKey?.trim()
+    if (!key) return
+    setIgnoredDrillDownKey(key)
+    setLiveCoachFeedback((prev) =>
+      prev
+        ? {
+            ...prev,
+            drillDownActive: false,
+            drillDownTitle: '',
+            drillDownPrompt: '',
+            drillDownOverrideLabel: '',
+          }
+        : prev
+    )
+  }
+
+  const startFocusDrill = () => {
+    if (!liveCoachDrillDownTarget) return
+    setFocusDrillPhase('typing')
+    setFocusDrillInput('')
+    setFocusDrillAccuracy(0)
+    setFocusDrillExact(false)
+  }
+
+  const submitFocusDrill = () => {
+    if (!liveCoachDrillDownTarget) return
+    const normalizedInput = normalizeTyping(focusDrillInput)
+    const compareLength = Math.max(normalizedInput.length, liveCoachDrillDownTarget.length, 1)
+    let exactMatches = 0
+    for (let i = 0; i < compareLength; i += 1) {
+      if (normalizedInput[i] === liveCoachDrillDownTarget[i]) exactMatches += 1
+    }
+    const accuracy = Math.round((exactMatches / compareLength) * 100)
+    const exact = normalizedInput === liveCoachDrillDownTarget
+
+    setFocusDrillAccuracy(accuracy)
+    setFocusDrillExact(exact)
+    setFocusDrillPhase('submitted')
+
+    if (accuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY && liveCoachDrillDownKey) {
+      setCompletedDrillDownKey(liveCoachDrillDownKey)
+      setLiveCoachFeedback((prev) =>
+        prev
+          ? {
+              ...prev,
+              drillDownActive: false,
+              drillDownTitle: '',
+              drillDownPrompt: '',
+              drillDownQuestion: '',
+              drillDownHint: '',
+              drillDownOverrideLabel: '',
+            }
+          : prev
+      )
+    }
+  }
+
+  const retryFocusDrill = () => {
+    setFocusDrillPhase('typing')
+    setFocusDrillInput('')
+    setFocusDrillAccuracy(0)
+    setFocusDrillExact(false)
   }
 
   const restartSession = () => {
@@ -1019,17 +1099,51 @@ function App() {
     () => displayLines.map((line) => line.text).join('\n'),
     [displayLines]
   )
+  const liveCoachAffirmation = liveCoachFeedback?.affirmation?.trim() || ''
   const liveCoachNextStep =
+    liveCoachFeedback?.nextMove ||
     liveCoachFeedback?.immediateCorrection ||
     liveCoachFeedback?.primaryFocus ||
     buildLiveCoachFallback(draftStructure, isGraphQuestion)
   const liveCoachWhy =
+    liveCoachFeedback?.why ||
     liveCoachFeedback?.diagnosis ||
     liveCoachFeedback?.primaryFocus ||
     buildLiveCoachWhy(draftStructure, isGraphQuestion)
-  const liveCoachKeepInMind =
-    liveCoachFeedback?.keepInMind ||
+  const liveCoachDrillDownActive = Boolean(liveCoachFeedback?.drillDownActive)
+  const liveCoachDrillDownTitle = liveCoachFeedback?.drillDownTitle?.trim() || 'Focus Drill'
+  const liveCoachDrillDownPrompt =
+    liveCoachFeedback?.drillDownPrompt?.trim() ||
     buildLiveCoachPrinciple(draftStructure, card.tags, isGraphQuestion)
+  const liveCoachDrillDownQuestion = liveCoachFeedback?.drillDownQuestion?.trim() || ''
+  const liveCoachDrillDownTarget = normalizeTyping(liveCoachFeedback?.drillDownTarget || '')
+  const liveCoachDrillDownHint = liveCoachFeedback?.drillDownHint?.trim() || ''
+  const liveCoachDrillDownKey = liveCoachFeedback?.drillDownKey?.trim() || ''
+  const triggerLiveCoachRefresh = useEffectEvent((trimmedInput: string) => {
+    const interactionId = currentInteractionId || createInteractionId()
+    if (!currentInteractionId) setCurrentInteractionId(interactionId)
+    const target = fullSolutionTarget
+    const compareLength = Math.max(trimmedInput.length, target.length, 1)
+    let exactMatches = 0
+    for (let i = 0; i < compareLength; i += 1) {
+      if (trimmedInput[i] === target[i]) exactMatches += 1
+    }
+    const accuracy = Math.round((exactMatches / compareLength) * 100)
+
+    lastLiveCoachMilestoneRef.current = draftStructure.milestoneKey
+    lastLiveCoachLengthRef.current = trimmedInput.length
+
+    void requestLiveCoachFeedback({
+      interactionId,
+      expectedAnswer: target,
+      userAnswer: trimmedInput,
+      elapsedMs: Math.max((mainStartedAt ? Date.now() - mainStartedAt : 0), 0),
+      accuracy,
+      exact: trimmedInput === target,
+      previousAttempts: currentCardRecallHistory,
+      draft: draftStructure,
+    })
+  })
   const coachFocusText = coachFeedback ? stripPrefixedLabel(coachFeedback.primaryFocus, 'Primary focus') : ''
   const coachHeadline = isGraphQuestion
     ? buildGraphCoachHeadline(normalizedMainLines, lineReview.reviews, priorCardRecallHistory)
@@ -1049,17 +1163,31 @@ function App() {
     .map((paragraph) => paragraph.trim())
     .filter(Boolean)
   const submissionCorrectedVersion = (coachFeedback?.correctedVersion || '').trim()
-  const submissionResultLabel = latestSubmittedAttempt?.exact
-    ? 'Exact'
-    : mainCloseEnough
-      ? 'Close enough'
-      : 'Needs work'
+  const submissionResultLabel = latestSubmittedAttempt?.exact ? 'Sound' : 'Needs work'
   const submissionResultTone = latestSubmittedAttempt?.exact
     ? 'success'
     : mainCloseEnough
       ? 'warning'
       : 'error'
-  const historyWeakestTag = practiceHistorySummary?.weakestTag?.trim() || ''
+  const showSubmittedLineReview = mainPhase === 'submitted' && !mainCloseEnough
+
+  useEffect(() => {
+    if (!liveCoachDrillDownActive || !liveCoachDrillDownKey || !liveCoachDrillDownTarget) {
+      currentDrillDownKeyRef.current = ''
+      setFocusDrillPhase('preview')
+      setFocusDrillInput('')
+      setFocusDrillAccuracy(0)
+      setFocusDrillExact(false)
+      return
+    }
+
+    if (currentDrillDownKeyRef.current === liveCoachDrillDownKey) return
+    currentDrillDownKeyRef.current = liveCoachDrillDownKey
+    setFocusDrillPhase('preview')
+    setFocusDrillInput('')
+    setFocusDrillAccuracy(0)
+    setFocusDrillExact(false)
+  }, [liveCoachDrillDownActive, liveCoachDrillDownKey, liveCoachDrillDownTarget])
 
   useEffect(() => {
     if (!hasDeck || mainPhase !== 'typing' || sessionFinished || hasAnsweredCurrent) return
@@ -1081,42 +1209,42 @@ function App() {
     if (!shouldRefresh) return
 
     const timeoutId = window.setTimeout(() => {
-      const interactionId = currentInteractionId || createInteractionId()
-      if (!currentInteractionId) setCurrentInteractionId(interactionId)
-      const target = fullSolutionTarget
-      const compareLength = Math.max(trimmedInput.length, target.length, 1)
-      let exactMatches = 0
-      for (let i = 0; i < compareLength; i += 1) {
-        if (trimmedInput[i] === target[i]) exactMatches += 1
-      }
-      const accuracy = Math.round((exactMatches / compareLength) * 100)
-
-      lastLiveCoachMilestoneRef.current = draftStructure.milestoneKey
-      lastLiveCoachLengthRef.current = trimmedInput.length
-
-      void requestLiveCoachFeedback({
-        interactionId,
-        expectedAnswer: target,
-        userAnswer: trimmedInput,
-        elapsedMs: Math.max((mainStartedAt ? Date.now() - mainStartedAt : 0), 0),
-        accuracy,
-        exact: trimmedInput === target,
-        previousAttempts: currentCardRecallHistory,
-        draft: draftStructure,
-      })
+      triggerLiveCoachRefresh(trimmedInput)
     }, 900)
 
     return () => window.clearTimeout(timeoutId)
   }, [
-    currentCardRecallHistory,
     draftStructure,
-    fullSolutionTarget,
     hasDeck,
     hasAnsweredCurrent,
     mainInput,
     mainPhase,
-    mainStartedAt,
-    currentInteractionId,
+    sessionFinished,
+  ])
+
+  useEffect(() => {
+    if (!hasDeck || mainPhase !== 'typing' || sessionFinished || hasAnsweredCurrent) return
+
+    const intervalId = window.setInterval(() => {
+      const trimmedInput = normalizeTyping(mainInput)
+      if (trimmedInput.length < 12 || draftStructure.nonEmptyLines < 2) return
+
+      const now = Date.now()
+      const idleForMs = now - (lastMainInputEditAtRef.current || now)
+      const sinceLastIdleRefreshMs = now - (lastIdleLiveCoachRefreshAtRef.current || 0)
+      if (idleForMs < 20_000 || sinceLastIdleRefreshMs < 20_000) return
+
+      lastIdleLiveCoachRefreshAtRef.current = now
+      triggerLiveCoachRefresh(trimmedInput)
+    }, 2_000)
+
+    return () => window.clearInterval(intervalId)
+  }, [
+    draftStructure.nonEmptyLines,
+    hasDeck,
+    hasAnsweredCurrent,
+    mainInput,
+    mainPhase,
     sessionFinished,
   ])
 
@@ -1149,6 +1277,8 @@ function App() {
         </div>
         <div className="navbar-right">
           <span className="navbar-counter">{sessionCounterText}</span>
+          <Link to="/coach-tuning" className="navbar-dashboard">Tune Coach</Link>
+          <Link to={practiceHistoryHref} className="navbar-dashboard">History</Link>
           <Link to="/dashboard" className="navbar-dashboard">Dashboard</Link>
         </div>
       </nav>
@@ -1170,14 +1300,14 @@ function App() {
           <p><strong>Flow:</strong> Prompt → Recall Full Answer</p>
           <p><strong>Order:</strong> {sessionOrderType === 'shuffled' ? 'Randomized' : 'Original'}</p>
           <p><strong>Session:</strong> {attempts}/{sessionOrder.length}</p>
-          <p><strong>Exact Accuracy:</strong> {exactAccuracy}%</p>
-          <p><strong>Avg Accuracy:</strong> {avgAccuracy}%</p>
+          <p><strong>Sound Rate:</strong> {exactAccuracy}%</p>
+          <p><strong>Avg Score:</strong> {avgAccuracy}%</p>
           <p><strong>Duration:</strong> {(sessionDurationMs / 1000).toFixed(1)}s</p>
         </div>
 
         {sessionFinished && (
           <p className="status success" style={{ marginTop: 0, marginBottom: '1.5rem' }}>
-            Session complete. {attempts} cards answered. Avg accuracy: {avgAccuracy}%.
+            Session complete. {correctCount} of {attempts} cards were sound. Avg score: {avgAccuracy}%.
           </p>
         )}
         {sessionFinished && (
@@ -1267,7 +1397,7 @@ function App() {
                       <div className="typing-gutter" aria-hidden="true" ref={mainGutterRef}>
                         {displayLines.map((line, i) => {
                           const status =
-                            mainPhase === 'submitted' && line.sourceLineNumber
+                            showSubmittedLineReview && line.sourceLineNumber
                               ? lineReview.actualStatuses[line.sourceLineNumber - 1] ?? 'match'
                               : null
                           return (
@@ -1293,7 +1423,7 @@ function App() {
                               }
 
                               const status =
-                                mainPhase === 'submitted' && line.sourceLineNumber
+                                showSubmittedLineReview && line.sourceLineNumber
                                   ? lineReview.actualStatuses[line.sourceLineNumber - 1] ?? 'match'
                                   : null
                               return {
@@ -1354,9 +1484,98 @@ function App() {
                               <span className="live-coach-dot" />
                             </span>
                           </div>
-                          <p className="coach-panel-copy">{liveCoachNextStep}</p>
-                          <p className="coach-panel-copy">{liveCoachWhy}</p>
-                          <p className="coach-panel-copy">{liveCoachKeepInMind}</p>
+                          {liveCoachAffirmation && (
+                            <div className="coach-live-block">
+                              <p className="coach-live-label">Affirmation</p>
+                              <p className="coach-panel-copy">{liveCoachAffirmation}</p>
+                            </div>
+                          )}
+                          <div className="coach-live-block">
+                            <p className="coach-live-label">Next move</p>
+                            <p className="coach-panel-copy">{liveCoachNextStep}</p>
+                          </div>
+                          <div className="coach-live-block">
+                            <p className="coach-live-label">Why</p>
+                            <p className="coach-panel-copy">{liveCoachWhy}</p>
+                          </div>
+                          {liveCoachDrillDownActive && (
+                            <div className="coach-drilldown-card">
+                              <div className="coach-drilldown-header">
+                                <p className="coach-live-label">{liveCoachDrillDownTitle}</p>
+                                <button type="button" className="link" onClick={ignoreLiveCoachDrillDown}>
+                                  {liveCoachFeedback?.drillDownOverrideLabel || 'Ignore this drill-down'}
+                                </button>
+                              </div>
+                              <p className="coach-panel-copy">{liveCoachDrillDownPrompt}</p>
+                              {liveCoachDrillDownQuestion && (
+                                <p className="coach-drilldown-question">{liveCoachDrillDownQuestion}</p>
+                              )}
+                              {liveCoachDrillDownHint && (
+                                <p className="coach-drilldown-hint">{liveCoachDrillDownHint}</p>
+                              )}
+                              {focusDrillPhase === 'preview' && liveCoachDrillDownTarget && (
+                                <>
+                                  <div className="code-container coach-drilldown-code">
+                                    <SyntaxHighlighter
+                                      language="python"
+                                      style={vscDarkPlus}
+                                      customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
+                                      codeTagProps={{ style: { background: 'transparent' } }}
+                                    >
+                                      {liveCoachDrillDownTarget}
+                                    </SyntaxHighlighter>
+                                  </div>
+                                  <div className="actions">
+                                    <button type="button" onClick={startFocusDrill}>Hide answer and practice subset</button>
+                                  </div>
+                                </>
+                              )}
+                              {focusDrillPhase === 'typing' && (
+                                <>
+                                  <textarea
+                                    className="coach-drilldown-input"
+                                    rows={Math.max(liveCoachDrillDownTarget.split('\n').length + 1, 4)}
+                                    value={focusDrillInput}
+                                    onChange={(event) => setFocusDrillInput(event.target.value)}
+                                    spellCheck={false}
+                                    autoCapitalize="off"
+                                    autoCorrect="off"
+                                    autoComplete="off"
+                                    placeholder="Type the focused subset from memory..."
+                                  />
+                                  <div className="actions">
+                                    <button type="button" onClick={submitFocusDrill} disabled={focusDrillInput.trim().length === 0}>
+                                      Submit subset
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                              {focusDrillPhase === 'submitted' && (
+                                <>
+                                  <p className={focusDrillExact || focusDrillAccuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY ? 'status success' : 'status error'}>
+                                    {focusDrillExact
+                                      ? 'Subset nailed.'
+                                      : focusDrillAccuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY
+                                        ? `Subset close enough at ${focusDrillAccuracy}%.`
+                                        : `Subset needs work at ${focusDrillAccuracy}%.`}
+                                  </p>
+                                  <div className="code-container coach-drilldown-code">
+                                    <SyntaxHighlighter
+                                      language="python"
+                                      style={vscDarkPlus}
+                                      customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
+                                      codeTagProps={{ style: { background: 'transparent' } }}
+                                    >
+                                      {liveCoachDrillDownTarget}
+                                    </SyntaxHighlighter>
+                                  </div>
+                                  <div className="actions">
+                                    <button type="button" onClick={retryFocusDrill}>Retry subset</button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          )}
                           {liveCoachError && <p className="coach-error">{liveCoachError}</p>}
                         </div>
                       </div>
@@ -1428,10 +1647,8 @@ function App() {
             {hasDeck && mainPhase === 'submitted' && (
               <p className={mainCloseEnough ? 'status success' : 'status error'}>
                 {mainCloseEnough
-                  ? sessionResults[card.id]
-                    ? 'Exact match recorded.'
-                    : `Close enough recorded at ${mainAccuracy}% (threshold ${MAIN_RECALL_CLOSE_ENOUGH_ACCURACY}%).`
-                  : `Not close enough yet. Stay on this card and iterate until you reach ${MAIN_RECALL_CLOSE_ENOUGH_ACCURACY}% or exact.`}
+                  ? 'Sound solution recorded.'
+                  : 'This attempt is not sound yet. Revise the logic and submit again.'}
               </p>
             )}
 
@@ -1441,55 +1658,6 @@ function App() {
               </div>
             )}
           </div>
-        </div>
-
-        <div className="practice-history-panel panel">
-          <div className="practice-history-header">
-            <div>
-              <h3>Recent Submission History</h3>
-              <p className="hint" style={{ marginTop: '0.35rem' }}>
-                The backend now keeps generated questions, live coach snapshots, and final submission feedback together so future prompts can adapt.
-              </p>
-            </div>
-            {practiceHistorySummary && (
-              <div className="practice-history-summary">
-                <span className="coach-metric-chip">{practiceHistorySummary.attemptCount} related attempts</span>
-                <span className="coach-metric-chip">Avg {practiceHistorySummary.recentAvgAccuracy}%</span>
-                {historyWeakestTag && (
-                  <span className="coach-metric-chip">Weakest {historyWeakestTag}</span>
-                )}
-              </div>
-            )}
-          </div>
-          {practiceHistoryLoading && <p className="coach-muted">Loading recent submissions...</p>}
-          {!practiceHistoryLoading && practiceHistoryError && <p className="coach-error">{practiceHistoryError}</p>}
-          {!practiceHistoryLoading && !practiceHistoryError && practiceHistory.length === 0 && (
-            <p className="coach-muted">No stored submission history yet for this skill pattern.</p>
-          )}
-          {!practiceHistoryLoading && practiceHistory.length > 0 && (
-            <div className="practice-history-list">
-              {practiceHistory.map((entry) => {
-                const entryTone = entry.exact ? 'success' : entry.accuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY ? 'warning' : 'error'
-                return (
-                  <article key={`${entry.attemptId}-${entry.createdAt}`} className="practice-history-entry">
-                    <div className="practice-history-entry-top">
-                      <div>
-                        <p className="practice-history-title">{entry.cardTitle || entry.cardId}</p>
-                        <p className="practice-history-meta">
-                          {entry.liveFeedbackCount} live feedback {entry.liveFeedbackCount === 1 ? 'snapshot' : 'snapshots'} · {(entry.elapsedMs / 1000).toFixed(1)}s
-                        </p>
-                      </div>
-                      <span className={`coach-status-chip coach-status-chip-${entryTone}`}>
-                        {entry.exact ? 'Exact' : `${entry.accuracy}%`}
-                      </span>
-                    </div>
-                    <p className="practice-history-question">{entry.question || entry.generatedCard.prompt || 'Stored generated question'}</p>
-                    <p className="practice-history-feedback">{summarizeHistoryText(entry)}</p>
-                  </article>
-                )
-              })}
-            </div>
-          )}
         </div>
 
         <div className="card-footer">
