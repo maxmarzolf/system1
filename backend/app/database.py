@@ -31,7 +31,7 @@ def get_pool() -> asyncpg.Pool:
 async def _apply_mode_migration(db_pool: asyncpg.Pool) -> None:
     allowed_modes = (
         "'main-recall', 'snap-classify', 'template-hunt', 'gut-check', 'no-go-trap', 'near-miss-duel', "
-        "'multiple-choice', 'full-solution', 'typing-race'"
+        "'multiple-choice', 'full-solution'"
     )
 
     async with db_pool.acquire() as conn:
@@ -45,12 +45,33 @@ async def _apply_mode_migration(db_pool: asyncpg.Pool) -> None:
                     WHERE table_schema = 'public'
                       AND table_name = 'score_attempts'
                 ) THEN
-                    ALTER TABLE score_attempts
-                    DROP CONSTRAINT IF EXISTS score_attempts_mode_check;
+                    EXECUTE $sql$
+                        DELETE FROM score_attempts
+                        WHERE mode = 'typing-race'
+                    $sql$;
 
-                    ALTER TABLE score_attempts
-                    ADD CONSTRAINT score_attempts_mode_check
-                    CHECK (mode IN ({allowed_modes}));
+                    EXECUTE $sql$
+                        ALTER TABLE score_attempts
+                        DROP CONSTRAINT IF EXISTS score_attempts_mode_check
+                    $sql$;
+
+                    EXECUTE $sql$
+                        ALTER TABLE score_attempts
+                        ADD CONSTRAINT score_attempts_mode_check
+                        CHECK (mode IN ({allowed_modes}))
+                    $sql$;
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                      AND table_name = 'questions'
+                ) THEN
+                    EXECUTE $sql$
+                        DELETE FROM questions
+                        WHERE mode = 'typing-race'
+                    $sql$;
                 END IF;
             EXCEPTION
                 WHEN duplicate_object THEN NULL;

@@ -342,8 +342,6 @@ function App() {
   const [sessionOrder, setSessionOrder] = useState<number[]>([])
   const [sessionPosition, setSessionPosition] = useState(0)
   const [sessionFinished, setSessionFinished] = useState(false)
-  const [sessionStartedAt, setSessionStartedAt] = useState(Date.now())
-  const [sessionCompletedAt, setSessionCompletedAt] = useState<number | null>(null)
   const [sessionResults, setSessionResults] = useState<Record<string, boolean>>({})
   const [sessionAccuracyByCard, setSessionAccuracyByCard] = useState<Record<string, number>>({})
   const [sessionElapsedByCard, setSessionElapsedByCard] = useState<Record<string, number>>({})
@@ -427,8 +425,6 @@ function App() {
     setSessionOrder(nextOrder)
     setSessionPosition(0)
     setSessionFinished(false)
-    setSessionStartedAt(Date.now())
-    setSessionCompletedAt(null)
     setSessionResults({})
     setSessionAccuracyByCard({})
     setSessionElapsedByCard({})
@@ -510,7 +506,6 @@ function App() {
       const next = { ...prevResults, [card.id]: isCorrect }
       if (Object.keys(next).length >= sessionOrder.length) {
         setSessionFinished(true)
-        setSessionCompletedAt(Date.now())
       }
       return next
     })
@@ -1042,7 +1037,6 @@ function App() {
 
   const attempts = Object.keys(sessionResults).length
   const correctCount = Object.values(sessionResults).filter(Boolean).length
-  const exactAccuracy = attempts > 0 ? Math.round((correctCount / attempts) * 100) : 0
   const avgAccuracy =
     attempts > 0
       ? Math.round(
@@ -1050,7 +1044,6 @@ function App() {
         ) / 10
       : 0
 
-  const sessionDurationMs = Math.max((sessionCompletedAt ?? Date.now()) - sessionStartedAt, 0)
   const canAdvance = hasAnsweredCurrent && !sessionFinished && sessionPosition < sessionOrder.length - 1
   const canGoNext = sessionPosition < sessionOrder.length - 1
   const canGoPrev = sessionPosition > 0
@@ -1294,15 +1287,6 @@ function App() {
               <span key={tag} className="tag">{tag}</span>
             ))}
           </div>
-        </div>
-
-        <div className="typing-metrics" style={{ marginBottom: '1.5rem' }}>
-          <p><strong>Flow:</strong> Prompt → Recall Full Answer</p>
-          <p><strong>Order:</strong> {sessionOrderType === 'shuffled' ? 'Randomized' : 'Original'}</p>
-          <p><strong>Session:</strong> {attempts}/{sessionOrder.length}</p>
-          <p><strong>Sound Rate:</strong> {exactAccuracy}%</p>
-          <p><strong>Avg Score:</strong> {avgAccuracy}%</p>
-          <p><strong>Duration:</strong> {(sessionDurationMs / 1000).toFixed(1)}s</p>
         </div>
 
         {sessionFinished && (

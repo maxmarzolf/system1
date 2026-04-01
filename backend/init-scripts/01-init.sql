@@ -20,8 +20,7 @@ CREATE TABLE IF NOT EXISTS score_attempts (
             'no-go-trap',
             'near-miss-duel',
             'multiple-choice',
-            'full-solution',
-            'typing-race'
+            'full-solution'
         )
     ),
     correct BOOLEAN NOT NULL,

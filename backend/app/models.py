@@ -13,7 +13,6 @@ class GameMode(str, Enum):
     main_recall = "main-recall"
     multiple_choice = "multiple-choice"
     full_solution = "full-solution"
-    typing_race = "typing-race"
 
 
 # ─── Request schemas ───
@@ -37,21 +36,6 @@ class AttemptCreate(BaseModel):
     generatedCardId: str | None = None
     generatedCard: dict[str, Any] | None = None
     coachFeedback: dict[str, Any] | None = None
-
-
-class TypingSessionCreate(BaseModel):
-    cardId: str = Field(min_length=1)
-    cardTitle: str = ""
-    questionType: str = ""
-    categoryTags: str = ""
-    correct: bool = False
-    accuracy: float = Field(default=0, ge=0, le=100)
-    wpm: int = Field(default=0, ge=0)
-    score: int = Field(default=0, ge=0)
-    elapsedMs: int = Field(default=0, ge=0)
-    mistakes: int = Field(default=0, ge=0)
-    backspaces: int = Field(default=0, ge=0)
-    charsTyped: int = Field(default=0, ge=0)
 
 
 # ─── Response schemas ───

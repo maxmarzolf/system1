@@ -104,12 +104,10 @@ Use this when you want to regenerate SQL seed files from `src/data/*.ts` and rep
 **Seed files:**
 - `backend/data_mc.sql` (multiple-choice)
 - `backend/data_full.sql` (full-solution)
-- `backend/data_typing.sql` (typing-race)
 
 **1. Regenerate mode-specific seed files (optional, after data changes):**
 ```bash
 node backend/generate_data_full.cjs
-node backend/generate_data_typing.cjs
 ```
 
 **2. Rebuild containers and initialize a fresh database (runs all init scripts automatically):**

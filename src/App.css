@@ -1110,22 +1110,6 @@ button.link:hover {
   flex-wrap: wrap;
 }
 
-.typing-metrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.6rem 1rem;
-  margin: 0 0 1rem;
-  padding: 0.9rem;
-  border: 1px solid var(--hc-border-dim);
-  border-radius: 0;
-  background: var(--hc-bg);
-}
-
-.typing-metrics p {
-  margin: 0;
-  font-size: 0.9rem;
-}
-
 .status {
   margin-top: 1.5rem;
   font-weight: 700;
