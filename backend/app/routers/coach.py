@@ -28,11 +28,14 @@ from app.models import (
     CoachSessionPlanResponse,
     SkillMapDrillsRequest,
     SkillMapDrillsResponse,
+    TemplateMode,
 )
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])
 
 LIVE_STAGE_ORDER = {"early": 0, "mid": 1, "late": 2, "very-late": 3}
+LIVE_FEEDBACK_FREQUENCIES = {"more-often", "balanced", "less-often"}
+TEMPLATE_MODE_ORDER = ("pseudo", "skeleton", "full")
 PYTHON_BUILTIN_NAMES = set(dir(builtins))
 PYTHON_KEYWORDS = set(keyword.kwlist)
 LIVE_TUNING_DEFAULTS: dict[str, Any] = {
@@ -41,6 +44,7 @@ LIVE_TUNING_DEFAULTS: dict[str, Any] = {
     "singleIssue": True,
     "showPatternNames": False,
     "specificitySource": "time-and-quality",
+    "feedbackFrequency": "balanced",
     "allowExactEditsWhenStuck": True,
     "canonicalAnswerStage": "late",
     "affirmationMode": "stable-only",
@@ -169,6 +173,17 @@ def _evaluate_attempt_soundness(expected_answer: str, user_answer: str) -> dict[
     }
 
 
+def _evaluate_attempt_by_template_mode(
+    expected_answer: str,
+    user_answer: str,
+    skill_tags: list[str],
+    template_mode: str,
+) -> dict[str, Any]:
+    if template_mode == TemplateMode.full.value:
+        return _evaluate_attempt_soundness(expected_answer, user_answer)
+    return _analyze_template_attempt(user_answer, skill_tags, template_mode)
+
+
 def _live_stage_rank(stage: str) -> int:
     return LIVE_STAGE_ORDER.get(stage, 0)
 
@@ -191,6 +206,10 @@ def _merged_live_tuning(body: CoachAttemptFeedbackRequest) -> dict[str, Any]:
     tuning["showPatternNames"] = bool(raw.get("showPatternNames", tuning["showPatternNames"]))
     specificity = str(raw.get("specificitySource", tuning["specificitySource"])).strip()
     tuning["specificitySource"] = specificity or tuning["specificitySource"]
+    feedback_frequency = str(raw.get("feedbackFrequency", tuning["feedbackFrequency"])).strip()
+    tuning["feedbackFrequency"] = (
+        feedback_frequency if feedback_frequency in LIVE_FEEDBACK_FREQUENCIES else tuning["feedbackFrequency"]
+    )
     tuning["allowExactEditsWhenStuck"] = bool(
         raw.get("allowExactEditsWhenStuck", tuning["allowExactEditsWhenStuck"])
     )
@@ -275,6 +294,234 @@ def _has_syntax_error(code: str) -> bool:
         return False
     except SyntaxError:
         return True
+
+
+def _template_mode_value(value: TemplateMode | str | None) -> str:
+    if isinstance(value, TemplateMode):
+        return value.value
+    normalized = str(value or "").strip().lower()
+    return normalized if normalized in TEMPLATE_MODE_ORDER else TemplateMode.full.value
+
+
+def _normalized_template_text(text: str) -> str:
+    lowered = text.replace("\r\n", "\n").lower()
+    lowered = re.sub(r"[^a-z0-9_+\-=\n\s]", " ", lowered)
+    return re.sub(r"\s+", " ", lowered).strip()
+
+
+def _has_any_pattern(text: str, patterns: list[str]) -> bool:
+    return any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
+
+
+def _template_progress_profile(skill_tags: list[str]) -> tuple[list[dict[str, Any]], list[str]]:
+    pattern_tag = _primary_pattern_tag(skill_tags)
+
+    generic_steps = [
+        {"key": "entry", "label": "entry point", "patterns": [r"\bdef\b", r"\bfunction\b", r"\bdefine\b", r"\bsolve\b"]},
+        {"key": "state", "label": "state setup", "patterns": [r"\binit", r"\bstate\b", r"\bsetup\b", r"\btrack\b"]},
+        {"key": "flow", "label": "main control flow", "patterns": [r"\bfor each\b", r"\biterate\b", r"\brepeat\b", r"\bfor\b", r"\bwhile\b"]},
+        {"key": "update", "label": "state update", "patterns": [r"\bupdate\b", r"\badvance\b", r"\bmove\b", r"\bappend\b", r"\bpop\b", r"\b=\b"]},
+        {"key": "return", "label": "return path", "patterns": [r"\breturn\b", r"\banswer\b", r"\bresult\b"]},
+    ]
+    generic_critical = ["state", "flow", "update", "return"]
+
+    profiles: dict[str, tuple[list[dict[str, Any]], list[str]]] = {
+        "sliding-window": (
+            [
+                {"key": "entry", "label": "entry point", "patterns": [r"\bdef\b", r"\bfunction\b", r"\bdefine\b", r"\bsliding[_ ]window\b"]},
+                {"key": "state", "label": "window state", "patterns": [r"\bleft\b", r"\bstate\b", r"\bcount\b", r"\bcounts\b", r"\bbest\b"]},
+                {"key": "expand", "label": "expand step", "patterns": [r"\bfor right\b", r"\benumerate\b", r"\bincoming\b", r"\bexpand\b", r"\badd\b.+\bwindow\b"]},
+                {"key": "repair", "label": "window repair", "patterns": [r"\bwhile\b.+\binvalid\b", r"\bwindow is invalid\b", r"\brestore validity\b", r"\bwhile len\b"]},
+                {"key": "shrink", "label": "left-side shrink", "patterns": [r"\bremove\b.+\bleft\b", r"\bmove left\b", r"\bleft\s*\+=\s*1\b", r"\bshrink\b"]},
+                {"key": "score", "label": "valid-window scoring", "patterns": [r"\bbest\s*=\s*max\(", r"\bupdate best\b", r"\bscore\b", r"\bright - left \+ 1\b"]},
+                {"key": "return", "label": "return path", "patterns": [r"\breturn\b.+\bbest\b", r"\breturn\b.+\bresult\b", r"\breturn\b"]},
+            ],
+            ["state", "expand", "repair", "shrink", "score", "return"],
+        ),
+        "two-pointers": (
+            [
+                {"key": "entry", "label": "entry point", "patterns": [r"\bdef\b", r"\bfunction\b", r"\bdefine\b"]},
+                {"key": "pointers", "label": "pointer setup", "patterns": [r"\bleft\b", r"\bright\b", r"\btwo pointers\b"]},
+                {"key": "loop", "label": "pointer scan loop", "patterns": [r"\bwhile left < right\b", r"\bfor each pair\b", r"\bscan from both ends\b"]},
+                {"key": "compare", "label": "comparison rule", "patterns": [r"\bcompare\b", r"\btarget\b", r"\btoo small\b", r"\btoo large\b", r"\bif\b.+\btarget\b"]},
+                {"key": "move", "label": "pointer movement", "patterns": [r"\bleft\s*\+=\s*1\b", r"\bright\s*-=\s*1\b", r"\bmove left\b", r"\bmove right\b"]},
+                {"key": "return", "label": "return path", "patterns": [r"\breturn\b", r"\bfound\b", r"\banswer\b"]},
+            ],
+            ["pointers", "loop", "compare", "move", "return"],
+        ),
+        "binary-search": (
+            [
+                {"key": "entry", "label": "entry point", "patterns": [r"\bdef\b", r"\bfunction\b", r"\bdefine\b"]},
+                {"key": "bounds", "label": "interval setup", "patterns": [r"\bleft\b", r"\bright\b", r"\bsearch interval\b", r"\blow\b", r"\bhigh\b"]},
+                {"key": "loop", "label": "search loop", "patterns": [r"\bwhile left <= right\b", r"\bwhile low <= high\b", r"\bwhile\b.+\binterval\b"]},
+                {"key": "mid", "label": "midpoint step", "patterns": [r"\bmid\b", r"\bmiddle\b"]},
+                {"key": "compare", "label": "midpoint comparison", "patterns": [r"\btarget\b", r"\bcompare\b", r"\btoo small\b", r"\btoo large\b", r"\bnums\[mid\]"]},
+                {"key": "update", "label": "bound update", "patterns": [r"\bleft\s*=\s*mid", r"\bright\s*=\s*mid", r"\bdiscard\b.+\bhalf\b", r"\bmove left bound\b", r"\bmove right bound\b"]},
+                {"key": "return", "label": "return path", "patterns": [r"\breturn\b", r"\banswer\b", r"\bnot found\b"]},
+            ],
+            ["bounds", "loop", "mid", "compare", "update", "return"],
+        ),
+        "dynamic-programming": (
+            [
+                {"key": "entry", "label": "entry point", "patterns": [r"\bdef\b", r"\bfunction\b", r"\bdefine\b"]},
+                {"key": "state", "label": "state definition", "patterns": [r"\bdp\b", r"\bstate array\b", r"\bstate means\b", r"\bsubproblem\b"]},
+                {"key": "base", "label": "base case", "patterns": [r"\bbase case\b", r"\bdp\[0\]", r"\banchor\b", r"\binitialize first\b"]},
+                {"key": "loop", "label": "fill order", "patterns": [r"\bfor\b", r"\biterate\b", r"\bfill the table\b", r"\bmove through the states\b"]},
+                {"key": "transition", "label": "transition update", "patterns": [r"\btransition\b", r"\bdp\[", r"\bfrom earlier state\b", r"\brecurrence\b"]},
+                {"key": "return", "label": "return path", "patterns": [r"\breturn\b", r"\bfinal state\b", r"\blast dp\b", r"\banswer\b"]},
+            ],
+            ["state", "base", "loop", "transition", "return"],
+        ),
+        "dp": (
+            [
+                {"key": "entry", "label": "entry point", "patterns": [r"\bdef\b", r"\bfunction\b", r"\bdefine\b"]},
+                {"key": "state", "label": "state definition", "patterns": [r"\bdp\b", r"\bstate array\b", r"\bstate means\b", r"\bsubproblem\b"]},
+                {"key": "base", "label": "base case", "patterns": [r"\bbase case\b", r"\bdp\[0\]", r"\banchor\b", r"\binitialize first\b"]},
+                {"key": "loop", "label": "fill order", "patterns": [r"\bfor\b", r"\biterate\b", r"\bfill the table\b", r"\bmove through the states\b"]},
+                {"key": "transition", "label": "transition update", "patterns": [r"\btransition\b", r"\bdp\[", r"\bfrom earlier state\b", r"\brecurrence\b"]},
+                {"key": "return", "label": "return path", "patterns": [r"\breturn\b", r"\bfinal state\b", r"\blast dp\b", r"\banswer\b"]},
+            ],
+            ["state", "base", "loop", "transition", "return"],
+        ),
+        "graph-traversal": (
+            [
+                {"key": "entry", "label": "entry point", "patterns": [r"\bdef\b", r"\bfunction\b", r"\bdefine\b"]},
+                {"key": "frontier", "label": "frontier or visited setup", "patterns": [r"\bvisited\b", r"\bqueue\b", r"\bstack\b", r"\bfrontier\b"]},
+                {"key": "loop", "label": "traversal loop", "patterns": [r"\bwhile queue\b", r"\bwhile stack\b", r"\bdfs\b", r"\bbfs\b", r"\bpop\b", r"\bpopleft\b"]},
+                {"key": "guard", "label": "skip or visited rule", "patterns": [r"\bif\b.+\bvisited\b", r"\bskip\b", r"\balready seen\b"]},
+                {"key": "neighbors", "label": "neighbor update", "patterns": [r"\bneighbor\b", r"\bnei\b", r"\benqueue\b", r"\bappend\b", r"\bexplore\b"]},
+                {"key": "return", "label": "return path", "patterns": [r"\breturn\b", r"\banswer\b", r"\bresult\b"]},
+            ],
+            ["frontier", "loop", "guard", "neighbors", "return"],
+        ),
+        "dfs-bfs": (
+            [
+                {"key": "entry", "label": "entry point", "patterns": [r"\bdef\b", r"\bfunction\b", r"\bdefine\b"]},
+                {"key": "frontier", "label": "frontier or visited setup", "patterns": [r"\bvisited\b", r"\bqueue\b", r"\bstack\b", r"\bfrontier\b"]},
+                {"key": "loop", "label": "traversal loop", "patterns": [r"\bwhile queue\b", r"\bwhile stack\b", r"\bdfs\b", r"\bbfs\b", r"\bpop\b", r"\bpopleft\b"]},
+                {"key": "guard", "label": "skip or visited rule", "patterns": [r"\bif\b.+\bvisited\b", r"\bskip\b", r"\balready seen\b"]},
+                {"key": "neighbors", "label": "neighbor update", "patterns": [r"\bneighbor\b", r"\bnei\b", r"\benqueue\b", r"\bappend\b", r"\bexplore\b"]},
+                {"key": "return", "label": "return path", "patterns": [r"\breturn\b", r"\banswer\b", r"\bresult\b"]},
+            ],
+            ["frontier", "loop", "guard", "neighbors", "return"],
+        ),
+        "backtracking": (
+            [
+                {"key": "entry", "label": "entry point", "patterns": [r"\bdef\b", r"\bfunction\b", r"\bdefine\b"]},
+                {"key": "choice", "label": "choice iteration", "patterns": [r"\bfor choice\b", r"\bfor each choice\b", r"\biterate choices\b"]},
+                {"key": "choose", "label": "choose step", "patterns": [r"\bappend\b", r"\badd choice\b", r"\bmake the choice\b"]},
+                {"key": "recurse", "label": "recursive exploration", "patterns": [r"\bbacktrack\b", r"\bdfs\b", r"\brecurse\b"]},
+                {"key": "undo", "label": "undo step", "patterns": [r"\bpop\b", r"\bremove last\b", r"\bundo\b"]},
+                {"key": "return", "label": "base case or return path", "patterns": [r"\breturn\b", r"\bbase case\b", r"\banswer\b"]},
+            ],
+            ["choice", "choose", "recurse", "undo"],
+        ),
+        "heap": (
+            [
+                {"key": "entry", "label": "entry point", "patterns": [r"\bdef\b", r"\bfunction\b", r"\bdefine\b"]},
+                {"key": "heap", "label": "heap setup", "patterns": [r"\bheap\b", r"\bheappush\b", r"\bpriority queue\b"]},
+                {"key": "loop", "label": "item traversal", "patterns": [r"\bfor\b", r"\biterate\b", r"\bprocess each\b"]},
+                {"key": "push", "label": "push step", "patterns": [r"\bheappush\b", r"\bpush\b.+\bheap\b", r"\badd to the heap\b"]},
+                {"key": "prune", "label": "heap prune or pop", "patterns": [r"\bheappop\b", r"\bpop\b.+\bheap\b", r"\bif len\(heap\)\b", r"\bevict\b"]},
+                {"key": "return", "label": "return path", "patterns": [r"\breturn\b", r"\btop of heap\b", r"\banswer\b"]},
+            ],
+            ["heap", "loop", "push", "prune", "return"],
+        ),
+        "union-find": (
+            [
+                {"key": "entry", "label": "entry point", "patterns": [r"\bdef\b", r"\bfunction\b", r"\bdefine\b"]},
+                {"key": "parent", "label": "parent setup", "patterns": [r"\bparent\b", r"\brank\b", r"\bsize\b", r"\broot\b"]},
+                {"key": "find", "label": "find step", "patterns": [r"\bfind\b", r"\bpath compression\b"]},
+                {"key": "union", "label": "union step", "patterns": [r"\bunion\b", r"\bconnect roots\b", r"\bmerge sets\b"]},
+                {"key": "loop", "label": "edge or item traversal", "patterns": [r"\bfor edge\b", r"\bfor each edge\b", r"\biterate edges\b", r"\bfor\b"]},
+                {"key": "return", "label": "return path", "patterns": [r"\breturn\b", r"\banswer\b", r"\bcomponent\b"]},
+            ],
+            ["parent", "find", "union", "loop", "return"],
+        ),
+        "intervals": (
+            [
+                {"key": "entry", "label": "entry point", "patterns": [r"\bdef\b", r"\bfunction\b", r"\bdefine\b"]},
+                {"key": "sort", "label": "sorted interval order", "patterns": [r"\bsort\b", r"\bsorted\b", r"\border by start\b"]},
+                {"key": "current", "label": "current interval state", "patterns": [r"\bcurrent\b", r"\bstart\b", r"\bend\b"]},
+                {"key": "compare", "label": "overlap test", "patterns": [r"\boverlap\b", r"\bintersect\b", r"\bif\b.+\bstart\b"]},
+                {"key": "merge", "label": "merge or append step", "patterns": [r"\bmerge\b", r"\bappend\b", r"\bstart a new interval\b", r"\bextend\b"]},
+                {"key": "return", "label": "return path", "patterns": [r"\breturn\b", r"\bresult\b", r"\bmerged\b"]},
+            ],
+            ["sort", "current", "compare", "merge", "return"],
+        ),
+        "prefix-sums": (
+            [
+                {"key": "entry", "label": "entry point", "patterns": [r"\bdef\b", r"\bfunction\b", r"\bdefine\b"]},
+                {"key": "prefix", "label": "prefix state setup", "patterns": [r"\bprefix\b", r"\brunning sum\b", r"\bcount map\b", r"\bhash map\b"]},
+                {"key": "loop", "label": "item traversal", "patterns": [r"\bfor\b", r"\biterate\b", r"\bprocess each\b"]},
+                {"key": "query", "label": "query before update", "patterns": [r"\bcheck\b.+\bprefix\b", r"\bquery\b", r"\bprefix - target\b", r"\bbefore updating\b"]},
+                {"key": "update", "label": "prefix update", "patterns": [r"\bprefix\s*\+?=", r"\bupdate map\b", r"\brecord current prefix\b"]},
+                {"key": "return", "label": "return path", "patterns": [r"\breturn\b", r"\banswer\b", r"\bresult\b"]},
+            ],
+            ["prefix", "loop", "query", "update", "return"],
+        ),
+        "monotonic-stack": (
+            [
+                {"key": "entry", "label": "entry point", "patterns": [r"\bdef\b", r"\bfunction\b", r"\bdefine\b"]},
+                {"key": "stack", "label": "stack setup", "patterns": [r"\bstack\b", r"\bmonotonic\b"]},
+                {"key": "loop", "label": "item traversal", "patterns": [r"\bfor\b", r"\biterate\b", r"\bscan\b"]},
+                {"key": "resolve", "label": "resolve while invariant breaks", "patterns": [r"\bwhile\b.+\bstack\b", r"\bpop\b", r"\bbreaks the invariant\b"]},
+                {"key": "push", "label": "push current item", "patterns": [r"\bappend\b", r"\bpush\b", r"\bstack\.append\b"]},
+                {"key": "return", "label": "return path", "patterns": [r"\breturn\b", r"\banswer\b", r"\bresult\b"]},
+            ],
+            ["stack", "loop", "resolve", "push", "return"],
+        ),
+        "stack": (
+            [
+                {"key": "entry", "label": "entry point", "patterns": [r"\bdef\b", r"\bfunction\b", r"\bdefine\b"]},
+                {"key": "stack", "label": "stack setup", "patterns": [r"\bstack\b"]},
+                {"key": "loop", "label": "item traversal", "patterns": [r"\bfor\b", r"\bwhile\b", r"\bprocess\b"]},
+                {"key": "update", "label": "push or pop step", "patterns": [r"\bappend\b", r"\bpush\b", r"\bpop\b"]},
+                {"key": "return", "label": "return path", "patterns": [r"\breturn\b", r"\bresult\b", r"\banswer\b"]},
+            ],
+            ["stack", "loop", "update", "return"],
+        ),
+    }
+    return profiles.get(pattern_tag, (generic_steps, generic_critical))
+
+
+def _analyze_template_attempt(user_answer: str, skill_tags: list[str], template_mode: str) -> dict[str, Any]:
+    normalized_text = _normalized_template_text(user_answer)
+    steps, critical_keys = _template_progress_profile(skill_tags)
+
+    matched_labels: list[str] = []
+    missing_labels: list[str] = []
+    missing_keys: list[str] = []
+    matched_keys: list[str] = []
+    for step in steps:
+        key = str(step["key"])
+        label = str(step["label"])
+        patterns = [str(pattern) for pattern in step["patterns"]]
+        if _has_any_pattern(normalized_text, patterns):
+            matched_keys.append(key)
+            matched_labels.append(label)
+        else:
+            missing_keys.append(key)
+            missing_labels.append(label)
+
+    total_steps = max(len(steps), 1)
+    accuracy = round((len(matched_keys) / total_steps) * 100, 1)
+    critical_met = all(key in matched_keys for key in critical_keys)
+    threshold = 70 if template_mode == TemplateMode.pseudo.value else 80
+    sound = bool(normalized_text) and critical_met and accuracy >= threshold
+    syntax_valid = bool(user_answer.strip())
+    if template_mode == TemplateMode.skeleton.value and re.search(r"^\s*def\b", user_answer, re.MULTILINE):
+        syntax_valid = not _has_syntax_error(user_answer)
+
+    return {
+        "accuracy": accuracy,
+        "sound": sound,
+        "syntaxValid": syntax_valid,
+        "matchedLabels": matched_labels,
+        "missingLabels": missing_labels,
+        "matchedKeys": matched_keys,
+        "missingKeys": missing_keys,
+    }
 
 
 def _attempt_structure_summary(expected_lines: list[str], actual_lines: list[str]) -> dict[str, list[str]]:
@@ -529,7 +776,69 @@ async def _load_practice_history(
     pool = get_pool()
 
     async with pool.acquire() as conn:
-        if skill_tags:
+        if question_type:
+            rows = await conn.fetch(
+                """
+                SELECT
+                    sa.id AS "attemptId",
+                    COALESCE(sa.interaction_id, '') AS "interactionId",
+                    sa.card_id AS "cardId",
+                    sa.card_title AS "cardTitle",
+                    sa.question,
+                    sa.correct_answer AS "correctAnswer",
+                    sa.user_answer AS "userAnswer",
+                    sa.accuracy,
+                    sa.exact,
+                    sa.elapsed_ms AS "elapsedMs",
+                    sa.category_tags AS "categoryTags",
+                    sa.generated_card AS "generatedCard",
+                    sa.coach_feedback AS "submissionFeedback",
+                    sa.created_at,
+                    COALESCE(live.live_feedback_count, 0) AS "liveFeedbackCount",
+                    latest.feedback AS "latestLiveFeedback"
+                FROM score_attempts sa
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*)::int AS live_feedback_count
+                    FROM coach_feedback_events fe
+                    WHERE fe.feedback_stage = 'live'
+                      AND (
+                        (sa.interaction_id IS NOT NULL AND fe.interaction_id = sa.interaction_id)
+                        OR (
+                            sa.interaction_id IS NULL
+                            AND fe.card_id = sa.card_id
+                            AND fe.question_type = sa.question_type
+                            AND fe.created_at <= sa.created_at
+                        )
+                      )
+                ) live ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT fe.feedback
+                    FROM coach_feedback_events fe
+                    WHERE fe.feedback_stage = 'live'
+                      AND (
+                        (sa.interaction_id IS NOT NULL AND fe.interaction_id = sa.interaction_id)
+                        OR (
+                            sa.interaction_id IS NULL
+                            AND fe.card_id = sa.card_id
+                            AND fe.question_type = sa.question_type
+                            AND fe.created_at <= sa.created_at
+                        )
+                      )
+                    ORDER BY fe.created_at DESC
+                    LIMIT 1
+                ) latest ON TRUE
+                WHERE sa.mode = 'main-recall'
+                  AND sa.question_type = $2
+                  AND (sa.card_id = $1 OR sa.generated_card_id = $1 OR sa.category_tags && $3::text[])
+                ORDER BY sa.created_at DESC
+                LIMIT $4
+                """,
+                card_id,
+                question_type,
+                skill_tags,
+                limit,
+            )
+        elif skill_tags:
             rows = await conn.fetch(
                 """
                 SELECT
@@ -641,12 +950,11 @@ async def _load_practice_history(
                     LIMIT 1
                 ) latest ON TRUE
                 WHERE sa.mode = 'main-recall'
-                  AND (sa.card_id = $1 OR sa.generated_card_id = $1 OR sa.question_type = $2)
+                  AND (sa.card_id = $1 OR sa.generated_card_id = $1)
                 ORDER BY sa.created_at DESC
-                LIMIT $3
+                LIMIT $2
                 """,
                 card_id,
-                question_type,
                 limit,
             )
 
@@ -1491,6 +1799,7 @@ def _compose_live_feedback(
     tuning: dict[str, Any],
     stalled: bool,
     pattern_tag: str,
+    template_mode: str,
     ignored_drill_down_key: str,
     completed_drill_down_key: str,
 ) -> dict[str, Any]:
@@ -1503,6 +1812,7 @@ def _compose_live_feedback(
         tuning["drillDownEnabled"]
         and stalled
         and blocker_key
+        and template_mode != TemplateMode.pseudo.value
         and blocker_key != ignored_drill_down_key
         and blocker_key != completed_drill_down_key
     )
@@ -1548,11 +1858,232 @@ def _live_primary_focus(pattern_tag: str, is_graph_question: bool, has_loop: boo
     return "Advance the current structure one clear step."
 
 
+def _pseudo_live_focus_copy(missing_key: str, missing_label: str) -> tuple[str, str, str]:
+    mapping = {
+        "entry": (
+            "Anchor the outline.",
+            "Start with a named function or entry point so the rest of the template has a stable frame.",
+            "A named entry point makes the rest of the outline easier to place.",
+        ),
+        "state": (
+            "Name the state you track.",
+            "State the variables or invariant you will maintain before describing more flow.",
+            "Without the tracked state, later steps stay vague.",
+        ),
+        "expand": (
+            "Add the outer expand step.",
+            "Write the step that takes in the next value before you describe repairs or scoring.",
+            "The window needs an incoming-step description before the invariant can react.",
+        ),
+        "repair": (
+            "State the invariant repair rule.",
+            "Describe when the window becomes invalid and the loop that restores validity.",
+            "That repair rule is what turns a traversal into a sliding-window template.",
+        ),
+        "shrink": (
+            "Make the left-side repair explicit.",
+            "Say how the left side changes while you restore the invariant.",
+            "Without the shrink step, the invariant never becomes concrete.",
+        ),
+        "score": (
+            "Say how you record the answer.",
+            "Add the step that updates the best or current answer after the invariant is valid.",
+            "Templates feel complete only once the answer-recording step is named.",
+        ),
+        "loop": (
+            "Add the main loop in words.",
+            "Describe the repeated control-flow step before adding more detail.",
+            "The outline needs motion before it needs precision.",
+        ),
+        "compare": (
+            "State the comparison rule.",
+            "Write the rule that decides which branch or pointer move happens next.",
+            "That comparison is the invariant's decision point.",
+        ),
+        "move": (
+            "Name the movement step.",
+            "Describe which pointer or boundary changes when the comparison goes one way or the other.",
+            "Without the movement rule, the template does not advance.",
+        ),
+        "mid": (
+            "Call out the midpoint step.",
+            "Add the midpoint calculation or middle-choice step before the branch logic.",
+            "Binary-search logic needs the middle anchor before it can discard half the space.",
+        ),
+        "update": (
+            "Make the update rule explicit.",
+            "Name the state or boundary update that follows from the invariant.",
+            "A template becomes reusable when the update rule is explicit.",
+        ),
+        "return": (
+            "Finish with the return path.",
+            "Add the final answer step so the outline has a clear exit.",
+            "An outline still feels unfinished until the answer path is named.",
+        ),
+    }
+    return mapping.get(
+        missing_key,
+        (
+            f"Lock in {missing_label}.",
+            f"Add the {missing_label.lower()} step before you expand the outline.",
+            "One missing structural step is still carrying too much of the template.",
+        ),
+    )
+
+
+def _heuristic_pseudo_live_feedback(
+    body: CoachAttemptFeedbackRequest,
+    history_summary: dict[str, Any],
+    live_history: list[dict[str, Any]],
+) -> dict[str, Any]:
+    tuning = _merged_live_tuning(body)
+    analysis = _analyze_template_attempt(body.userAnswer, body.skillTags, TemplateMode.pseudo.value)
+    missing_keys = [str(key) for key in analysis["missingKeys"]]
+    missing_labels = [str(label) for label in analysis["missingLabels"]]
+    matched_labels = [str(label) for label in analysis["matchedLabels"]]
+    blocker_key = missing_keys[0] if missing_keys else "outline"
+    blocker_label = missing_labels[0] if missing_labels else "outline order"
+    primary_focus, next_move, why = _pseudo_live_focus_copy(blocker_key, blocker_label)
+    stalled_duration_ms = _consecutive_blocker_duration_ms(live_history, blocker_key, body.elapsedMs)
+    stalled = stalled_duration_ms >= int(tuning["stallThresholdSeconds"]) * 1000
+    affirmation = ""
+    if tuning["affirmationMode"] != "never" and matched_labels:
+        affirmation = f"You already named {matched_labels[0].lower()}, which is a stable anchor."
+
+    response = _compose_live_feedback(
+        blocker_key=blocker_key,
+        primary_focus=primary_focus,
+        next_move=next_move,
+        why=why,
+        keep_in_mind=_pattern_principle(body.skillTags),
+        affirmation=affirmation,
+        error_tags=[blocker_key],
+        history_summary=history_summary,
+        tuning=tuning,
+        stalled=stalled,
+        pattern_tag=_primary_pattern_tag(body.skillTags),
+        template_mode=TemplateMode.pseudo.value,
+        ignored_drill_down_key=_ignored_drill_down_key(body),
+        completed_drill_down_key=_completed_drill_down_key(body),
+    )
+    response["signals"] = {
+        "draft_mode": True,
+        "live_stage": _live_feedback_stage(body.elapsedMs),
+        "effective_live_stage": _live_feedback_stage(body.elapsedMs),
+        "pattern_tag": _primary_pattern_tag(body.skillTags),
+        "history_summary": history_summary,
+        "draft_milestones": body.draftMilestones,
+        "live_blocker_key": blocker_key,
+        "stalled_duration_ms": stalled_duration_ms,
+        "live_tuning": tuning,
+        "template_mode": TemplateMode.pseudo.value,
+    }
+    return response
+
+
+def _heuristic_template_submission_feedback(
+    body: CoachAttemptFeedbackRequest,
+    history_summary: dict[str, Any],
+    template_mode: str,
+) -> dict[str, Any]:
+    analysis = _analyze_template_attempt(body.userAnswer, body.skillTags, template_mode)
+    matched_labels = [str(label) for label in analysis["matchedLabels"]]
+    missing_labels = [str(label) for label in analysis["missingLabels"]]
+    missing_keys = [str(key) for key in analysis["missingKeys"]]
+    blocker_key = missing_keys[0] if missing_keys else "template"
+    blocker_label = missing_labels[0] if missing_labels else "template flow"
+    principle = _pattern_principle(body.skillTags)
+    mode_label = "pseudocode" if template_mode == TemplateMode.pseudo.value else "skeleton"
+
+    strengths = []
+    if matched_labels:
+        strengths.append(f"You preserved {', '.join(matched_labels[:3])}.")
+    if body.accuracy >= 85:
+        strengths.append(f"High {mode_label} coverage under recall pressure.")
+    if not strengths:
+        strengths.append(f"You completed a full {mode_label} rep, which gives trainable signal.")
+
+    if body.exact or analysis["sound"]:
+        primary_focus = f"Keep the {mode_label} outline stable."
+        immediate = f"Run another {mode_label} rep and keep the same step order."
+    else:
+        primary_focus = f"Lock in {blocker_label.lower()}."
+        immediate = _pseudo_live_focus_copy(blocker_key, blocker_label)[1]
+
+    diagnosis = (
+        f"{mode_label.capitalize()} accuracy {round(body.accuracy)}% in {body.elapsedMs / 1000:.1f}s."
+    )
+    if missing_labels:
+        diagnosis += f" Biggest gap: {missing_labels[0].lower()}."
+    else:
+        diagnosis += " Core template steps are present."
+
+    if history_summary["attemptCount"] > 0:
+        diagnosis += (
+            f" Historical baseline: {history_summary['recentAvgAccuracy']}% over "
+            f"{history_summary['attemptCount']} related attempt(s)."
+        )
+
+    issues: list[str] = []
+    if missing_labels:
+        issues.append(
+            f"The {mode_label} is missing key structural pieces: {', '.join(missing_labels[:3]).lower()}."
+        )
+    if not body.exact and not issues:
+        issues.append(
+            f"The {mode_label} has the right shape, but one or two invariant steps are still too vague."
+        )
+
+    full_feedback = _build_submission_feedback(issues, strengths, principle, history_summary)
+    corrected_version = body.expectedAnswer.strip() if body.userAnswer.strip() and not body.exact else ""
+    micro_drill = (
+        f"3 reps: hide the answer, write the {mode_label}, compare, then immediately rewrite only the missing step."
+    )
+    next_target = (
+        f"Next rep target: >= {min(100, max(80, int(body.accuracy) + 5))}% {mode_label} coverage under "
+        f"{max(15, int((body.elapsedMs / 1000) * 0.85))}s."
+    )
+    if body.exact or analysis["sound"]:
+        next_target = (
+            f"Next rep target: another sound {mode_label} rep under {max(15, int((body.elapsedMs / 1000) * 0.85))}s."
+        )
+
+    error_tags = [blocker_key] if missing_keys else ["sound"]
+    return {
+        "diagnosis": diagnosis,
+        "primaryFocus": primary_focus,
+        "immediateCorrection": immediate,
+        "keepInMind": principle,
+        "affirmation": strengths[0] if strengths else "",
+        "nextMove": immediate,
+        "why": issues[0] if issues else diagnosis,
+        "microDrill": micro_drill,
+        "nextRepTarget": next_target,
+        "strengths": strengths[:3],
+        "errorTags": error_tags,
+        "fullFeedback": full_feedback,
+        "correctedVersion": corrected_version,
+        "drillDownActive": False,
+        "drillDownTitle": "",
+        "drillDownPrompt": "",
+        "drillDownQuestion": "",
+        "drillDownTarget": "",
+        "drillDownHint": "",
+        "drillDownKey": "",
+        "drillDownOverrideLabel": "",
+        "llmUsed": False,
+    }
+
+
 def _heuristic_live_feedback(
     body: CoachAttemptFeedbackRequest,
     history_summary: dict[str, Any],
     live_history: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    template_mode = _template_mode_value(body.templateMode)
+    if template_mode == TemplateMode.pseudo.value:
+        return _heuristic_pseudo_live_feedback(body, history_summary, live_history)
+
     actual_lines = _normalize_code(body.userAnswer)
     tuning = _merged_live_tuning(body)
     ignored_drill_down_key = _ignored_drill_down_key(body)
@@ -1751,6 +2282,7 @@ def _heuristic_live_feedback(
         tuning=tuning,
         stalled=stalled,
         pattern_tag=pattern_tag,
+        template_mode=template_mode,
         ignored_drill_down_key=ignored_drill_down_key,
         completed_drill_down_key=completed_drill_down_key,
     )
@@ -1764,6 +2296,7 @@ def _heuristic_live_feedback(
         "live_blocker_key": blocker_key,
         "stalled_duration_ms": stalled_duration_ms,
         "live_tuning": tuning,
+        "template_mode": template_mode,
     }
     return response
 
@@ -1773,6 +2306,10 @@ def _heuristic_attempt_feedback(
 ) -> dict[str, Any]:
     if body.draftMode:
         return _heuristic_live_feedback(body, history_summary, live_history)
+
+    template_mode = _template_mode_value(body.templateMode)
+    if template_mode != TemplateMode.full.value:
+        return _heuristic_template_submission_feedback(body, history_summary, template_mode)
 
     expected_lines = _normalize_code(body.expectedAnswer)
     actual_lines = _normalize_code(body.userAnswer)
@@ -2178,6 +2715,7 @@ async def _attempt_feedback_with_optional_llm(
         return heuristic
 
     tuning = _merged_live_tuning(body)
+    template_mode = _template_mode_value(body.templateMode)
     live_stage = str(heuristic.get("signals", {}).get("effective_live_stage") or _live_feedback_stage(body.elapsedMs)) if body.draftMode else ""
     live_blocker_key = str(heuristic.get("signals", {}).get("live_blocker_key", "")).strip()
     stalled_duration_ms = _consecutive_blocker_duration_ms(live_history, live_blocker_key, body.elapsedMs)
@@ -2206,13 +2744,18 @@ async def _attempt_feedback_with_optional_llm(
         if tuning["allowExactEditsWhenStuck"]
         else "Do not give exact code edits."
     )
+    template_instruction = {
+        TemplateMode.full.value: "The user is recalling the full Python template.",
+        TemplateMode.skeleton.value: "The user is recalling a Python skeleton with invariant comments and scaffold only.",
+        TemplateMode.pseudo.value: "The user is recalling the algorithm as pseudocode or plain-language steps.",
+    }.get(template_mode, "The user is recalling an algorithm template.")
 
     system_prompt = (
         "You are a calm memorization coach watching a draft in progress. Return strict JSON with keys: "
         "affirmation, nextMove, why, diagnosis, primaryFocus, immediateCorrection, keepInMind, microDrill, nextRepTarget, strengths, errorTags. "
         "Teach the pattern through one structural blocker only. Do not mention multiple issues. "
         "Describe what is already on the page when there is something stable to reinforce; otherwise leave affirmation empty. "
-        f"{tone_instruction} {focus_instruction} {pattern_name_instruction} "
+        f"{tone_instruction} {focus_instruction} {pattern_name_instruction} {template_instruction} "
         "Avoid the phrase 'still missing'. Avoid coachy filler. Avoid full solutions, code skeletons, and line-by-line rewrites. "
         f"Prefer higher-level phrasing over literal edits unless the user is clearly stalled and explicit edits are allowed. {explicit_edit_instruction} "
         "Make nextMove a single concrete structural move. Make why a single calm sentence explaining that move. "
@@ -2271,6 +2814,8 @@ async def _attempt_feedback_with_optional_llm(
         ],
         "previousAttempts": body.previousAttempts[-3:],
         "draftMode": body.draftMode,
+        "templateMode": template_mode,
+        "enabledTemplateModes": [_template_mode_value(item) for item in body.enabledTemplateModes],
         "liveStage": live_stage,
         "stalledOnSameBlocker": stalled,
         "stalledDurationMs": stalled_duration_ms,
@@ -2509,7 +3054,12 @@ async def _persist_skill_map_drills(
 
 @router.post("/evaluate-attempt", response_model=CoachAttemptEvaluationResponse)
 async def coach_attempt_evaluation(body: CoachAttemptEvaluationRequest):
-    return _evaluate_attempt_soundness(body.expectedAnswer, body.userAnswer)
+    return _evaluate_attempt_by_template_mode(
+        body.expectedAnswer,
+        body.userAnswer,
+        body.skillTags,
+        _template_mode_value(body.templateMode),
+    )
 
 
 @router.post("/attempt-feedback", response_model=CoachAttemptFeedbackResponse)

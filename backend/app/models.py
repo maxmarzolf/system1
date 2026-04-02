@@ -15,6 +15,12 @@ class GameMode(str, Enum):
     full_solution = "full-solution"
 
 
+class TemplateMode(str, Enum):
+    pseudo = "pseudo"
+    skeleton = "skeleton"
+    full = "full"
+
+
 # ─── Request schemas ───
 
 
@@ -54,6 +60,8 @@ class CoachAttemptFeedbackRequest(BaseModel):
     questionType: str = ""
     skillTags: list[str] = []
     mode: GameMode = GameMode.main_recall
+    templateMode: TemplateMode = TemplateMode.full
+    enabledTemplateModes: list[TemplateMode] = [TemplateMode.full]
     previousAttempts: list[dict] = []
     draftMode: bool = False
     draftMilestones: dict[str, Any] = {}
@@ -89,6 +97,8 @@ class CoachAttemptFeedbackResponse(BaseModel):
 class CoachAttemptEvaluationRequest(BaseModel):
     expectedAnswer: str = ""
     userAnswer: str = ""
+    skillTags: list[str] = []
+    templateMode: TemplateMode = TemplateMode.full
 
 
 class CoachAttemptEvaluationResponse(BaseModel):

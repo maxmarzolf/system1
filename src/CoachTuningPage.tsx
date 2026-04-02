@@ -91,6 +91,19 @@ export default function CoachTuningPage() {
               </select>
             </label>
             <label className="coach-tuning-field">
+              <span>Live feedback frequency</span>
+              <select
+                value={liveCoachTuning.feedbackFrequency}
+                onChange={(event) =>
+                  updateLiveCoachTuning('feedbackFrequency', event.target.value as LiveCoachTuning['feedbackFrequency'])
+                }
+              >
+                <option value="more-often">More often</option>
+                <option value="balanced">Balanced</option>
+                <option value="less-often">Less often</option>
+              </select>
+            </label>
+            <label className="coach-tuning-field">
               <span>Canonical answer reveal</span>
               <select
                 value={liveCoachTuning.canonicalAnswerStage}

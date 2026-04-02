@@ -4,7 +4,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import type { Flashcard } from './data/flashcards'
 import { skillMap } from './data/skill-map'
-import { loadStoredLiveCoachTuning } from './liveCoachTuning'
+import { getLiveCoachFrequencyProfile, loadStoredLiveCoachTuning } from './liveCoachTuning'
 
 const emptySkillMapCard: Flashcard = {
   id: 'skill-map-loading',
@@ -18,6 +18,12 @@ const emptySkillMapCard: Flashcard = {
 }
 
 type SessionOrder = 'shuffled' | 'original'
+type TemplateMode = 'pseudo' | 'skeleton' | 'full'
+type TemplateModeResult = {
+  accuracy: number
+  elapsedMs: number
+  exact: boolean
+}
 
 type AttemptPayload = {
   mode: 'main-recall'
@@ -119,6 +125,46 @@ type FocusDrillPhase = 'preview' | 'typing' | 'submitted'
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 const apiUrl = (path: string) => `${API_BASE_URL}${path}`
 const MAIN_RECALL_CLOSE_ENOUGH_ACCURACY = 90
+const TEMPLATE_MODE_ORDER: TemplateMode[] = ['pseudo', 'skeleton', 'full']
+const DEFAULT_TEMPLATE_MODES: TemplateMode[] = ['full']
+const TEMPLATE_MODE_LABELS: Record<TemplateMode, string> = {
+  pseudo: 'Pseudo',
+  skeleton: 'Skeleton',
+  full: 'Full',
+}
+const TEMPLATE_MODE_FILE_LABELS: Record<TemplateMode, string> = {
+  pseudo: 'recall.txt',
+  skeleton: 'skeleton.py',
+  full: 'recall.py',
+}
+
+const ensureTemplateModes = (modes: TemplateMode[]) => {
+  const next = TEMPLATE_MODE_ORDER.filter((mode) => modes.includes(mode))
+  return next.length > 0 ? next : [...DEFAULT_TEMPLATE_MODES]
+}
+
+const getPrimaryPatternTag = (tags: string[]) => {
+  for (const tag of [
+    'sliding-window',
+    'two-pointers',
+    'binary-search',
+    'dfs-bfs',
+    'graph-traversal',
+    'backtracking',
+    'heap',
+    'union-find',
+    'dynamic-programming',
+    'dp',
+    'intervals',
+    'prefix-sums',
+    'monotonic-stack',
+    'stack',
+  ]) {
+    if (tags.includes(tag)) return tag
+  }
+  if (tags.includes('graph') || tags.includes('graph-bfs')) return 'graph-traversal'
+  return 'generic'
+}
 
 const shuffle = <T,>(array: T[]): T[] => {
   const shuffled = [...array]
@@ -137,6 +183,344 @@ const normalizeTyping = (value: string) =>
     .join('\n')
     .trim()
 
+const tokenizeTemplateText = (value: string) =>
+  new Set(
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9_+\-\s]/g, ' ')
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 3)
+      .filter((token) => !['the', 'and', 'then', 'with', 'from', 'into', 'while', 'when'].includes(token))
+  )
+
+const estimateTemplateAccuracy = (templateMode: TemplateMode, expectedAnswer: string, userAnswer: string) => {
+  if (templateMode === 'full') {
+    const compareLength = Math.max(userAnswer.length, expectedAnswer.length, 1)
+    let exactMatches = 0
+    for (let i = 0; i < compareLength; i += 1) {
+      if (userAnswer[i] === expectedAnswer[i]) exactMatches += 1
+    }
+    return Math.round((exactMatches / compareLength) * 100)
+  }
+
+  const expectedTokens = tokenizeTemplateText(expectedAnswer)
+  const actualTokens = tokenizeTemplateText(userAnswer)
+  if (expectedTokens.size === 0) return 0
+  let overlap = 0
+  expectedTokens.forEach((token) => {
+    if (actualTokens.has(token)) overlap += 1
+  })
+  return Math.round((overlap / expectedTokens.size) * 100)
+}
+
+const buildPseudoTemplate = (patternTag: string) => {
+  switch (patternTag) {
+    case 'sliding-window':
+      return [
+        'Define sliding_window(nums)',
+        'Initialize the left pointer, the window state, and the best answer',
+        'For each right index and incoming value:',
+        '    Add the incoming value to the window state',
+        '    While the window invariant is broken:',
+        '        Remove the outgoing left value from state',
+        '        Move left forward',
+        '    Update the best answer from the current valid window',
+        'Return the best answer',
+      ].join('\n')
+    case 'two-pointers':
+      return [
+        'Define two_pointer_scan(nums, target)',
+        'Initialize left at the start and right at the end',
+        'While left is still before right:',
+        '    Compare the current pair to the target condition',
+        '    Move left when the pair is too small',
+        '    Move right when the pair is too large',
+        '    Return as soon as the invariant is satisfied',
+        'Return the fallback answer if no pair works',
+      ].join('\n')
+    case 'binary-search':
+      return [
+        'Define binary_search(nums, target)',
+        'Initialize the search interval with left and right bounds',
+        'While the interval is still valid:',
+        '    Compute the midpoint',
+        '    Compare the midpoint value to the target condition',
+        '    Discard the half that cannot contain the answer',
+        'Return the answer implied by the final interval',
+      ].join('\n')
+    case 'dynamic-programming':
+    case 'dp':
+      return [
+        'Define dp_template(input)',
+        'State what dp[i] means before writing updates',
+        'Initialize the base case',
+        'Iterate in the order that makes earlier state available',
+        'Update each state from the earlier state it depends on',
+        'Return the final state that represents the answer',
+      ].join('\n')
+    case 'graph-traversal':
+    case 'dfs-bfs':
+      return [
+        'Define graph_traversal(graph, start)',
+        'Initialize the frontier and the visited rule',
+        'While there are still states in the frontier:',
+        '    Pop one state from the frontier',
+        '    Skip states that should not be explored',
+        '    For each valid neighbor:',
+        '        Mark or schedule the neighbor exactly once',
+        'Return the final traversal result',
+      ].join('\n')
+    case 'backtracking':
+      return [
+        'Define backtrack(state)',
+        'Stop at the base case and record the answer',
+        'For each available choice:',
+        '    Make the choice',
+        '    Recurse on the smaller state',
+        '    Undo the choice before the next branch',
+      ].join('\n')
+    case 'heap':
+      return [
+        'Define heap_template(items)',
+        'Initialize the heap state',
+        'For each item in the input:',
+        '    Push the item or its score into the heap',
+        '    Pop or prune when the heap should shrink',
+        'Return the answer represented by the heap',
+      ].join('\n')
+    case 'union-find':
+      return [
+        'Define union_find_template(items)',
+        'Initialize the parent structure and any rank or size metadata',
+        'Provide find and union behavior',
+        'Iterate through the relationships you need to connect',
+        'Union the relevant roots when the condition is met',
+        'Return the final component-based answer',
+      ].join('\n')
+    case 'intervals':
+      return [
+        'Define interval_template(intervals)',
+        'Sort intervals into the order the invariant expects',
+        'Track the current interval you are building',
+        'For each next interval:',
+        '    Merge it if it overlaps the current one',
+        '    Otherwise flush the current interval and start a new one',
+        'Return the merged result',
+      ].join('\n')
+    case 'prefix-sums':
+      return [
+        'Define prefix_sum_template(nums, target)',
+        'Initialize the running prefix state and the lookup structure',
+        'For each value in the array:',
+        '    Update the running prefix',
+        '    Query the lookup using the invariant you need',
+        '    Record the current prefix after the query',
+        'Return the accumulated answer',
+      ].join('\n')
+    case 'monotonic-stack':
+    case 'stack':
+      return [
+        'Define stack_template(items)',
+        'Initialize the stack',
+        'For each item in order:',
+        '    While the invariant is broken, resolve items from the top',
+        '    Push the current item once the invariant holds again',
+        'Return the answer built from the resolved stack behavior',
+      ].join('\n')
+    default:
+      return [
+        'Define solve(input)',
+        'State the invariant and the tracked state',
+        'Iterate through the input in the order the invariant needs',
+        'Update the tracked state on each step',
+        'Return the final answer once the invariant has done its job',
+      ].join('\n')
+  }
+}
+
+const buildSkeletonTemplate = (patternTag: string) => {
+  switch (patternTag) {
+    case 'sliding-window':
+      return [
+        'def sliding_window(nums):',
+        '    left = 0',
+        '    state = {}',
+        '    best = 0',
+        '',
+        '    for right, value in enumerate(nums):',
+        '        # add nums[right] to the window',
+        '        # update state',
+        '',
+        '        while window_is_invalid(state):',
+        '            # remove nums[left] from the window',
+        '            # update state',
+        '            left += 1',
+        '',
+        '        # window is now valid',
+        '        best = max(best, right - left + 1)',
+        '',
+        '    return best',
+      ].join('\n')
+    case 'two-pointers':
+      return [
+        'def two_pointers(nums, target):',
+        '    left = 0',
+        '    right = len(nums) - 1',
+        '',
+        '    while left < right:',
+        '        # compare nums[left] and nums[right] to the target',
+        '        if pair_is_too_small(nums[left], nums[right], target):',
+        '            left += 1',
+        '        elif pair_is_too_large(nums[left], nums[right], target):',
+        '            right -= 1',
+        '        else:',
+        '            return [left, right]',
+        '',
+        '    return default_answer()',
+      ].join('\n')
+    case 'binary-search':
+      return [
+        'def binary_search(nums, target):',
+        '    left = 0',
+        '    right = len(nums) - 1',
+        '',
+        '    while left <= right:',
+        '        mid = (left + right) // 2',
+        '',
+        '        if midpoint_is_too_small(nums[mid], target):',
+        '            left = mid + 1',
+        '        else:',
+        '            right = mid - 1',
+        '',
+        '    return answer_from_interval(left, right)',
+      ].join('\n')
+    case 'dynamic-programming':
+    case 'dp':
+      return [
+        'def dp_template(values):',
+        '    dp = [0] * len(values)',
+        '    # initialize base case',
+        '',
+        '    for i in range(1, len(values)):',
+        '        # compute dp[i] from earlier state',
+        '        dp[i] = transition(dp, values, i)',
+        '',
+        '    return dp[-1]',
+      ].join('\n')
+    case 'graph-traversal':
+    case 'dfs-bfs':
+      return [
+        'def graph_traversal(graph, start):',
+        '    visited = {start}',
+        '    queue = deque([start])',
+        '',
+        '    while queue:',
+        '        node = queue.popleft()',
+        '',
+        '        for nei in graph[node]:',
+        '            if nei in visited:',
+        '                continue',
+        '            visited.add(nei)',
+        '            queue.append(nei)',
+        '',
+        '    return visited',
+      ].join('\n')
+    case 'backtracking':
+      return [
+        'def backtrack(state):',
+        '    if base_case(state):',
+        '        return record_answer(state)',
+        '',
+        '    for choice in choices(state):',
+        '        # make the choice',
+        '        backtrack(next_state(state, choice))',
+        '        # undo the choice',
+      ].join('\n')
+    case 'heap':
+      return [
+        'def heap_template(items):',
+        '    heap = []',
+        '',
+        '    for item in items:',
+        '        # push the relevant value into the heap',
+        '        if heap_is_too_large(heap):',
+        '            # pop the item that should leave',
+        '',
+        '    return answer_from_heap(heap)',
+      ].join('\n')
+    case 'union-find':
+      return [
+        'def union_find_template(items):',
+        '    parent = {item: item for item in items}',
+        '    rank = {item: 0 for item in items}',
+        '',
+        '    def find(x):',
+        '        # compress the path to the root',
+        '',
+        '    def union(a, b):',
+        '        # connect the roots by rank',
+        '',
+        '    for a, b in relationships(items):',
+        '        union(a, b)',
+        '',
+        '    return answer_from_components(parent)',
+      ].join('\n')
+    case 'intervals':
+      return [
+        'def interval_template(intervals):',
+        '    intervals.sort()',
+        '    merged = []',
+        '',
+        '    for start, end in intervals:',
+        '        if merged and overlaps(merged[-1], start, end):',
+        '            # extend the current interval',
+        '        else:',
+        '            merged.append([start, end])',
+        '',
+        '    return merged',
+      ].join('\n')
+    case 'prefix-sums':
+      return [
+        'def prefix_sum_template(nums, target):',
+        '    prefix = 0',
+        '    seen = {0: 1}',
+        '    answer = 0',
+        '',
+        '    for value in nums:',
+        '        prefix += value',
+        '        # query the invariant with the old prefix state',
+        '        # record the current prefix',
+        '',
+        '    return answer',
+      ].join('\n')
+    case 'monotonic-stack':
+    case 'stack':
+      return [
+        'def stack_template(items):',
+        '    stack = []',
+        '    answer = []',
+        '',
+        '    for item in items:',
+        '        while stack and breaks_invariant(stack[-1], item):',
+        '            # resolve the top item',
+        '        stack.append(item)',
+        '',
+        '    return answer',
+      ].join('\n')
+    default:
+      return [
+        'def solve(values):',
+        '    state = init_state(values)',
+        '',
+        '    for value in values:',
+        '        # update the invariant',
+        '',
+        '    return build_answer(state)',
+      ].join('\n')
+  }
+}
+
 const stripPrefixedLabel = (text: string, label: string) =>
   text.replace(new RegExp(`^${label}:\\s*`, 'i'), '').trim()
 
@@ -152,7 +536,8 @@ const summarizeRecallAttempt = (
   accuracy: number,
   exact: boolean,
   elapsedMs: number,
-  attemptNumber: number
+  attemptNumber: number,
+  templateMode: TemplateMode
 ): RecallAttemptSnapshot => ({
   attemptNumber,
   accuracy,
@@ -161,17 +546,24 @@ const summarizeRecallAttempt = (
   usedPlaceholder: actualLines.some((line) => isPlaceholderLine(line)),
   hasGuard: actualLines.some((line) => /^\s*if\b/.test(line) && /not|visited|seen|< 0|>=/.test(line)),
   hasBookkeeping: actualLines.some((line) =>
-    /(graph|visited|seen|indegree|parent|dist|rows|cols|queue|deque|stack|\bm\b|\bn\b)/.test(line)
+    /(graph|visited|seen|indegree|parent|dist|rows|cols|queue|deque|stack|\bm\b|\bn\b|state|window)/i.test(line)
   ),
-  hasTraversal: actualLines.some((line) => /\bdfs\b|\bbfs\b|queue|deque|stack/.test(line)),
-  hasLoop: actualLines.some((line) => /^\s*(for|while)\b/.test(line)),
+  hasTraversal: actualLines.some((line) => /\bdfs\b|\bbfs\b|queue|deque|stack/i.test(line)),
+  hasLoop: actualLines.some((line) =>
+    /^\s*(for|while)\b/.test(line) || (templateMode === 'pseudo' && /\b(for each|iterate|repeat|while)\b/i.test(line))
+  ),
 })
 
-const analyzeDraftStructure = (code: string): DraftStructure => {
+const analyzeDraftStructure = (code: string, templateMode: TemplateMode): DraftStructure => {
   const lines = code.replace(/\r\n/g, '\n').split('\n')
   const nonEmptyLines = lines.filter((line) => line.trim().length > 0).length
-  const hasSignature = lines.some((line) => /^\s*def\s+/.test(line))
-  const hasGuard = lines.some((line) => /^\s*if\b/.test(line) && /not|visited|seen|< 0|>=/.test(line))
+  const hasSignature = lines.some((line) =>
+    /^\s*def\s+/.test(line) || (templateMode === 'pseudo' && /\b(function|define|signature)\b/i.test(line))
+  )
+  const hasGuard = lines.some((line) =>
+    (/^\s*if\b/.test(line) && /not|visited|seen|< 0|>=/.test(line)) ||
+    (templateMode === 'pseudo' && /\b(if|when|skip|invalid|visited)\b/i.test(line))
+  )
   const traversalKind = lines.some((line) => /\bdfs\b/.test(line))
     ? 'dfs'
     : lines.some((line) => /\bbfs\b/.test(line))
@@ -181,10 +573,12 @@ const analyzeDraftStructure = (code: string): DraftStructure => {
         : lines.some((line) => /\bstack\b/.test(line))
           ? 'stack'
           : null
-  const hasLoop = lines.some((line) => /^\s*(for|while)\b/.test(line))
+  const hasLoop = lines.some((line) =>
+    /^\s*(for|while)\b/.test(line) || (templateMode === 'pseudo' && /\b(for each|iterate|repeat|while)\b/i.test(line))
+  )
   const hasPlaceholder = lines.some((line) => isPlaceholderLine(line))
   const hasBookkeeping = lines.some((line) =>
-    /(graph|visited|seen|indegree|parent|dist|rows|cols|queue|deque|stack|\bm\b|\bn\b)/.test(line)
+    /(graph|visited|seen|indegree|parent|dist|rows|cols|queue|deque|stack|\bm\b|\bn\b|state|window|count)/i.test(line)
   )
 
   return {
@@ -202,6 +596,7 @@ const analyzeDraftStructure = (code: string): DraftStructure => {
       hasLoop ? 'loop' : 'no-loop',
       hasPlaceholder ? 'placeholder' : 'no-placeholder',
       hasBookkeeping ? 'state' : 'no-state',
+      templateMode,
       `lines-${Math.min(nonEmptyLines, 8)}`,
     ].join('|'),
   }
@@ -334,6 +729,7 @@ const computeLineReview = (expectedCode: string, actualCode: string) => {
 function App() {
   const questionType = 'skill-map' as const
   const [sessionOrderType, setSessionOrderType] = useState<SessionOrder>('original')
+  const [enabledTemplateModes, setEnabledTemplateModes] = useState<TemplateMode[]>(() => [...DEFAULT_TEMPLATE_MODES])
   const [skillMapDeck, setSkillMapDeck] = useState<Flashcard[]>([])
   const [skillMapLoading, setSkillMapLoading] = useState(false)
   const [skillMapError, setSkillMapError] = useState('')
@@ -342,6 +738,8 @@ function App() {
   const [sessionOrder, setSessionOrder] = useState<number[]>([])
   const [sessionPosition, setSessionPosition] = useState(0)
   const [sessionFinished, setSessionFinished] = useState(false)
+  const [currentTemplateModeIndex, setCurrentTemplateModeIndex] = useState(0)
+  const [currentCardTemplateResults, setCurrentCardTemplateResults] = useState<Partial<Record<TemplateMode, TemplateModeResult>>>({})
   const [sessionResults, setSessionResults] = useState<Record<string, boolean>>({})
   const [sessionAccuracyByCard, setSessionAccuracyByCard] = useState<Record<string, number>>({})
   const [sessionElapsedByCard, setSessionElapsedByCard] = useState<Record<string, number>>({})
@@ -359,6 +757,10 @@ function App() {
   const [liveCoachLoading, setLiveCoachLoading] = useState(false)
   const [liveCoachError, setLiveCoachError] = useState('')
   const liveCoachTuning = useMemo(() => loadStoredLiveCoachTuning(), [])
+  const liveCoachFrequencyProfile = useMemo(
+    () => getLiveCoachFrequencyProfile(liveCoachTuning.feedbackFrequency),
+    [liveCoachTuning]
+  )
   const [ignoredDrillDownKey, setIgnoredDrillDownKey] = useState('')
   const [completedDrillDownKey, setCompletedDrillDownKey] = useState('')
   const [focusDrillPhase, setFocusDrillPhase] = useState<FocusDrillPhase>('preview')
@@ -385,6 +787,8 @@ function App() {
   const skillMapDeckRequestVersionRef = useRef(0)
 
   const filteredDeck = useMemo(() => skillMapDeck, [skillMapDeck])
+  const activeTemplateModes = useMemo(() => ensureTemplateModes(enabledTemplateModes), [enabledTemplateModes])
+  const currentTemplateMode = activeTemplateModes[Math.min(currentTemplateModeIndex, activeTemplateModes.length - 1)] ?? 'full'
 
   const fetchSkillMapDeck = async () => {
     skillMapDeckRequestVersionRef.current += 1
@@ -425,6 +829,8 @@ function App() {
     setSessionOrder(nextOrder)
     setSessionPosition(0)
     setSessionFinished(false)
+    setCurrentTemplateModeIndex(0)
+    setCurrentCardTemplateResults({})
     setSessionResults({})
     setSessionAccuracyByCard({})
     setSessionElapsedByCard({})
@@ -473,9 +879,28 @@ function App() {
 
   const currentDeckIndex = sessionOrder[sessionPosition] ?? 0
   const card = filteredDeck[currentDeckIndex] ?? filteredDeck[0] ?? emptySkillMapCard
+  const primaryPatternTag = useMemo(() => getPrimaryPatternTag(card.tags), [card.tags])
   const fullSolutionTarget = useMemo(
     () => normalizeTyping(card.solution.replace('{{missing}}', card.missing)),
     [card.missing, card.solution]
+  )
+  const skeletonTarget = useMemo(
+    () => buildSkeletonTemplate(primaryPatternTag),
+    [primaryPatternTag]
+  )
+  const pseudoTarget = useMemo(
+    () => buildPseudoTemplate(primaryPatternTag),
+    [primaryPatternTag]
+  )
+  const practiceTarget = useMemo(() => {
+    if (currentTemplateMode === 'pseudo') return normalizeTyping(pseudoTarget)
+    if (currentTemplateMode === 'skeleton') return normalizeTyping(skeletonTarget)
+    return fullSolutionTarget
+  }, [currentTemplateMode, fullSolutionTarget, pseudoTarget, skeletonTarget])
+  const currentQuestionType = `${questionType}:${currentTemplateMode}`
+  const currentSkillTags = useMemo(
+    () => [...card.tags, `template-${currentTemplateMode}`],
+    [card.tags, currentTemplateMode]
   )
   currentCardIdRef.current = card.id
 
@@ -491,15 +916,41 @@ function App() {
     const searchParams = new URLSearchParams({
       cardId: card.id,
       cardTitle: card.title,
-      questionType,
+      questionType: currentQuestionType,
     })
 
-    card.tags.forEach((tag) => {
+    currentSkillTags.forEach((tag) => {
       searchParams.append('tag', tag)
     })
 
     return `/practice-history?${searchParams.toString()}`
-  }, [card.id, card.tags, card.title, hasDeck, questionType])
+  }, [card.id, card.title, currentQuestionType, currentSkillTags, hasDeck])
+  const currentTemplateLabel = TEMPLATE_MODE_LABELS[currentTemplateMode]
+  const nextTemplateMode = activeTemplateModes[currentTemplateModeIndex + 1] ?? null
+  const hasNextTemplateMode = Boolean(nextTemplateMode)
+  const practiceLanguage = currentTemplateMode === 'pseudo' ? 'text' : 'python'
+  const practiceTabLabel = TEMPLATE_MODE_FILE_LABELS[currentTemplateMode]
+  const practiceIntroText = {
+    pseudo: 'Study the pseudocode outline, then hide it and describe the algorithm from memory.',
+    skeleton: 'Study the skeleton, then hide it and rebuild the invariant scaffold from memory.',
+    full: 'Study the full answer, then hide it and recall from memory.',
+  }[currentTemplateMode]
+  const practiceInputLabel = {
+    pseudo: 'Write the pseudocode from memory',
+    skeleton: 'Write the skeleton from memory',
+    full: 'Type the full answer from memory',
+  }[currentTemplateMode]
+  const practicePlaceholder = {
+    pseudo: 'Write the algorithm in plain text or mixed Python and prose...',
+    skeleton: 'Write the skeleton and invariant comments from memory...',
+    full: 'Type the full solution from memory...',
+  }[currentTemplateMode]
+  const startRecallLabel = {
+    pseudo: 'Hide pseudocode and start recall',
+    skeleton: 'Hide skeleton and start recall',
+    full: 'Hide answer and start recall',
+  }[currentTemplateMode]
+  const templateProgressText = `Practice order: ${activeTemplateModes.map((mode) => TEMPLATE_MODE_LABELS[mode]).join(' -> ')} · Current: ${currentTemplateLabel} ${currentTemplateModeIndex + 1}/${activeTemplateModes.length}`
 
   const completeCardInSession = (isCorrect: boolean, accuracy: number, elapsedMs?: number) => {
     setSessionResults((prevResults) => {
@@ -524,8 +975,8 @@ function App() {
           cardId: card.id,
           cardTitle: card.title,
           question: card.prompt,
-          questionType,
-          categoryTags: card.tags,
+          questionType: currentQuestionType,
+          categoryTags: currentSkillTags,
           correctAnswer: payload.correctAnswer,
           userAnswer: payload.userAnswer,
           mode: payload.mode,
@@ -552,27 +1003,25 @@ function App() {
         body: JSON.stringify({
           expectedAnswer,
           userAnswer,
+          skillTags: currentSkillTags,
+          templateMode: currentTemplateMode,
         }),
       })
       if (!response.ok) throw new Error('Unable to evaluate attempt')
       return (await response.json()) as AttemptEvaluationResponse
     } catch {
-      const compareLength = Math.max(userAnswer.length, expectedAnswer.length, 1)
-      let exactMatches = 0
-      for (let i = 0; i < compareLength; i += 1) {
-        if (userAnswer[i] === expectedAnswer[i]) exactMatches += 1
-      }
-
       return {
-        accuracy: Math.round((exactMatches / compareLength) * 100),
-        sound: userAnswer === expectedAnswer,
-        syntaxValid: true,
+        accuracy: estimateTemplateAccuracy(currentTemplateMode, expectedAnswer, userAnswer),
+        sound: currentTemplateMode === 'full' ? userAnswer === expectedAnswer : false,
+        syntaxValid: userAnswer.trim().length > 0,
       }
     }
   }
 
   const resetPerCardInteraction = () => {
     setShowHint(false)
+    setCurrentTemplateModeIndex(0)
+    setCurrentCardTemplateResults({})
 
     setMainPhase('preview')
     setMainInput('')
@@ -596,9 +1045,56 @@ function App() {
     currentDrillDownKeyRef.current = ''
   }
 
+  const resetCurrentTemplateInteraction = () => {
+    setMainPhase('preview')
+    setMainInput('')
+    setMainStartedAt(null)
+    setMainCloseEnough(false)
+    setCurrentInteractionId('')
+    setLiveCoachFeedback(null)
+    setLiveCoachLoading(false)
+    setLiveCoachError('')
+    setIgnoredDrillDownKey('')
+    setCompletedDrillDownKey('')
+    setFocusDrillPhase('preview')
+    setFocusDrillInput('')
+    setFocusDrillAccuracy(0)
+    setFocusDrillExact(false)
+    setCoachFeedback(null)
+    setCoachLoading(false)
+    setCoachError('')
+    liveCoachRequestVersionRef.current = 0
+    lastLiveCoachMilestoneRef.current = ''
+    lastLiveCoachLengthRef.current = 0
+    lastMainInputEditAtRef.current = 0
+    lastIdleLiveCoachRefreshAtRef.current = 0
+    currentDrillDownKeyRef.current = ''
+  }
+
+  const advanceToNextTemplateMode = () => {
+    if (currentTemplateModeIndex >= activeTemplateModes.length - 1) return
+    setCurrentTemplateModeIndex((prev) => Math.min(prev + 1, activeTemplateModes.length - 1))
+    resetCurrentTemplateInteraction()
+  }
+
+  const toggleTemplateMode = (mode: TemplateMode) => {
+    setEnabledTemplateModes((prev) => {
+      const next = prev.includes(mode)
+        ? prev.filter((item) => item !== mode)
+        : [...prev, mode]
+      return ensureTemplateModes(next)
+    })
+  }
+
   useEffect(() => {
     resetPerCardInteraction()
   }, [card.id, sessionPosition])
+
+  useEffect(() => {
+    if (!hasDeck || hasAnsweredCurrent || sessionFinished) return
+    resetPerCardInteraction()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTemplateModes.join('|')])
 
   const startMainRecall = () => {
     if (!hasDeck || hasAnsweredCurrent || sessionFinished) return
@@ -732,15 +1228,17 @@ function App() {
           accuracy: payload.accuracy,
           exact: payload.exact,
           interactionId: payload.interactionId,
-          skillTags: card.tags,
+          skillTags: currentSkillTags,
           previousAttempts: payload.previousAttempts.map((attempt) => ({
             attemptNumber: attempt.attemptNumber,
             accuracy: attempt.accuracy,
             exact: attempt.exact,
             elapsedMs: attempt.elapsedMs,
           })),
-          questionType,
+          questionType: currentQuestionType,
           mode: 'main-recall',
+          templateMode: currentTemplateMode,
+          enabledTemplateModes: activeTemplateModes,
           draftMode: true,
           draftMilestones: {
             nonEmptyLines: payload.draft.nonEmptyLines,
@@ -805,15 +1303,17 @@ function App() {
           accuracy: payload.accuracy,
           exact: payload.exact,
           interactionId: payload.interactionId,
-          skillTags: card.tags,
+          skillTags: currentSkillTags,
           previousAttempts: payload.previousAttempts.map((attempt) => ({
             attemptNumber: attempt.attemptNumber,
             accuracy: attempt.accuracy,
             exact: attempt.exact,
             elapsedMs: attempt.elapsedMs,
           })),
-          questionType,
+          questionType: currentQuestionType,
           mode: 'main-recall',
+          templateMode: currentTemplateMode,
+          enabledTemplateModes: activeTemplateModes,
         }),
       })
       if (!response.ok) throw new Error('Unable to load coach feedback')
@@ -893,29 +1393,36 @@ function App() {
     const elapsedMs = Math.max(Date.now() - startedAt, 1)
     const normalizedInput = normalizeTyping(mainInput)
     const normalizedInputLines = normalizedInput.split('\n')
-    const normalizedTarget = fullSolutionTarget
+    const normalizedTarget = practiceTarget
     const evaluation = await evaluateSubmittedRecall(normalizedTarget, normalizedInput)
     const accuracy = Math.round(evaluation.accuracy)
     const sound = evaluation.sound
     const closeEnough = sound
-    const currentHistory = mainRecallHistoryByCard[card.id] ?? []
+    const historyKey = `${card.id}:${currentTemplateMode}`
+    const currentHistory = mainRecallHistoryByCard[historyKey] ?? []
     const attemptSnapshot = summarizeRecallAttempt(
       normalizedInputLines,
       accuracy,
       sound,
       elapsedMs,
-      currentHistory.length + 1
+      currentHistory.length + 1,
+      currentTemplateMode
     )
+    const nextTemplateResults = closeEnough
+      ? {
+          ...currentCardTemplateResults,
+          [currentTemplateMode]: { accuracy, elapsedMs, exact: sound },
+        }
+      : currentCardTemplateResults
 
     setMainCloseEnough(closeEnough)
     setMainPhase('submitted')
     setMainRecallHistoryByCard((prev) => ({
       ...prev,
-      [card.id]: [...(prev[card.id] ?? []), attemptSnapshot],
+      [historyKey]: [...(prev[historyKey] ?? []), attemptSnapshot],
     }))
-
     if (closeEnough) {
-      completeCardInSession(sound, accuracy, elapsedMs)
+      setCurrentCardTemplateResults(nextTemplateResults)
     }
 
     const feedback = await fetchCoachAttemptFeedback({
@@ -939,6 +1446,18 @@ function App() {
       interactionId,
       coachFeedback: feedback,
     })
+
+    if (closeEnough && currentTemplateModeIndex >= activeTemplateModes.length - 1) {
+      const completedModes = activeTemplateModes
+        .map((mode) => nextTemplateResults[mode])
+        .filter((item): item is TemplateModeResult => Boolean(item))
+      const aggregateAccuracy =
+        completedModes.length > 0
+          ? Math.round((completedModes.reduce((sum, item) => sum + item.accuracy, 0) / completedModes.length) * 10) / 10
+          : accuracy
+      const aggregateElapsedMs = completedModes.reduce((sum, item) => sum + item.elapsedMs, 0) || elapsedMs
+      completeCardInSession(sound, aggregateAccuracy, aggregateElapsedMs)
+    }
   }
 
   const reviseMainRecall = () => {
@@ -1059,25 +1578,25 @@ function App() {
     [mainInput]
   )
   const draftStructure = useMemo(
-    () => analyzeDraftStructure(mainInput),
-    [mainInput]
+    () => analyzeDraftStructure(mainInput, currentTemplateMode),
+    [currentTemplateMode, mainInput]
   )
   const lineReview = useMemo(
-    () => computeLineReview(fullSolutionTarget, mainInput.replace(/\r\n/g, '\n')),
-    [fullSolutionTarget, mainInput]
+    () => computeLineReview(practiceTarget, mainInput.replace(/\r\n/g, '\n')),
+    [practiceTarget, mainInput]
   )
   const isGraphQuestion =
     card.tags.includes('graph') || card.tags.includes('graph-bfs')
   const currentCardRecallHistory = useMemo(
-    () => mainRecallHistoryByCard[card.id] ?? [],
-    [card.id, mainRecallHistoryByCard]
+    () => mainRecallHistoryByCard[`${card.id}:${currentTemplateMode}`] ?? [],
+    [card.id, currentTemplateMode, mainRecallHistoryByCard]
   )
   const priorCardRecallHistory =
     mainPhase === 'submitted' ? currentCardRecallHistory.slice(0, -1) : currentCardRecallHistory
   const displayLines = useMemo(() => {
     const source = mainPhase === 'submitted'
       ? (mainInput || '')
-      : (mainInput || '# Type the full solution from memory...')
+      : (mainInput || `# ${practicePlaceholder}`)
 
     return source
       .split('\n')
@@ -1087,7 +1606,7 @@ function App() {
           sourceLineNumber: source.length > 0 ? index + 1 : null,
         })
       )
-  }, [mainInput, mainPhase])
+  }, [mainInput, mainPhase, practicePlaceholder])
   const displayCode = useMemo(
     () => displayLines.map((line) => line.text).join('\n'),
     [displayLines]
@@ -1115,13 +1634,8 @@ function App() {
   const triggerLiveCoachRefresh = useEffectEvent((trimmedInput: string) => {
     const interactionId = currentInteractionId || createInteractionId()
     if (!currentInteractionId) setCurrentInteractionId(interactionId)
-    const target = fullSolutionTarget
-    const compareLength = Math.max(trimmedInput.length, target.length, 1)
-    let exactMatches = 0
-    for (let i = 0; i < compareLength; i += 1) {
-      if (trimmedInput[i] === target[i]) exactMatches += 1
-    }
-    const accuracy = Math.round((exactMatches / compareLength) * 100)
+    const target = practiceTarget
+    const accuracy = estimateTemplateAccuracy(currentTemplateMode, target, trimmedInput)
 
     lastLiveCoachMilestoneRef.current = draftStructure.milestoneKey
     lastLiveCoachLengthRef.current = trimmedInput.length
@@ -1132,7 +1646,7 @@ function App() {
       userAnswer: trimmedInput,
       elapsedMs: Math.max((mainStartedAt ? Date.now() - mainStartedAt : 0), 0),
       accuracy,
-      exact: trimmedInput === target,
+      exact: currentTemplateMode === 'full' ? trimmedInput === target : false,
       previousAttempts: currentCardRecallHistory,
       draft: draftStructure,
     })
@@ -1146,7 +1660,7 @@ function App() {
   const submissionFeedbackSummary =
     coachFeedback?.diagnosis || coachHeadline
   const submissionFeedbackNextStep =
-    coachFeedback?.immediateCorrection || coachFeedback?.primaryFocus || 'Review the drifted step, then retype the full answer once more.'
+    coachFeedback?.immediateCorrection || coachFeedback?.primaryFocus || `Review the drifted step, then rewrite the ${currentTemplateMode} template once more.`
   const submissionFeedbackText = (coachFeedback?.fullFeedback || '').trim() || [
     submissionFeedbackSummary,
     `Next step: ${submissionFeedbackNextStep}`,
@@ -1162,7 +1676,7 @@ function App() {
     : mainCloseEnough
       ? 'warning'
       : 'error'
-  const showSubmittedLineReview = mainPhase === 'submitted' && !mainCloseEnough
+  const showSubmittedLineReview = mainPhase === 'submitted' && !mainCloseEnough && currentTemplateMode !== 'pseudo'
 
   useEffect(() => {
     if (!liveCoachDrillDownActive || !liveCoachDrillDownKey || !liveCoachDrillDownTarget) {
@@ -1197,19 +1711,21 @@ function App() {
 
     const shouldRefresh =
       draftStructure.milestoneKey !== lastLiveCoachMilestoneRef.current ||
-      Math.abs(trimmedInput.length - lastLiveCoachLengthRef.current) >= 24
+      Math.abs(trimmedInput.length - lastLiveCoachLengthRef.current) >= liveCoachFrequencyProfile.milestoneCharDelta
 
     if (!shouldRefresh) return
 
     const timeoutId = window.setTimeout(() => {
       triggerLiveCoachRefresh(trimmedInput)
-    }, 900)
+    }, liveCoachFrequencyProfile.debounceMs)
 
     return () => window.clearTimeout(timeoutId)
   }, [
     draftStructure,
     hasDeck,
     hasAnsweredCurrent,
+    liveCoachFrequencyProfile.debounceMs,
+    liveCoachFrequencyProfile.milestoneCharDelta,
     mainInput,
     mainPhase,
     sessionFinished,
@@ -1225,7 +1741,10 @@ function App() {
       const now = Date.now()
       const idleForMs = now - (lastMainInputEditAtRef.current || now)
       const sinceLastIdleRefreshMs = now - (lastIdleLiveCoachRefreshAtRef.current || 0)
-      if (idleForMs < 20_000 || sinceLastIdleRefreshMs < 20_000) return
+      if (
+        idleForMs < liveCoachFrequencyProfile.idleRefreshMs ||
+        sinceLastIdleRefreshMs < liveCoachFrequencyProfile.idleRefreshMs
+      ) return
 
       lastIdleLiveCoachRefreshAtRef.current = now
       triggerLiveCoachRefresh(trimmedInput)
@@ -1236,6 +1755,7 @@ function App() {
     draftStructure.nonEmptyLines,
     hasDeck,
     hasAnsweredCurrent,
+    liveCoachFrequencyProfile.idleRefreshMs,
     mainInput,
     mainPhase,
     sessionFinished,
@@ -1278,14 +1798,35 @@ function App() {
 
       <section className="card">
         <div className="card-header">
-          <div>
+          <div className="card-header-main">
             <h2>{card.title}</h2>
             <p className="difficulty"><span className="leetcode-num">#{card.id}</span> {card.difficulty}</p>
+            <p className="card-template-summary">{templateProgressText}</p>
           </div>
-          <div className="tags">
-            {card.tags.map((tag) => (
-              <span key={tag} className="tag">{tag}</span>
-            ))}
+          <div className="card-header-side">
+            <div className="template-mode-toggles" aria-label="Template modes">
+              {TEMPLATE_MODE_ORDER.map((mode) => {
+                const active = activeTemplateModes.includes(mode)
+                const disabled = active && activeTemplateModes.length === 1
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={active ? 'template-mode-toggle active' : 'template-mode-toggle'}
+                    onClick={() => toggleTemplateMode(mode)}
+                    disabled={disabled}
+                    aria-pressed={active}
+                  >
+                    {TEMPLATE_MODE_LABELS[mode]}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="tags">
+              {card.tags.map((tag) => (
+                <span key={tag} className="tag">{tag}</span>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -1350,19 +1891,19 @@ function App() {
               </div>
             ) : mainPhase === 'preview' && (
               <>
-                <p className="answer-label">Study the full answer, then hide it and recall from memory.</p>
+                <p className="answer-label">{practiceIntroText}</p>
                 <div className="code-container">
                   <SyntaxHighlighter
-                    language="python"
+                    language={practiceLanguage}
                     style={vscDarkPlus}
                     customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
                     codeTagProps={{ style: { background: 'transparent' } }}
                   >
-                    {fullSolutionTarget}
+                    {practiceTarget}
                   </SyntaxHighlighter>
                 </div>
                 <div className="actions">
-                  <button onClick={startMainRecall} disabled={!hasDeck || hasAnsweredCurrent || sessionFinished}>Hide answer and start recall</button>
+                  <button onClick={startMainRecall} disabled={!hasDeck || hasAnsweredCurrent || sessionFinished}>{startRecallLabel}</button>
                 </div>
               </>
             )}
@@ -1370,11 +1911,11 @@ function App() {
             {hasDeck && mainPhase !== 'preview' && (
               <>
                 <label className="answer-label" htmlFor="main-recall-input">
-                  Type the full answer from memory
+                  {practiceInputLabel}
                 </label>
                 <div className="vscode-editor-container">
                   <div className="vscode-tabs">
-                    <div className="vscode-tab active">recall.py</div>
+                    <div className="vscode-tab active">{practiceTabLabel}</div>
                   </div>
                   <div className="typing-editor-shell">
                     <div className="typing-editor">
@@ -1397,7 +1938,7 @@ function App() {
                       <div className="typing-code-area">
                         <div className="typing-highlight" aria-hidden="true" ref={mainHighlightRef}>
                           <SyntaxHighlighter
-                            language="python"
+                            language={practiceLanguage}
                             style={vscDarkPlus}
                             wrapLines
                             lineProps={(lineNumber) => {
@@ -1451,7 +1992,7 @@ function App() {
                             autoCapitalize="off"
                             autoCorrect="off"
                             autoComplete="off"
-                            placeholder="Type the full solution from memory..."
+                            placeholder={practicePlaceholder}
                           />
                         )}
                       </div>
@@ -1594,7 +2135,7 @@ function App() {
                               <p className="coach-code-label">Corrected version</p>
                               <div className="code-container">
                                 <SyntaxHighlighter
-                                  language="python"
+                                  language={practiceLanguage}
                                   style={vscDarkPlus}
                                   customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
                                   codeTagProps={{ style: { background: 'transparent' } }}
@@ -1613,16 +2154,25 @@ function App() {
                   </div>
                 </div>
                 <p className="typing-help">
-                  Tab inserts 4 spaces · Shift+Tab outdents · Enter auto-indents · <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter</kbd> to submit
+                  {currentTemplateMode === 'pseudo'
+                    ? <>Plain text or Python-like notes both work here · <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter</kbd> to submit</>
+                    : <>Tab inserts 4 spaces · Shift+Tab outdents · Enter auto-indents · <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter</kbd> to submit</>}
                 </p>
                 {mainPhase === 'typing' && (
                   <div className="actions">
-                    <button onClick={submitMainRecall} disabled={mainInput.trim().length === 0}>Submit recall</button>
+                    <button onClick={submitMainRecall} disabled={mainInput.trim().length === 0}>Submit {currentTemplateLabel.toLowerCase()}</button>
                   </div>
                 )}
                 {mainPhase === 'submitted' && !mainCloseEnough && (
                   <div className="actions">
                     <button onClick={reviseMainRecall} disabled={sessionFinished}>Revise and resubmit</button>
+                  </div>
+                )}
+                {mainPhase === 'submitted' && mainCloseEnough && hasNextTemplateMode && nextTemplateMode && (
+                  <div className="actions">
+                    <button onClick={advanceToNextTemplateMode} disabled={sessionFinished}>
+                      Continue to {TEMPLATE_MODE_LABELS[nextTemplateMode]}
+                    </button>
                   </div>
                 )}
               </>
@@ -1631,8 +2181,10 @@ function App() {
             {hasDeck && mainPhase === 'submitted' && (
               <p className={mainCloseEnough ? 'status success' : 'status error'}>
                 {mainCloseEnough
-                  ? 'Sound solution recorded.'
-                  : 'This attempt is not sound yet. Revise the logic and submit again.'}
+                  ? hasNextTemplateMode && nextTemplateMode
+                    ? `${currentTemplateLabel} template recorded. Continue to ${TEMPLATE_MODE_LABELS[nextTemplateMode]}.`
+                    : `${currentTemplateLabel} template recorded.`
+                  : `This ${currentTemplateMode} attempt is not sound yet. Revise the logic and submit again.`}
               </p>
             )}
 

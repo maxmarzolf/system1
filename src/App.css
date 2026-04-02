@@ -324,11 +324,24 @@ button.link:hover {
   padding-bottom: 1rem;
 }
 
+.card-header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
 .card-header h2 {
   margin: 0;
   font-size: 1.8rem;
   font-weight: 600;
   color: var(--hc-fg);
+}
+
+.card-header-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.85rem;
 }
 
 .difficulty {
@@ -343,6 +356,41 @@ button.link:hover {
 .leetcode-num {
   color: var(--hc-accent);
   margin-right: 0.4rem;
+}
+
+.card-template-summary {
+  margin: 0;
+  color: var(--hc-fg-dim);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.template-mode-toggles {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.3rem;
+  justify-content: flex-end;
+}
+
+.template-mode-toggle {
+  padding: 0.28rem 0.55rem;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: transparent;
+  color: var(--hc-fg-dim);
+  border: 1px solid var(--hc-border-dim);
+}
+
+.template-mode-toggle.active {
+  color: var(--hc-fg);
+  border-color: var(--hc-accent);
+  background: rgba(111, 195, 223, 0.08);
+}
+
+.template-mode-toggle:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .tags {
@@ -360,6 +408,22 @@ button.link:hover {
   border-radius: 0;
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
   border: 1px solid var(--hc-border-dim);
+}
+
+@media (max-width: 720px) {
+  .card-header {
+    flex-direction: column;
+  }
+
+  .card-header-side {
+    width: 100%;
+    align-items: flex-start;
+  }
+
+  .template-mode-toggles,
+  .tags {
+    justify-content: flex-start;
+  }
 }
 
 .card-grid {
