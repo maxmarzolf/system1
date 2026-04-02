@@ -67,6 +67,7 @@ class CoachAttemptFeedbackRequest(BaseModel):
     draftMilestones: dict[str, Any] = {}
     liveCoachTuning: dict[str, Any] = {}
     liveCoachContext: dict[str, Any] = {}
+    llmProvider: str = "openai"
 
 
 class CoachAttemptFeedbackResponse(BaseModel):
@@ -123,6 +124,7 @@ class CoachSessionPlanRequest(BaseModel):
     avgAccuracy: float = Field(default=0, ge=0, le=100)
     avgElapsedMs: int = Field(default=0, ge=0)
     weakestCards: list[SessionWeakCard] = []
+    llmProvider: str = "openai"
 
 
 class CoachSessionPlanResponse(BaseModel):
@@ -155,6 +157,7 @@ class SkillMapDrillsRequest(BaseModel):
     questionType: str = "skill-map"
     count: int = Field(default=12, ge=1, le=20)
     skillMap: list[SkillMapNode] = []
+    llmProvider: str = "openai"
 
 
 class SkillMapDrillsResponse(BaseModel):

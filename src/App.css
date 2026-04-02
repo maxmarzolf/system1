@@ -50,6 +50,34 @@
   gap: 0;
 }
 
+.llm-provider-group {
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 0.8rem;
+}
+
+.llm-provider-label {
+  color: var(--hc-fg-dim);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.llm-provider-select {
+  border: 1px solid var(--hc-border-dim);
+  background: #10151f;
+  color: var(--hc-fg);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.25rem 0.45rem;
+}
+
+.llm-provider-select:focus-visible {
+  outline: 1px solid var(--hc-accent);
+  outline-offset: 1px;
+}
+
 .nav-tab {
   background: transparent;
   color: var(--hc-fg-dim);

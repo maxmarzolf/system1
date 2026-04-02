@@ -121,6 +121,7 @@ type DraftStructure = {
 }
 
 type FocusDrillPhase = 'preview' | 'typing' | 'submitted'
+type LlmProvider = 'openai' | 'claude'
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 const apiUrl = (path: string) => `${API_BASE_URL}${path}`
@@ -744,6 +745,7 @@ function App() {
   const [sessionAccuracyByCard, setSessionAccuracyByCard] = useState<Record<string, number>>({})
   const [sessionElapsedByCard, setSessionElapsedByCard] = useState<Record<string, number>>({})
   const [sessionPlanRequested, setSessionPlanRequested] = useState(false)
+  const [llmProvider, setLlmProvider] = useState<LlmProvider>('openai')
 
   const [showHint, setShowHint] = useState(false)
 
@@ -805,6 +807,7 @@ function App() {
           questionType: 'skill-map',
           count: skillMap.length,
           skillMap,
+          llmProvider,
         }),
       })
       if (!response.ok) throw new Error('Unable to generate skill map drills')
@@ -869,7 +872,7 @@ function App() {
 
   useEffect(() => {
     void fetchSkillMapDeck()
-  }, [skillMapRefreshToken])
+  }, [llmProvider, skillMapRefreshToken])
 
   useEffect(() => {
     if (skillMapLoading) return
@@ -1254,6 +1257,7 @@ function App() {
             ignoredDrillDownKey,
             completedDrillDownKey,
           },
+          llmProvider,
         }),
       })
       if (!response.ok) throw new Error('Unable to load live coach feedback')
@@ -1312,6 +1316,7 @@ function App() {
           })),
           questionType: currentQuestionType,
           mode: 'main-recall',
+          llmProvider,
           templateMode: currentTemplateMode,
           enabledTemplateModes: activeTemplateModes,
         }),
@@ -1319,12 +1324,19 @@ function App() {
       if (!response.ok) throw new Error('Unable to load coach feedback')
       const feedback = (await response.json()) as CoachAttemptFeedback
       if (currentCardIdRef.current !== requestCardId || coachRequestVersionRef.current !== requestVersion) return null
-      setCoachFeedback(feedback)
-      return feedback
+      let resolvedFeedback: CoachAttemptFeedback | null = feedback
+      setCoachFeedback((prev) => {
+        if (prev?.llmUsed && !feedback.llmUsed) {
+          resolvedFeedback = prev
+          return prev
+        }
+        return feedback
+      })
+      return resolvedFeedback
     } catch {
       if (currentCardIdRef.current !== requestCardId || coachRequestVersionRef.current !== requestVersion) return null
       setCoachError('Coach feedback unavailable for this attempt.')
-      setCoachFeedback(null)
+      setCoachFeedback((prev) => (prev?.llmUsed ? prev : null))
       return null
     } finally {
       if (currentCardIdRef.current === requestCardId && coachRequestVersionRef.current === requestVersion) {
@@ -1371,6 +1383,7 @@ function App() {
                 )
               : 0,
           weakestCards: weakCards,
+          llmProvider,
         }),
       })
       if (!response.ok) throw new Error('Unable to load coach session plan')
@@ -1661,10 +1674,8 @@ function App() {
     coachFeedback?.diagnosis || coachHeadline
   const submissionFeedbackNextStep =
     coachFeedback?.immediateCorrection || coachFeedback?.primaryFocus || `Review the drifted step, then rewrite the ${currentTemplateMode} template once more.`
-  const submissionFeedbackText = (coachFeedback?.fullFeedback || '').trim() || [
-    submissionFeedbackSummary,
-    `Next step: ${submissionFeedbackNextStep}`,
-  ].join('\n\n')
+  const showGeneratingSubmissionFeedback = coachLoading && !coachFeedback
+  const submissionFeedbackText = (coachFeedback?.fullFeedback || '').trim()
   const submissionFeedbackParagraphs = submissionFeedbackText
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.trim())
@@ -1787,6 +1798,19 @@ function App() {
               Original
             </button>
           </div>
+          <span className="navbar-divider" />
+          <div className="navbar-group llm-provider-group">
+            <label htmlFor="llm-provider" className="llm-provider-label">Coach Model</label>
+            <select
+              id="llm-provider"
+              className="llm-provider-select"
+              value={llmProvider}
+              onChange={(event) => setLlmProvider(event.target.value as LlmProvider)}
+            >
+              <option value="openai">ChatGPT</option>
+              <option value="claude">Claude</option>
+            </select>
+          </div>
         </div>
         <div className="navbar-right">
           <span className="navbar-counter">{sessionCounterText}</span>
@@ -1830,6 +1854,15 @@ function App() {
           </div>
         </div>
 
+        <div className="typing-metrics" style={{ marginBottom: '1.5rem' }}>
+          <p><strong>Flow:</strong> Prompt → Recall Full Answer</p>
+          <p><strong>Coach Model:</strong> {llmProvider === 'claude' ? 'Claude' : 'ChatGPT'}</p>
+          <p><strong>Order:</strong> {sessionOrderType === 'shuffled' ? 'Randomized' : 'Original'}</p>
+          <p><strong>Session:</strong> {attempts}/{sessionOrder.length}</p>
+          <p><strong>Sound Rate:</strong> {exactAccuracy}%</p>
+          <p><strong>Avg Score:</strong> {avgAccuracy}%</p>
+          <p><strong>Duration:</strong> {(sessionDurationMs / 1000).toFixed(1)}s</p>
+        </div>
         {sessionFinished && (
           <p className="status success" style={{ marginTop: 0, marginBottom: '1.5rem' }}>
             Session complete. {correctCount} of {attempts} cards were sound. Avg score: {avgAccuracy}%.
@@ -2123,14 +2156,15 @@ function App() {
                               </span>
                             </div>
                           )}
-                          {coachLoading && <p className="coach-muted">Refining submission feedback...</p>}
+                          {coachLoading && coachFeedback && <p className="coach-muted">Refining submission feedback...</p>}
+                          {showGeneratingSubmissionFeedback && <p className="coach-muted">Generating feedback...</p>}
                           {coachError && <p className="coach-error">{coachError}</p>}
-                          {submissionFeedbackParagraphs.map((paragraph, index) => (
+                          {!showGeneratingSubmissionFeedback && submissionFeedbackParagraphs.map((paragraph, index) => (
                             <p key={index} className="coach-panel-copy">
                               {paragraph}
                             </p>
                           ))}
-                          {submissionCorrectedVersion && (
+                          {!showGeneratingSubmissionFeedback && submissionCorrectedVersion && (
                             <div className="coach-code-review">
                               <p className="coach-code-label">Corrected version</p>
                               <div className="code-container">
@@ -2145,9 +2179,11 @@ function App() {
                               </div>
                             </div>
                           )}
-                          <p className="coach-muted">
-                            <strong>Next step:</strong> {submissionFeedbackNextStep}
-                          </p>
+                          {!showGeneratingSubmissionFeedback && (
+                            <p className="coach-muted">
+                              <strong>Next step:</strong> {submissionFeedbackNextStep}
+                            </p>
+                          )}
                         </div>
                       </div>
                     )}

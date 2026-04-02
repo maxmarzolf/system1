@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     port: int = 3001
     allowed_origins: list[str] = ["*"]
     admin_reset_token: str = "reset-practice-history"
+    coach_llm_provider: str = Field(
+        default="openai",
+        validation_alias=AliasChoices("COACH_LLM_PROVIDER"),
+    )
     coach_openai_api_key: str = Field(
         default="",
         validation_alias=AliasChoices("COACH_OPENAI_API_KEY", "OPENAI_API_KEY"),
@@ -20,6 +24,18 @@ class Settings(BaseSettings):
     coach_openai_base_url: str = Field(
         default="https://api.openai.com/v1",
         validation_alias=AliasChoices("COACH_OPENAI_BASE_URL", "OPENAI_BASE_URL"),
+    )
+    coach_anthropic_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("COACH_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"),
+    )
+    coach_anthropic_model: str = Field(
+        default="claude-3-7-sonnet-latest",
+        validation_alias=AliasChoices("COACH_ANTHROPIC_MODEL"),
+    )
+    coach_anthropic_base_url: str = Field(
+        default="https://api.anthropic.com/v1",
+        validation_alias=AliasChoices("COACH_ANTHROPIC_BASE_URL"),
     )
 
     model_config = SettingsConfigDict(

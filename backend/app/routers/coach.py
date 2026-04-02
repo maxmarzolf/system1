@@ -2671,7 +2671,74 @@ def _fallback_skill_map_drills(
     return {"drills": drills, "llmUsed": False}
 
 
-def _call_chat_completion_json(system_prompt: str, user_payload: dict[str, Any]) -> dict[str, Any] | None:
+def _normalize_llm_provider(value: str) -> str:
+    normalized = value.strip().lower()
+    if not normalized:
+        return ""
+    if normalized in {"claude", "anthropic"}:
+        return "claude"
+    if normalized in {"openai", "chatgpt", "gpt"}:
+        return "openai"
+    return ""
+
+
+def _resolve_llm_provider(requested_provider: str) -> str:
+    requested = _normalize_llm_provider(str(requested_provider or ""))
+    configured = _normalize_llm_provider(str(settings.coach_llm_provider or ""))
+    return requested or configured or "openai"
+
+
+def _preferred_provider_chain(requested_provider: str) -> list[str]:
+    requested = _normalize_llm_provider(str(requested_provider or ""))
+    configured = _normalize_llm_provider(str(settings.coach_llm_provider or ""))
+    chain = [requested, configured, "claude", "openai"]
+    ordered: list[str] = []
+    for provider in chain:
+        if provider and provider not in ordered:
+            ordered.append(provider)
+    return ordered
+
+
+def _resolve_available_llm_provider(requested_provider: str) -> str:
+    for candidate in _preferred_provider_chain(requested_provider):
+        if _llm_provider_available(candidate):
+            return candidate
+    return _resolve_llm_provider(requested_provider)
+
+
+def _llm_provider_available(provider: str) -> bool:
+    if provider == "claude":
+        return bool(settings.coach_anthropic_api_key)
+    return bool(settings.coach_openai_api_key)
+
+
+def _extract_json_dict(value: str) -> dict[str, Any] | None:
+    text = value.strip()
+
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        decoder = json.JSONDecoder()
+        for match in re.finditer(r"\{", text):
+            try:
+                parsed, _ = decoder.raw_decode(text[match.start() :])
+                if isinstance(parsed, dict):
+                    return parsed
+            except ValueError:
+                continue
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _call_openai_json(system_prompt: str, user_payload: dict[str, Any]) -> dict[str, Any] | None:
     if not settings.coach_openai_api_key:
         return None
 
@@ -2696,13 +2763,62 @@ def _call_chat_completion_json(system_prompt: str, user_payload: dict[str, Any])
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=12) as response:
+        with urllib.request.urlopen(request, timeout=30) as response:
             raw = response.read().decode("utf-8")
             payload = json.loads(raw)
             content = payload["choices"][0]["message"]["content"]
-            return json.loads(content)
+            return _extract_json_dict(content)
     except (urllib.error.URLError, KeyError, IndexError, ValueError, TypeError, TimeoutError):
         return None
+
+
+def _call_claude_json(system_prompt: str, user_payload: dict[str, Any]) -> dict[str, Any] | None:
+    if not settings.coach_anthropic_api_key:
+        return None
+
+    url = f"{settings.coach_anthropic_base_url.rstrip('/')}/messages"
+    body = {
+        "model": settings.coach_anthropic_model,
+        "temperature": 0.2,
+        "max_tokens": 1800,
+        "system": f"{system_prompt}\nReturn only valid JSON. Do not include markdown.",
+        "messages": [
+            {"role": "user", "content": json.dumps(user_payload)},
+        ],
+    }
+    data = json.dumps(body).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        method="POST",
+        headers={
+            "x-api-key": settings.coach_anthropic_api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            raw = response.read().decode("utf-8")
+            payload = json.loads(raw)
+            content = payload.get("content", [])
+            if not isinstance(content, list):
+                return None
+            text_parts: list[str] = []
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    text_parts.append(str(item.get("text", "")))
+            if not text_parts:
+                return None
+            return _extract_json_dict("\n".join(text_parts))
+    except (urllib.error.URLError, KeyError, IndexError, ValueError, TypeError, TimeoutError):
+        return None
+
+
+def _call_llm_json(system_prompt: str, user_payload: dict[str, Any], provider: str) -> dict[str, Any] | None:
+    if provider == "claude":
+        return _call_claude_json(system_prompt, user_payload)
+    return _call_openai_json(system_prompt, user_payload)
 
 
 async def _attempt_feedback_with_optional_llm(
@@ -2711,7 +2827,8 @@ async def _attempt_feedback_with_optional_llm(
     history: list[dict[str, Any]],
     live_history: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    if not settings.coach_openai_api_key:
+    provider = _resolve_available_llm_provider(body.llmProvider)
+    if not _llm_provider_available(provider):
         return heuristic
 
     tuning = _merged_live_tuning(body)
@@ -2762,7 +2879,12 @@ async def _attempt_feedback_with_optional_llm(
         "Set diagnosis equal to why and immediateCorrection equal to nextMove. "
         "Every live-feedback string field must be 20 words or fewer."
         if body.draftMode
-        else "I am prepping for a Senior Level Tech Interview. Give me feedback on my attempt."
+        else (
+            "You are a senior interview coach. Return strict JSON with keys: "
+            "diagnosis, primaryFocus, immediateCorrection, fullFeedback, correctedVersion, microDrill, nextRepTarget, strengths, errorTags. "
+            "Use concise, concrete interview feedback grounded in the provided expectedAnswer and userAnswer. "
+            "Do not include markdown fences, bullet prefixes, or extra keys."
+        )
     )
     response_shape = [
         "affirmation",
@@ -2850,17 +2972,32 @@ async def _attempt_feedback_with_optional_llm(
             ],
         }
 
-    llm_response = await asyncio.to_thread(_call_chat_completion_json, system_prompt, llm_payload)
+    llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)
     if not llm_response:
         return heuristic
 
-    required = ["diagnosis", "primaryFocus", "immediateCorrection", "microDrill", "nextRepTarget"]
     if body.draftMode:
-        required.extend(["keepInMind", "nextMove", "why"])
-    if not body.draftMode:
-        required.append("fullFeedback")
-    if any(key not in llm_response for key in required):
-        return heuristic
+        required = [
+            "diagnosis",
+            "primaryFocus",
+            "immediateCorrection",
+            "microDrill",
+            "nextRepTarget",
+            "keepInMind",
+            "nextMove",
+            "why",
+        ]
+        if any(key not in llm_response for key in required):
+            return heuristic
+    else:
+        # Anthropic can occasionally omit a non-critical field; keep valid model
+        # output rather than fully reverting to heuristics.
+        has_submission_content = any(
+            key in llm_response and str(llm_response.get(key, "")).strip()
+            for key in ("fullFeedback", "diagnosis", "primaryFocus", "immediateCorrection")
+        )
+        if not has_submission_content:
+            return heuristic
 
     corrected_version = str(llm_response.get("correctedVersion", heuristic.get("correctedVersion", ""))).strip()
     corrected_version = corrected_version.removeprefix("```python").removeprefix("```").removesuffix("```").strip()
@@ -2896,7 +3033,8 @@ async def _attempt_feedback_with_optional_llm(
 async def _session_plan_with_optional_llm(
     body: CoachSessionPlanRequest, heuristic: dict[str, Any]
 ) -> dict[str, Any]:
-    if not settings.coach_openai_api_key:
+    provider = _resolve_available_llm_provider(body.llmProvider)
+    if not _llm_provider_available(provider):
         return heuristic
 
     system_prompt = (
@@ -2917,7 +3055,7 @@ async def _session_plan_with_optional_llm(
         "heuristic": heuristic,
     }
 
-    llm_response = await asyncio.to_thread(_call_chat_completion_json, system_prompt, llm_payload)
+    llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)
     if not llm_response:
         return heuristic
 
@@ -2945,7 +3083,8 @@ async def _load_skill_map_generation_summary(body: SkillMapDrillsRequest) -> dic
 async def _skill_map_drills_with_optional_llm(
     body: SkillMapDrillsRequest, heuristic: dict[str, Any], progress_summary: dict[str, Any]
 ) -> dict[str, Any]:
-    if not settings.coach_openai_api_key:
+    provider = _resolve_available_llm_provider(body.llmProvider)
+    if not _llm_provider_available(provider):
         return heuristic
 
     system_prompt = (
@@ -2966,7 +3105,7 @@ async def _skill_map_drills_with_optional_llm(
         "fallbackExample": heuristic["drills"][:3],
     }
 
-    llm_response = await asyncio.to_thread(_call_chat_completion_json, system_prompt, llm_payload)
+    llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)
     if not llm_response or not isinstance(llm_response.get("drills"), list):
         return heuristic
 

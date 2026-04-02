@@ -33,8 +33,6 @@ services:
     environment:
       PORT: 3001
       DATABASE_URL: postgresql://flashcard_user:flashcard_password@postgres:5432/flashcard_db
-      COACH_OPENAI_MODEL: ${COACH_OPENAI_MODEL:-gpt-5.2}
-      COACH_OPENAI_BASE_URL: ${COACH_OPENAI_BASE_URL:-https://api.openai.com/v1}
     volumes:
       - ./backend/app:/app/app
       - ./backend/main.py:/app/main.py
