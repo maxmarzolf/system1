@@ -522,9 +522,6 @@ const buildSkeletonTemplate = (patternTag: string) => {
   }
 }
 
-const stripPrefixedLabel = (text: string, label: string) =>
-  text.replace(new RegExp(`^${label}:\\s*`, 'i'), '').trim()
-
 const isPlaceholderLine = (line: string) => /\b(pass|something|todo|tbd)\b/i.test(line.trim())
 
 const createInteractionId = () =>
@@ -667,43 +664,6 @@ const buildLiveCoachPrinciple = (draft: DraftStructure, tags: string[], isGraphQ
   }
 
   return 'A strong interview habit is to make the invariant explicit before you optimize the code around it.'
-}
-
-const buildGraphCoachHeadline = (
-  actualLines: string[],
-  reviews: LineReview[],
-  history: RecallAttemptSnapshot[]
-) => {
-  const latestPrevious = history[history.length - 1]
-
-  if (actualLines.some((line) => isPlaceholderLine(line))) {
-    if (latestPrevious?.usedPlaceholder) {
-      return 'For graph problems, stop repeating placeholders and make the traversal state explicit.'
-    }
-    return 'For graph problems, lock down the model and traversal invariant before coding details.'
-  }
-
-  if (
-    latestPrevious &&
-    !latestPrevious.hasTraversal &&
-    actualLines.some((line) => /\bdfs\b|\bbfs\b|queue|deque|stack/.test(line))
-  ) {
-    return 'Better. Now keep the graph bookkeeping as explicit as the traversal choice.'
-  }
-
-  if (
-    reviews.some(
-      (review) =>
-        review.status !== 'match' &&
-        /(graph|visited|indegree|queue|deque|stack|\bm\b|\bn\b)/.test(
-          `${review.actual} ${review.expected}`
-        )
-    )
-  ) {
-    return 'For graph problems, get the bookkeeping right first: representation, visited rule, and start states.'
-  }
-
-  return 'For graph problems, lead with the model, the visited rule, and neighbor expansion.'
 }
 
 const computeLineReview = (expectedCode: string, actualCode: string) => {
@@ -1586,10 +1546,6 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionFinished])
 
-  const normalizedMainLines = useMemo(
-    () => mainInput.replace(/\r\n/g, '\n').split('\n'),
-    [mainInput]
-  )
   const draftStructure = useMemo(
     () => analyzeDraftStructure(mainInput, currentTemplateMode),
     [currentTemplateMode, mainInput]
@@ -1604,8 +1560,6 @@ function App() {
     () => mainRecallHistoryByCard[`${card.id}:${currentTemplateMode}`] ?? [],
     [card.id, currentTemplateMode, mainRecallHistoryByCard]
   )
-  const priorCardRecallHistory =
-    mainPhase === 'submitted' ? currentCardRecallHistory.slice(0, -1) : currentCardRecallHistory
   const displayLines = useMemo(() => {
     const source = mainPhase === 'submitted'
       ? (mainInput || '')
@@ -1664,14 +1618,8 @@ function App() {
       draft: draftStructure,
     })
   })
-  const coachFocusText = coachFeedback ? stripPrefixedLabel(coachFeedback.primaryFocus, 'Primary focus') : ''
-  const coachHeadline = isGraphQuestion
-    ? buildGraphCoachHeadline(normalizedMainLines, lineReview.reviews, priorCardRecallHistory)
-    : coachFocusText || 'Tighten the drifted lines and go again.'
   const latestSubmittedAttempt =
     mainPhase === 'submitted' ? currentCardRecallHistory[currentCardRecallHistory.length - 1] ?? null : null
-  const submissionFeedbackSummary =
-    coachFeedback?.diagnosis || coachHeadline
   const submissionFeedbackNextStep =
     coachFeedback?.immediateCorrection || coachFeedback?.primaryFocus || `Review the drifted step, then rewrite the ${currentTemplateMode} template once more.`
   const showGeneratingSubmissionFeedback = coachLoading && !coachFeedback
@@ -1854,15 +1802,6 @@ function App() {
           </div>
         </div>
 
-        <div className="typing-metrics" style={{ marginBottom: '1.5rem' }}>
-          <p><strong>Flow:</strong> Prompt → Recall Full Answer</p>
-          <p><strong>Coach Model:</strong> {llmProvider === 'claude' ? 'Claude' : 'ChatGPT'}</p>
-          <p><strong>Order:</strong> {sessionOrderType === 'shuffled' ? 'Randomized' : 'Original'}</p>
-          <p><strong>Session:</strong> {attempts}/{sessionOrder.length}</p>
-          <p><strong>Sound Rate:</strong> {exactAccuracy}%</p>
-          <p><strong>Avg Score:</strong> {avgAccuracy}%</p>
-          <p><strong>Duration:</strong> {(sessionDurationMs / 1000).toFixed(1)}s</p>
-        </div>
         {sessionFinished && (
           <p className="status success" style={{ marginTop: 0, marginBottom: '1.5rem' }}>
             Session complete. {correctCount} of {attempts} cards were sound. Avg score: {avgAccuracy}%.
