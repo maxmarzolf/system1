@@ -143,6 +143,14 @@ export default function CoachTuningPage() {
             <label className="coach-tuning-toggle">
               <input
                 type="checkbox"
+                checked={liveCoachTuning.enabled}
+                onChange={(event) => updateLiveCoachTuning('enabled', event.target.checked)}
+              />
+              <span>Enable live feedback requests</span>
+            </label>
+            <label className="coach-tuning-toggle">
+              <input
+                type="checkbox"
                 checked={liveCoachTuning.singleIssue}
                 onChange={(event) => updateLiveCoachTuning('singleIssue', event.target.checked)}
               />

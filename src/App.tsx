@@ -4,7 +4,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import type { Flashcard } from './data/flashcards'
 import { skillMap } from './data/skill-map'
-import { getLiveCoachFrequencyProfile, loadStoredLiveCoachTuning } from './liveCoachTuning'
+import { getLiveCoachFrequencyProfile, loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoachTuning'
 
 const emptySkillMapCard: Flashcard = {
   id: 'skill-map-loading',
@@ -122,6 +122,11 @@ type DraftStructure = {
 
 type FocusDrillPhase = 'preview' | 'typing' | 'submitted'
 type LlmProvider = 'openai' | 'claude'
+
+const LLM_PROVIDER_OPTIONS: Array<{ value: LlmProvider, label: string }> = [
+  { value: 'openai', label: 'ChatGPT' },
+  { value: 'claude', label: 'Claude' },
+]
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 const apiUrl = (path: string) => `${API_BASE_URL}${path}`
@@ -706,6 +711,7 @@ function App() {
   const [sessionElapsedByCard, setSessionElapsedByCard] = useState<Record<string, number>>({})
   const [sessionPlanRequested, setSessionPlanRequested] = useState(false)
   const [llmProvider, setLlmProvider] = useState<LlmProvider>('openai')
+  const [llmProviderMenuOpen, setLlmProviderMenuOpen] = useState(false)
 
   const [showHint, setShowHint] = useState(false)
 
@@ -718,7 +724,7 @@ function App() {
   const [liveCoachFeedback, setLiveCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
   const [liveCoachLoading, setLiveCoachLoading] = useState(false)
   const [liveCoachError, setLiveCoachError] = useState('')
-  const liveCoachTuning = useMemo(() => loadStoredLiveCoachTuning(), [])
+  const [liveCoachTuning, setLiveCoachTuning] = useState(() => loadStoredLiveCoachTuning())
   const liveCoachFrequencyProfile = useMemo(
     () => getLiveCoachFrequencyProfile(liveCoachTuning.feedbackFrequency),
     [liveCoachTuning]
@@ -738,6 +744,7 @@ function App() {
   const mainInputRef = useRef<HTMLTextAreaElement | null>(null)
   const mainHighlightRef = useRef<HTMLDivElement | null>(null)
   const mainGutterRef = useRef<HTMLDivElement | null>(null)
+  const llmProviderMenuRef = useRef<HTMLDivElement | null>(null)
   const currentCardIdRef = useRef('')
   const liveCoachRequestVersionRef = useRef(0)
   const lastLiveCoachMilestoneRef = useRef('')
@@ -835,10 +842,35 @@ function App() {
   }, [llmProvider, skillMapRefreshToken])
 
   useEffect(() => {
+    saveStoredLiveCoachTuning(liveCoachTuning)
+  }, [liveCoachTuning])
+
+  useEffect(() => {
     if (skillMapLoading) return
     startSession()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredDeck, sessionOrderType, skillMapLoading])
+
+  useEffect(() => {
+    if (!llmProviderMenuOpen) return
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!llmProviderMenuRef.current?.contains(event.target as Node)) {
+        setLlmProviderMenuOpen(false)
+      }
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setLlmProviderMenuOpen(false)
+    }
+
+    window.addEventListener('mousedown', handlePointerDown)
+    window.addEventListener('keydown', handleEscape)
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown)
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [llmProviderMenuOpen])
 
   const currentDeckIndex = sessionOrder[sessionPosition] ?? 0
   const card = filteredDeck[currentDeckIndex] ?? filteredDeck[0] ?? emptySkillMapCard
@@ -1172,6 +1204,7 @@ function App() {
     previousAttempts: RecallAttemptSnapshot[]
     draft: DraftStructure
   }) => {
+    if (!liveCoachTuning.enabled) return
     const requestCardId = card.id
     liveCoachRequestVersionRef.current += 1
     const requestVersion = liveCoachRequestVersionRef.current
@@ -1236,6 +1269,9 @@ function App() {
   }
 
   const requestLiveCoachFeedback = useEffectEvent(fetchLiveCoachFeedback)
+  const toggleLiveFeedback = () => {
+    setLiveCoachTuning((prev) => ({ ...prev, enabled: !prev.enabled }))
+  }
 
   const fetchCoachAttemptFeedback = async (
     payload: {
@@ -1638,6 +1674,21 @@ function App() {
   const showSubmittedLineReview = mainPhase === 'submitted' && !mainCloseEnough && currentTemplateMode !== 'pseudo'
 
   useEffect(() => {
+    if (liveCoachTuning.enabled) return
+    liveCoachRequestVersionRef.current += 1
+    setLiveCoachLoading(false)
+    setLiveCoachError('')
+    setLiveCoachFeedback(null)
+    setIgnoredDrillDownKey('')
+    setCompletedDrillDownKey('')
+    setFocusDrillPhase('preview')
+    setFocusDrillInput('')
+    setFocusDrillAccuracy(0)
+    setFocusDrillExact(false)
+    currentDrillDownKeyRef.current = ''
+  }, [liveCoachTuning.enabled])
+
+  useEffect(() => {
     if (!liveCoachDrillDownActive || !liveCoachDrillDownKey || !liveCoachDrillDownTarget) {
       currentDrillDownKeyRef.current = ''
       setFocusDrillPhase('preview')
@@ -1656,6 +1707,7 @@ function App() {
   }, [liveCoachDrillDownActive, liveCoachDrillDownKey, liveCoachDrillDownTarget])
 
   useEffect(() => {
+    if (!liveCoachTuning.enabled) return
     if (!hasDeck || mainPhase !== 'typing' || sessionFinished || hasAnsweredCurrent) return
 
     const trimmedInput = normalizeTyping(mainInput)
@@ -1688,9 +1740,11 @@ function App() {
     mainInput,
     mainPhase,
     sessionFinished,
+    liveCoachTuning.enabled,
   ])
 
   useEffect(() => {
+    if (!liveCoachTuning.enabled) return
     if (!hasDeck || mainPhase !== 'typing' || sessionFinished || hasAnsweredCurrent) return
 
     const intervalId = window.setInterval(() => {
@@ -1718,6 +1772,7 @@ function App() {
     mainInput,
     mainPhase,
     sessionFinished,
+    liveCoachTuning.enabled,
   ])
 
   return (
@@ -1747,17 +1802,52 @@ function App() {
             </button>
           </div>
           <span className="navbar-divider" />
-          <div className="navbar-group llm-provider-group">
-            <label htmlFor="llm-provider" className="llm-provider-label">Coach Model</label>
-            <select
-              id="llm-provider"
-              className="llm-provider-select"
-              value={llmProvider}
-              onChange={(event) => setLlmProvider(event.target.value as LlmProvider)}
+          <div className="navbar-group llm-provider-group" ref={llmProviderMenuRef}>
+            <button
+              type="button"
+              className={llmProviderMenuOpen ? 'navbar-picker active' : 'navbar-picker'}
+              aria-haspopup="listbox"
+              aria-expanded={llmProviderMenuOpen}
+              aria-label="Coach model"
+              onClick={() => setLlmProviderMenuOpen((open) => !open)}
             >
-              <option value="openai">ChatGPT</option>
-              <option value="claude">Claude</option>
-            </select>
+              {LLM_PROVIDER_OPTIONS.find((option) => option.value === llmProvider)?.label ?? 'ChatGPT'}
+            </button>
+            {llmProviderMenuOpen && (
+              <div className="navbar-picker-menu" role="listbox" aria-label="Coach model options">
+                {LLM_PROVIDER_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="option"
+                    aria-selected={llmProvider === option.value}
+                    className={llmProvider === option.value ? 'navbar-picker-option active' : 'navbar-picker-option'}
+                    onClick={() => {
+                      setLlmProvider(option.value)
+                      setLlmProviderMenuOpen(false)
+                    }}
+                  >
+                    <span>{option.label}</span>
+                    {llmProvider === option.value && <span className="navbar-picker-check">Active</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <span className="navbar-divider" />
+          <div className="navbar-group navbar-group-live">
+            <button
+              type="button"
+              className={liveCoachTuning.enabled ? 'navbar-toggle active' : 'navbar-toggle'}
+              onClick={toggleLiveFeedback}
+              aria-pressed={liveCoachTuning.enabled}
+              aria-label={liveCoachTuning.enabled ? 'Turn live feedback off' : 'Turn live feedback on'}
+            >
+              <span className="navbar-toggle-label">Live</span>
+              <span className={liveCoachTuning.enabled ? 'navbar-toggle-state on' : 'navbar-toggle-state off'}>
+                {liveCoachTuning.enabled ? 'On' : 'Off'}
+              </span>
+            </button>
           </div>
         </div>
         <div className="navbar-right">
@@ -1974,106 +2064,117 @@ function App() {
                         <div className="coach-docked-card">
                           <div className="coach-card-header">
                             <h4>Live Feedback</h4>
-                            <span
-                              className="live-coach-indicator"
-                              aria-label={liveCoachLoading ? 'Live coach refreshing' : 'Live coach active'}
-                            >
-                              <span className="live-coach-dot" />
-                            </span>
+                            {liveCoachTuning.enabled && (
+                              <span
+                                className="live-coach-indicator"
+                                aria-label={liveCoachLoading ? 'Live coach refreshing' : 'Live coach active'}
+                              >
+                                <span className="live-coach-dot" />
+                              </span>
+                            )}
                           </div>
-                          {liveCoachAffirmation && (
-                            <div className="coach-live-block">
-                              <p className="coach-live-label">Affirmation</p>
-                              <p className="coach-panel-copy">{liveCoachAffirmation}</p>
-                            </div>
+                          {!liveCoachTuning.enabled && (
+                            <p className="hint" style={{ margin: 0 }}>
+                              Live feedback is paused. No draft feedback requests will be sent until you resume it.
+                            </p>
                           )}
-                          <div className="coach-live-block">
-                            <p className="coach-live-label">Next move</p>
-                            <p className="coach-panel-copy">{liveCoachNextStep}</p>
-                          </div>
-                          <div className="coach-live-block">
-                            <p className="coach-live-label">Why</p>
-                            <p className="coach-panel-copy">{liveCoachWhy}</p>
-                          </div>
-                          {liveCoachDrillDownActive && (
-                            <div className="coach-drilldown-card">
-                              <div className="coach-drilldown-header">
-                                <p className="coach-live-label">{liveCoachDrillDownTitle}</p>
-                                <button type="button" className="link" onClick={ignoreLiveCoachDrillDown}>
-                                  {liveCoachFeedback?.drillDownOverrideLabel || 'Ignore this drill-down'}
-                                </button>
+                          {liveCoachTuning.enabled && (
+                            <>
+                              {liveCoachAffirmation && (
+                                <div className="coach-live-block">
+                                  <p className="coach-live-label">Affirmation</p>
+                                  <p className="coach-panel-copy">{liveCoachAffirmation}</p>
+                                </div>
+                              )}
+                              <div className="coach-live-block">
+                                <p className="coach-live-label">Next move</p>
+                                <p className="coach-panel-copy">{liveCoachNextStep}</p>
                               </div>
-                              <p className="coach-panel-copy">{liveCoachDrillDownPrompt}</p>
-                              {liveCoachDrillDownQuestion && (
-                                <p className="coach-drilldown-question">{liveCoachDrillDownQuestion}</p>
-                              )}
-                              {liveCoachDrillDownHint && (
-                                <p className="coach-drilldown-hint">{liveCoachDrillDownHint}</p>
-                              )}
-                              {focusDrillPhase === 'preview' && liveCoachDrillDownTarget && (
-                                <>
-                                  <div className="code-container coach-drilldown-code">
-                                    <SyntaxHighlighter
-                                      language="python"
-                                      style={vscDarkPlus}
-                                      customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
-                                      codeTagProps={{ style: { background: 'transparent' } }}
-                                    >
-                                      {liveCoachDrillDownTarget}
-                                    </SyntaxHighlighter>
-                                  </div>
-                                  <div className="actions">
-                                    <button type="button" onClick={startFocusDrill}>Hide answer and practice subset</button>
-                                  </div>
-                                </>
-                              )}
-                              {focusDrillPhase === 'typing' && (
-                                <>
-                                  <textarea
-                                    className="coach-drilldown-input"
-                                    rows={Math.max(liveCoachDrillDownTarget.split('\n').length + 1, 4)}
-                                    value={focusDrillInput}
-                                    onChange={(event) => setFocusDrillInput(event.target.value)}
-                                    spellCheck={false}
-                                    autoCapitalize="off"
-                                    autoCorrect="off"
-                                    autoComplete="off"
-                                    placeholder="Type the focused subset from memory..."
-                                  />
-                                  <div className="actions">
-                                    <button type="button" onClick={submitFocusDrill} disabled={focusDrillInput.trim().length === 0}>
-                                      Submit subset
+                              <div className="coach-live-block">
+                                <p className="coach-live-label">Why</p>
+                                <p className="coach-panel-copy">{liveCoachWhy}</p>
+                              </div>
+                              {liveCoachDrillDownActive && (
+                                <div className="coach-drilldown-card">
+                                  <div className="coach-drilldown-header">
+                                    <p className="coach-live-label">{liveCoachDrillDownTitle}</p>
+                                    <button type="button" className="link" onClick={ignoreLiveCoachDrillDown}>
+                                      {liveCoachFeedback?.drillDownOverrideLabel || 'Ignore this drill-down'}
                                     </button>
                                   </div>
-                                </>
+                                  <p className="coach-panel-copy">{liveCoachDrillDownPrompt}</p>
+                                  {liveCoachDrillDownQuestion && (
+                                    <p className="coach-drilldown-question">{liveCoachDrillDownQuestion}</p>
+                                  )}
+                                  {liveCoachDrillDownHint && (
+                                    <p className="coach-drilldown-hint">{liveCoachDrillDownHint}</p>
+                                  )}
+                                  {focusDrillPhase === 'preview' && liveCoachDrillDownTarget && (
+                                    <>
+                                      <div className="code-container coach-drilldown-code">
+                                        <SyntaxHighlighter
+                                          language="python"
+                                          style={vscDarkPlus}
+                                          customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
+                                          codeTagProps={{ style: { background: 'transparent' } }}
+                                        >
+                                          {liveCoachDrillDownTarget}
+                                        </SyntaxHighlighter>
+                                      </div>
+                                      <div className="actions">
+                                        <button type="button" onClick={startFocusDrill}>Hide answer and practice subset</button>
+                                      </div>
+                                    </>
+                                  )}
+                                  {focusDrillPhase === 'typing' && (
+                                    <>
+                                      <textarea
+                                        className="coach-drilldown-input"
+                                        rows={Math.max(liveCoachDrillDownTarget.split('\n').length + 1, 4)}
+                                        value={focusDrillInput}
+                                        onChange={(event) => setFocusDrillInput(event.target.value)}
+                                        spellCheck={false}
+                                        autoCapitalize="off"
+                                        autoCorrect="off"
+                                        autoComplete="off"
+                                        placeholder="Type the focused subset from memory..."
+                                      />
+                                      <div className="actions">
+                                        <button type="button" onClick={submitFocusDrill} disabled={focusDrillInput.trim().length === 0}>
+                                          Submit subset
+                                        </button>
+                                      </div>
+                                    </>
+                                  )}
+                                  {focusDrillPhase === 'submitted' && (
+                                    <>
+                                      <p className={focusDrillExact || focusDrillAccuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY ? 'status success' : 'status error'}>
+                                        {focusDrillExact
+                                          ? 'Subset nailed.'
+                                          : focusDrillAccuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY
+                                            ? `Subset close enough at ${focusDrillAccuracy}%.`
+                                            : `Subset needs work at ${focusDrillAccuracy}%.`}
+                                      </p>
+                                      <div className="code-container coach-drilldown-code">
+                                        <SyntaxHighlighter
+                                          language="python"
+                                          style={vscDarkPlus}
+                                          customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
+                                          codeTagProps={{ style: { background: 'transparent' } }}
+                                        >
+                                          {liveCoachDrillDownTarget}
+                                        </SyntaxHighlighter>
+                                      </div>
+                                      <div className="actions">
+                                        <button type="button" onClick={retryFocusDrill}>Retry subset</button>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
                               )}
-                              {focusDrillPhase === 'submitted' && (
-                                <>
-                                  <p className={focusDrillExact || focusDrillAccuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY ? 'status success' : 'status error'}>
-                                    {focusDrillExact
-                                      ? 'Subset nailed.'
-                                      : focusDrillAccuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY
-                                        ? `Subset close enough at ${focusDrillAccuracy}%.`
-                                        : `Subset needs work at ${focusDrillAccuracy}%.`}
-                                  </p>
-                                  <div className="code-container coach-drilldown-code">
-                                    <SyntaxHighlighter
-                                      language="python"
-                                      style={vscDarkPlus}
-                                      customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
-                                      codeTagProps={{ style: { background: 'transparent' } }}
-                                    >
-                                      {liveCoachDrillDownTarget}
-                                    </SyntaxHighlighter>
-                                  </div>
-                                  <div className="actions">
-                                    <button type="button" onClick={retryFocusDrill}>Retry subset</button>
-                                  </div>
-                                </>
-                              )}
-                            </div>
+                              {liveCoachError && <p className="coach-error">{liveCoachError}</p>}
+                            </>
                           )}
-                          {liveCoachError && <p className="coach-error">{liveCoachError}</p>}
                         </div>
                       </div>
                     )}

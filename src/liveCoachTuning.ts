@@ -1,6 +1,7 @@
 export type LiveFeedbackFrequency = 'more-often' | 'balanced' | 'less-often'
 
 export type LiveCoachTuning = {
+  enabled: boolean
   focusMode: 'memorization' | 'interview'
   tone: 'calm' | 'direct' | 'technical'
   singleIssue: boolean
@@ -18,6 +19,7 @@ export type LiveCoachTuning = {
 export const LIVE_COACH_TUNING_STORAGE_KEY = 'system1-live-coach-tuning-v1'
 
 export const defaultLiveCoachTuning: LiveCoachTuning = {
+  enabled: true,
   focusMode: 'memorization',
   tone: 'calm',
   singleIssue: true,
