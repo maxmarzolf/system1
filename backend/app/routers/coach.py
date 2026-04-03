@@ -722,36 +722,23 @@ def _build_submission_issue_list(
 
 
 def _build_submission_feedback(
-    issues: list[str], strengths: list[str], principle: str, history_summary: dict[str, Any]
+    template_label: str, issues: list[str], strengths: list[str], principle: str, history_summary: dict[str, Any]
 ) -> str:
-    paragraphs: list[str] = []
+    weakest_tag = str(history_summary.get("weakestTag") or "").strip()
 
     if issues:
-        paragraphs.append(issues[0])
-    elif strengths:
-        paragraphs.append(strengths[0])
-    else:
-        paragraphs.append("This attempt is close to interview-ready. The main thing now is preserving the invariant all the way through the function.")
+        headline = issues[0].rstrip(".")
+        if weakest_tag:
+            return f"Your {template_label} needs work: {headline}, and `{weakest_tag}` is still the main recurring weak spot."
+        return f"Your {template_label} needs work: {headline}."
 
-    if principle:
-        paragraphs.append(principle)
+    if strengths:
+        headline = strengths[0].rstrip(".")
+        if principle:
+            return f"Your {template_label} is strong: {headline}, and the key rule is {principle.rstrip('.').lower()}."
+        return f"Your {template_label} is strong: {headline}."
 
-    if len(issues) > 1:
-        if len(issues) == 2:
-            paragraphs.append(f"There is one other issue to fix: {issues[1]}")
-        else:
-            paragraphs.append(
-                "There are a couple of other issues to clean up: "
-                + " ".join(issue.rstrip(".") + "." for issue in issues[1:3])
-            )
-
-    weakest_tag = str(history_summary.get("weakestTag") or "").strip()
-    if weakest_tag:
-        paragraphs.append(
-            f"Across recent attempts, `{weakest_tag}` is still a weak spot, so it is worth reinforcing this pattern until the invariant feels automatic."
-        )
-
-    return "\n\n".join(paragraphs)
+    return f"Your {template_label} is close, but the main thing now is preserving the invariant all the way through the function."
 
 
 async def _load_attempt_history(body: CoachAttemptFeedbackRequest) -> list[dict[str, Any]]:
@@ -1269,6 +1256,41 @@ def _primary_pattern_tag(skill_tags: list[str]) -> str:
         if tag in skill_tags:
             return tag
     return ""
+
+
+def _pattern_display_name(skill_tags: list[str]) -> str:
+    pattern_tag = _primary_pattern_tag(skill_tags)
+    return {
+        "sliding-window": "sliding window",
+        "two-pointers": "two pointers",
+        "binary-search": "binary search",
+        "dfs-bfs": "DFS/BFS",
+        "graph-traversal": "graph traversal",
+        "backtracking": "backtracking",
+        "heap": "heap",
+        "union-find": "union find",
+        "dynamic-programming": "dynamic programming",
+        "dp": "dynamic programming",
+        "intervals": "intervals",
+        "prefix-sums": "prefix sums",
+        "monotonic-stack": "monotonic stack",
+        "stack": "stack",
+    }.get(pattern_tag, "algorithm")
+
+
+def _algorithmic_template_label(skill_tags: list[str], template_mode: str) -> str:
+    pattern_name = _pattern_display_name(skill_tags)
+    if pattern_name == "algorithm":
+        return {
+            TemplateMode.pseudo.value: "algorithm pseudocode",
+            TemplateMode.skeleton.value: "algorithm skeleton",
+            TemplateMode.full.value: "algorithm template",
+        }.get(template_mode, "algorithm template")
+    return {
+        TemplateMode.pseudo.value: f"{pattern_name} pseudocode",
+        TemplateMode.skeleton.value: f"{pattern_name} skeleton",
+        TemplateMode.full.value: f"{pattern_name} template",
+    }.get(template_mode, f"{pattern_name} template")
 
 
 def _live_window_next_step(stage: str) -> str:
@@ -1993,6 +2015,7 @@ def _heuristic_template_submission_feedback(
     blocker_key = missing_keys[0] if missing_keys else "template"
     blocker_label = missing_labels[0] if missing_labels else "template flow"
     principle = _pattern_principle(body.skillTags)
+    template_label = _algorithmic_template_label(body.skillTags, template_mode)
     mode_label = "pseudocode" if template_mode == TemplateMode.pseudo.value else "skeleton"
 
     strengths = []
@@ -2034,7 +2057,7 @@ def _heuristic_template_submission_feedback(
             f"The {mode_label} has the right shape, but one or two invariant steps are still too vague."
         )
 
-    full_feedback = _build_submission_feedback(issues, strengths, principle, history_summary)
+    full_feedback = _build_submission_feedback(template_label, issues, strengths, principle, history_summary)
     corrected_version = body.expectedAnswer.strip() if body.userAnswer.strip() and not body.exact else ""
     micro_drill = (
         f"3 reps: hide the answer, write the {mode_label}, compare, then immediately rewrite only the missing step."
@@ -2352,6 +2375,7 @@ def _heuristic_attempt_feedback(
         strengths.append("You completed a full recall attempt, which gives trainable signal.")
 
     principle = _pattern_principle(body.skillTags)
+    template_label = _algorithmic_template_label(body.skillTags, template_mode)
     submission_issues = _build_submission_issue_list(
         expected_lines,
         actual_lines,
@@ -2437,6 +2461,7 @@ def _heuristic_attempt_feedback(
         )
 
     full_feedback = _build_submission_feedback(
+        template_label,
         submission_issues,
         strengths,
         principle,
@@ -2866,6 +2891,7 @@ async def _attempt_feedback_with_optional_llm(
         TemplateMode.skeleton.value: "The user is recalling a Python skeleton with invariant comments and scaffold only.",
         TemplateMode.pseudo.value: "The user is recalling the algorithm as pseudocode or plain-language steps.",
     }.get(template_mode, "The user is recalling an algorithm template.")
+    submission_template_label = _algorithmic_template_label(body.skillTags, template_mode)
 
     system_prompt = (
         "You are a calm memorization coach watching a draft in progress. Return strict JSON with keys: "
@@ -2956,19 +2982,18 @@ async def _attempt_feedback_with_optional_llm(
 
     if not body.draftMode:
         llm_payload["submissionStyle"] = {
-            "goal": "Compare the expected answer and the submitted answer directly, then give concise, concrete interview feedback.",
+            "goal": f"Grade the user's {submission_template_label} in one sentence.",
             "do": [
-                "Lead with the main mistake or the most important thing the user got right.",
-                "Explain the reusable pattern rule or invariant behind the mistake.",
-                "Mention up to two additional issues only if they materially affect correctness or interview quality.",
-                "Write fullFeedback as natural prose paragraphs, not labels or bullets.",
+                "Lead with whether the submission is sound, close, or needs work.",
+                "Mention the biggest miss or the strongest correct structural move.",
+                "Keep fullFeedback to exactly one sentence in natural prose.",
                 "Provide correctedVersion when the attempt is not exact; use expectedAnswer as the ground truth.",
             ],
             "avoid": [
                 "Do not say 'Next rep'.",
                 "Do not paste a skeleton or coachy filler.",
                 "Do not give vague praise without saying what was actually correct.",
-                "Do not over-focus on memorization mechanics in submission mode.",
+                "Do not turn fullFeedback into multiple sentences or paragraphs.",
             ],
         }
 

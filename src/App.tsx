@@ -2244,9 +2244,6 @@ function App() {
               Regenerate session
             </button>
           </div>
-          <p className="card-footer-hint">
-            Skill Map sessions generate atomic pattern drills from the layered map. Regenerate when you want a fresh set.
-          </p>
         </div>
       </section>
     </div>
