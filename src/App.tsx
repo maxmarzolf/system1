@@ -34,6 +34,10 @@ type AttemptPayload = {
   exact: boolean
   elapsedMs: number
   interactionId: string
+  templateMode: TemplateMode
+  hintUsed: boolean
+  liveCoachUsed: boolean
+  drillDownUsed: boolean
   coachFeedback?: CoachAttemptFeedback | null
 }
 
@@ -714,6 +718,9 @@ function App() {
   const [llmProviderMenuOpen, setLlmProviderMenuOpen] = useState(false)
 
   const [showHint, setShowHint] = useState(false)
+  const [hintUsedThisAttempt, setHintUsedThisAttempt] = useState(false)
+  const [liveCoachUsedThisAttempt, setLiveCoachUsedThisAttempt] = useState(false)
+  const [drillDownUsedThisAttempt, setDrillDownUsedThisAttempt] = useState(false)
 
   const [mainPhase, setMainPhase] = useState<'preview' | 'typing' | 'submitted'>('preview')
   const [mainInput, setMainInput] = useState('')
@@ -982,6 +989,10 @@ function App() {
           interactionId: payload.interactionId,
           generatedCardId: card.id,
           generatedCard: card,
+          templateMode: payload.templateMode,
+          hintUsed: payload.hintUsed,
+          liveCoachUsed: payload.liveCoachUsed,
+          drillDownUsed: payload.drillDownUsed,
           coachFeedback: payload.coachFeedback ?? null,
         }),
       })
@@ -1026,6 +1037,9 @@ function App() {
     setLiveCoachFeedback(null)
     setLiveCoachLoading(false)
     setLiveCoachError('')
+    setHintUsedThisAttempt(false)
+    setLiveCoachUsedThisAttempt(false)
+    setDrillDownUsedThisAttempt(false)
     setIgnoredDrillDownKey('')
     setCompletedDrillDownKey('')
     setFocusDrillPhase('preview')
@@ -1049,6 +1063,9 @@ function App() {
     setLiveCoachFeedback(null)
     setLiveCoachLoading(false)
     setLiveCoachError('')
+    setHintUsedThisAttempt(false)
+    setLiveCoachUsedThisAttempt(false)
+    setDrillDownUsedThisAttempt(false)
     setIgnoredDrillDownKey('')
     setCompletedDrillDownKey('')
     setFocusDrillPhase('preview')
@@ -1257,6 +1274,7 @@ function App() {
       const feedback = (await response.json()) as CoachAttemptFeedback
       if (currentCardIdRef.current !== requestCardId || liveCoachRequestVersionRef.current !== requestVersion) return
       setLiveCoachFeedback(feedback)
+      setLiveCoachUsedThisAttempt(true)
     } catch {
       if (currentCardIdRef.current !== requestCardId || liveCoachRequestVersionRef.current !== requestVersion) return
       setLiveCoachError('Live coach unavailable right now.')
@@ -1453,6 +1471,10 @@ function App() {
       exact: sound,
       elapsedMs,
       interactionId,
+      templateMode: currentTemplateMode,
+      hintUsed: hintUsedThisAttempt,
+      liveCoachUsed: liveCoachUsedThisAttempt,
+      drillDownUsed: drillDownUsedThisAttempt,
       coachFeedback: feedback,
     })
 
@@ -1504,6 +1526,7 @@ function App() {
 
   const startFocusDrill = () => {
     if (!liveCoachDrillDownTarget) return
+    setDrillDownUsedThisAttempt(true)
     setFocusDrillPhase('typing')
     setFocusDrillInput('')
     setFocusDrillAccuracy(0)
@@ -1935,7 +1958,16 @@ function App() {
             ) : (
               <>
                 <p className="prompt">{card.prompt}</p>
-                <button className="link" onClick={() => setShowHint((prev) => !prev)}>
+                <button
+                  className="link"
+                  onClick={() => {
+                    setShowHint((prev) => {
+                      const next = !prev
+                      if (next) setHintUsedThisAttempt(true)
+                      return next
+                    })
+                  }}
+                >
                   {showHint ? 'Hide hint' : 'Show hint'}
                 </button>
                 {showHint && <p className="hint">{card.hint}</p>}

@@ -30,6 +30,7 @@ from app.models import (
     SkillMapDrillsResponse,
     TemplateMode,
 )
+from app.readiness import READINESS_MODE_ORDER, summarize_readiness
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])
 
@@ -777,6 +778,10 @@ async def _load_practice_history(
                     sa.accuracy,
                     sa.exact,
                     sa.elapsed_ms AS "elapsedMs",
+                    sa.template_mode AS "templateMode",
+                    sa.hint_used AS "hintUsed",
+                    sa.live_coach_used AS "liveCoachUsed",
+                    sa.drill_down_used AS "drillDownUsed",
                     sa.category_tags AS "categoryTags",
                     sa.generated_card AS "generatedCard",
                     sa.coach_feedback AS "submissionFeedback",
@@ -839,6 +844,10 @@ async def _load_practice_history(
                     sa.accuracy,
                     sa.exact,
                     sa.elapsed_ms AS "elapsedMs",
+                    sa.template_mode AS "templateMode",
+                    sa.hint_used AS "hintUsed",
+                    sa.live_coach_used AS "liveCoachUsed",
+                    sa.drill_down_used AS "drillDownUsed",
                     sa.category_tags AS "categoryTags",
                     sa.generated_card AS "generatedCard",
                     sa.coach_feedback AS "submissionFeedback",
@@ -899,6 +908,10 @@ async def _load_practice_history(
                     sa.accuracy,
                     sa.exact,
                     sa.elapsed_ms AS "elapsedMs",
+                    sa.template_mode AS "templateMode",
+                    sa.hint_used AS "hintUsed",
+                    sa.live_coach_used AS "liveCoachUsed",
+                    sa.drill_down_used AS "drillDownUsed",
                     sa.category_tags AS "categoryTags",
                     sa.generated_card AS "generatedCard",
                     sa.coach_feedback AS "submissionFeedback",
@@ -958,6 +971,10 @@ async def _load_practice_history(
             "accuracy": float(row["accuracy"] or 0),
             "exact": bool(row["exact"]),
             "elapsedMs": int(row["elapsedMs"] or 0),
+            "templateMode": str(row["templateMode"] or TemplateMode.full.value),
+            "hintUsed": bool(row["hintUsed"]),
+            "liveCoachUsed": bool(row["liveCoachUsed"]),
+            "drillDownUsed": bool(row["drillDownUsed"]),
             "categoryTags": list(row["categoryTags"] or []),
             "generatedCard": _parse_json_field(row["generatedCard"], {}),
             "liveFeedbackCount": int(row["liveFeedbackCount"] or 0),
@@ -999,6 +1016,11 @@ async def _load_live_feedback_history(interaction_id: str | None, limit: int = 1
 
 
 def _summarize_attempt_history(history: list[dict[str, Any]]) -> dict[str, Any]:
+    template_mode_summaries = {
+        mode: summarize_readiness([item for item in history if str(item.get("templateMode", "")) == mode])
+        for mode in READINESS_MODE_ORDER
+    }
+    readiness_summary = summarize_readiness(history)
     if not history:
         return {
             "attemptCount": 0,
@@ -1007,6 +1029,10 @@ def _summarize_attempt_history(history: list[dict[str, Any]]) -> dict[str, Any]:
             "repeatedErrorTags": [],
             "recentPrimaryFocuses": [],
             "recentQuestions": [],
+            "readiness": readiness_summary["readiness"],
+            "daysSinceLastSubmit": readiness_summary["daysSinceLastSubmit"],
+            "stale": readiness_summary["stale"],
+            "templateModes": template_mode_summaries,
         }
 
     accuracies = [float(item.get("accuracy", 0)) for item in history]
@@ -1042,6 +1068,10 @@ def _summarize_attempt_history(history: list[dict[str, Any]]) -> dict[str, Any]:
         "repeatedErrorTags": [tag for tag, count in error_counts.most_common(3) if count >= 2],
         "recentPrimaryFocuses": primary_focuses[:3],
         "recentQuestions": recent_questions[:3],
+        "readiness": readiness_summary["readiness"],
+        "daysSinceLastSubmit": readiness_summary["daysSinceLastSubmit"],
+        "stale": readiness_summary["stale"],
+        "templateModes": template_mode_summaries,
     }
 
 
@@ -1086,10 +1116,12 @@ def _summarize_skill_map_progress(
             "pattern": getattr(node, "pattern", slug),
             "attemptCount": 0,
             "avgAccuracy": 0.0,
+            "readiness": 0.0,
             "exactRate": 0.0,
             "repeatedErrorTags": [],
             "latestPrimaryFocus": "",
             "latestQuestion": "",
+            "stale": False,
         }
 
     accuracy_buckets: dict[str, list[float]] = {slug: [] for slug in progress_by_pattern}
@@ -1117,10 +1149,15 @@ def _summarize_skill_map_progress(
     for slug, summary in progress_by_pattern.items():
         accuracies = accuracy_buckets[slug]
         attempts = int(summary["attemptCount"])
+        readiness_summary = summarize_readiness(
+            [item for item in history if slug in {str(tag) for tag in item.get("categoryTags", [])}]
+        )
         if accuracies:
             summary["avgAccuracy"] = round(sum(accuracies) / len(accuracies), 1)
             summary["exactRate"] = round((exact_counts[slug] / len(accuracies)) * 100, 1)
         summary["repeatedErrorTags"] = [tag for tag, count in error_counts[slug].most_common(3) if count >= 2]
+        summary["readiness"] = readiness_summary["readiness"]
+        summary["stale"] = readiness_summary["stale"]
         if attempts > 0 and float(summary["avgAccuracy"]) < 90:
             weak_patterns.append(slug)
 
@@ -1134,6 +1171,7 @@ def _summarize_skill_map_progress(
             "attemptCount": overall_attempts,
             "avgAccuracy": overall_avg_accuracy,
             "weakPatterns": weak_patterns[:5],
+            "readiness": summarize_readiness(history)["readiness"],
         },
         "patterns": progress_by_pattern,
     }
@@ -2952,6 +2990,10 @@ async def _attempt_feedback_with_optional_llm(
                 "accuracy": item.get("accuracy", 0),
                 "exact": item.get("exact", False),
                 "elapsedMs": item.get("elapsedMs", 0),
+                "templateMode": item.get("templateMode", TemplateMode.full.value),
+                "hintUsed": item.get("hintUsed", False),
+                "liveCoachUsed": item.get("liveCoachUsed", False),
+                "drillDownUsed": item.get("drillDownUsed", False),
                 "categoryTags": item.get("categoryTags", []),
                 "liveFeedbackCount": item.get("liveFeedbackCount", 0),
                 "latestLiveFeedback": item.get("latestLiveFeedback", {}),
@@ -2960,6 +3002,7 @@ async def _attempt_feedback_with_optional_llm(
             }
             for item in history[:8]
         ],
+        "historySummary": _summarize_attempt_history(history),
         "previousAttempts": body.previousAttempts[-3:],
         "draftMode": body.draftMode,
         "templateMode": template_mode,

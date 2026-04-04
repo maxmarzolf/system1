@@ -105,6 +105,25 @@ async def _ensure_recall_history_schema(db_pool: asyncpg.Pool) -> None:
             ALTER TABLE score_attempts
             ADD COLUMN IF NOT EXISTS coach_feedback JSONB;
 
+            ALTER TABLE score_attempts
+            ADD COLUMN IF NOT EXISTS template_mode VARCHAR(20) NOT NULL DEFAULT 'full';
+
+            ALTER TABLE score_attempts
+            ADD COLUMN IF NOT EXISTS hint_used BOOLEAN NOT NULL DEFAULT FALSE;
+
+            ALTER TABLE score_attempts
+            ADD COLUMN IF NOT EXISTS live_coach_used BOOLEAN NOT NULL DEFAULT FALSE;
+
+            ALTER TABLE score_attempts
+            ADD COLUMN IF NOT EXISTS drill_down_used BOOLEAN NOT NULL DEFAULT FALSE;
+
+            ALTER TABLE score_attempts
+            DROP CONSTRAINT IF EXISTS score_attempts_template_mode_check;
+
+            ALTER TABLE score_attempts
+            ADD CONSTRAINT score_attempts_template_mode_check
+            CHECK (template_mode IN ('pseudo', 'skeleton', 'full'));
+
             CREATE INDEX IF NOT EXISTS idx_score_attempts_question_type
                 ON score_attempts(question_type);
 

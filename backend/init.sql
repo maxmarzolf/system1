@@ -30,6 +30,10 @@ CREATE TABLE IF NOT EXISTS score_attempts (
     interaction_id VARCHAR(80),
     generated_card_id VARCHAR(80),
     generated_card JSONB,
+    template_mode VARCHAR(20) NOT NULL DEFAULT 'full' CHECK (template_mode IN ('pseudo', 'skeleton', 'full')),
+    hint_used BOOLEAN NOT NULL DEFAULT FALSE,
+    live_coach_used BOOLEAN NOT NULL DEFAULT FALSE,
+    drill_down_used BOOLEAN NOT NULL DEFAULT FALSE,
     coach_feedback JSONB,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP

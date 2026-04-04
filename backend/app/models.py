@@ -41,6 +41,10 @@ class AttemptCreate(BaseModel):
     interactionId: str | None = None
     generatedCardId: str | None = None
     generatedCard: dict[str, Any] | None = None
+    templateMode: TemplateMode = TemplateMode.full
+    hintUsed: bool = False
+    liveCoachUsed: bool = False
+    drillDownUsed: bool = False
     coachFeedback: dict[str, Any] | None = None
 
 
@@ -183,6 +187,10 @@ class CoachPracticeHistoryEntry(BaseModel):
     accuracy: float = Field(default=0, ge=0, le=100)
     exact: bool = False
     elapsedMs: int = Field(default=0, ge=0)
+    templateMode: str = TemplateMode.full.value
+    hintUsed: bool = False
+    liveCoachUsed: bool = False
+    drillDownUsed: bool = False
     categoryTags: list[str] = []
     generatedCard: dict[str, Any] = {}
     liveFeedbackCount: int = Field(default=0, ge=0)
@@ -194,6 +202,53 @@ class CoachPracticeHistoryEntry(BaseModel):
 class CoachPracticeHistoryResponse(BaseModel):
     summary: dict[str, Any] = {}
     entries: list[CoachPracticeHistoryEntry] = []
+
+
+class SkillMapModeReadiness(BaseModel):
+    readiness: float = Field(default=0, ge=0, le=100)
+    attemptCount: int = Field(default=0, ge=0)
+    successfulAttempts: int = Field(default=0, ge=0)
+    avgAccuracy: float = Field(default=0, ge=0, le=100)
+    totalCards: int = Field(default=0, ge=0)
+    practicedCards: int = Field(default=0, ge=0)
+    untouchedCards: int = Field(default=0, ge=0)
+    staleCards: int = Field(default=0, ge=0)
+    lastSubmittedAt: str = ""
+    daysSinceLastSubmit: int | None = Field(default=None, ge=0)
+    stale: bool = False
+    hintUsedCount: int = Field(default=0, ge=0)
+    liveCoachUsedCount: int = Field(default=0, ge=0)
+    drillDownUsedCount: int = Field(default=0, ge=0)
+
+
+class SkillMapPatternReadiness(BaseModel):
+    pattern: str = Field(min_length=1)
+    slug: str = Field(min_length=1)
+    methods: list[str] = []
+    overallReadiness: float = Field(default=0, ge=0, le=100)
+    overallAttemptCount: int = Field(default=0, ge=0)
+    totalCards: int = Field(default=0, ge=0)
+    practicedCards: int = Field(default=0, ge=0)
+    untouchedCards: int = Field(default=0, ge=0)
+    staleCards: int = Field(default=0, ge=0)
+    modes: dict[str, SkillMapModeReadiness] = {}
+
+
+class SkillMapCardReadiness(BaseModel):
+    cardId: str = Field(min_length=1)
+    title: str = ""
+    pattern: str = ""
+    templateMode: str = TemplateMode.full.value
+    readiness: float = Field(default=0, ge=0, le=100)
+    attemptCount: int = Field(default=0, ge=0)
+    daysSinceLastSubmit: int | None = Field(default=None, ge=0)
+    stale: bool = False
+
+
+class SkillMapOverviewResponse(BaseModel):
+    summary: dict[str, Any] = {}
+    patterns: list[SkillMapPatternReadiness] = []
+    reviewQueue: list[SkillMapCardReadiness] = []
 
 
 class AdminResetPracticeHistoryRequest(BaseModel):

@@ -10,6 +10,10 @@ type PracticeHistoryEntry = {
   accuracy: number
   exact: boolean
   elapsedMs: number
+  templateMode: 'pseudo' | 'skeleton' | 'full'
+  hintUsed: boolean
+  liveCoachUsed: boolean
+  drillDownUsed: boolean
   categoryTags: string[]
   generatedCard: {
     prompt?: string
@@ -30,9 +34,13 @@ type PracticeHistoryEntry = {
 type PracticeHistorySummary = {
   attemptCount: number
   recentAvgAccuracy: number
+  readiness: number
+  daysSinceLastSubmit: number | null
+  stale: boolean
   weakestTag: string
   repeatedErrorTags: string[]
   recentPrimaryFocuses: string[]
+  templateModes: Record<string, { readiness: number }>
 }
 
 type PracticeHistoryResponse = {
@@ -43,6 +51,12 @@ type PracticeHistoryResponse = {
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 const MAIN_RECALL_CLOSE_ENOUGH_ACCURACY = 90
 const apiUrl = (path: string) => `${API_BASE_URL}${path}`
+const formatTemplateModeLabel = (templateMode: PracticeHistoryEntry['templateMode']) =>
+  ({
+    pseudo: 'Pseudo',
+    skeleton: 'Skeleton',
+    full: 'Full',
+  })[templateMode] ?? templateMode
 
 const summarizeHistoryText = (entry: PracticeHistoryEntry) => {
   const submissionSummary =
@@ -178,13 +192,34 @@ export default function PracticeHistoryPage() {
               {practiceHistorySummary && (
                 <div className="practice-history-summary">
                   <span className="coach-metric-chip">{practiceHistorySummary.attemptCount} related attempts</span>
+                  <span className="coach-metric-chip">Readiness {practiceHistorySummary.readiness}%</span>
                   <span className="coach-metric-chip">Avg {practiceHistorySummary.recentAvgAccuracy}%</span>
+                  {practiceHistorySummary.daysSinceLastSubmit !== null && (
+                    <span className="coach-metric-chip">
+                      {practiceHistorySummary.daysSinceLastSubmit === 0
+                        ? 'Practiced today'
+                        : `${practiceHistorySummary.daysSinceLastSubmit}d since last submit`}
+                    </span>
+                  )}
+                  {practiceHistorySummary.stale && (
+                    <span className="coach-metric-chip">Review due</span>
+                  )}
                   {historyWeakestTag && (
                     <span className="coach-metric-chip">Weakest {historyWeakestTag}</span>
                   )}
                 </div>
               )}
             </div>
+
+            {practiceHistorySummary && (
+              <div className="practice-history-focuses">
+                {(['pseudo', 'skeleton', 'full'] as const).map((mode) => (
+                  <span key={mode} className="coach-metric-chip">
+                    {formatTemplateModeLabel(mode)} {practiceHistorySummary.templateModes?.[mode]?.readiness ?? 0}%
+                  </span>
+                ))}
+              </div>
+            )}
 
             {recentPrimaryFocuses.length > 0 && (
               <div className="practice-history-focuses">
@@ -215,13 +250,20 @@ export default function PracticeHistoryPage() {
                         <div>
                           <p className="practice-history-title">{entry.cardTitle || entry.cardId}</p>
                           <p className="practice-history-meta">
-                            {entry.liveFeedbackCount} live feedback {entry.liveFeedbackCount === 1 ? 'snapshot' : 'snapshots'} · {(entry.elapsedMs / 1000).toFixed(1)}s
+                            {formatTemplateModeLabel(entry.templateMode)} · {entry.liveFeedbackCount} live feedback {entry.liveFeedbackCount === 1 ? 'snapshot' : 'snapshots'} · {(entry.elapsedMs / 1000).toFixed(1)}s
                           </p>
                         </div>
                         <span className={`coach-status-chip coach-status-chip-${entryTone}`}>
                           {entry.exact ? 'Sound' : `${entry.accuracy}%`}
                         </span>
                       </div>
+                      {(entry.hintUsed || entry.liveCoachUsed || entry.drillDownUsed) && (
+                        <div className="practice-history-focuses">
+                          {entry.hintUsed && <span className="coach-metric-chip">Hint used</span>}
+                          {entry.liveCoachUsed && <span className="coach-metric-chip">Live coach used</span>}
+                          {entry.drillDownUsed && <span className="coach-metric-chip">Drill-down used</span>}
+                        </div>
+                      )}
                       <p className="practice-history-question">
                         {entry.question || entry.generatedCard.prompt || 'Stored generated question'}
                       </p>

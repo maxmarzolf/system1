@@ -28,6 +28,10 @@ CREATE TABLE IF NOT EXISTS score_attempts (
     exact BOOLEAN NOT NULL DEFAULT FALSE,
     elapsed_ms INTEGER NOT NULL DEFAULT 0 CHECK (elapsed_ms >= 0),
     generated_card JSONB,
+    template_mode VARCHAR(20) NOT NULL DEFAULT 'full' CHECK (template_mode IN ('pseudo', 'skeleton', 'full')),
+    hint_used BOOLEAN NOT NULL DEFAULT FALSE,
+    live_coach_used BOOLEAN NOT NULL DEFAULT FALSE,
+    drill_down_used BOOLEAN NOT NULL DEFAULT FALSE,
     coach_feedback JSONB,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
