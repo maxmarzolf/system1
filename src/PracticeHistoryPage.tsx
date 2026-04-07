@@ -148,6 +148,7 @@ export default function PracticeHistoryPage() {
         </div>
         <div className="navbar-right">
           <Link to="/coach-tuning" className="navbar-dashboard">Tune Coach</Link>
+          <Link to="/submission-tuning" className="navbar-dashboard">Tune Submission</Link>
           <Link to="/" className="navbar-dashboard">Back to Practice</Link>
           <Link to="/dashboard" className="navbar-dashboard">Dashboard</Link>
         </div>

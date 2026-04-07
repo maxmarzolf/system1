@@ -5,6 +5,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import type { Flashcard } from './data/flashcards'
 import { skillMap } from './data/skill-map'
 import { getLiveCoachFrequencyProfile, loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoachTuning'
+import { loadStoredSubmissionTuning } from './submissionTuning'
 
 const emptySkillMapCard: Flashcard = {
   id: 'skill-map-loading',
@@ -688,6 +689,7 @@ function App() {
   const [liveCoachLoading, setLiveCoachLoading] = useState(false)
   const [liveCoachError, setLiveCoachError] = useState('')
   const [liveCoachTuning, setLiveCoachTuning] = useState(() => loadStoredLiveCoachTuning())
+  const [submissionTuning] = useState(() => loadStoredSubmissionTuning())
   const liveCoachFrequencyProfile = useMemo(
     () => getLiveCoachFrequencyProfile(liveCoachTuning.feedbackFrequency),
     [liveCoachTuning]
@@ -952,6 +954,7 @@ function App() {
           userAnswer,
           skillTags: currentSkillTags,
           templateMode: currentTemplateMode,
+          submissionTuning,
         }),
       })
       if (!response.ok) throw new Error('Unable to evaluate attempt')
@@ -1181,6 +1184,7 @@ function App() {
             hasBookkeeping: payload.draft.hasBookkeeping,
           },
           liveCoachTuning,
+          submissionTuning,
           llmProvider,
         }),
       })
@@ -1247,6 +1251,7 @@ function App() {
           llmProvider,
           templateMode: currentTemplateMode,
           enabledTemplateModes: activeTemplateModes,
+          submissionTuning,
         }),
       })
       if (!response.ok) throw new Error('Unable to load coach feedback')
@@ -1682,6 +1687,7 @@ function App() {
         <div className="navbar-right">
           <span className="navbar-counter">{sessionCounterText}</span>
           <Link to="/coach-tuning" className="navbar-dashboard">Tune Coach</Link>
+          <Link to="/submission-tuning" className="navbar-dashboard">Tune Submission</Link>
           <Link to={practiceHistoryHref} className="navbar-dashboard">History</Link>
           <Link to="/dashboard" className="navbar-dashboard">Dashboard</Link>
         </div>

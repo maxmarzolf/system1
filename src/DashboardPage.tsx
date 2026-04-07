@@ -111,6 +111,7 @@ export default function DashboardPage() {
         </div>
         <div className="meta">
           <Link to="/" className="nav-link">← Back to Practice</Link>
+          <Link to="/submission-tuning" className="nav-link">Tune Submission</Link>
         </div>
       </header>
 

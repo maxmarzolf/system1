@@ -52,6 +52,13 @@ LIVE_TUNING_DEFAULTS: dict[str, Any] = {
     "driftThresholdAttempts": 3,
     "stallThresholdSeconds": 40,
 }
+SUBMISSION_TUNING_DEFAULTS: dict[str, Any] = {
+    "gradingMode": "core-logic",
+    "contractStrictness": "light",
+    "rewardEquivalentPhrasing": True,
+    "requireAnswerStep": True,
+    "allowExtraParameters": True,
+}
 
 
 def _normalize_code(code: str) -> str:
@@ -178,10 +185,11 @@ def _evaluate_attempt_by_template_mode(
     user_answer: str,
     skill_tags: list[str],
     template_mode: str,
+    submission_tuning: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if template_mode == TemplateMode.full.value:
         return _evaluate_attempt_soundness(expected_answer, user_answer)
-    return _analyze_template_attempt(user_answer, skill_tags, template_mode)
+    return _analyze_template_attempt(user_answer, skill_tags, template_mode, submission_tuning, expected_answer)
 
 
 def _live_stage_rank(stage: str) -> int:
@@ -227,6 +235,24 @@ def _merged_live_tuning(body: CoachAttemptFeedbackRequest) -> dict[str, Any]:
         tuning["stallThresholdSeconds"] = max(15, int(raw.get("stallThresholdSeconds", tuning["stallThresholdSeconds"])))
     except (TypeError, ValueError):
         pass
+    return tuning
+
+
+def _merged_submission_tuning(raw_tuning: dict[str, Any] | None) -> dict[str, Any]:
+    raw = raw_tuning if isinstance(raw_tuning, dict) else {}
+    tuning = {**SUBMISSION_TUNING_DEFAULTS}
+
+    grading_mode = str(raw.get("gradingMode", tuning["gradingMode"])).strip().lower()
+    if grading_mode in {"core-logic", "balanced", "strict"}:
+        tuning["gradingMode"] = grading_mode
+
+    contract_strictness = str(raw.get("contractStrictness", tuning["contractStrictness"])).strip().lower()
+    if contract_strictness in {"light", "balanced", "strict"}:
+        tuning["contractStrictness"] = contract_strictness
+
+    tuning["rewardEquivalentPhrasing"] = bool(raw.get("rewardEquivalentPhrasing", tuning["rewardEquivalentPhrasing"]))
+    tuning["requireAnswerStep"] = bool(raw.get("requireAnswerStep", tuning["requireAnswerStep"]))
+    tuning["allowExtraParameters"] = bool(raw.get("allowExtraParameters", tuning["allowExtraParameters"]))
     return tuning
 
 
@@ -322,7 +348,7 @@ def _template_progress_profile(skill_tags: list[str]) -> tuple[list[dict[str, An
                 {"key": "expand", "label": "expand step", "patterns": [r"\bfor right\b", r"\benumerate\b", r"\bincoming\b", r"\bexpand\b", r"\badd\b.+\bwindow\b"]},
                 {"key": "repair", "label": "window repair", "patterns": [r"\bwhile\b.+\binvalid\b", r"\bwindow is invalid\b", r"\brestore validity\b", r"\bwhile len\b"]},
                 {"key": "shrink", "label": "left-side shrink", "patterns": [r"\bremove\b.+\bleft\b", r"\bmove left\b", r"\bleft\s*\+=\s*1\b", r"\bshrink\b"]},
-                {"key": "score", "label": "valid-window scoring", "patterns": [r"\bbest\s*=\s*max\(", r"\bupdate best\b", r"\bscore\b", r"\bright - left \+ 1\b"]},
+                {"key": "score", "label": "valid-window scoring", "patterns": [r"\bbest\s*=\s*max\(", r"\bupdate\b.+\bbest\b", r"\bre-?calculate\b.+\bbest\b", r"\brecord\b.+\banswer\b", r"\bscore\b", r"\bright - left \+ 1\b"]},
                 {"key": "return", "label": "return path", "patterns": [r"\breturn\b.+\bbest\b", r"\breturn\b.+\bresult\b", r"\breturn\b"]},
             ],
             ["state", "expand", "repair", "shrink", "score", "return"],
@@ -474,14 +500,145 @@ def _template_progress_profile(skill_tags: list[str]) -> tuple[list[dict[str, An
     return profiles.get(pattern_tag, (generic_steps, generic_critical))
 
 
-def _analyze_template_attempt(user_answer: str, skill_tags: list[str], template_mode: str) -> dict[str, Any]:
+def _template_dimension_groups(skill_tags: list[str]) -> list[dict[str, Any]]:
+    pattern_tag = _primary_pattern_tag(skill_tags)
+    groups: dict[str, list[dict[str, Any]]] = {
+        "sliding-window": [
+            {"key": "input_output", "label": "Inputs and outputs", "steps": ["entry", "return"], "weight": 0.12},
+            {"key": "state_management", "label": "State management", "steps": ["state"], "weight": 0.18},
+            {"key": "control_flow", "label": "Control flow", "steps": ["expand", "repair", "shrink"], "weight": 0.30},
+            {"key": "invariant_logic", "label": "Invariant logic", "steps": ["repair", "shrink"], "weight": 0.24},
+            {"key": "answer_update", "label": "Answer update", "steps": ["score"], "weight": 0.16},
+        ],
+        "two-pointers": [
+            {"key": "input_output", "label": "Inputs and outputs", "steps": ["entry", "return"], "weight": 0.12},
+            {"key": "state_management", "label": "State management", "steps": ["pointers"], "weight": 0.2},
+            {"key": "control_flow", "label": "Control flow", "steps": ["loop", "move"], "weight": 0.26},
+            {"key": "invariant_logic", "label": "Invariant logic", "steps": ["compare", "move"], "weight": 0.26},
+            {"key": "answer_update", "label": "Answer update", "steps": ["return"], "weight": 0.16},
+        ],
+        "binary-search": [
+            {"key": "input_output", "label": "Inputs and outputs", "steps": ["entry", "return"], "weight": 0.12},
+            {"key": "state_management", "label": "State management", "steps": ["bounds", "mid"], "weight": 0.2},
+            {"key": "control_flow", "label": "Control flow", "steps": ["loop", "update"], "weight": 0.24},
+            {"key": "invariant_logic", "label": "Invariant logic", "steps": ["compare", "update"], "weight": 0.28},
+            {"key": "answer_update", "label": "Answer update", "steps": ["return"], "weight": 0.16},
+        ],
+        "dynamic-programming": [
+            {"key": "input_output", "label": "Inputs and outputs", "steps": ["entry", "return"], "weight": 0.12},
+            {"key": "state_management", "label": "State management", "steps": ["state", "base"], "weight": 0.26},
+            {"key": "control_flow", "label": "Control flow", "steps": ["loop"], "weight": 0.18},
+            {"key": "invariant_logic", "label": "Invariant logic", "steps": ["transition"], "weight": 0.28},
+            {"key": "answer_update", "label": "Answer update", "steps": ["return"], "weight": 0.16},
+        ],
+        "dp": [
+            {"key": "input_output", "label": "Inputs and outputs", "steps": ["entry", "return"], "weight": 0.12},
+            {"key": "state_management", "label": "State management", "steps": ["state", "base"], "weight": 0.26},
+            {"key": "control_flow", "label": "Control flow", "steps": ["loop"], "weight": 0.18},
+            {"key": "invariant_logic", "label": "Invariant logic", "steps": ["transition"], "weight": 0.28},
+            {"key": "answer_update", "label": "Answer update", "steps": ["return"], "weight": 0.16},
+        ],
+    }
+    return groups.get(
+        pattern_tag,
+        [
+            {"key": "input_output", "label": "Inputs and outputs", "steps": ["entry", "return"], "weight": 0.16},
+            {"key": "state_management", "label": "State management", "steps": ["state"], "weight": 0.22},
+            {"key": "control_flow", "label": "Control flow", "steps": ["flow"], "weight": 0.24},
+            {"key": "invariant_logic", "label": "Invariant logic", "steps": ["update"], "weight": 0.22},
+            {"key": "answer_update", "label": "Answer update", "steps": ["return"], "weight": 0.16},
+        ],
+    )
+
+
+def _extract_template_signature_params(text: str) -> list[str]:
+    match = re.search(r"\b(?:def|define|function)\s+[a-z_][a-z0-9_]*\s*\(([^)]*)\)", text, re.IGNORECASE)
+    if not match:
+        return []
+    raw_params = match.group(1).strip()
+    if not raw_params:
+        return []
+    params: list[str] = []
+    for chunk in raw_params.split(","):
+        normalized = re.sub(r"[^a-z0-9_]", "", chunk.lower())
+        if normalized:
+            params.append(normalized)
+    return params
+
+
+def _template_contract_drift(expected_answer: str, user_answer: str, tuning: dict[str, Any]) -> dict[str, Any]:
+    expected_params = _extract_template_signature_params(expected_answer)
+    actual_params = _extract_template_signature_params(user_answer)
+    if not expected_params or not actual_params:
+        return {
+            "expectedParams": expected_params,
+            "actualParams": actual_params,
+            "missingParams": [],
+            "extraParams": [],
+            "penalty": 0.0,
+        }
+
+    missing_params = [param for param in expected_params if param not in actual_params]
+    extra_params = [param for param in actual_params if param not in expected_params]
+    penalty = 0.0
+    strictness = str(tuning.get("contractStrictness", "light"))
+
+    if missing_params:
+        penalty += {"light": 6.0, "balanced": 10.0, "strict": 15.0}.get(strictness, 6.0)
+    if extra_params and not tuning.get("allowExtraParameters", True):
+        penalty += {"light": 4.0, "balanced": 8.0, "strict": 12.0}.get(strictness, 4.0)
+    elif extra_params:
+        penalty += {"light": 1.5, "balanced": 4.0, "strict": 7.0}.get(strictness, 1.5)
+
+    return {
+        "expectedParams": expected_params,
+        "actualParams": actual_params,
+        "missingParams": missing_params,
+        "extraParams": extra_params,
+        "penalty": penalty,
+    }
+
+
+def _template_step_order_score(steps: list[dict[str, Any]], matched_positions: dict[str, int]) -> float:
+    ordered_keys = [str(step["key"]) for step in steps if str(step["key"]) in matched_positions]
+    if len(ordered_keys) <= 1:
+        return 100.0 if ordered_keys else 0.0
+    in_order_pairs = 0
+    total_pairs = 0
+    for left_index, left_key in enumerate(ordered_keys):
+        for right_key in ordered_keys[left_index + 1 :]:
+            total_pairs += 1
+            if matched_positions[left_key] < matched_positions[right_key]:
+                in_order_pairs += 1
+    if total_pairs == 0:
+        return 100.0
+    return round((in_order_pairs / total_pairs) * 100, 1)
+
+
+def _template_grading_threshold(tuning: dict[str, Any], template_mode: str) -> float:
+    grading_mode = str(tuning.get("gradingMode", "core-logic"))
+    base = {"core-logic": 68.0, "balanced": 76.0, "strict": 86.0}.get(grading_mode, 68.0)
+    if template_mode == TemplateMode.skeleton.value:
+        base += 4.0
+    return base
+
+
+def _analyze_template_attempt(
+    user_answer: str,
+    skill_tags: list[str],
+    template_mode: str,
+    submission_tuning: dict[str, Any] | None = None,
+    expected_answer: str = "",
+) -> dict[str, Any]:
     normalized_text = _normalized_template_text(user_answer)
     steps, critical_keys = _template_progress_profile(skill_tags)
+    tuning = _merged_submission_tuning(submission_tuning)
 
     matched_labels: list[str] = []
     missing_labels: list[str] = []
     missing_keys: list[str] = []
     matched_keys: list[str] = []
+    matched_positions: dict[str, int] = {}
     for step in steps:
         key = str(step["key"])
         label = str(step["label"])
@@ -489,15 +646,71 @@ def _analyze_template_attempt(user_answer: str, skill_tags: list[str], template_
         if _has_any_pattern(normalized_text, patterns):
             matched_keys.append(key)
             matched_labels.append(label)
+            positions = [match.start() for pattern in patterns for match in re.finditer(pattern, normalized_text, re.IGNORECASE)]
+            if positions:
+                matched_positions[key] = min(positions)
         else:
             missing_keys.append(key)
             missing_labels.append(label)
 
     total_steps = max(len(steps), 1)
-    accuracy = round((len(matched_keys) / total_steps) * 100, 1)
-    critical_met = all(key in matched_keys for key in critical_keys)
-    threshold = 70 if template_mode == TemplateMode.pseudo.value else 80
-    sound = bool(normalized_text) and critical_met and accuracy >= threshold
+    step_coverage = round((len(matched_keys) / total_steps) * 100, 1)
+    critical_coverage = round(
+        (sum(1 for key in critical_keys if key in matched_keys) / max(len(critical_keys), 1)) * 100,
+        1,
+    )
+    order_score = _template_step_order_score(steps, matched_positions)
+
+    dimension_scores: list[dict[str, Any]] = []
+    weighted_dimension_total = 0.0
+    weighted_dimension_count = 0.0
+    for group in _template_dimension_groups(skill_tags):
+        group_steps = [step for step in group["steps"] if isinstance(step, str)]
+        if not group_steps:
+            continue
+        matched_count = sum(1 for step in group_steps if step in matched_keys)
+        score = round((matched_count / len(group_steps)) * 100, 1)
+        weight = float(group.get("weight", 0))
+        dimension_scores.append({
+            "key": str(group["key"]),
+            "label": str(group["label"]),
+            "score": score,
+            "matched": matched_count,
+            "total": len(group_steps),
+        })
+        weighted_dimension_total += score * weight
+        weighted_dimension_count += weight
+
+    dimension_average = round(
+        weighted_dimension_total / weighted_dimension_count if weighted_dimension_count else step_coverage,
+        1,
+    )
+    contract = _template_contract_drift(expected_answer, user_answer, tuning)
+    if tuning.get("rewardEquivalentPhrasing", True):
+        raw_accuracy = (dimension_average * 0.8) + (order_score * 0.1) + (step_coverage * 0.1)
+    else:
+        raw_accuracy = (step_coverage * 0.65) + (critical_coverage * 0.25) + (order_score * 0.1)
+    accuracy = max(0.0, round(raw_accuracy - contract["penalty"], 1))
+
+    dimension_by_key = {item["key"]: float(item["score"]) for item in dimension_scores}
+    core_logic_score = round(
+        (
+            (dimension_by_key.get("state_management", step_coverage) * 0.25)
+            + (dimension_by_key.get("control_flow", step_coverage) * 0.35)
+            + (dimension_by_key.get("invariant_logic", step_coverage) * 0.25)
+            + (dimension_by_key.get("answer_update", step_coverage) * 0.15)
+        ),
+        1,
+    )
+
+    answer_step_met = dimension_by_key.get("answer_update", 100.0) >= 50.0
+    critical_met = critical_coverage >= 75.0
+    threshold = _template_grading_threshold(tuning, template_mode)
+    if not tuning.get("rewardEquivalentPhrasing", True):
+        threshold += 4.0
+    sound = bool(normalized_text) and critical_met and core_logic_score >= threshold
+    if tuning.get("requireAnswerStep", True):
+        sound = sound and answer_step_met
     syntax_valid = bool(user_answer.strip())
     if template_mode == TemplateMode.skeleton.value and re.search(r"^\s*def\b", user_answer, re.MULTILINE):
         syntax_valid = not _has_syntax_error(user_answer)
@@ -510,6 +723,13 @@ def _analyze_template_attempt(user_answer: str, skill_tags: list[str], template_
         "missingLabels": missing_labels,
         "matchedKeys": matched_keys,
         "missingKeys": missing_keys,
+        "stepCoverage": step_coverage,
+        "criticalCoverage": critical_coverage,
+        "coreLogicScore": core_logic_score,
+        "orderScore": order_score,
+        "dimensions": dimension_scores,
+        "contract": contract,
+        "tuning": tuning,
     }
 
 
@@ -1827,7 +2047,13 @@ def _heuristic_pseudo_live_feedback(
     live_history: list[dict[str, Any]],
 ) -> dict[str, Any]:
     tuning = _merged_live_tuning(body)
-    analysis = _analyze_template_attempt(body.userAnswer, body.skillTags, TemplateMode.pseudo.value)
+    analysis = _analyze_template_attempt(
+        body.userAnswer,
+        body.skillTags,
+        TemplateMode.pseudo.value,
+        body.submissionTuning,
+        body.expectedAnswer,
+    )
     missing_keys = [str(key) for key in analysis["missingKeys"]]
     missing_labels = [str(label) for label in analysis["missingLabels"]]
     matched_labels = [str(label) for label in analysis["matchedLabels"]]
@@ -1871,7 +2097,8 @@ def _heuristic_template_submission_feedback(
     history_summary: dict[str, Any],
     template_mode: str,
 ) -> dict[str, Any]:
-    analysis = _analyze_template_attempt(body.userAnswer, body.skillTags, template_mode)
+    tuning = _merged_submission_tuning(body.submissionTuning)
+    analysis = _analyze_template_attempt(body.userAnswer, body.skillTags, template_mode, tuning, body.expectedAnswer)
     matched_labels = [str(label) for label in analysis["matchedLabels"]]
     missing_labels = [str(label) for label in analysis["missingLabels"]]
     missing_keys = [str(key) for key in analysis["missingKeys"]]
@@ -1882,8 +2109,11 @@ def _heuristic_template_submission_feedback(
     mode_label = "pseudocode" if template_mode == TemplateMode.pseudo.value else "skeleton"
 
     strengths = []
+    core_logic_score = float(analysis.get("coreLogicScore", body.accuracy))
+    contract = analysis.get("contract", {}) if isinstance(analysis.get("contract"), dict) else {}
+    extra_params = [str(value) for value in contract.get("extraParams", [])]
     if matched_labels:
-        strengths.append(f"You preserved {', '.join(matched_labels[:3])}.")
+        strengths.append(f"You preserved {', '.join(matched_labels[:3])}, so the core logic is still visible.")
     if body.accuracy >= 85:
         strengths.append(f"High {mode_label} coverage under recall pressure.")
     if not strengths:
@@ -1892,6 +2122,9 @@ def _heuristic_template_submission_feedback(
     if body.exact or analysis["sound"]:
         primary_focus = f"Keep the {mode_label} outline stable."
         immediate = f"Run another {mode_label} rep and keep the same step order."
+    elif core_logic_score >= 75:
+        primary_focus = f"Keep the core {mode_label} logic and tighten one missing structural step."
+        immediate = "Rewrite the same outline once, but make the skipped step explicit."
     else:
         primary_focus = f"Lock in {blocker_label.lower()}."
         immediate = _pseudo_live_focus_copy(blocker_key, blocker_label)[1]
@@ -1899,10 +2132,16 @@ def _heuristic_template_submission_feedback(
     diagnosis = (
         f"{mode_label.capitalize()} accuracy {round(body.accuracy)}% in {body.elapsedMs / 1000:.1f}s."
     )
-    if missing_labels:
+    if body.exact or analysis["sound"]:
+        diagnosis += " Core logic is preserved."
+    elif core_logic_score >= 75:
+        diagnosis += " Core logic is mostly preserved; the main miss is structural precision."
+    elif missing_labels:
         diagnosis += f" Biggest gap: {missing_labels[0].lower()}."
     else:
         diagnosis += " Core template steps are present."
+    if extra_params:
+        diagnosis += f" Contract drift noted: added parameter {extra_params[0]}."
 
     if history_summary["attemptCount"] > 0:
         diagnosis += (
@@ -1911,9 +2150,17 @@ def _heuristic_template_submission_feedback(
         )
 
     issues: list[str] = []
-    if missing_labels:
+    if extra_params:
+        issues.append(
+            f"The function contract drifted slightly by adding {', '.join(extra_params[:2])}, but this is secondary to the algorithm flow."
+        )
+    if missing_labels and core_logic_score < 75:
         issues.append(
             f"The {mode_label} is missing key structural pieces: {', '.join(missing_labels[:3]).lower()}."
+        )
+    if not body.exact and not issues and core_logic_score >= 75:
+        issues.append(
+            f"The {mode_label} keeps the right algorithmic flow, but one or two steps are underspecified."
         )
     if not body.exact and not issues:
         issues.append(
@@ -1950,6 +2197,11 @@ def _heuristic_template_submission_feedback(
         "fullFeedback": full_feedback,
         "correctedVersion": corrected_version,
         "llmUsed": False,
+        "signals": {
+            "template_mode": template_mode,
+            "template_analysis": analysis,
+            "submission_tuning": tuning,
+        },
     }
 
 
@@ -2821,6 +3073,7 @@ async def _attempt_feedback_with_optional_llm(
         "stalledDurationMs": stalled_duration_ms,
         "draftMilestones": body.draftMilestones,
         "liveTuning": tuning,
+        "submissionTuning": _merged_submission_tuning(body.submissionTuning),
         "responseShape": response_shape,
         "heuristic": {
             "affirmation": heuristic.get("affirmation", ""),
@@ -3075,6 +3328,7 @@ async def coach_attempt_evaluation(body: CoachAttemptEvaluationRequest):
         body.userAnswer,
         body.skillTags,
         _template_mode_value(body.templateMode),
+        body.submissionTuning,
     )
 
 

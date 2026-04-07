@@ -69,6 +69,7 @@ class CoachAttemptFeedbackRequest(BaseModel):
     draftMode: bool = False
     draftMilestones: dict[str, Any] = {}
     liveCoachTuning: dict[str, Any] = {}
+    submissionTuning: dict[str, Any] = {}
     llmProvider: str = "openai"
 
 
@@ -94,6 +95,7 @@ class CoachAttemptEvaluationRequest(BaseModel):
     userAnswer: str = ""
     skillTags: list[str] = []
     templateMode: TemplateMode = TemplateMode.full
+    submissionTuning: dict[str, Any] = {}
 
 
 class CoachAttemptEvaluationResponse(BaseModel):

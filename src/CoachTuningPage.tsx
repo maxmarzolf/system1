@@ -28,6 +28,7 @@ export default function CoachTuningPage() {
         </div>
         <div className="navbar-right">
           <Link to="/" className="navbar-dashboard">Back to Practice</Link>
+          <Link to="/submission-tuning" className="navbar-dashboard">Tune Submission</Link>
           <Link to="/practice-history" className="navbar-dashboard">History</Link>
           <Link to="/dashboard" className="navbar-dashboard">Dashboard</Link>
         </div>
