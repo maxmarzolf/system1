@@ -13,7 +13,6 @@ type PracticeHistoryEntry = {
   templateMode: 'pseudo' | 'skeleton' | 'full'
   hintUsed: boolean
   liveCoachUsed: boolean
-  drillDownUsed: boolean
   categoryTags: string[]
   generatedCard: {
     prompt?: string
@@ -257,11 +256,10 @@ export default function PracticeHistoryPage() {
                           {entry.exact ? 'Sound' : `${entry.accuracy}%`}
                         </span>
                       </div>
-                      {(entry.hintUsed || entry.liveCoachUsed || entry.drillDownUsed) && (
+                      {(entry.hintUsed || entry.liveCoachUsed) && (
                         <div className="practice-history-focuses">
                           {entry.hintUsed && <span className="coach-metric-chip">Hint used</span>}
                           {entry.liveCoachUsed && <span className="coach-metric-chip">Live coach used</span>}
-                          {entry.drillDownUsed && <span className="coach-metric-chip">Drill-down used</span>}
                         </div>
                       )}
                       <p className="practice-history-question">

@@ -25,8 +25,8 @@ async def create_attempt(body: AttemptCreate):
                 (card_id, card_title, question, question_type, category_tags, options,
                  correct_answer, user_answer, mode, correct, accuracy, exact, elapsed_ms,
                  interaction_id, generated_card_id, generated_card, template_mode, hint_used,
-                 live_coach_used, drill_down_used, coach_feedback, created_at, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+                 live_coach_used, coach_feedback, created_at, updated_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
             RETURNING id
             """,
             body.cardId,
@@ -48,7 +48,6 @@ async def create_attempt(body: AttemptCreate):
             body.templateMode.value,
             body.hintUsed,
             body.liveCoachUsed,
-            body.drillDownUsed,
             _json.dumps(body.coachFeedback) if body.coachFeedback else None,
             now,
             now,
@@ -136,8 +135,7 @@ async def get_skill_map_overview():
                 sa.created_at,
                 sa.template_mode,
                 sa.hint_used,
-                sa.live_coach_used,
-                sa.drill_down_used
+                sa.live_coach_used
             FROM score_attempts sa
             WHERE sa.mode = 'main-recall'
               AND sa.question_type = 'skill-map'
@@ -201,7 +199,6 @@ async def get_skill_map_overview():
             "created_at": row["created_at"],
             "hintUsed": bool(row["hint_used"]),
             "liveCoachUsed": bool(row["live_coach_used"]),
-            "drillDownUsed": bool(row["drill_down_used"]),
         }
         attempts_by_card_mode.setdefault((card_id, template_mode), []).append(attempt)
         for slug in matched_pattern_slugs:

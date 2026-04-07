@@ -167,14 +167,6 @@ export default function CoachTuningPage() {
             <label className="coach-tuning-toggle">
               <input
                 type="checkbox"
-                checked={liveCoachTuning.drillDownEnabled}
-                onChange={(event) => updateLiveCoachTuning('drillDownEnabled', event.target.checked)}
-              />
-              <span>Enable drill-down focus mode</span>
-            </label>
-            <label className="coach-tuning-toggle">
-              <input
-                type="checkbox"
                 checked={liveCoachTuning.showPatternNames}
                 onChange={(event) => updateLiveCoachTuning('showPatternNames', event.target.checked)}
               />

@@ -44,7 +44,6 @@ class AttemptCreate(BaseModel):
     templateMode: TemplateMode = TemplateMode.full
     hintUsed: bool = False
     liveCoachUsed: bool = False
-    drillDownUsed: bool = False
     coachFeedback: dict[str, Any] | None = None
 
 
@@ -70,7 +69,6 @@ class CoachAttemptFeedbackRequest(BaseModel):
     draftMode: bool = False
     draftMilestones: dict[str, Any] = {}
     liveCoachTuning: dict[str, Any] = {}
-    liveCoachContext: dict[str, Any] = {}
     llmProvider: str = "openai"
 
 
@@ -88,14 +86,6 @@ class CoachAttemptFeedbackResponse(BaseModel):
     errorTags: list[str] = []
     fullFeedback: str = ""
     correctedVersion: str = ""
-    drillDownActive: bool = False
-    drillDownTitle: str = ""
-    drillDownPrompt: str = ""
-    drillDownQuestion: str = ""
-    drillDownTarget: str = ""
-    drillDownHint: str = ""
-    drillDownKey: str = ""
-    drillDownOverrideLabel: str = ""
     llmUsed: bool = False
 
 
@@ -190,7 +180,6 @@ class CoachPracticeHistoryEntry(BaseModel):
     templateMode: str = TemplateMode.full.value
     hintUsed: bool = False
     liveCoachUsed: bool = False
-    drillDownUsed: bool = False
     categoryTags: list[str] = []
     generatedCard: dict[str, Any] = {}
     liveFeedbackCount: int = Field(default=0, ge=0)
@@ -218,7 +207,6 @@ class SkillMapModeReadiness(BaseModel):
     stale: bool = False
     hintUsedCount: int = Field(default=0, ge=0)
     liveCoachUsedCount: int = Field(default=0, ge=0)
-    drillDownUsedCount: int = Field(default=0, ge=0)
 
 
 class SkillMapPatternReadiness(BaseModel):

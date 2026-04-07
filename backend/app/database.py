@@ -115,9 +115,6 @@ async def _ensure_recall_history_schema(db_pool: asyncpg.Pool) -> None:
             ADD COLUMN IF NOT EXISTS live_coach_used BOOLEAN NOT NULL DEFAULT FALSE;
 
             ALTER TABLE score_attempts
-            ADD COLUMN IF NOT EXISTS drill_down_used BOOLEAN NOT NULL DEFAULT FALSE;
-
-            ALTER TABLE score_attempts
             DROP CONSTRAINT IF EXISTS score_attempts_template_mode_check;
 
             ALTER TABLE score_attempts
@@ -149,6 +146,12 @@ async def _ensure_recall_history_schema(db_pool: asyncpg.Pool) -> None:
 
             CREATE INDEX IF NOT EXISTS idx_generated_skill_map_cards_tags
                 ON generated_skill_map_cards USING GIN(tags);
+            """
+        )
+        await conn.execute(
+            """
+            ALTER TABLE score_attempts
+            DROP COLUMN IF EXISTS drill_down_used;
             """
         )
 

@@ -12,7 +12,6 @@ export type LiveCoachTuning = {
   canonicalAnswerStage: 'mid' | 'late' | 'very-late'
   affirmationMode: 'stable-only' | 'never'
   driftThresholdAttempts: number
-  drillDownEnabled: boolean
   stallThresholdSeconds: number
 }
 
@@ -30,7 +29,6 @@ export const defaultLiveCoachTuning: LiveCoachTuning = {
   canonicalAnswerStage: 'late',
   affirmationMode: 'stable-only',
   driftThresholdAttempts: 3,
-  drillDownEnabled: true,
   stallThresholdSeconds: 40,
 }
 

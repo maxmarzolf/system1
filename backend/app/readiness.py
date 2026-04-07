@@ -30,14 +30,12 @@ def _clamp(value: float, lower: float, upper: float) -> float:
     return max(lower, min(upper, value))
 
 
-def support_cap(hint_used: bool, live_coach_used: bool, drill_down_used: bool) -> float:
+def support_cap(hint_used: bool, live_coach_used: bool) -> float:
     cap = 1.0
     if hint_used:
         cap -= 0.2
     if live_coach_used:
         cap -= 0.15
-    if drill_down_used:
-        cap -= 0.1
     return _clamp(cap, 0.35, 1.0)
 
 
@@ -48,7 +46,6 @@ def attempt_mastery_score(attempt: dict[str, Any]) -> float:
         support_cap(
             bool(attempt.get("hintUsed")),
             bool(attempt.get("liveCoachUsed")),
-            bool(attempt.get("drillDownUsed")),
         ),
     )
     if float(attempt.get("accuracy", 0) or 0) < READINESS_SUCCESS_THRESHOLD:
@@ -93,7 +90,6 @@ def summarize_readiness(attempts: list[dict[str, Any]], now: datetime | None = N
             "stale": False,
             "hintUsedCount": 0,
             "liveCoachUsedCount": 0,
-            "drillDownUsedCount": 0,
         }
 
     weighted_sum = 0.0
@@ -101,7 +97,6 @@ def summarize_readiness(attempts: list[dict[str, Any]], now: datetime | None = N
     successful_attempts = 0
     hint_used_count = 0
     live_coach_used_count = 0
-    drill_down_used_count = 0
     accuracies: list[float] = []
 
     for index, attempt in enumerate(sorted_attempts):
@@ -117,8 +112,6 @@ def summarize_readiness(attempts: list[dict[str, Any]], now: datetime | None = N
             hint_used_count += 1
         if bool(attempt.get("liveCoachUsed")):
             live_coach_used_count += 1
-        if bool(attempt.get("drillDownUsed")):
-            drill_down_used_count += 1
 
     weighted_mastery = weighted_sum / total_weight if total_weight else 0.0
     repetition_bonus = min(successful_attempts, 4) * 0.02
@@ -138,5 +131,4 @@ def summarize_readiness(attempts: list[dict[str, Any]], now: datetime | None = N
         "stale": days_since_last_submit is not None and days_since_last_submit >= READINESS_STALE_DAYS,
         "hintUsedCount": hint_used_count,
         "liveCoachUsedCount": live_coach_used_count,
-        "drillDownUsedCount": drill_down_used_count,
     }

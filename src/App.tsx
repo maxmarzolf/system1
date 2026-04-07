@@ -37,7 +37,6 @@ type AttemptPayload = {
   templateMode: TemplateMode
   hintUsed: boolean
   liveCoachUsed: boolean
-  drillDownUsed: boolean
   coachFeedback?: CoachAttemptFeedback | null
 }
 
@@ -55,14 +54,6 @@ type CoachAttemptFeedback = {
   errorTags: string[]
   fullFeedback?: string
   correctedVersion?: string
-  drillDownActive?: boolean
-  drillDownTitle?: string
-  drillDownPrompt?: string
-  drillDownQuestion?: string
-  drillDownTarget?: string
-  drillDownHint?: string
-  drillDownKey?: string
-  drillDownOverrideLabel?: string
   llmUsed: boolean
 }
 
@@ -124,7 +115,6 @@ type DraftStructure = {
   milestoneKey: string
 }
 
-type FocusDrillPhase = 'preview' | 'typing' | 'submitted'
 type LlmProvider = 'openai' | 'claude'
 
 const LLM_PROVIDER_OPTIONS: Array<{ value: LlmProvider, label: string }> = [
@@ -134,7 +124,6 @@ const LLM_PROVIDER_OPTIONS: Array<{ value: LlmProvider, label: string }> = [
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 const apiUrl = (path: string) => `${API_BASE_URL}${path}`
-const MAIN_RECALL_CLOSE_ENOUGH_ACCURACY = 90
 const TEMPLATE_MODE_ORDER: TemplateMode[] = ['pseudo', 'skeleton', 'full']
 const DEFAULT_TEMPLATE_MODES: TemplateMode[] = ['full']
 const TEMPLATE_MODE_LABELS: Record<TemplateMode, string> = {
@@ -643,38 +632,6 @@ const buildLiveCoachWhy = (draft: DraftStructure, isGraphQuestion: boolean) => {
   return 'At this point, a single concrete line will help more than broad advice.'
 }
 
-const buildLiveCoachPrinciple = (draft: DraftStructure, tags: string[], isGraphQuestion: boolean) => {
-  if (isGraphQuestion) {
-    if (draft.traversalKind === 'dfs') {
-      return 'In graph DFS, decide exactly when a node becomes visited and do that before exploring neighbors.'
-    }
-    if (draft.traversalKind === 'bfs' || draft.traversalKind === 'queue') {
-      return 'In graph BFS, initialize the frontier with valid start states, then pop one item at a time and enqueue only unseen neighbors.'
-    }
-    if (draft.traversalKind === 'stack') {
-      return 'In iterative graph traversals, the stack only works if your visited rule is consistent from the moment a node is scheduled.'
-    }
-    return 'For graph problems, three things are almost always worth deciding early: representation, visited rule, and how neighbors enter the frontier.'
-  }
-
-  if (tags.includes('sliding-window')) {
-    if (draft.hasLoop) {
-      return 'In sliding window, the rhythm is expand, restore validity, then score the valid window.'
-    }
-    return 'In sliding window, every line should support one of three jobs: expand, restore validity, or score.'
-  }
-
-  if (tags.includes('two-pointers')) {
-    return 'With two pointers, each comparison should justify moving exactly one side of the search.'
-  }
-
-  if (tags.includes('binary-search')) {
-    return 'In binary search, protect the interval invariant first and let every bound update follow from that meaning.'
-  }
-
-  return 'A strong interview habit is to make the invariant explicit before you optimize the code around it.'
-}
-
 const computeLineReview = (expectedCode: string, actualCode: string) => {
   const expectedLines = expectedCode.replace(/\r\n/g, '\n').split('\n').map((line) => line.trimEnd())
   const actualLines = actualCode.replace(/\r\n/g, '\n').split('\n').map((line) => line.trimEnd())
@@ -720,7 +677,6 @@ function App() {
   const [showHint, setShowHint] = useState(false)
   const [hintUsedThisAttempt, setHintUsedThisAttempt] = useState(false)
   const [liveCoachUsedThisAttempt, setLiveCoachUsedThisAttempt] = useState(false)
-  const [drillDownUsedThisAttempt, setDrillDownUsedThisAttempt] = useState(false)
 
   const [mainPhase, setMainPhase] = useState<'preview' | 'typing' | 'submitted'>('preview')
   const [mainInput, setMainInput] = useState('')
@@ -736,12 +692,6 @@ function App() {
     () => getLiveCoachFrequencyProfile(liveCoachTuning.feedbackFrequency),
     [liveCoachTuning]
   )
-  const [ignoredDrillDownKey, setIgnoredDrillDownKey] = useState('')
-  const [completedDrillDownKey, setCompletedDrillDownKey] = useState('')
-  const [focusDrillPhase, setFocusDrillPhase] = useState<FocusDrillPhase>('preview')
-  const [focusDrillInput, setFocusDrillInput] = useState('')
-  const [focusDrillAccuracy, setFocusDrillAccuracy] = useState(0)
-  const [focusDrillExact, setFocusDrillExact] = useState(false)
   const [coachFeedback, setCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
   const [coachLoading, setCoachLoading] = useState(false)
   const [coachError, setCoachError] = useState('')
@@ -758,7 +708,6 @@ function App() {
   const lastLiveCoachLengthRef = useRef(0)
   const lastMainInputEditAtRef = useRef(0)
   const lastIdleLiveCoachRefreshAtRef = useRef(0)
-  const currentDrillDownKeyRef = useRef('')
   const coachRequestVersionRef = useRef(0)
   const skillMapDeckRequestVersionRef = useRef(0)
 
@@ -824,18 +773,11 @@ function App() {
     setLiveCoachFeedback(null)
     setLiveCoachLoading(false)
     setLiveCoachError('')
-    setIgnoredDrillDownKey('')
-    setCompletedDrillDownKey('')
-    setFocusDrillPhase('preview')
-    setFocusDrillInput('')
-    setFocusDrillAccuracy(0)
-    setFocusDrillExact(false)
     liveCoachRequestVersionRef.current = 0
     lastLiveCoachMilestoneRef.current = ''
     lastLiveCoachLengthRef.current = 0
     lastMainInputEditAtRef.current = 0
     lastIdleLiveCoachRefreshAtRef.current = 0
-    currentDrillDownKeyRef.current = ''
     setCoachFeedback(null)
     setCoachLoading(false)
     setCoachError('')
@@ -992,7 +934,6 @@ function App() {
           templateMode: payload.templateMode,
           hintUsed: payload.hintUsed,
           liveCoachUsed: payload.liveCoachUsed,
-          drillDownUsed: payload.drillDownUsed,
           coachFeedback: payload.coachFeedback ?? null,
         }),
       })
@@ -1039,19 +980,11 @@ function App() {
     setLiveCoachError('')
     setHintUsedThisAttempt(false)
     setLiveCoachUsedThisAttempt(false)
-    setDrillDownUsedThisAttempt(false)
-    setIgnoredDrillDownKey('')
-    setCompletedDrillDownKey('')
-    setFocusDrillPhase('preview')
-    setFocusDrillInput('')
-    setFocusDrillAccuracy(0)
-    setFocusDrillExact(false)
     liveCoachRequestVersionRef.current = 0
     lastLiveCoachMilestoneRef.current = ''
     lastLiveCoachLengthRef.current = 0
     lastMainInputEditAtRef.current = 0
     lastIdleLiveCoachRefreshAtRef.current = 0
-    currentDrillDownKeyRef.current = ''
   }
 
   const resetCurrentTemplateInteraction = () => {
@@ -1065,13 +998,6 @@ function App() {
     setLiveCoachError('')
     setHintUsedThisAttempt(false)
     setLiveCoachUsedThisAttempt(false)
-    setDrillDownUsedThisAttempt(false)
-    setIgnoredDrillDownKey('')
-    setCompletedDrillDownKey('')
-    setFocusDrillPhase('preview')
-    setFocusDrillInput('')
-    setFocusDrillAccuracy(0)
-    setFocusDrillExact(false)
     setCoachFeedback(null)
     setCoachLoading(false)
     setCoachError('')
@@ -1080,7 +1006,6 @@ function App() {
     lastLiveCoachLengthRef.current = 0
     lastMainInputEditAtRef.current = 0
     lastIdleLiveCoachRefreshAtRef.current = 0
-    currentDrillDownKeyRef.current = ''
   }
 
   const advanceToNextTemplateMode = () => {
@@ -1114,15 +1039,8 @@ function App() {
     setMainStartedAt(Date.now())
     setMainInput('')
     setCurrentInteractionId(createInteractionId())
-    setIgnoredDrillDownKey('')
-    setCompletedDrillDownKey('')
-    setFocusDrillPhase('preview')
-    setFocusDrillInput('')
-    setFocusDrillAccuracy(0)
-    setFocusDrillExact(false)
     lastMainInputEditAtRef.current = Date.now()
     lastIdleLiveCoachRefreshAtRef.current = 0
-    currentDrillDownKeyRef.current = ''
   }
 
   const handleMainEditorScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
@@ -1263,10 +1181,6 @@ function App() {
             hasBookkeeping: payload.draft.hasBookkeeping,
           },
           liveCoachTuning,
-          liveCoachContext: {
-            ignoredDrillDownKey,
-            completedDrillDownKey,
-          },
           llmProvider,
         }),
       })
@@ -1474,7 +1388,6 @@ function App() {
       templateMode: currentTemplateMode,
       hintUsed: hintUsedThisAttempt,
       liveCoachUsed: liveCoachUsedThisAttempt,
-      drillDownUsed: drillDownUsedThisAttempt,
       coachFeedback: feedback,
     })
 
@@ -1496,81 +1409,8 @@ function App() {
     setMainPhase('typing')
     setMainStartedAt(Date.now())
     setCurrentInteractionId(createInteractionId())
-    setIgnoredDrillDownKey('')
-    setCompletedDrillDownKey('')
-    setFocusDrillPhase('preview')
-    setFocusDrillInput('')
-    setFocusDrillAccuracy(0)
-    setFocusDrillExact(false)
     lastMainInputEditAtRef.current = Date.now()
     lastIdleLiveCoachRefreshAtRef.current = 0
-    currentDrillDownKeyRef.current = ''
-  }
-
-  const ignoreLiveCoachDrillDown = () => {
-    const key = liveCoachFeedback?.drillDownKey?.trim()
-    if (!key) return
-    setIgnoredDrillDownKey(key)
-    setLiveCoachFeedback((prev) =>
-      prev
-        ? {
-            ...prev,
-            drillDownActive: false,
-            drillDownTitle: '',
-            drillDownPrompt: '',
-            drillDownOverrideLabel: '',
-          }
-        : prev
-    )
-  }
-
-  const startFocusDrill = () => {
-    if (!liveCoachDrillDownTarget) return
-    setDrillDownUsedThisAttempt(true)
-    setFocusDrillPhase('typing')
-    setFocusDrillInput('')
-    setFocusDrillAccuracy(0)
-    setFocusDrillExact(false)
-  }
-
-  const submitFocusDrill = () => {
-    if (!liveCoachDrillDownTarget) return
-    const normalizedInput = normalizeTyping(focusDrillInput)
-    const compareLength = Math.max(normalizedInput.length, liveCoachDrillDownTarget.length, 1)
-    let exactMatches = 0
-    for (let i = 0; i < compareLength; i += 1) {
-      if (normalizedInput[i] === liveCoachDrillDownTarget[i]) exactMatches += 1
-    }
-    const accuracy = Math.round((exactMatches / compareLength) * 100)
-    const exact = normalizedInput === liveCoachDrillDownTarget
-
-    setFocusDrillAccuracy(accuracy)
-    setFocusDrillExact(exact)
-    setFocusDrillPhase('submitted')
-
-    if (accuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY && liveCoachDrillDownKey) {
-      setCompletedDrillDownKey(liveCoachDrillDownKey)
-      setLiveCoachFeedback((prev) =>
-        prev
-          ? {
-              ...prev,
-              drillDownActive: false,
-              drillDownTitle: '',
-              drillDownPrompt: '',
-              drillDownQuestion: '',
-              drillDownHint: '',
-              drillDownOverrideLabel: '',
-            }
-          : prev
-      )
-    }
-  }
-
-  const retryFocusDrill = () => {
-    setFocusDrillPhase('typing')
-    setFocusDrillInput('')
-    setFocusDrillAccuracy(0)
-    setFocusDrillExact(false)
   }
 
   const restartSession = () => {
@@ -1648,15 +1488,6 @@ function App() {
     liveCoachFeedback?.diagnosis ||
     liveCoachFeedback?.primaryFocus ||
     buildLiveCoachWhy(draftStructure, isGraphQuestion)
-  const liveCoachDrillDownActive = Boolean(liveCoachFeedback?.drillDownActive)
-  const liveCoachDrillDownTitle = liveCoachFeedback?.drillDownTitle?.trim() || 'Focus Drill'
-  const liveCoachDrillDownPrompt =
-    liveCoachFeedback?.drillDownPrompt?.trim() ||
-    buildLiveCoachPrinciple(draftStructure, card.tags, isGraphQuestion)
-  const liveCoachDrillDownQuestion = liveCoachFeedback?.drillDownQuestion?.trim() || ''
-  const liveCoachDrillDownTarget = normalizeTyping(liveCoachFeedback?.drillDownTarget || '')
-  const liveCoachDrillDownHint = liveCoachFeedback?.drillDownHint?.trim() || ''
-  const liveCoachDrillDownKey = liveCoachFeedback?.drillDownKey?.trim() || ''
   const triggerLiveCoachRefresh = useEffectEvent((trimmedInput: string) => {
     const interactionId = currentInteractionId || createInteractionId()
     if (!currentInteractionId) setCurrentInteractionId(interactionId)
@@ -1702,32 +1533,7 @@ function App() {
     setLiveCoachLoading(false)
     setLiveCoachError('')
     setLiveCoachFeedback(null)
-    setIgnoredDrillDownKey('')
-    setCompletedDrillDownKey('')
-    setFocusDrillPhase('preview')
-    setFocusDrillInput('')
-    setFocusDrillAccuracy(0)
-    setFocusDrillExact(false)
-    currentDrillDownKeyRef.current = ''
   }, [liveCoachTuning.enabled])
-
-  useEffect(() => {
-    if (!liveCoachDrillDownActive || !liveCoachDrillDownKey || !liveCoachDrillDownTarget) {
-      currentDrillDownKeyRef.current = ''
-      setFocusDrillPhase('preview')
-      setFocusDrillInput('')
-      setFocusDrillAccuracy(0)
-      setFocusDrillExact(false)
-      return
-    }
-
-    if (currentDrillDownKeyRef.current === liveCoachDrillDownKey) return
-    currentDrillDownKeyRef.current = liveCoachDrillDownKey
-    setFocusDrillPhase('preview')
-    setFocusDrillInput('')
-    setFocusDrillAccuracy(0)
-    setFocusDrillExact(false)
-  }, [liveCoachDrillDownActive, liveCoachDrillDownKey, liveCoachDrillDownTarget])
 
   useEffect(() => {
     if (!liveCoachTuning.enabled) return
@@ -2126,84 +1932,6 @@ function App() {
                                 <p className="coach-live-label">Why</p>
                                 <p className="coach-panel-copy">{liveCoachWhy}</p>
                               </div>
-                              {liveCoachDrillDownActive && (
-                                <div className="coach-drilldown-card">
-                                  <div className="coach-drilldown-header">
-                                    <p className="coach-live-label">{liveCoachDrillDownTitle}</p>
-                                    <button type="button" className="link" onClick={ignoreLiveCoachDrillDown}>
-                                      {liveCoachFeedback?.drillDownOverrideLabel || 'Ignore this drill-down'}
-                                    </button>
-                                  </div>
-                                  <p className="coach-panel-copy">{liveCoachDrillDownPrompt}</p>
-                                  {liveCoachDrillDownQuestion && (
-                                    <p className="coach-drilldown-question">{liveCoachDrillDownQuestion}</p>
-                                  )}
-                                  {liveCoachDrillDownHint && (
-                                    <p className="coach-drilldown-hint">{liveCoachDrillDownHint}</p>
-                                  )}
-                                  {focusDrillPhase === 'preview' && liveCoachDrillDownTarget && (
-                                    <>
-                                      <div className="code-container coach-drilldown-code">
-                                        <SyntaxHighlighter
-                                          language="python"
-                                          style={vscDarkPlus}
-                                          customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
-                                          codeTagProps={{ style: { background: 'transparent' } }}
-                                        >
-                                          {liveCoachDrillDownTarget}
-                                        </SyntaxHighlighter>
-                                      </div>
-                                      <div className="actions">
-                                        <button type="button" onClick={startFocusDrill}>Hide answer and practice subset</button>
-                                      </div>
-                                    </>
-                                  )}
-                                  {focusDrillPhase === 'typing' && (
-                                    <>
-                                      <textarea
-                                        className="coach-drilldown-input"
-                                        rows={Math.max(liveCoachDrillDownTarget.split('\n').length + 1, 4)}
-                                        value={focusDrillInput}
-                                        onChange={(event) => setFocusDrillInput(event.target.value)}
-                                        spellCheck={false}
-                                        autoCapitalize="off"
-                                        autoCorrect="off"
-                                        autoComplete="off"
-                                        placeholder="Type the focused subset from memory..."
-                                      />
-                                      <div className="actions">
-                                        <button type="button" onClick={submitFocusDrill} disabled={focusDrillInput.trim().length === 0}>
-                                          Submit subset
-                                        </button>
-                                      </div>
-                                    </>
-                                  )}
-                                  {focusDrillPhase === 'submitted' && (
-                                    <>
-                                      <p className={focusDrillExact || focusDrillAccuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY ? 'status success' : 'status error'}>
-                                        {focusDrillExact
-                                          ? 'Subset nailed.'
-                                          : focusDrillAccuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY
-                                            ? `Subset close enough at ${focusDrillAccuracy}%.`
-                                            : `Subset needs work at ${focusDrillAccuracy}%.`}
-                                      </p>
-                                      <div className="code-container coach-drilldown-code">
-                                        <SyntaxHighlighter
-                                          language="python"
-                                          style={vscDarkPlus}
-                                          customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
-                                          codeTagProps={{ style: { background: 'transparent' } }}
-                                        >
-                                          {liveCoachDrillDownTarget}
-                                        </SyntaxHighlighter>
-                                      </div>
-                                      <div className="actions">
-                                        <button type="button" onClick={retryFocusDrill}>Retry subset</button>
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
-                              )}
                               {liveCoachError && <p className="coach-error">{liveCoachError}</p>}
                             </>
                           )}

@@ -50,7 +50,6 @@ LIVE_TUNING_DEFAULTS: dict[str, Any] = {
     "canonicalAnswerStage": "late",
     "affirmationMode": "stable-only",
     "driftThresholdAttempts": 3,
-    "drillDownEnabled": True,
     "stallThresholdSeconds": 40,
 }
 
@@ -224,22 +223,11 @@ def _merged_live_tuning(body: CoachAttemptFeedbackRequest) -> dict[str, Any]:
         tuning["driftThresholdAttempts"] = max(1, int(raw.get("driftThresholdAttempts", tuning["driftThresholdAttempts"])))
     except (TypeError, ValueError):
         pass
-    tuning["drillDownEnabled"] = bool(raw.get("drillDownEnabled", tuning["drillDownEnabled"]))
     try:
         tuning["stallThresholdSeconds"] = max(15, int(raw.get("stallThresholdSeconds", tuning["stallThresholdSeconds"])))
     except (TypeError, ValueError):
         pass
     return tuning
-
-
-def _ignored_drill_down_key(body: CoachAttemptFeedbackRequest) -> str:
-    context = body.liveCoachContext if isinstance(body.liveCoachContext, dict) else {}
-    return str(context.get("ignoredDrillDownKey", "")).strip()
-
-
-def _completed_drill_down_key(body: CoachAttemptFeedbackRequest) -> str:
-    context = body.liveCoachContext if isinstance(body.liveCoachContext, dict) else {}
-    return str(context.get("completedDrillDownKey", "")).strip()
 
 
 def _stage_at_least(stage: str, minimum_stage: str) -> bool:
@@ -781,7 +769,6 @@ async def _load_practice_history(
                     sa.template_mode AS "templateMode",
                     sa.hint_used AS "hintUsed",
                     sa.live_coach_used AS "liveCoachUsed",
-                    sa.drill_down_used AS "drillDownUsed",
                     sa.category_tags AS "categoryTags",
                     sa.generated_card AS "generatedCard",
                     sa.coach_feedback AS "submissionFeedback",
@@ -847,7 +834,6 @@ async def _load_practice_history(
                     sa.template_mode AS "templateMode",
                     sa.hint_used AS "hintUsed",
                     sa.live_coach_used AS "liveCoachUsed",
-                    sa.drill_down_used AS "drillDownUsed",
                     sa.category_tags AS "categoryTags",
                     sa.generated_card AS "generatedCard",
                     sa.coach_feedback AS "submissionFeedback",
@@ -911,7 +897,6 @@ async def _load_practice_history(
                     sa.template_mode AS "templateMode",
                     sa.hint_used AS "hintUsed",
                     sa.live_coach_used AS "liveCoachUsed",
-                    sa.drill_down_used AS "drillDownUsed",
                     sa.category_tags AS "categoryTags",
                     sa.generated_card AS "generatedCard",
                     sa.coach_feedback AS "submissionFeedback",
@@ -974,7 +959,6 @@ async def _load_practice_history(
             "templateMode": str(row["templateMode"] or TemplateMode.full.value),
             "hintUsed": bool(row["hintUsed"]),
             "liveCoachUsed": bool(row["liveCoachUsed"]),
-            "drillDownUsed": bool(row["drillDownUsed"]),
             "categoryTags": list(row["categoryTags"] or []),
             "generatedCard": _parse_json_field(row["generatedCard"], {}),
             "liveFeedbackCount": int(row["liveFeedbackCount"] or 0),
@@ -1253,12 +1237,9 @@ def _truncate_live_feedback_fields(feedback: dict[str, Any]) -> dict[str, Any]:
         "affirmation",
         "nextMove",
         "why",
-        "drillDownTitle",
-        "drillDownPrompt",
     ):
         if key in limited:
-            word_limit = 24 if key == "drillDownPrompt" else 20
-            limited[key] = _limit_words(str(limited.get(key, "")), word_limit)
+            limited[key] = _limit_words(str(limited.get(key, "")), 20)
     if "strengths" in limited and isinstance(limited["strengths"], list):
         limited["strengths"] = [_limit_words(str(item), 20) for item in limited["strengths"][:3]]
     return limited
@@ -1719,134 +1700,6 @@ def _stable_live_affirmation(
     return ""
 
 
-def _live_drill_down_details(blocker_key: str, pattern_tag: str) -> dict[str, str]:
-    mapping = {
-        "dp-state-array": {
-            "title": "Focus Drill: DP State Setup",
-            "prompt": "Focus on defining the state array first.",
-            "question": "Write a one-dimensional DP array initialization for length n.",
-            "target": "dp = [0] * n",
-            "hint": "Keep it to the state container only.",
-        },
-        "dp-base-case": {
-            "title": "Focus Drill: DP Base Case",
-            "prompt": "Focus on writing the first state value before you grow the table.",
-            "question": "Write the base-case assignment for the first DP entry.",
-            "target": "dp[0] = 1",
-            "hint": "Anchor exactly one state value.",
-        },
-        "dp-transition": {
-            "title": "Focus Drill: DP Transition",
-            "prompt": "Focus on one DP update before you rebuild the whole recurrence.",
-            "question": "Write one DP transition that updates the current state from earlier state.",
-            "target": "dp[i] = dp[i - 1] + value",
-            "hint": "Use the current slot and one earlier slot.",
-        },
-        "window-expand": {
-            "title": "Focus Drill: Window Traversal",
-            "prompt": "Focus on making the outer window traversal real before changing the inner logic.",
-            "question": "Write the outer traversal for a sliding window over nums.",
-            "target": "for right, value in enumerate(nums):",
-            "hint": "Make the traversal name both the index and the incoming value.",
-        },
-        "window-shrink-loop": {
-            "title": "Focus Drill: Window Repair",
-            "prompt": "Focus on restoring validity after each expand step before you score the window.",
-            "question": "Write the shrink-loop header that restores window validity.",
-            "target": "while len(counts) > k:",
-            "hint": "This drill is only the repair condition.",
-        },
-        "window-shrink-update": {
-            "title": "Focus Drill: Left-Side Repair",
-            "prompt": "Focus on making the shrink step change the left side of the window.",
-            "question": "Write the left-side repair step for the shrink loop.",
-            "target": "counts[nums[left]] -= 1\nif counts[nums[left]] == 0:\n    del counts[nums[left]]\nleft += 1",
-            "hint": "Update the count, clean up zeroes, then move left.",
-        },
-        "window-score": {
-            "title": "Focus Drill: Window Scoring",
-            "prompt": "Focus on recording the answer only after the window is valid.",
-            "question": "Write the scoring line for the valid window.",
-            "target": "best = max(best, right - left + 1)",
-            "hint": "Score the current valid span.",
-        },
-        "graph-bookkeeping": {
-            "title": "Focus Drill: Graph State Setup",
-            "prompt": "Focus on making the visited or frontier state explicit before adding more flow.",
-            "question": "Write the basic frontier and visited setup for graph traversal from start.",
-            "target": "visited = {start}\nqueue = deque([start])",
-            "hint": "Name both the visited state and the initial frontier.",
-        },
-        "graph-traversal-choice": {
-            "title": "Focus Drill: Traversal Choice",
-            "prompt": "Focus on choosing the frontier structure before you code more graph detail.",
-            "question": "Write the line that creates a BFS frontier from start.",
-            "target": "queue = deque([start])",
-            "hint": "Commit to one frontier structure.",
-        },
-        "graph-guard": {
-            "title": "Focus Drill: Graph Guard",
-            "prompt": "Focus on writing the skip rule before exploring neighbors.",
-            "question": "Write the guard that skips an already seen neighbor.",
-            "target": "if nei in visited:\n    continue",
-            "hint": "This drill is only the skip rule.",
-        },
-        "signature": {
-            "title": "Focus Drill: Entry Point",
-            "prompt": "Focus on writing the function signature and naming the state you will track.",
-            "question": "Write a simple Python function signature for the current recall snippet.",
-            "target": "def solve(nums):",
-            "hint": "Keep the signature minimal.",
-        },
-        "placeholder": {
-            "title": "Focus Drill: Real State Update",
-            "prompt": "Focus on replacing the placeholder with the real state update.",
-            "question": "Write one concrete state update instead of a placeholder.",
-            "target": "count[value] = count.get(value, 0) + 1",
-            "hint": "Pick a real update that changes tracked state.",
-        },
-        "control-flow": {
-            "title": "Focus Drill: Main Control Flow",
-            "prompt": "Focus on the loop or recursion that applies the invariant once.",
-            "question": "Write the main traversal loop for a sequence named nums.",
-            "target": "for value in nums:",
-            "hint": "Only write the outer control flow.",
-        },
-        "pointer-movement": {
-            "title": "Focus Drill: Pointer Movement",
-            "prompt": "Focus on the pointer move that improves the comparison.",
-            "question": "Write the branch that moves the left pointer when the pair is too small.",
-            "target": "left += 1",
-            "hint": "This drill is only the improving move.",
-        },
-        "bound-update": {
-            "title": "Focus Drill: Bound Update",
-            "prompt": "Focus on shrinking the binary-search interval with one bound update.",
-            "question": "Write the update that discards the left half after a too-small midpoint.",
-            "target": "left = mid + 1",
-            "hint": "Use one bound update only.",
-        },
-    }
-    details = mapping.get(blocker_key, {})
-    if details:
-        return details
-    if pattern_tag in ("dynamic-programming", "dp"):
-        return {
-            "title": "Focus Drill: DP State",
-            "prompt": "Focus on one DP move at a time until the state meaning feels automatic.",
-            "question": "Write a one-dimensional DP array initialization for length n.",
-            "target": "dp = [0] * n",
-            "hint": "Start by creating the state container.",
-        }
-    return {
-        "title": "Focus Drill",
-        "prompt": "Focus on one structural move before you add more lines.",
-        "question": "Write one structural line that makes the draft move forward.",
-        "target": "for value in nums:",
-        "hint": "Keep it to one reusable line.",
-    }
-
-
 def _compose_live_feedback(
     blocker_key: str,
     primary_focus: str,
@@ -1857,26 +1710,11 @@ def _compose_live_feedback(
     error_tags: list[str],
     history_summary: dict[str, Any],
     tuning: dict[str, Any],
-    stalled: bool,
-    pattern_tag: str,
-    template_mode: str,
-    ignored_drill_down_key: str,
-    completed_drill_down_key: str,
 ) -> dict[str, Any]:
     why_text = why.strip()
     if _should_mention_repeated_drift(history_summary, tuning):
         weakest_tag = str(history_summary.get("weakestTag", "")).strip()
         why_text = f"{why_text.rstrip('.')} Recent attempts have drifted on {weakest_tag} too."
-
-    drill_down_active = bool(
-        tuning["drillDownEnabled"]
-        and stalled
-        and blocker_key
-        and template_mode != TemplateMode.pseudo.value
-        and blocker_key != ignored_drill_down_key
-        and blocker_key != completed_drill_down_key
-    )
-    drill_down = _live_drill_down_details(blocker_key, pattern_tag) if drill_down_active else {"title": "", "prompt": ""}
 
     return _truncate_live_feedback_fields({
         "diagnosis": why_text,
@@ -1886,20 +1724,12 @@ def _compose_live_feedback(
         "affirmation": affirmation,
         "nextMove": next_move,
         "why": why_text,
-        "microDrill": drill_down["prompt"] if drill_down_active else "Repeat just this move once before adding more.",
+        "microDrill": "Repeat just this move once before adding more.",
         "nextRepTarget": "Keep this move stable on the next rep.",
         "strengths": [affirmation] if affirmation else [],
         "errorTags": error_tags[:1] if tuning["singleIssue"] else error_tags[:6],
         "fullFeedback": "",
         "correctedVersion": "",
-        "drillDownActive": drill_down_active,
-        "drillDownTitle": drill_down.get("title", ""),
-        "drillDownPrompt": drill_down.get("prompt", ""),
-        "drillDownQuestion": drill_down.get("question", ""),
-        "drillDownTarget": drill_down.get("target", ""),
-        "drillDownHint": drill_down.get("hint", ""),
-        "drillDownKey": blocker_key if drill_down_active else "",
-        "drillDownOverrideLabel": "Ignore this drill-down" if drill_down_active else "",
         "llmUsed": False,
     })
 
@@ -2020,11 +1850,6 @@ def _heuristic_pseudo_live_feedback(
         error_tags=[blocker_key],
         history_summary=history_summary,
         tuning=tuning,
-        stalled=stalled,
-        pattern_tag=_primary_pattern_tag(body.skillTags),
-        template_mode=TemplateMode.pseudo.value,
-        ignored_drill_down_key=_ignored_drill_down_key(body),
-        completed_drill_down_key=_completed_drill_down_key(body),
     )
     response["signals"] = {
         "draft_mode": True,
@@ -2124,14 +1949,6 @@ def _heuristic_template_submission_feedback(
         "errorTags": error_tags,
         "fullFeedback": full_feedback,
         "correctedVersion": corrected_version,
-        "drillDownActive": False,
-        "drillDownTitle": "",
-        "drillDownPrompt": "",
-        "drillDownQuestion": "",
-        "drillDownTarget": "",
-        "drillDownHint": "",
-        "drillDownKey": "",
-        "drillDownOverrideLabel": "",
         "llmUsed": False,
     }
 
@@ -2147,8 +1964,6 @@ def _heuristic_live_feedback(
 
     actual_lines = _normalize_code(body.userAnswer)
     tuning = _merged_live_tuning(body)
-    ignored_drill_down_key = _ignored_drill_down_key(body)
-    completed_drill_down_key = _completed_drill_down_key(body)
     is_graph_question = any(
         tag in body.skillTags for tag in ("graph", "dfs-bfs", "graph-traversal", "union-find")
     )
@@ -2341,11 +2156,6 @@ def _heuristic_live_feedback(
         error_tags=error_tags,
         history_summary=history_summary,
         tuning=tuning,
-        stalled=stalled,
-        pattern_tag=pattern_tag,
-        template_mode=template_mode,
-        ignored_drill_down_key=ignored_drill_down_key,
-        completed_drill_down_key=completed_drill_down_key,
     )
     response["signals"] = {
         "draft_mode": True,
@@ -2993,7 +2803,6 @@ async def _attempt_feedback_with_optional_llm(
                 "templateMode": item.get("templateMode", TemplateMode.full.value),
                 "hintUsed": item.get("hintUsed", False),
                 "liveCoachUsed": item.get("liveCoachUsed", False),
-                "drillDownUsed": item.get("drillDownUsed", False),
                 "categoryTags": item.get("categoryTags", []),
                 "liveFeedbackCount": item.get("liveFeedbackCount", 0),
                 "latestLiveFeedback": item.get("latestLiveFeedback", {}),
