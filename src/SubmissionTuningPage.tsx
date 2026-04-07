@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
   defaultSubmissionTuning,
   loadStoredSubmissionTuning,
@@ -44,17 +43,7 @@ export default function SubmissionTuningPage() {
 
   return (
     <div className="app">
-      <TopNav
-        activeLabel="Tune Submission"
-        rightExtras={
-          <>
-          <Link to="/" className="navbar-dashboard">Back to Practice</Link>
-          <Link to="/coach-tuning" className="navbar-dashboard">Tune Coach</Link>
-          <Link to="/practice-history" className="navbar-dashboard">History</Link>
-          <Link to="/dashboard" className="navbar-dashboard">Dashboard</Link>
-          </>
-        }
-      />
+      <TopNav activeLabel="Tune Submission" />
 
       <section className="card">
         <div className="card-header coach-tuning-page-header">

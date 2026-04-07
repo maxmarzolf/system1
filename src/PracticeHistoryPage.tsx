@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import TopNav from './TopNav'
 
 type PracticeHistoryEntry = {
@@ -136,17 +136,7 @@ export default function PracticeHistoryPage() {
 
   return (
     <div className="app">
-      <TopNav
-        activeLabel="Practice History"
-        rightExtras={
-          <>
-          <Link to="/coach-tuning" className="navbar-dashboard">Tune Coach</Link>
-          <Link to="/submission-tuning" className="navbar-dashboard">Tune Submission</Link>
-          <Link to="/" className="navbar-dashboard">Back to Practice</Link>
-          <Link to="/dashboard" className="navbar-dashboard">Dashboard</Link>
-          </>
-        }
-      />
+      <TopNav activeLabel="Practice History" />
 
       <section className="card">
         <div className="card-header practice-history-page-header">

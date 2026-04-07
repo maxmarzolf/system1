@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { defaultLiveCoachTuning, loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoachTuning'
 import type { LiveCoachTuning } from './liveCoachTuning'
 import TopNav from './TopNav'
@@ -17,17 +16,7 @@ export default function CoachTuningPage() {
 
   return (
     <div className="app">
-      <TopNav
-        activeLabel="Tune Coach"
-        rightExtras={
-          <>
-          <Link to="/" className="navbar-dashboard">Back to Practice</Link>
-          <Link to="/submission-tuning" className="navbar-dashboard">Tune Submission</Link>
-          <Link to="/practice-history" className="navbar-dashboard">History</Link>
-          <Link to="/dashboard" className="navbar-dashboard">Dashboard</Link>
-          </>
-        }
-      />
+      <TopNav activeLabel="Tune Coach" />
 
       <section className="card">
         <div className="card-header coach-tuning-page-header">

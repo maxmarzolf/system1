@@ -1,11 +1,11 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import type { Flashcard } from './data/flashcards'
 import { skillMap } from './data/skill-map'
 import { getLiveCoachFrequencyProfile, loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoachTuning'
 import { loadStoredSubmissionTuning } from './submissionTuning'
+import TopNav from './TopNav'
 
 const emptySkillMapCard: Flashcard = {
   id: 'skill-map-loading',
@@ -1601,87 +1601,41 @@ function App() {
 
   return (
     <div className="app">
-      <nav className="navbar">
-        <div className="navbar-left">
-          <Link to="/" className="navbar-brand">System 1 Trainer</Link>
-          <span className="navbar-divider" />
-          <div className="navbar-group">
-            <button className="nav-tab active" type="button">
-              Skill Map
-            </button>
-          </div>
-          <span className="navbar-divider" />
-          <div className="navbar-group">
-            <button
-              className={sessionOrderType === 'shuffled' ? 'nav-tab active' : 'nav-tab'}
-              onClick={() => setSessionOrderType('shuffled')}
-            >
-              Randomize
-            </button>
-            <button
-              className={sessionOrderType === 'original' ? 'nav-tab active' : 'nav-tab'}
-              onClick={() => setSessionOrderType('original')}
-            >
-              Original
-            </button>
-          </div>
-          <span className="navbar-divider" />
-          <div className="navbar-group llm-provider-group" ref={llmProviderMenuRef}>
-            <button
-              type="button"
-              className={llmProviderMenuOpen ? 'navbar-picker active' : 'navbar-picker'}
-              aria-haspopup="listbox"
-              aria-expanded={llmProviderMenuOpen}
-              aria-label="Coach model"
-              onClick={() => setLlmProviderMenuOpen((open) => !open)}
-            >
-              {LLM_PROVIDER_OPTIONS.find((option) => option.value === llmProvider)?.label ?? 'ChatGPT'}
-            </button>
-            {llmProviderMenuOpen && (
-              <div className="navbar-picker-menu" role="listbox" aria-label="Coach model options">
-                {LLM_PROVIDER_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="option"
-                    aria-selected={llmProvider === option.value}
-                    className={llmProvider === option.value ? 'navbar-picker-option active' : 'navbar-picker-option'}
-                    onClick={() => {
-                      setLlmProvider(option.value)
-                      setLlmProviderMenuOpen(false)
-                    }}
-                  >
-                    <span>{option.label}</span>
-                    {llmProvider === option.value && <span className="navbar-picker-check">Active</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <span className="navbar-divider" />
-          <div className="navbar-group navbar-group-live">
-            <button
-              type="button"
-              className={liveCoachTuning.enabled ? 'navbar-toggle active' : 'navbar-toggle'}
-              onClick={toggleLiveFeedback}
-              aria-pressed={liveCoachTuning.enabled}
-              aria-label={liveCoachTuning.enabled ? 'Turn live feedback off' : 'Turn live feedback on'}
-            >
-              <span className="navbar-toggle-label">Live</span>
-              <span className={liveCoachTuning.enabled ? 'navbar-toggle-state on' : 'navbar-toggle-state off'}>
-                {liveCoachTuning.enabled ? 'On' : 'Off'}
-              </span>
-            </button>
-          </div>
-        </div>
-        <div className="navbar-right">
-          <span className="navbar-counter">{sessionCounterText}</span>
-          <Link to="/coach-tuning" className="navbar-dashboard">Tune Coach</Link>
-          <Link to="/submission-tuning" className="navbar-dashboard">Tune Submission</Link>
-          <Link to={practiceHistoryHref} className="navbar-dashboard">History</Link>
-          <Link to="/dashboard" className="navbar-dashboard">Dashboard</Link>
-        </div>
-      </nav>
+      <TopNav
+        activeLabel="Skill Map"
+        sessionOrderType={sessionOrderType}
+        onSessionOrderTypeChange={setSessionOrderType}
+        llmProviderLabel={LLM_PROVIDER_OPTIONS.find((option) => option.value === llmProvider)?.label ?? 'ChatGPT'}
+        llmProviderMenuOpen={llmProviderMenuOpen}
+        onToggleLlmProviderMenu={() => setLlmProviderMenuOpen((open) => !open)}
+        llmProviderMenuRef={llmProviderMenuRef}
+        llmProviderMenu={
+          llmProviderMenuOpen ? (
+            <div className="navbar-picker-menu" role="listbox" aria-label="Coach model options">
+              {LLM_PROVIDER_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="option"
+                  aria-selected={llmProvider === option.value}
+                  className={llmProvider === option.value ? 'navbar-picker-option active' : 'navbar-picker-option'}
+                  onClick={() => {
+                    setLlmProvider(option.value)
+                    setLlmProviderMenuOpen(false)
+                  }}
+                >
+                  <span>{option.label}</span>
+                  {llmProvider === option.value && <span className="navbar-picker-check">Active</span>}
+                </button>
+              ))}
+            </div>
+          ) : undefined
+        }
+        liveEnabled={liveCoachTuning.enabled}
+        onToggleLive={toggleLiveFeedback}
+        sessionCounterText={sessionCounterText}
+        practiceHistoryHref={practiceHistoryHref}
+      />
 
       <section className="card">
         <div className="card-header">

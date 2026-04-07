@@ -216,6 +216,21 @@
   border-bottom-color: var(--hc-accent);
 }
 
+.nav-tab:disabled,
+.navbar-picker:disabled,
+.navbar-toggle:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.nav-tab:disabled:hover,
+.navbar-picker:disabled:hover,
+.navbar-toggle:disabled:hover {
+  border-color: inherit;
+  background: inherit;
+  color: inherit;
+}
+
 .navbar-right {
   display: flex;
   align-items: center;
