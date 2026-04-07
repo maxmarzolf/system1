@@ -14,7 +14,7 @@ const emptySkillMapCard: Flashcard = {
   prompt: 'Generate a fresh set of atomic recall drills from the layered skill map.',
   solution: 'def solve():\n    {{missing}}',
   missing: 'pass',
-  hint: 'Regenerate the session to request a fresh generated deck.',
+  hint: '',
   tags: ['skill-map'],
 }
 
@@ -36,7 +36,6 @@ type AttemptPayload = {
   elapsedMs: number
   interactionId: string
   templateMode: TemplateMode
-  hintUsed: boolean
   liveCoachUsed: boolean
   coachFeedback?: CoachAttemptFeedback | null
 }
@@ -675,8 +674,6 @@ function App() {
   const [llmProvider, setLlmProvider] = useState<LlmProvider>('openai')
   const [llmProviderMenuOpen, setLlmProviderMenuOpen] = useState(false)
 
-  const [showHint, setShowHint] = useState(false)
-  const [hintUsedThisAttempt, setHintUsedThisAttempt] = useState(false)
   const [liveCoachUsedThisAttempt, setLiveCoachUsedThisAttempt] = useState(false)
 
   const [mainPhase, setMainPhase] = useState<'preview' | 'typing' | 'submitted'>('preview')
@@ -763,8 +760,6 @@ function App() {
     setSessionAccuracyByCard({})
     setSessionElapsedByCard({})
     setSessionPlanRequested(false)
-
-    setShowHint(false)
 
     setMainPhase('preview')
     setMainInput('')
@@ -934,7 +929,6 @@ function App() {
           generatedCardId: card.id,
           generatedCard: card,
           templateMode: payload.templateMode,
-          hintUsed: payload.hintUsed,
           liveCoachUsed: payload.liveCoachUsed,
           coachFeedback: payload.coachFeedback ?? null,
         }),
@@ -969,7 +963,6 @@ function App() {
   }
 
   const resetPerCardInteraction = () => {
-    setShowHint(false)
     setCurrentTemplateModeIndex(0)
     setCurrentCardTemplateResults({})
 
@@ -981,7 +974,6 @@ function App() {
     setLiveCoachFeedback(null)
     setLiveCoachLoading(false)
     setLiveCoachError('')
-    setHintUsedThisAttempt(false)
     setLiveCoachUsedThisAttempt(false)
     liveCoachRequestVersionRef.current = 0
     lastLiveCoachMilestoneRef.current = ''
@@ -999,7 +991,6 @@ function App() {
     setLiveCoachFeedback(null)
     setLiveCoachLoading(false)
     setLiveCoachError('')
-    setHintUsedThisAttempt(false)
     setLiveCoachUsedThisAttempt(false)
     setCoachFeedback(null)
     setCoachLoading(false)
@@ -1391,7 +1382,6 @@ function App() {
       elapsedMs,
       interactionId,
       templateMode: currentTemplateMode,
-      hintUsed: hintUsedThisAttempt,
       liveCoachUsed: liveCoachUsedThisAttempt,
       coachFeedback: feedback,
     })
@@ -1613,7 +1603,7 @@ function App() {
     <div className="app">
       <nav className="navbar">
         <div className="navbar-left">
-          <span className="navbar-brand">System 1 Trainer</span>
+          <Link to="/" className="navbar-brand">System 1 Trainer</Link>
           <span className="navbar-divider" />
           <div className="navbar-group">
             <button className="nav-tab active" type="button">
@@ -1770,19 +1760,6 @@ function App() {
             ) : (
               <>
                 <p className="prompt">{card.prompt}</p>
-                <button
-                  className="link"
-                  onClick={() => {
-                    setShowHint((prev) => {
-                      const next = !prev
-                      if (next) setHintUsedThisAttempt(true)
-                      return next
-                    })
-                  }}
-                >
-                  {showHint ? 'Hide hint' : 'Show hint'}
-                </button>
-                {showHint && <p className="hint">{card.hint}</p>}
               </>
             )}
           </div>

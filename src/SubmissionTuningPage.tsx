@@ -6,6 +6,7 @@ import {
   saveStoredSubmissionTuning,
 } from './submissionTuning'
 import type { SubmissionTuning } from './submissionTuning'
+import TopNav from './TopNav'
 
 const trackedDimensions = [
   {
@@ -43,23 +44,17 @@ export default function SubmissionTuningPage() {
 
   return (
     <div className="app">
-      <nav className="navbar">
-        <div className="navbar-left">
-          <span className="navbar-brand">System 1 Trainer</span>
-          <span className="navbar-divider" />
-          <div className="navbar-group">
-            <button className="nav-tab active" type="button">
-              Tune Submission
-            </button>
-          </div>
-        </div>
-        <div className="navbar-right">
+      <TopNav
+        activeLabel="Tune Submission"
+        rightExtras={
+          <>
           <Link to="/" className="navbar-dashboard">Back to Practice</Link>
           <Link to="/coach-tuning" className="navbar-dashboard">Tune Coach</Link>
           <Link to="/practice-history" className="navbar-dashboard">History</Link>
           <Link to="/dashboard" className="navbar-dashboard">Dashboard</Link>
-        </div>
-      </nav>
+          </>
+        }
+      />
 
       <section className="card">
         <div className="card-header coach-tuning-page-header">

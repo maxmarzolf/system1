@@ -30,10 +30,8 @@ def _clamp(value: float, lower: float, upper: float) -> float:
     return max(lower, min(upper, value))
 
 
-def support_cap(hint_used: bool, live_coach_used: bool) -> float:
+def support_cap(live_coach_used: bool) -> float:
     cap = 1.0
-    if hint_used:
-        cap -= 0.2
     if live_coach_used:
         cap -= 0.15
     return _clamp(cap, 0.35, 1.0)
@@ -44,7 +42,6 @@ def attempt_mastery_score(attempt: dict[str, Any]) -> float:
     capped_accuracy = min(
         accuracy,
         support_cap(
-            bool(attempt.get("hintUsed")),
             bool(attempt.get("liveCoachUsed")),
         ),
     )
@@ -88,14 +85,12 @@ def summarize_readiness(attempts: list[dict[str, Any]], now: datetime | None = N
             "lastSubmittedAt": "",
             "daysSinceLastSubmit": None,
             "stale": False,
-            "hintUsedCount": 0,
             "liveCoachUsedCount": 0,
         }
 
     weighted_sum = 0.0
     total_weight = 0.0
     successful_attempts = 0
-    hint_used_count = 0
     live_coach_used_count = 0
     accuracies: list[float] = []
 
@@ -108,8 +103,6 @@ def summarize_readiness(attempts: list[dict[str, Any]], now: datetime | None = N
         accuracies.append(accuracy)
         if accuracy >= READINESS_SUCCESS_THRESHOLD:
             successful_attempts += 1
-        if bool(attempt.get("hintUsed")):
-            hint_used_count += 1
         if bool(attempt.get("liveCoachUsed")):
             live_coach_used_count += 1
 
@@ -129,6 +122,5 @@ def summarize_readiness(attempts: list[dict[str, Any]], now: datetime | None = N
         "lastSubmittedAt": last_submitted_at.isoformat() if last_submitted_at else "",
         "daysSinceLastSubmit": days_since_last_submit,
         "stale": days_since_last_submit is not None and days_since_last_submit >= READINESS_STALE_DAYS,
-        "hintUsedCount": hint_used_count,
         "liveCoachUsedCount": live_coach_used_count,
     }

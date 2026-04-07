@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import TopNav from './TopNav'
 
 type PracticeHistoryEntry = {
   attemptId: number
@@ -11,7 +12,6 @@ type PracticeHistoryEntry = {
   exact: boolean
   elapsedMs: number
   templateMode: 'pseudo' | 'skeleton' | 'full'
-  hintUsed: boolean
   liveCoachUsed: boolean
   categoryTags: string[]
   generatedCard: {
@@ -136,23 +136,17 @@ export default function PracticeHistoryPage() {
 
   return (
     <div className="app">
-      <nav className="navbar">
-        <div className="navbar-left">
-          <span className="navbar-brand">System 1 Trainer</span>
-          <span className="navbar-divider" />
-          <div className="navbar-group">
-            <button className="nav-tab active" type="button">
-              Practice History
-            </button>
-          </div>
-        </div>
-        <div className="navbar-right">
+      <TopNav
+        activeLabel="Practice History"
+        rightExtras={
+          <>
           <Link to="/coach-tuning" className="navbar-dashboard">Tune Coach</Link>
           <Link to="/submission-tuning" className="navbar-dashboard">Tune Submission</Link>
           <Link to="/" className="navbar-dashboard">Back to Practice</Link>
           <Link to="/dashboard" className="navbar-dashboard">Dashboard</Link>
-        </div>
-      </nav>
+          </>
+        }
+      />
 
       <section className="card">
         <div className="card-header practice-history-page-header">
@@ -257,9 +251,8 @@ export default function PracticeHistoryPage() {
                           {entry.exact ? 'Sound' : `${entry.accuracy}%`}
                         </span>
                       </div>
-                      {(entry.hintUsed || entry.liveCoachUsed) && (
+                      {entry.liveCoachUsed && (
                         <div className="practice-history-focuses">
-                          {entry.hintUsed && <span className="coach-metric-chip">Hint used</span>}
                           {entry.liveCoachUsed && <span className="coach-metric-chip">Live coach used</span>}
                         </div>
                       )}

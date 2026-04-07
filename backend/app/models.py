@@ -42,7 +42,6 @@ class AttemptCreate(BaseModel):
     generatedCardId: str | None = None
     generatedCard: dict[str, Any] | None = None
     templateMode: TemplateMode = TemplateMode.full
-    hintUsed: bool = False
     liveCoachUsed: bool = False
     coachFeedback: dict[str, Any] | None = None
 
@@ -180,7 +179,6 @@ class CoachPracticeHistoryEntry(BaseModel):
     exact: bool = False
     elapsedMs: int = Field(default=0, ge=0)
     templateMode: str = TemplateMode.full.value
-    hintUsed: bool = False
     liveCoachUsed: bool = False
     categoryTags: list[str] = []
     generatedCard: dict[str, Any] = {}
@@ -207,7 +205,6 @@ class SkillMapModeReadiness(BaseModel):
     lastSubmittedAt: str = ""
     daysSinceLastSubmit: int | None = Field(default=None, ge=0)
     stale: bool = False
-    hintUsedCount: int = Field(default=0, ge=0)
     liveCoachUsedCount: int = Field(default=0, ge=0)
 
 

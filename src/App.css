@@ -25,9 +25,13 @@
   display: flex;
   align-items: center;
   gap: 0;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .navbar-brand {
+  display: inline-flex;
+  align-items: center;
   font-weight: 700;
   font-size: 0.8rem;
   letter-spacing: 0.1em;
@@ -35,6 +39,7 @@
   color: var(--hc-accent);
   padding: 0.65rem 1rem;
   white-space: nowrap;
+  text-decoration: none;
 }
 
 .navbar-divider {
@@ -216,6 +221,8 @@
   align-items: center;
   gap: 1rem;
   padding-right: 0.5rem;
+  margin-left: auto;
+  flex-wrap: wrap;
 }
 
 .navbar-counter {

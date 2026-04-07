@@ -24,9 +24,9 @@ async def create_attempt(body: AttemptCreate):
             INSERT INTO score_attempts
                 (card_id, card_title, question, question_type, category_tags, options,
                  correct_answer, user_answer, mode, correct, accuracy, exact, elapsed_ms,
-                 interaction_id, generated_card_id, generated_card, template_mode, hint_used,
+                 interaction_id, generated_card_id, generated_card, template_mode,
                  live_coach_used, coach_feedback, created_at, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
             RETURNING id
             """,
             body.cardId,
@@ -46,7 +46,6 @@ async def create_attempt(body: AttemptCreate):
             body.generatedCardId,
             _json.dumps(body.generatedCard) if body.generatedCard else None,
             body.templateMode.value,
-            body.hintUsed,
             body.liveCoachUsed,
             _json.dumps(body.coachFeedback) if body.coachFeedback else None,
             now,
@@ -134,7 +133,6 @@ async def get_skill_map_overview():
                 sa.accuracy,
                 sa.created_at,
                 sa.template_mode,
-                sa.hint_used,
                 sa.live_coach_used
             FROM score_attempts sa
             WHERE sa.mode = 'main-recall'
@@ -197,7 +195,6 @@ async def get_skill_map_overview():
         attempt = {
             "accuracy": float(row["accuracy"] or 0),
             "created_at": row["created_at"],
-            "hintUsed": bool(row["hint_used"]),
             "liveCoachUsed": bool(row["live_coach_used"]),
         }
         attempts_by_card_mode.setdefault((card_id, template_mode), []).append(attempt)

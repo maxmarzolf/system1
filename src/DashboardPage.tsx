@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import TopNav from './TopNav'
 
 type SkillMapModeReadiness = {
   readiness: number
@@ -104,21 +105,22 @@ export default function DashboardPage() {
 
   return (
     <div className="app">
-      <header className="header">
-        <div>
-          <p className="eyebrow">LeetCode Flashcard Game</p>
-          <p className="subtitle">Layered Skill Map</p>
-        </div>
-        <div className="meta">
-          <Link to="/" className="nav-link">← Back to Practice</Link>
-          <Link to="/submission-tuning" className="nav-link">Tune Submission</Link>
-        </div>
-      </header>
+      <TopNav
+        activeLabel="Dashboard"
+        rightExtras={
+          <>
+          <Link to="/" className="navbar-dashboard">Back to Practice</Link>
+          <Link to="/coach-tuning" className="navbar-dashboard">Tune Coach</Link>
+          <Link to="/submission-tuning" className="navbar-dashboard">Tune Submission</Link>
+          <Link to="/practice-history" className="navbar-dashboard">History</Link>
+          </>
+        }
+      />
 
       <section className="dashboard">
         <h2>Readiness Overview</h2>
         <p className="skill-map-intro">
-          Final submits only. Readiness rises on strong independent reps, gets capped when hints or live coaching were needed, and decays after a few days without practice.
+          Final submits only. Readiness rises on strong independent reps, gets capped when live coaching was needed, and decays after a few days without practice.
         </p>
         {summary && (
           <div className="dashboard-summary">
