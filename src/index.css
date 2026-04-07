@@ -1,13 +1,13 @@
-:root {
+:root,
+:root[data-theme='dark-high-contrast'] {
   /* VSCode High Contrast Dark Theme */
-  --sumi-black: #ffffff; /* Primary text — pure white */
-  --sumi-ink: #000000; /* Background — pure black */
-  --paper-white: #000000; /* Compat alias */
-  --vermilion-red: #6fc3df; /* Accent — HC cyan/blue focus color */
-  --faded-ink: #9d9d9d; /* Secondary text */
-  --border-color: #6fc3df; /* HC bright borders */
+  --sumi-black: #ffffff;
+  --sumi-ink: #000000;
+  --paper-white: #000000;
+  --vermilion-red: #6fc3df;
+  --faded-ink: #9d9d9d;
+  --border-color: #6fc3df;
 
-  /* HC-specific tokens */
   --hc-bg: #000000;
   --hc-editor-bg: #000000;
   --hc-panel-bg: #0a0a0a;
@@ -24,14 +24,194 @@
   --hc-button-bg: #000000;
   --hc-button-fg: #ffffff;
   --hc-input-bg: #000000;
+  --hc-button-hover-bg: #1a3a4a;
+  --hc-button-hover-border: #ffffff;
+  --hc-nav-link-hover-bg: #1a3a4a;
+  --hc-picker-bg: linear-gradient(180deg, rgba(111, 195, 223, 0.08) 0%, rgba(16, 21, 31, 0.96) 100%);
+  --hc-picker-active-bg: rgba(111, 195, 223, 0.1);
+  --hc-menu-bg: linear-gradient(180deg, rgba(20, 30, 42, 0.98) 0%, rgba(10, 12, 18, 0.98) 100%);
+  --hc-menu-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  --hc-option-hover-bg: rgba(111, 195, 223, 0.08);
+  --hc-option-active-bg: rgba(111, 195, 223, 0.12);
+  --hc-toggle-idle-bg: rgba(255, 255, 255, 0.03);
+  --hc-toggle-on-fg: #7fd8a7;
+  --hc-toggle-on-bg: rgba(127, 216, 167, 0.08);
+  --hc-toggle-off-fg: #f08f8f;
+  --hc-toggle-off-bg: rgba(240, 143, 143, 0.08);
+  --hc-card-surface-gradient: linear-gradient(180deg, rgba(26, 58, 74, 0.18) 0%, rgba(10, 10, 10, 0.88) 100%);
+  --hc-card-surface-soft: rgba(6, 15, 20, 0.7);
+  --hc-method-border: #2d4f5c;
+  --hc-method-bg: rgba(111, 195, 223, 0.08);
+  --hc-code-fg: #d4d4d4;
+  --hc-missing-bg: rgba(111, 195, 223, 0.1);
+  --hc-missing-fg: #9cdcfe;
+  --hc-filled-bg: rgba(137, 209, 133, 0.15);
+  --hc-banner-bg: linear-gradient(90deg, rgba(31, 130, 192, 0.18), rgba(12, 19, 27, 0.95) 42%), var(--hc-editor-bg);
+  --hc-banner-label: #9ad4ff;
+  --hc-banner-stat-border: rgba(154, 212, 255, 0.25);
+  --hc-banner-stat-bg: rgba(4, 10, 15, 0.75);
+  --hc-gutter-fg: #858585;
+  --hc-quickstat-bg: #0b1219;
+  --hc-docked-bg: linear-gradient(180deg, rgba(7, 11, 15, 0.98), rgba(3, 7, 11, 0.98));
+  --hc-docked-card-bg: rgba(10, 16, 22, 0.9);
+  --hc-status-chip-bg: rgba(255, 255, 255, 0.03);
+  --hc-status-chip-success-fg: rgb(106, 196, 125);
+  --hc-status-chip-success-border: rgba(106, 196, 125, 0.35);
+  --hc-status-chip-success-bg: rgba(106, 196, 125, 0.08);
+  --hc-status-chip-warning-fg: #d7c36d;
+  --hc-status-chip-warning-border: rgba(215, 195, 109, 0.32);
+  --hc-status-chip-warning-bg: rgba(215, 195, 109, 0.08);
+  --hc-status-chip-error-fg: #f48771;
+  --hc-status-chip-error-border: rgba(244, 135, 113, 0.32);
+  --hc-status-chip-error-bg: rgba(244, 135, 113, 0.08);
+  --hc-live-indicator-border: rgba(106, 196, 125, 0.28);
+  --hc-live-indicator-bg: rgba(106, 196, 125, 0.08);
+  --hc-live-dot: rgb(106, 196, 125);
+  --hc-live-dot-shadow: 0 0 0 3px rgba(106, 196, 125, 0.12);
+  --hc-repair-gradient: linear-gradient(180deg, rgba(18, 30, 42, 0.96), rgba(8, 13, 19, 0.96));
+  --hc-metric-chip-border: rgba(154, 212, 255, 0.18);
+  --hc-metric-chip-bg: rgba(154, 212, 255, 0.08);
+  --hc-metric-chip-fg: #cfe8ff;
+  --hc-repair-chip-bg: rgba(8, 13, 18, 0.94);
+  --hc-repair-chip-hover-border: #9ad4ff;
+  --hc-repair-chip-hover-bg: rgba(12, 20, 28, 0.98);
+  --hc-repair-line-fg: #9ad4ff;
+  --hc-repair-line-bg: rgba(11, 29, 41, 0.92);
+  --hc-repair-line-border: rgba(154, 212, 255, 0.2);
+  --hc-line-match-bg: rgba(137, 209, 133, 0.1);
+  --hc-line-mismatch-bg: rgba(204, 167, 0, 0.12);
+  --hc-line-extra-bg: rgba(244, 135, 113, 0.12);
+  --hc-field-gradient: linear-gradient(180deg, rgba(12, 18, 25, 0.92), rgba(7, 11, 15, 0.98));
+  --hc-history-entry-gradient: linear-gradient(180deg, rgba(26, 58, 74, 0.16) 0%, rgba(10, 10, 10, 0.92) 100%);
+  --hc-diff-wrong-bg: rgba(204, 167, 0, 0.1);
+  --hc-diff-missing-bg: rgba(244, 135, 113, 0.1);
+  --hc-diff-extra-bg: rgba(137, 209, 133, 0.1);
+  --hc-diff-correct-fg: #d4d4d4;
+  --hc-diff-wrong-strong-bg: rgba(204, 167, 0, 0.15);
+  --hc-diff-wrong-underline: rgba(204, 167, 0, 0.6);
+  --hc-diff-missing-strong-bg: rgba(244, 135, 113, 0.15);
+  --hc-diff-missing-underline: rgba(244, 135, 113, 0.6);
+  --hc-diff-extra-strong-bg: rgba(137, 209, 133, 0.15);
+  --hc-option-dimmed-border: #333333;
+  --hc-option-correct-contrast: #000000;
+  --hc-option-incorrect-contrast: #000000;
+  --hc-theme-button-bg: rgba(111, 195, 223, 0.08);
+  --hc-theme-button-active-bg: rgba(111, 195, 223, 0.14);
+  --hc-theme-button-border: var(--hc-border-dim);
+  --hc-theme-button-fg: var(--hc-accent);
 
+  color-scheme: dark;
+}
+
+:root[data-theme='light-high-contrast'] {
+  --sumi-black: #000000;
+  --sumi-ink: #ffffff;
+  --paper-white: #ffffff;
+  --vermilion-red: #005fb8;
+  --faded-ink: #424242;
+  --border-color: #005fb8;
+
+  --hc-bg: #ffffff;
+  --hc-editor-bg: #ffffff;
+  --hc-panel-bg: #f6f8fb;
+  --hc-border: #005fb8;
+  --hc-border-dim: #5c7a99;
+  --hc-fg: #000000;
+  --hc-fg-dim: #2f2f2f;
+  --hc-accent: #005fb8;
+  --hc-link: #005fb8;
+  --hc-error: #b42318;
+  --hc-success: #116329;
+  --hc-warning: #8a5a00;
+  --hc-selection: #b8d9ff;
+  --hc-button-bg: #ffffff;
+  --hc-button-fg: #000000;
+  --hc-input-bg: #ffffff;
+  --hc-button-hover-bg: #dceeff;
+  --hc-button-hover-border: #000000;
+  --hc-nav-link-hover-bg: #dceeff;
+  --hc-picker-bg: linear-gradient(180deg, rgba(0, 95, 184, 0.08) 0%, rgba(240, 246, 255, 0.98) 100%);
+  --hc-picker-active-bg: rgba(0, 95, 184, 0.12);
+  --hc-menu-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(236, 244, 255, 0.99) 100%);
+  --hc-menu-shadow: 0 10px 24px rgba(0, 49, 97, 0.16);
+  --hc-option-hover-bg: rgba(0, 95, 184, 0.08);
+  --hc-option-active-bg: rgba(0, 95, 184, 0.14);
+  --hc-toggle-idle-bg: rgba(0, 0, 0, 0.04);
+  --hc-toggle-on-fg: #116329;
+  --hc-toggle-on-bg: rgba(17, 99, 41, 0.1);
+  --hc-toggle-off-fg: #b42318;
+  --hc-toggle-off-bg: rgba(180, 35, 24, 0.1);
+  --hc-card-surface-gradient: linear-gradient(180deg, rgba(222, 239, 255, 0.95) 0%, rgba(255, 255, 255, 1) 100%);
+  --hc-card-surface-soft: rgba(233, 242, 252, 0.88);
+  --hc-method-border: #7b98b6;
+  --hc-method-bg: rgba(0, 95, 184, 0.08);
+  --hc-code-fg: #1f2328;
+  --hc-missing-bg: rgba(0, 95, 184, 0.12);
+  --hc-missing-fg: #004a8f;
+  --hc-filled-bg: rgba(17, 99, 41, 0.12);
+  --hc-banner-bg: linear-gradient(90deg, rgba(0, 95, 184, 0.14), rgba(237, 245, 255, 0.98) 45%), var(--hc-editor-bg);
+  --hc-banner-label: #00529f;
+  --hc-banner-stat-border: rgba(0, 95, 184, 0.24);
+  --hc-banner-stat-bg: rgba(255, 255, 255, 0.92);
+  --hc-gutter-fg: #6b6b6b;
+  --hc-quickstat-bg: #eef5ff;
+  --hc-docked-bg: linear-gradient(180deg, rgba(244, 249, 255, 0.98), rgba(232, 242, 252, 0.98));
+  --hc-docked-card-bg: rgba(255, 255, 255, 0.94);
+  --hc-status-chip-bg: rgba(0, 0, 0, 0.04);
+  --hc-status-chip-success-fg: #116329;
+  --hc-status-chip-success-border: rgba(17, 99, 41, 0.32);
+  --hc-status-chip-success-bg: rgba(17, 99, 41, 0.08);
+  --hc-status-chip-warning-fg: #8a5a00;
+  --hc-status-chip-warning-border: rgba(138, 90, 0, 0.3);
+  --hc-status-chip-warning-bg: rgba(138, 90, 0, 0.08);
+  --hc-status-chip-error-fg: #b42318;
+  --hc-status-chip-error-border: rgba(180, 35, 24, 0.3);
+  --hc-status-chip-error-bg: rgba(180, 35, 24, 0.08);
+  --hc-live-indicator-border: rgba(17, 99, 41, 0.3);
+  --hc-live-indicator-bg: rgba(17, 99, 41, 0.08);
+  --hc-live-dot: #116329;
+  --hc-live-dot-shadow: 0 0 0 3px rgba(17, 99, 41, 0.12);
+  --hc-repair-gradient: linear-gradient(180deg, rgba(233, 243, 255, 0.98), rgba(245, 249, 255, 0.98));
+  --hc-metric-chip-border: rgba(0, 95, 184, 0.2);
+  --hc-metric-chip-bg: rgba(0, 95, 184, 0.08);
+  --hc-metric-chip-fg: #004a8f;
+  --hc-repair-chip-bg: rgba(250, 253, 255, 0.98);
+  --hc-repair-chip-hover-border: #005fb8;
+  --hc-repair-chip-hover-bg: rgba(222, 239, 255, 0.9);
+  --hc-repair-line-fg: #00529f;
+  --hc-repair-line-bg: rgba(225, 239, 255, 0.92);
+  --hc-repair-line-border: rgba(0, 95, 184, 0.2);
+  --hc-line-match-bg: rgba(17, 99, 41, 0.08);
+  --hc-line-mismatch-bg: rgba(138, 90, 0, 0.1);
+  --hc-line-extra-bg: rgba(180, 35, 24, 0.09);
+  --hc-field-gradient: linear-gradient(180deg, rgba(247, 250, 255, 0.98), rgba(235, 243, 252, 0.98));
+  --hc-history-entry-gradient: linear-gradient(180deg, rgba(228, 240, 255, 0.92) 0%, rgba(255, 255, 255, 1) 100%);
+  --hc-diff-wrong-bg: rgba(138, 90, 0, 0.08);
+  --hc-diff-missing-bg: rgba(180, 35, 24, 0.08);
+  --hc-diff-extra-bg: rgba(17, 99, 41, 0.08);
+  --hc-diff-correct-fg: #1f2328;
+  --hc-diff-wrong-strong-bg: rgba(138, 90, 0, 0.12);
+  --hc-diff-wrong-underline: rgba(138, 90, 0, 0.55);
+  --hc-diff-missing-strong-bg: rgba(180, 35, 24, 0.12);
+  --hc-diff-missing-underline: rgba(180, 35, 24, 0.55);
+  --hc-diff-extra-strong-bg: rgba(17, 99, 41, 0.12);
+  --hc-option-dimmed-border: #8b8b8b;
+  --hc-option-correct-contrast: #ffffff;
+  --hc-option-incorrect-contrast: #ffffff;
+  --hc-theme-button-bg: rgba(0, 95, 184, 0.08);
+  --hc-theme-button-active-bg: rgba(0, 95, 184, 0.14);
+  --hc-theme-button-border: var(--hc-border-dim);
+  --hc-theme-button-fg: var(--hc-accent);
+
+  color-scheme: light;
+}
+
+:root {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   line-height: 1.6;
   font-weight: 400;
-
   color: var(--hc-fg);
   background-color: var(--hc-bg);
-
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -41,13 +221,25 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
   background-color: var(--hc-bg);
+  color: var(--hc-fg);
 }
 
 a {
   color: var(--hc-link);
   text-decoration: none;
+}
+
+::selection {
+  background: var(--hc-selection);
+  color: var(--hc-fg);
 }

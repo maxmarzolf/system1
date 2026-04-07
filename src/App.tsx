@@ -1,11 +1,12 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { vs, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import type { Flashcard } from './data/flashcards'
 import { skillMap } from './data/skill-map'
 import { getLiveCoachFrequencyProfile, loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoachTuning'
 import { loadStoredSubmissionTuning } from './submissionTuning'
 import TopNav from './TopNav'
+import { useTheme } from './theme'
 
 const emptySkillMapCard: Flashcard = {
   id: 'skill-map-loading',
@@ -654,6 +655,7 @@ const computeLineReview = (expectedCode: string, actualCode: string) => {
 }
 
 function App() {
+  const { theme } = useTheme()
   const questionType = 'skill-map' as const
   const [sessionOrderType, setSessionOrderType] = useState<SessionOrder>('original')
   const [enabledTemplateModes, setEnabledTemplateModes] = useState<TemplateMode[]>(() => [...DEFAULT_TEMPLATE_MODES])
@@ -687,6 +689,7 @@ function App() {
   const [liveCoachError, setLiveCoachError] = useState('')
   const [liveCoachTuning, setLiveCoachTuning] = useState(() => loadStoredLiveCoachTuning())
   const [submissionTuning] = useState(() => loadStoredSubmissionTuning())
+  const syntaxTheme = theme === 'light-high-contrast' ? vs : vscDarkPlus
   const liveCoachFrequencyProfile = useMemo(
     () => getLiveCoachFrequencyProfile(liveCoachTuning.feedbackFrequency),
     [liveCoachTuning]
@@ -1732,7 +1735,7 @@ function App() {
                 <div className="code-container">
                   <SyntaxHighlighter
                     language={practiceLanguage}
-                    style={vscDarkPlus}
+                    style={syntaxTheme}
                     customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
                     codeTagProps={{ style: { background: 'transparent' } }}
                   >
@@ -1776,7 +1779,7 @@ function App() {
                         <div className="typing-highlight" aria-hidden="true" ref={mainHighlightRef}>
                           <SyntaxHighlighter
                             language={practiceLanguage}
-                            style={vscDarkPlus}
+                            style={syntaxTheme}
                             wrapLines
                             lineProps={(lineNumber) => {
                               const line = displayLines[lineNumber - 1]
@@ -1907,7 +1910,7 @@ function App() {
                               <div className="code-container">
                                 <SyntaxHighlighter
                                   language={practiceLanguage}
-                                  style={vscDarkPlus}
+                                  style={syntaxTheme}
                                   customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
                                   codeTagProps={{ style: { background: 'transparent' } }}
                                 >

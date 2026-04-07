@@ -69,7 +69,7 @@
   min-height: 2rem;
   padding: 0.38rem 0.7rem;
   border: 1px solid var(--hc-border);
-  background: linear-gradient(180deg, rgba(111, 195, 223, 0.08) 0%, rgba(16, 21, 31, 0.96) 100%);
+  background: var(--hc-picker-bg);
   color: var(--hc-fg);
   font-size: 0.78rem;
   font-weight: 600;
@@ -84,7 +84,7 @@
 
 .navbar-picker.active {
   border-color: var(--hc-accent);
-  background: rgba(111, 195, 223, 0.1);
+  background: var(--hc-picker-active-bg);
 }
 
 .navbar-picker:focus-visible {
@@ -98,8 +98,8 @@
   left: 0.8rem;
   min-width: calc(100% - 1.6rem);
   border: 1px solid var(--hc-accent);
-  background: linear-gradient(180deg, rgba(20, 30, 42, 0.98) 0%, rgba(10, 12, 18, 0.98) 100%);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  background: var(--hc-menu-bg);
+  box-shadow: var(--hc-menu-shadow);
   padding: 0.3rem;
   z-index: 30;
 }
@@ -121,12 +121,49 @@
 
 .navbar-picker-option:hover {
   border-color: var(--hc-border);
-  background: rgba(111, 195, 223, 0.08);
+  background: var(--hc-option-hover-bg);
 }
 
 .navbar-picker-option.active {
   border-color: var(--hc-accent);
-  background: rgba(111, 195, 223, 0.12);
+  background: var(--hc-option-active-bg);
+}
+
+.navbar-theme {
+  position: relative;
+}
+
+.navbar-theme-menu {
+  right: 0;
+  left: auto;
+  min-width: 13.5rem;
+}
+
+.navbar-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  padding: 0;
+  border: 1px solid var(--hc-theme-button-border);
+  background: var(--hc-theme-button-bg);
+  color: var(--hc-theme-button-fg);
+}
+
+.navbar-icon-button:hover {
+  background: var(--hc-theme-button-active-bg);
+  border-color: var(--hc-accent);
+}
+
+.navbar-icon-button.active {
+  background: var(--hc-theme-button-active-bg);
+  border-color: var(--hc-accent);
+}
+
+.navbar-icon {
+  width: 1rem;
+  height: 1rem;
 }
 
 .navbar-picker-check {
@@ -154,13 +191,13 @@
 
 .navbar-toggle:hover {
   border-color: var(--hc-accent);
-  background: rgba(111, 195, 223, 0.08);
+  background: var(--hc-option-hover-bg);
   color: var(--hc-fg);
 }
 
 .navbar-toggle.active {
   border-color: var(--hc-accent);
-  background: rgba(111, 195, 223, 0.1);
+  background: var(--hc-picker-active-bg);
   color: var(--hc-fg);
 }
 
@@ -177,17 +214,17 @@
   border: 1px solid currentColor;
   font-size: 0.64rem;
   letter-spacing: 0.06em;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--hc-toggle-idle-bg);
 }
 
 .navbar-toggle-state.on {
-  color: #7fd8a7;
-  background: rgba(127, 216, 167, 0.08);
+  color: var(--hc-toggle-on-fg);
+  background: var(--hc-toggle-on-bg);
 }
 
 .navbar-toggle-state.off {
-  color: #f08f8f;
-  background: rgba(240, 143, 143, 0.08);
+  color: var(--hc-toggle-off-fg);
+  background: var(--hc-toggle-off-bg);
 }
 
 .nav-tab {
@@ -257,7 +294,7 @@
 }
 
 .navbar-dashboard:hover {
-  background: #1a3a4a;
+  background: var(--hc-nav-link-hover-bg);
   border-color: var(--hc-fg);
   color: var(--hc-fg);
 }
@@ -339,7 +376,7 @@
 
 .skill-map-card {
   border: 1px solid var(--hc-border-dim);
-  background: linear-gradient(180deg, rgba(26, 58, 74, 0.18) 0%, rgba(10, 10, 10, 0.88) 100%);
+  background: var(--hc-card-surface-gradient);
   padding: 0.95rem;
 }
 
@@ -387,8 +424,8 @@
   display: inline-flex;
   align-items: center;
   padding: 0.35rem 0.55rem;
-  border: 1px solid #2d4f5c;
-  background: rgba(111, 195, 223, 0.08);
+  border: 1px solid var(--hc-method-border);
+  background: var(--hc-method-bg);
   color: var(--hc-fg);
   font-size: 0.8rem;
   line-height: 1.35;
@@ -410,7 +447,7 @@
 
 .dashboard-mode-card {
   border: 1px solid var(--hc-border-dim);
-  background: rgba(6, 15, 20, 0.7);
+  background: var(--hc-card-surface-soft);
   padding: 0.75rem;
 }
 
@@ -447,8 +484,8 @@ button {
 }
 
 button:hover {
-  background: #1a3a4a;
-  border-color: #fff;
+  background: var(--hc-button-hover-bg);
+  border-color: var(--hc-button-hover-border);
   transform: none;
   box-shadow: none;
 }
@@ -465,7 +502,7 @@ button.secondary {
 }
 
 button.secondary:hover {
-  background: #1a3a4a;
+  background: var(--hc-button-hover-bg);
   color: var(--hc-fg);
 }
 
@@ -580,7 +617,7 @@ button.link:hover {
 .template-mode-toggle.active {
   color: var(--hc-fg);
   border-color: var(--hc-accent);
-  background: rgba(111, 195, 223, 0.08);
+  background: var(--hc-option-hover-bg);
 }
 
 .template-mode-toggle:disabled {
@@ -672,7 +709,7 @@ button.link:hover {
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
   font-size: 0.95rem;
   line-height: 1.6;
-  color: #d4d4d4;
+  color: var(--hc-code-fg);
   overflow-x: auto;
   margin-bottom: 1.5rem;
   box-shadow: none;
@@ -684,14 +721,14 @@ button.link:hover {
   text-align: center;
   padding: 0 0.4rem;
   border-bottom: 2px dashed var(--hc-accent);
-  background: rgba(111, 195, 223, 0.1);
-  color: #9cdcfe;
+  background: var(--hc-missing-bg);
+  color: var(--hc-missing-fg);
   font-weight: 700;
   border-radius: 0;
 }
 
 .missing.filled {
-  background: rgba(137, 209, 133, 0.15);
+  background: var(--hc-filled-bg);
   color: var(--hc-success);
   border-bottom: 2px solid var(--hc-success);
 }
@@ -783,9 +820,7 @@ button.link:hover {
   gap: 1rem;
   padding: 0.85rem 1rem;
   border-bottom: 1px solid var(--hc-border-dim);
-  background:
-    linear-gradient(90deg, rgba(31, 130, 192, 0.18), rgba(12, 19, 27, 0.95) 42%),
-    var(--hc-editor-bg);
+  background: var(--hc-banner-bg);
 }
 
 .coach-banner-main {
@@ -799,7 +834,7 @@ button.link:hover {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #9ad4ff;
+  color: var(--hc-banner-label);
 }
 
 .coach-banner-main p {
@@ -818,8 +853,8 @@ button.link:hover {
 }
 
 .coach-banner-stats span {
-  border: 1px solid rgba(154, 212, 255, 0.25);
-  background: rgba(4, 10, 15, 0.75);
+  border: 1px solid var(--hc-banner-stat-border);
+  background: var(--hc-banner-stat-bg);
   color: var(--hc-fg);
   padding: 0.35rem 0.5rem;
   font-size: 0.78rem;
@@ -852,7 +887,7 @@ button.link:hover {
   position: relative;
   padding: 0 0.5rem 0 0;
   text-align: right;
-  color: #858585;
+  color: var(--hc-gutter-fg);
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
   font-size: 0.95rem;
   line-height: 1.6;
@@ -945,7 +980,7 @@ button.link:hover {
 
 .coach-quick-stats span {
   border: 1px solid var(--hc-border);
-  background: #0b1219;
+  background: var(--hc-quickstat-bg);
   padding: 0.35rem 0.45rem;
   font-size: 0.8rem;
   color: var(--hc-fg);
@@ -982,7 +1017,7 @@ button.link:hover {
 
 .coach-docked-panel {
   border-top: 1px solid var(--hc-border-dim);
-  background: linear-gradient(180deg, rgba(7, 11, 15, 0.98), rgba(3, 7, 11, 0.98));
+  background: var(--hc-docked-bg);
   padding: 0.85rem 1rem 1rem;
 }
 
@@ -999,7 +1034,7 @@ button.link:hover {
 
 .coach-docked-card {
   border: 1px solid var(--hc-border-dim);
-  background: rgba(10, 16, 22, 0.9);
+  background: var(--hc-docked-card-bg);
   padding: 0.8rem;
   min-width: 0;
 }
@@ -1036,25 +1071,25 @@ button.link:hover {
   text-transform: uppercase;
   border: 1px solid var(--hc-border);
   color: var(--hc-fg-dim);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--hc-status-chip-bg);
 }
 
 .coach-status-chip-success {
-  color: rgb(106, 196, 125);
-  border-color: rgba(106, 196, 125, 0.35);
-  background: rgba(106, 196, 125, 0.08);
+  color: var(--hc-status-chip-success-fg);
+  border-color: var(--hc-status-chip-success-border);
+  background: var(--hc-status-chip-success-bg);
 }
 
 .coach-status-chip-warning {
-  color: #d7c36d;
-  border-color: rgba(215, 195, 109, 0.32);
-  background: rgba(215, 195, 109, 0.08);
+  color: var(--hc-status-chip-warning-fg);
+  border-color: var(--hc-status-chip-warning-border);
+  background: var(--hc-status-chip-warning-bg);
 }
 
 .coach-status-chip-error {
-  color: #f48771;
-  border-color: rgba(244, 135, 113, 0.32);
-  background: rgba(244, 135, 113, 0.08);
+  color: var(--hc-status-chip-error-fg);
+  border-color: var(--hc-status-chip-error-border);
+  background: var(--hc-status-chip-error-bg);
 }
 
 .live-coach-indicator {
@@ -1063,8 +1098,8 @@ button.link:hover {
   justify-content: center;
   width: 1.6rem;
   height: 1.6rem;
-  border: 1px solid rgba(106, 196, 125, 0.28);
-  background: rgba(106, 196, 125, 0.08);
+  border: 1px solid var(--hc-live-indicator-border);
+  background: var(--hc-live-indicator-bg);
   border-radius: 999px;
 }
 
@@ -1072,13 +1107,12 @@ button.link:hover {
   width: 0.42rem;
   height: 0.42rem;
   border-radius: 999px;
-  background: rgb(106, 196, 125);
-  box-shadow: 0 0 0 3px rgba(106, 196, 125, 0.12);
+  background: var(--hc-live-dot);
+  box-shadow: var(--hc-live-dot-shadow);
 }
 
 .coach-docked-card-repair {
-  background:
-    linear-gradient(180deg, rgba(18, 30, 42, 0.96), rgba(8, 13, 19, 0.96));
+  background: var(--hc-repair-gradient);
 }
 
 .coach-panel-copy {
@@ -1113,9 +1147,9 @@ button.link:hover {
   align-items: center;
   padding: 0.28rem 0.55rem;
   border-radius: 999px;
-  border: 1px solid rgba(154, 212, 255, 0.18);
-  background: rgba(154, 212, 255, 0.08);
-  color: #cfe8ff;
+  border: 1px solid var(--hc-metric-chip-border);
+  background: var(--hc-metric-chip-bg);
+  color: var(--hc-metric-chip-fg);
   font-size: 0.74rem;
   font-weight: 600;
 }
@@ -1147,36 +1181,36 @@ button.link:hover {
   width: 100%;
   text-align: left;
   border: 1px solid var(--hc-border);
-  background: rgba(8, 13, 18, 0.94);
+  background: var(--hc-repair-chip-bg);
   color: var(--hc-fg);
   padding: 0.65rem 0.75rem;
 }
 
 .coach-repair-chip:hover {
-  border-color: #9ad4ff;
-  background: rgba(12, 20, 28, 0.98);
+  border-color: var(--hc-repair-chip-hover-border);
+  background: var(--hc-repair-chip-hover-bg);
   transform: none;
   box-shadow: none;
 }
 
 .coach-repair-chip.severity-high {
-  border-color: rgba(244, 135, 113, 0.45);
+  border-color: var(--hc-status-chip-error-border);
 }
 
 .coach-repair-chip.severity-medium {
-  border-color: rgba(204, 167, 0, 0.45);
+  border-color: var(--hc-status-chip-warning-border);
 }
 
 .coach-repair-chip.severity-low {
-  border-color: rgba(137, 209, 133, 0.35);
+  border-color: var(--hc-status-chip-success-border);
 }
 
 .coach-repair-line {
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
   font-size: 0.78rem;
-  color: #9ad4ff;
-  background: rgba(11, 29, 41, 0.92);
-  border: 1px solid rgba(154, 212, 255, 0.2);
+  color: var(--hc-repair-line-fg);
+  background: var(--hc-repair-line-bg);
+  border: 1px solid var(--hc-repair-line-border);
   padding: 0.25rem 0.42rem;
   min-width: 2.25rem;
   text-align: center;
@@ -1218,15 +1252,15 @@ button.link:hover {
 }
 
 .typing-highlight-line.line-match {
-  background: rgba(137, 209, 133, 0.1);
+  background: var(--hc-line-match-bg);
 }
 
 .typing-highlight-line.line-mismatch {
-  background: rgba(204, 167, 0, 0.12);
+  background: var(--hc-line-mismatch-bg);
 }
 
 .typing-highlight-line.line-extra {
-  background: rgba(244, 135, 113, 0.12);
+  background: var(--hc-line-extra-bg);
 }
 
 /* ─── Diff View ─── */
@@ -1250,15 +1284,15 @@ button.link:hover {
 }
 
 .diff-line.diff-wrong {
-  background: rgba(204, 167, 0, 0.1);
+  background: var(--hc-diff-wrong-bg);
 }
 
 .diff-line.diff-missing {
-  background: rgba(244, 135, 113, 0.1);
+  background: var(--hc-diff-missing-bg);
 }
 
 .diff-line.diff-extra {
-  background: rgba(137, 209, 133, 0.1);
+  background: var(--hc-diff-extra-bg);
 }
 
 .diff-line-num {
@@ -1266,7 +1300,7 @@ button.link:hover {
   width: 2.5rem;
   text-align: right;
   padding-right: 0.75rem;
-  color: #858585;
+  color: var(--hc-gutter-fg);
   user-select: none;
 }
 
@@ -1274,7 +1308,7 @@ button.link:hover {
   flex-shrink: 0;
   width: 1.5rem;
   text-align: center;
-  color: #858585;
+  color: var(--hc-gutter-fg);
   user-select: none;
 }
 
@@ -1289,26 +1323,26 @@ button.link:hover {
 }
 
 .diff-seg-correct {
-  color: #d4d4d4;
+  color: var(--hc-diff-correct-fg);
 }
 
 .diff-seg-wrong {
   color: var(--hc-warning);
-  background: rgba(204, 167, 0, 0.15);
+  background: var(--hc-diff-wrong-strong-bg);
   border-radius: 0;
-  text-decoration: underline wavy rgba(204, 167, 0, 0.6);
+  text-decoration: underline wavy var(--hc-diff-wrong-underline);
 }
 
 .diff-seg-missing {
   color: var(--hc-error);
-  background: rgba(244, 135, 113, 0.15);
+  background: var(--hc-diff-missing-strong-bg);
   border-radius: 0;
-  text-decoration: underline wavy rgba(244, 135, 113, 0.6);
+  text-decoration: underline wavy var(--hc-diff-missing-underline);
 }
 
 .diff-seg-extra {
   color: var(--hc-success);
-  background: rgba(137, 209, 133, 0.15);
+  background: var(--hc-diff-extra-strong-bg);
   border-radius: 0;
   text-decoration: line-through;
 }
@@ -1421,12 +1455,12 @@ button.link:hover {
 .option-btn:hover {
   transform: none;
   box-shadow: none;
-  border-color: #fff;
+  border-color: var(--hc-button-hover-border);
 }
 
 .option-btn:not(:disabled):hover {
   transform: none;
-  background: #1a3a4a;
+  background: var(--hc-button-hover-bg);
 }
 
 .option-btn:disabled {
@@ -1454,7 +1488,7 @@ button.link:hover {
   overflow-x: auto;
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
   font-size: 0.95rem;
-  color: #d4d4d4;
+  color: var(--hc-code-fg);
   min-width: 0;
   max-width: 100%;
 }
@@ -1490,7 +1524,7 @@ button.link:hover {
 .option-correct .option-letter {
   background: var(--hc-success);
   border-color: var(--hc-success);
-  color: #000;
+  color: var(--hc-option-correct-contrast);
 }
 
 .option-correct code {
@@ -1519,7 +1553,7 @@ button.link:hover {
 .option-incorrect .option-letter {
   background: var(--hc-error);
   border-color: var(--hc-error);
-  color: #000;
+  color: var(--hc-option-incorrect-contrast);
 }
 
 .option-incorrect code {
@@ -1530,7 +1564,7 @@ button.link:hover {
 .option-dimmed {
   opacity: 0.3;
   filter: grayscale(100%);
-  border-color: #333;
+  border-color: var(--hc-option-dimmed-border);
   box-shadow: none !important;
   background: transparent;
 }
@@ -1570,7 +1604,7 @@ button.link:hover {
   gap: 0.45rem;
   padding: 0.8rem;
   border: 1px solid var(--hc-border-dim);
-  background: linear-gradient(180deg, rgba(12, 18, 25, 0.92), rgba(7, 11, 15, 0.98));
+  background: var(--hc-field-gradient);
 }
 
 .coach-tuning-field span,
@@ -1636,7 +1670,7 @@ button.link:hover {
 
 .practice-history-entry {
   border: 1px solid var(--hc-border-dim);
-  background: linear-gradient(180deg, rgba(26, 58, 74, 0.16) 0%, rgba(10, 10, 10, 0.92) 100%);
+  background: var(--hc-history-entry-gradient);
   padding: 0.9rem;
 }
 
