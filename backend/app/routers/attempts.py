@@ -120,7 +120,7 @@ async def get_skill_map_overview():
             """
             SELECT id, title, tags
             FROM generated_skill_map_cards
-            WHERE question_type = 'skill-map'
+            WHERE question_type LIKE 'skill-map%'
             ORDER BY created_at DESC
             """
         )
@@ -136,7 +136,7 @@ async def get_skill_map_overview():
                 sa.live_coach_used
             FROM score_attempts sa
             WHERE sa.mode = 'main-recall'
-              AND sa.question_type = 'skill-map'
+              AND sa.question_type LIKE 'skill-map%'
             ORDER BY sa.created_at DESC
             """
         )
