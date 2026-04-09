@@ -87,6 +87,7 @@ class CoachAttemptFeedbackResponse(BaseModel):
     fullFeedback: str = ""
     correctedVersion: str = ""
     llmUsed: bool = False
+    llmProvider: str = ""
 
 
 class CoachAttemptEvaluationRequest(BaseModel):

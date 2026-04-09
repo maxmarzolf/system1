@@ -30,7 +30,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("COACH_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"),
     )
     coach_anthropic_model: str = Field(
-        default="claude-3-7-sonnet-latest",
+        default="claude-sonnet-4-6",
         validation_alias=AliasChoices("COACH_ANTHROPIC_MODEL"),
     )
     coach_anthropic_base_url: str = Field(

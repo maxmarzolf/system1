@@ -56,6 +56,7 @@ type CoachAttemptFeedback = {
   fullFeedback?: string
   correctedVersion?: string
   llmUsed: boolean
+  llmProvider?: string
 }
 
 type CoachSessionPlan = {
@@ -1217,6 +1218,7 @@ function App() {
     const requestCardId = card.id
     coachRequestVersionRef.current += 1
     const requestVersion = coachRequestVersionRef.current
+    setCoachFeedback(null)
     setCoachLoading(true)
     setCoachError('')
     try {
@@ -1251,19 +1253,12 @@ function App() {
       if (!response.ok) throw new Error('Unable to load coach feedback')
       const feedback = (await response.json()) as CoachAttemptFeedback
       if (currentCardIdRef.current !== requestCardId || coachRequestVersionRef.current !== requestVersion) return null
-      let resolvedFeedback: CoachAttemptFeedback | null = feedback
-      setCoachFeedback((prev) => {
-        if (prev?.llmUsed && !feedback.llmUsed) {
-          resolvedFeedback = prev
-          return prev
-        }
-        return feedback
-      })
-      return resolvedFeedback
+      setCoachFeedback(feedback)
+      return feedback
     } catch {
       if (currentCardIdRef.current !== requestCardId || coachRequestVersionRef.current !== requestVersion) return null
       setCoachError('Coach feedback unavailable for this attempt.')
-      setCoachFeedback((prev) => (prev?.llmUsed ? prev : null))
+      setCoachFeedback(null)
       return null
     } finally {
       if (currentCardIdRef.current === requestCardId && coachRequestVersionRef.current === requestVersion) {
@@ -1523,6 +1518,20 @@ function App() {
     : mainCloseEnough
       ? 'warning'
       : 'error'
+  const submissionCoachLabel = !coachFeedback
+    ? 'Rules'
+    : coachFeedback.llmUsed
+      ? coachFeedback.llmProvider === 'claude'
+        ? 'Claude'
+        : coachFeedback.llmProvider === 'openai'
+          ? 'ChatGPT'
+          : 'LLM'
+      : 'Rules'
+  const submissionAttemptStatusText = mainCloseEnough
+    ? hasNextTemplateMode && nextTemplateMode
+      ? `${currentTemplateLabel} template recorded. Continue to ${TEMPLATE_MODE_LABELS[nextTemplateMode]}.`
+      : `${currentTemplateLabel} template recorded.`
+    : `This ${currentTemplateMode} attempt is not sound yet. Revise the logic and submit again.`
   const showSubmittedLineReview = mainPhase === 'submitted' && !mainCloseEnough && currentTemplateMode !== 'pseudo'
 
   useEffect(() => {
@@ -1883,46 +1892,54 @@ function App() {
                         <div className="coach-docked-card">
                           <div className="coach-card-header">
                             <h4>Submission Feedback</h4>
-                            <span className={`coach-status-chip coach-status-chip-${submissionResultTone}`}>
-                              {submissionResultLabel}
-                            </span>
-                          </div>
-                          {latestSubmittedAttempt && (
-                            <div className="coach-metric-row">
-                              <span className="coach-metric-chip">Accuracy {latestSubmittedAttempt.accuracy}%</span>
-                              <span className="coach-metric-chip">Time {(latestSubmittedAttempt.elapsedMs / 1000).toFixed(1)}s</span>
-                              <span className="coach-metric-chip">
-                                Coach {coachFeedback?.llmUsed ? 'GPT' : 'Rules'}
+                            {!showGeneratingSubmissionFeedback && (
+                              <span className={`coach-status-chip coach-status-chip-${submissionResultTone}`}>
+                                {submissionResultLabel}
                               </span>
-                            </div>
-                          )}
-                          {coachLoading && coachFeedback && <p className="coach-muted">Refining submission feedback...</p>}
-                          {showGeneratingSubmissionFeedback && <p className="coach-muted">Generating feedback...</p>}
-                          {coachError && <p className="coach-error">{coachError}</p>}
-                          {!showGeneratingSubmissionFeedback && submissionFeedbackParagraphs.map((paragraph, index) => (
-                            <p key={index} className="coach-panel-copy">
-                              {paragraph}
-                            </p>
-                          ))}
-                          {!showGeneratingSubmissionFeedback && submissionCorrectedVersion && (
-                            <div className="coach-code-review">
-                              <p className="coach-code-label">Corrected version</p>
-                              <div className="code-container">
-                                <SyntaxHighlighter
-                                  language={practiceLanguage}
-                                  style={syntaxTheme}
-                                  customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
-                                  codeTagProps={{ style: { background: 'transparent' } }}
-                                >
-                                  {submissionCorrectedVersion}
-                                </SyntaxHighlighter>
-                              </div>
-                            </div>
-                          )}
-                          {!showGeneratingSubmissionFeedback && (
-                            <p className="coach-muted">
-                              <strong>Next step:</strong> {submissionFeedbackNextStep}
-                            </p>
+                            )}
+                          </div>
+                          {showGeneratingSubmissionFeedback ? (
+                            <p className="coach-muted coach-waiting-placeholder">Waiting for submission feedback</p>
+                          ) : (
+                            <>
+                              {latestSubmittedAttempt && (
+                                <div className="coach-metric-row">
+                                  <span className="coach-metric-chip">Accuracy {latestSubmittedAttempt.accuracy}%</span>
+                                  <span className="coach-metric-chip">Time {(latestSubmittedAttempt.elapsedMs / 1000).toFixed(1)}s</span>
+                                  <span className="coach-metric-chip">
+                                    Coach {submissionCoachLabel}
+                                  </span>
+                                </div>
+                              )}
+                              <p className={mainCloseEnough ? 'status success' : 'status error'}>
+                                {submissionAttemptStatusText}
+                              </p>
+                              {coachLoading && coachFeedback && <p className="coach-muted">Refining submission feedback...</p>}
+                              {coachError && <p className="coach-error">{coachError}</p>}
+                              {submissionFeedbackParagraphs.map((paragraph, index) => (
+                                <p key={index} className="coach-panel-copy">
+                                  {paragraph}
+                                </p>
+                              ))}
+                              {submissionCorrectedVersion && (
+                                <div className="coach-code-review">
+                                  <p className="coach-code-label">Corrected version</p>
+                                  <div className="code-container">
+                                    <SyntaxHighlighter
+                                      language={practiceLanguage}
+                                      style={syntaxTheme}
+                                      customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
+                                      codeTagProps={{ style: { background: 'transparent' } }}
+                                    >
+                                      {submissionCorrectedVersion}
+                                    </SyntaxHighlighter>
+                                  </div>
+                                </div>
+                              )}
+                              <p className="coach-muted">
+                                <strong>Next step:</strong> {submissionFeedbackNextStep}
+                              </p>
+                            </>
                           )}
                         </div>
                       </div>
@@ -1952,16 +1969,6 @@ function App() {
                   </div>
                 )}
               </>
-            )}
-
-            {hasDeck && mainPhase === 'submitted' && (
-              <p className={mainCloseEnough ? 'status success' : 'status error'}>
-                {mainCloseEnough
-                  ? hasNextTemplateMode && nextTemplateMode
-                    ? `${currentTemplateLabel} template recorded. Continue to ${TEMPLATE_MODE_LABELS[nextTemplateMode]}.`
-                    : `${currentTemplateLabel} template recorded.`
-                  : `This ${currentTemplateMode} attempt is not sound yet. Revise the logic and submit again.`}
-              </p>
             )}
 
             {hasDeck && canAdvance && (

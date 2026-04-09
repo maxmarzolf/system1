@@ -6,6 +6,7 @@ import builtins
 import difflib
 import json
 import keyword
+import logging
 import re
 import urllib.error
 import urllib.request
@@ -33,6 +34,7 @@ from app.models import (
 from app.readiness import READINESS_MODE_ORDER, summarize_readiness
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])
+logger = logging.getLogger(__name__)
 
 LIVE_STAGE_ORDER = {"early": 0, "mid": 1, "late": 2, "very-late": 3}
 LIVE_FEEDBACK_FREQUENCIES = {"more-often", "balanced", "less-often"}
@@ -59,6 +61,12 @@ SUBMISSION_TUNING_DEFAULTS: dict[str, Any] = {
     "requireAnswerStep": True,
     "allowExtraParameters": True,
 }
+ANTHROPIC_MODEL_FALLBACKS = (
+    "claude-sonnet-4-6",
+    "claude-sonnet-4-5-20250929",
+    "claude-sonnet-4-20250514",
+    "claude-3-haiku-20240307",
+)
 
 
 def _normalize_code(code: str) -> str:
@@ -2898,42 +2906,66 @@ def _call_claude_json(system_prompt: str, user_payload: dict[str, Any]) -> dict[
         return None
 
     url = f"{settings.coach_anthropic_base_url.rstrip('/')}/messages"
-    body = {
-        "model": settings.coach_anthropic_model,
-        "temperature": 0.2,
-        "max_tokens": 1800,
-        "system": f"{system_prompt}\nReturn only valid JSON. Do not include markdown.",
-        "messages": [
-            {"role": "user", "content": json.dumps(user_payload)},
-        ],
-    }
-    data = json.dumps(body).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=data,
-        method="POST",
-        headers={
-            "x-api-key": settings.coach_anthropic_api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            raw = response.read().decode("utf-8")
-            payload = json.loads(raw)
-            content = payload.get("content", [])
-            if not isinstance(content, list):
-                return None
-            text_parts: list[str] = []
-            for item in content:
-                if isinstance(item, dict) and item.get("type") == "text":
-                    text_parts.append(str(item.get("text", "")))
-            if not text_parts:
-                return None
-            return _extract_json_dict("\n".join(text_parts))
-    except (urllib.error.URLError, KeyError, IndexError, ValueError, TypeError, TimeoutError):
-        return None
+    configured_model = str(settings.coach_anthropic_model or "").strip()
+    candidate_models: list[str] = []
+    for model in (configured_model, *ANTHROPIC_MODEL_FALLBACKS):
+        if model and model not in candidate_models:
+            candidate_models.append(model)
+
+    for model in candidate_models:
+        body = {
+            "model": model,
+            "temperature": 0.2,
+            "max_tokens": 1800,
+            "system": f"{system_prompt}\nReturn only valid JSON. Do not include markdown.",
+            "messages": [
+                {"role": "user", "content": json.dumps(user_payload)},
+            ],
+        }
+        data = json.dumps(body).encode("utf-8")
+        request = urllib.request.Request(
+            url,
+            data=data,
+            method="POST",
+            headers={
+                "x-api-key": settings.coach_anthropic_api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                raw = response.read().decode("utf-8")
+                payload = json.loads(raw)
+                content = payload.get("content", [])
+                if not isinstance(content, list):
+                    logger.warning("Anthropic response content was not a list for model '%s'.", model)
+                    return None
+                text_parts: list[str] = []
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        text_parts.append(str(item.get("text", "")))
+                if not text_parts:
+                    logger.warning("Anthropic response had no text blocks for model '%s'.", model)
+                    return None
+                parsed = _extract_json_dict("\n".join(text_parts))
+                if parsed is None:
+                    logger.warning("Anthropic response did not contain parseable JSON for model '%s'.", model)
+                return parsed
+        except urllib.error.HTTPError as error:
+            details = error.read().decode("utf-8", errors="replace")
+            model_not_found = error.code in {400, 404} and "model" in details.lower()
+            if model_not_found:
+                logger.warning("Anthropic model '%s' unavailable (%s). Trying fallback model.", model, error.code)
+                continue
+            logger.warning("Anthropic request failed (%s): %s", error.code, details[:400])
+            return None
+        except (urllib.error.URLError, KeyError, IndexError, ValueError, TypeError, TimeoutError) as error:
+            logger.warning("Anthropic request failed for model '%s': %s", model, error)
+            return None
+
+    logger.warning("No usable Anthropic model found from configured/fallback candidates.")
+    return None
 
 
 def _call_llm_json(system_prompt: str, user_payload: dict[str, Any], provider: str) -> dict[str, Any] | None:
@@ -3329,11 +3361,13 @@ async def coach_attempt_evaluation(body: CoachAttemptEvaluationRequest):
 
 @router.post("/attempt-feedback", response_model=CoachAttemptFeedbackResponse)
 async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
+    provider = _resolve_available_llm_provider(body.llmProvider)
     history = await _load_attempt_history(body)
     live_history = await _load_live_feedback_history(body.interactionId)
     history_summary = _summarize_attempt_history(history)
     heuristic = _heuristic_attempt_feedback(body, history_summary, live_history)
     feedback = await _attempt_feedback_with_optional_llm(body, heuristic, history, live_history)
+    feedback["llmProvider"] = provider if bool(feedback.get("llmUsed")) else ""
     await _persist_feedback_event(body, feedback)
     feedback.pop("signals", None)
     return feedback

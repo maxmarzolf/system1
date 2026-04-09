@@ -1009,6 +1009,34 @@ button.link:hover {
   color: var(--hc-fg-dim);
 }
 
+.coach-waiting-placeholder {
+  position: relative;
+  display: inline-block;
+  animation: coachPlaceholderPulse 1.2s ease-in-out infinite;
+}
+
+.coach-waiting-placeholder::after {
+  content: '';
+  display: inline-block;
+  width: 1.1em;
+  text-align: left;
+  margin-left: 0.15em;
+  animation: coachPlaceholderDots 1.2s steps(3, end) infinite;
+}
+
+@keyframes coachPlaceholderPulse {
+  0%,
+  100% { opacity: 0.65; }
+  50% { opacity: 1; }
+}
+
+@keyframes coachPlaceholderDots {
+  0% { content: ''; }
+  33% { content: '.'; }
+  66% { content: '..'; }
+  100% { content: '...'; }
+}
+
 .coach-error {
   margin: 0.25rem 0 0;
   font-size: 0.82rem;
