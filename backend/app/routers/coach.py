@@ -2664,6 +2664,34 @@ def _generic_skill_drill(pattern: str, methods: list[str], index: int) -> dict[s
     }
 
 
+def _method_focus_tag(method: str) -> str:
+    return _pattern_slug(method).replace(" ", "-")
+
+
+def _method_focused_skill_drill(
+    pattern: str,
+    method: str,
+    index: int,
+    base_template: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    slug = _pattern_slug(pattern)
+    focus = method.strip() or "core invariant"
+    template = {**(base_template or _generic_skill_drill(pattern, [focus], index))}
+    tags = [str(tag) for tag in template.get("tags", []) if str(tag).strip()]
+    method_tag = f"method-{_method_focus_tag(focus)}"
+    if method_tag not in tags:
+        tags.append(method_tag)
+
+    return {
+        **template,
+        "id": f"skill-{slug}-{_method_focus_tag(focus)}-{index + 1}",
+        "title": f"Skill Map • {pattern}: {focus.title()}",
+        "prompt": f"Memorize a reusable {pattern.lower()} snippet while making the {focus} explicit.",
+        "hint": f"{str(template.get('hint', '')).strip()} Focus lens: {focus}.".strip(),
+        "tags": tags,
+    }
+
+
 def _fallback_skill_map_drills(
     body: SkillMapDrillsRequest, progress_summary: dict[str, Any] | None = None
 ) -> dict[str, Any]:
@@ -2771,7 +2799,13 @@ def _fallback_skill_map_drills(
     nodes = body.skillMap[: body.count] or []
     for index, node in enumerate(nodes):
         slug = _pattern_slug(node.pattern)
-        template = templates.get(slug) or _generic_skill_drill(node.pattern, node.methods, index)
+        method_focus = node.methods[0].strip() if len(node.methods) == 1 else ""
+        base_template = templates.get(slug) or _generic_skill_drill(node.pattern, node.methods, index)
+        template = (
+            _method_focused_skill_drill(node.pattern, method_focus, index, base_template)
+            if method_focus
+            else base_template
+        )
         progress = progress_by_pattern.get(slug, {})
         focus_note = _progress_focus_note(progress)
         difficulty = template["difficulty"] if "difficulty" in template else "Med."

@@ -194,6 +194,24 @@ class CoachPracticeHistoryResponse(BaseModel):
     entries: list[CoachPracticeHistoryEntry] = []
 
 
+class SkillMapActivityDay(BaseModel):
+    date: str = ""
+    count: int = Field(default=0, ge=0)
+    inFuture: bool = False
+
+
+class SkillMapModeActivity(BaseModel):
+    windowStart: str = ""
+    windowEnd: str = ""
+    recentSubmitCount: int = Field(default=0, ge=0)
+    lastSevenDaySubmitCount: int = Field(default=0, ge=0)
+    activeDays: int = Field(default=0, ge=0)
+    currentStreak: int = Field(default=0, ge=0)
+    longestStreak: int = Field(default=0, ge=0)
+    peakDailyCount: int = Field(default=0, ge=0)
+    days: list[SkillMapActivityDay] = []
+
+
 class SkillMapModeReadiness(BaseModel):
     readiness: float = Field(default=0, ge=0, le=100)
     attemptCount: int = Field(default=0, ge=0)
@@ -207,6 +225,7 @@ class SkillMapModeReadiness(BaseModel):
     daysSinceLastSubmit: int | None = Field(default=None, ge=0)
     stale: bool = False
     liveCoachUsedCount: int = Field(default=0, ge=0)
+    activity: SkillMapModeActivity = SkillMapModeActivity()
 
 
 class SkillMapPatternReadiness(BaseModel):

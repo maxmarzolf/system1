@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json as _json
-from datetime import datetime, timezone
+from collections import Counter
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter
@@ -98,6 +99,96 @@ def _pattern_slug(pattern: str) -> str:
         .replace("  ", " ")
         .replace(" ", "-")
     )
+
+
+def _coerce_utc_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        normalized = text.replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+        return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
+
+    return None
+
+
+def _aligned_activity_window(today: date) -> tuple[date, date]:
+    days_since_sunday = (today.weekday() + 1) % 7
+    window_start = today - timedelta(days=days_since_sunday + 35)
+    window_end = window_start + timedelta(days=41)
+    return window_start, window_end
+
+
+def _build_mode_activity(attempts: list[dict[str, Any]]) -> dict[str, Any]:
+    today = datetime.now(timezone.utc).date()
+    window_start, window_end = _aligned_activity_window(today)
+    counts_by_date: Counter[str] = Counter()
+
+    for attempt in attempts:
+        created_at = _coerce_utc_datetime(attempt.get("created_at") or attempt.get("createdAt"))
+        if created_at is None:
+            continue
+        counts_by_date[created_at.date().isoformat()] += 1
+
+    days: list[dict[str, Any]] = []
+    active_days = 0
+    recent_submit_count = 0
+    last_seven_day_submit_count = 0
+    peak_daily_count = 0
+
+    cursor = window_start
+    while cursor <= window_end:
+        iso_date = cursor.isoformat()
+        count = counts_by_date.get(iso_date, 0)
+        if count > 0 and cursor <= today:
+            active_days += 1
+            recent_submit_count += count
+            peak_daily_count = max(peak_daily_count, count)
+        if count > 0 and today - timedelta(days=6) <= cursor <= today:
+            last_seven_day_submit_count += count
+        days.append({
+            "date": iso_date,
+            "count": count,
+            "inFuture": cursor > today,
+        })
+        cursor += timedelta(days=1)
+
+    current_streak = 0
+    streak_cursor = today
+    while counts_by_date.get(streak_cursor.isoformat(), 0) > 0:
+        current_streak += 1
+        streak_cursor -= timedelta(days=1)
+
+    longest_streak = 0
+    streak = 0
+    unique_dates = sorted(date.fromisoformat(iso_date) for iso_date in counts_by_date)
+    previous_day: date | None = None
+    for current_day in unique_dates:
+        if previous_day and current_day == previous_day + timedelta(days=1):
+            streak += 1
+        else:
+            streak = 1
+        longest_streak = max(longest_streak, streak)
+        previous_day = current_day
+
+    return {
+        "windowStart": window_start.isoformat(),
+        "windowEnd": window_end.isoformat(),
+        "recentSubmitCount": recent_submit_count,
+        "lastSevenDaySubmitCount": last_seven_day_submit_count,
+        "activeDays": active_days,
+        "currentStreak": current_streak,
+        "longestStreak": longest_streak,
+        "peakDailyCount": peak_daily_count,
+        "days": days,
+    }
 
 
 @router.get("/skill-map-overview", response_model=SkillMapOverviewResponse)
@@ -242,6 +333,7 @@ async def get_skill_map_overview():
                 "practicedCards": len(practiced_card_ids),
                 "untouchedCards": max(len(pattern_card_ids) - len(practiced_card_ids), 0),
                 "staleCards": stale_card_count,
+                "activity": _build_mode_activity(attempts_by_pattern_mode.get((slug, template_mode), [])),
             }
             overall_attempt_count += int(readiness_summary["attemptCount"])
 
