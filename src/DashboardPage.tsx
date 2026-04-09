@@ -1,5 +1,24 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import TopNav from './TopNav'
+
+type SkillMapActivityDay = {
+  date: string
+  count: number
+  inFuture: boolean
+}
+
+type SkillMapModeActivity = {
+  windowStart: string
+  windowEnd: string
+  recentSubmitCount: number
+  lastSevenDaySubmitCount: number
+  activeDays: number
+  currentStreak: number
+  longestStreak: number
+  peakDailyCount: number
+  days: SkillMapActivityDay[]
+}
 
 type SkillMapModeReadiness = {
   readiness: number
@@ -10,8 +29,10 @@ type SkillMapModeReadiness = {
   practicedCards: number
   untouchedCards: number
   staleCards: number
+  lastSubmittedAt: string
   daysSinceLastSubmit: number | null
   stale: boolean
+  activity: SkillMapModeActivity
 }
 
 type SkillMapPatternReadiness = {
@@ -56,6 +77,9 @@ type SkillMapOverviewResponse = {
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 const apiUrl = (path: string) => `${API_BASE_URL}${path}`
+const ACTIVITY_WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+const shortDateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
+const longDateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 
 const formatTemplateModeLabel = (templateMode: SkillMapCardReadiness['templateMode']) =>
   ({
@@ -70,10 +94,184 @@ const readinessTone = (readiness: number) => {
   return 'error'
 }
 
+const parseCalendarDate = (value: string) => new Date(`${value}T12:00:00`)
+const formatCalendarDate = (value: string) => shortDateFormatter.format(parseCalendarDate(value))
+const formatCalendarLongDate = (value: string) => longDateFormatter.format(parseCalendarDate(value))
+const formatSubmittedAt = (value: string) => longDateFormatter.format(new Date(value))
+
+const activityIntensity = (count: number, peakDailyCount: number) => {
+  if (count <= 0) return 'none'
+  if (count >= 4) return 'max'
+  if (count === 3) return 'high'
+  if (count === 2) return 'mid'
+  if (peakDailyCount >= 6 && count >= Math.ceil(peakDailyCount * 0.75)) return 'high'
+  if (peakDailyCount >= 6 && count >= Math.ceil(peakDailyCount * 0.45)) return 'mid'
+  return 'low'
+}
+
+const formatLastSubmitSummary = (modeSummary: SkillMapModeReadiness) => {
+  if (modeSummary.daysSinceLastSubmit === null) return 'No submission history yet for this mode.'
+  if (modeSummary.daysSinceLastSubmit === 0) return 'Last submit was today.'
+  if (modeSummary.daysSinceLastSubmit === 1) return 'Last submit was 1 day ago.'
+  return `Last submit was ${modeSummary.daysSinceLastSubmit} days ago.`
+}
+
+function DashboardModeActivityTracker({
+  modeLabel,
+  modeSummary,
+  onOpenCalendar,
+}: {
+  modeLabel: string
+  modeSummary: SkillMapModeReadiness
+  onOpenCalendar: (modeLabel: string, modeSummary: SkillMapModeReadiness) => void
+}) {
+  const activity = modeSummary.activity
+  const recentDays = activity.days.filter((day) => !day.inFuture).slice(-14)
+  const stripDays = recentDays.length > 0 ? recentDays : activity.days.slice(-14)
+
+  return (
+    <div
+      className="dashboard-mode-frequency"
+      onClick={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.stopPropagation()
+        }
+      }}
+    >
+      <div className="dashboard-mode-frequency-header">
+        <span className="dashboard-mode-frequency-label">Frequency</span>
+      </div>
+
+      <div className="dashboard-activity-strip" aria-hidden="true">
+        {stripDays.map((day) => (
+          <span
+            key={day.date}
+            className={[
+              'dashboard-activity-cell',
+              `dashboard-activity-cell-${activityIntensity(day.count, activity.peakDailyCount)}`,
+              day.inFuture ? 'dashboard-activity-cell-future' : '',
+            ].filter(Boolean).join(' ')}
+          />
+        ))}
+      </div>
+
+      <button
+        type="button"
+        className="dashboard-mode-frequency-trigger"
+        onClick={(event) => {
+          event.stopPropagation()
+          onOpenCalendar(modeLabel, modeSummary)
+        }}
+      >
+        View submission calendar
+      </button>
+    </div>
+  )
+}
+
+function DashboardActivityModal({
+  modeLabel,
+  modeSummary,
+  onClose,
+}: {
+  modeLabel: string
+  modeSummary: SkillMapModeReadiness
+  onClose: () => void
+}) {
+  const activity = modeSummary.activity
+
+  return (
+    <div className="dashboard-activity-modal" onClick={onClose}>
+      <div
+        className="dashboard-activity-popover"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${modeLabel} submission calendar`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="dashboard-activity-popover-header">
+          <div>
+            <p className="dashboard-activity-eyebrow">{modeLabel} mode activity</p>
+            <h4>Submission calendar</h4>
+          </div>
+          <div className="dashboard-activity-popover-actions">
+            <span className={`coach-status-value coach-status-value-${readinessTone(modeSummary.readiness)}`}>
+              {activity.recentSubmitCount} recent
+            </span>
+            <button type="button" className="dashboard-activity-close" onClick={onClose} aria-label="Close calendar">
+              Close
+            </button>
+          </div>
+        </div>
+
+        <p className="dashboard-activity-description">
+          {formatLastSubmitSummary(modeSummary)}
+          {modeSummary.lastSubmittedAt ? ` Recorded ${formatSubmittedAt(modeSummary.lastSubmittedAt)}.` : ''}
+        </p>
+
+        <div className="dashboard-activity-stats">
+          <div className="dashboard-activity-stat">
+            <span className="dashboard-activity-stat-label">7d</span>
+            <strong>{activity.lastSevenDaySubmitCount}</strong>
+          </div>
+          <div className="dashboard-activity-stat">
+            <span className="dashboard-activity-stat-label">6w</span>
+            <strong>{activity.recentSubmitCount}</strong>
+          </div>
+          <div className="dashboard-activity-stat">
+            <span className="dashboard-activity-stat-label">Streak</span>
+            <strong>{activity.currentStreak}</strong>
+          </div>
+          <div className="dashboard-activity-stat">
+            <span className="dashboard-activity-stat-label">Best run</span>
+            <strong>{activity.longestStreak}</strong>
+          </div>
+        </div>
+
+        <div className="dashboard-activity-calendar">
+          <div className="dashboard-activity-weekdays">
+            {ACTIVITY_WEEKDAY_LABELS.map((label, index) => (
+              <span key={`${label}-${index}`}>{label}</span>
+            ))}
+          </div>
+          <div className="dashboard-activity-grid">
+            {activity.days.map((day) => (
+              <span
+                key={day.date}
+                className={[
+                  'dashboard-activity-cell',
+                  `dashboard-activity-cell-${activityIntensity(day.count, activity.peakDailyCount)}`,
+                  day.inFuture ? 'dashboard-activity-cell-future' : '',
+                ].filter(Boolean).join(' ')}
+                title={
+                  day.inFuture
+                    ? `${formatCalendarLongDate(day.date)}: upcoming`
+                    : day.count > 0
+                      ? `${formatCalendarLongDate(day.date)}: ${day.count} submit${day.count === 1 ? '' : 's'}`
+                      : `${formatCalendarLongDate(day.date)}: no submits`
+                }
+              />
+            ))}
+          </div>
+        </div>
+
+        <p className="dashboard-activity-range">
+          {formatCalendarDate(activity.windowStart)} - {formatCalendarDate(activity.windowEnd)} · {activity.activeDays} active day{activity.activeDays === 1 ? '' : 's'}
+        </p>
+      </div>
+    </div>
+  )
+}
+
 export default function DashboardPage() {
+  const navigate = useNavigate()
   const [overview, setOverview] = useState<SkillMapOverviewResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [selectedPatternSlug, setSelectedPatternSlug] = useState('')
+  const [activeCalendar, setActiveCalendar] = useState<{ modeLabel: string; modeSummary: SkillMapModeReadiness } | null>(null)
 
   useEffect(() => {
     const loadOverview = async () => {
@@ -101,6 +299,13 @@ export default function DashboardPage() {
   const summary = overview?.summary
   const patterns = overview?.patterns ?? []
   const reviewQueue = overview?.reviewQueue ?? []
+  const launchFocusedPractice = (patternSlug: string, mode: 'pseudo' | 'skeleton' | 'full') => {
+    const nextParams = new URLSearchParams({
+      focusPattern: patternSlug,
+      focusMode: mode,
+    })
+    navigate(`/?${nextParams.toString()}`)
+  }
 
   return (
     <div className="app">
@@ -129,60 +334,107 @@ export default function DashboardPage() {
         {error && <p className="skill-map-intro">{error}</p>}
         <div className="skill-map-grid">
           {loading && !error && <p className="skill-map-intro">Loading readiness overview...</p>}
-          {patterns.map((node) => (
-            <article key={node.slug} className="skill-map-card">
-              <div className="skill-map-header">
-                <span className="skill-map-level">Pattern</span>
-                <h3>{node.pattern}</h3>
-                <span className={`coach-status-chip coach-status-chip-${readinessTone(node.overallReadiness)}`}>
-                  {node.overallReadiness}%
-                </span>
-              </div>
-              <div className="dashboard-summary" style={{ marginBottom: '0.7rem' }}>
-                <span className="coach-metric-chip">{node.practicedCards}/{node.totalCards} cards worked</span>
-                <span className="coach-metric-chip">{node.untouchedCards} untouched</span>
-                <span className="coach-metric-chip">{node.staleCards} stale</span>
-                <span className="coach-metric-chip">{node.overallAttemptCount} submits</span>
-              </div>
-              <p className="skill-map-subtitle">Level 2: Core methods</p>
-              <div className="skill-method-list">
-                {node.methods.map((method) => (
-                  <span key={method} className="skill-method-chip">{method}</span>
-                ))}
-              </div>
-              <div className="dashboard-mode-grid">
-                {(['pseudo', 'skeleton', 'full'] as const).map((mode) => {
-                  const modeSummary = node.modes[mode]
-                  return (
-                    <div key={mode} className="dashboard-mode-card">
-                      <div className="dashboard-mode-header">
-                        <span>{formatTemplateModeLabel(mode)}</span>
-                        <span className={`coach-status-chip coach-status-chip-${readinessTone(modeSummary.readiness)}`}>
-                          {modeSummary.readiness}%
-                        </span>
-                      </div>
-                      <p className="dashboard-mode-meta">
-                        {modeSummary.practicedCards}/{modeSummary.totalCards} cards · {modeSummary.attemptCount} submits
-                      </p>
-                      <p className="dashboard-mode-meta">
-                        Avg {modeSummary.avgAccuracy}% · {modeSummary.stale ? 'Review due' : 'Fresh enough'}
-                      </p>
-                      {(modeSummary.untouchedCards > 0 || modeSummary.staleCards > 0) && (
-                        <div className="dashboard-summary">
-                          {modeSummary.untouchedCards > 0 && (
-                            <span className="coach-metric-chip">{modeSummary.untouchedCards} untouched</span>
-                          )}
-                          {modeSummary.staleCards > 0 && (
-                            <span className="coach-metric-chip">{modeSummary.staleCards} stale</span>
-                          )}
+          {patterns.map((node) => {
+            const patternSelected = selectedPatternSlug === node.slug
+            return (
+              <article key={node.slug} className="skill-map-card">
+                <div className="skill-map-header">
+                  <span className="skill-map-level">Pattern</span>
+                  <h3>{node.pattern}</h3>
+                  <span className={`coach-status-value coach-status-value-${readinessTone(node.overallReadiness)}`}>
+                    {node.overallReadiness}%
+                  </span>
+                </div>
+                <div className="dashboard-summary" style={{ marginBottom: '0.7rem' }}>
+                  <span className="coach-metric-chip">{node.practicedCards}/{node.totalCards} cards worked</span>
+                  <span className="coach-metric-chip">{node.untouchedCards} untouched</span>
+                  <span className="coach-metric-chip">{node.staleCards} stale</span>
+                  <span className="coach-metric-chip">{node.overallAttemptCount} submits</span>
+                </div>
+                <button
+                  type="button"
+                  className={patternSelected ? 'skill-method-panel skill-method-panel-selected' : 'skill-method-panel'}
+                  onClick={() => setSelectedPatternSlug((current) => current === node.slug ? '' : node.slug)}
+                  aria-pressed={patternSelected}
+                >
+                  <p className="skill-map-subtitle">Level 2: Core methods</p>
+                  <div className="skill-method-list">
+                    {node.methods.map((method) => (
+                      <span key={method} className="skill-method-chip">{method}</span>
+                    ))}
+                  </div>
+                </button>
+                <p className="skill-map-target-note">
+                  {patternSelected
+                    ? 'Core methods selected. Click a mode card to generate a focused set.'
+                    : 'Select the core-method block, then pick a mode to practice this pattern on purpose.'}
+                </p>
+                <div className="dashboard-mode-grid">
+                  {(['pseudo', 'skeleton', 'full'] as const).map((mode) => {
+                    const modeSummary = node.modes[mode]
+                    const modeLabel = formatTemplateModeLabel(mode)
+                    return (
+                      <div
+                        key={mode}
+                        className={[
+                          'dashboard-mode-card',
+                          patternSelected ? 'dashboard-mode-card-actionable' : 'dashboard-mode-card-disabled',
+                        ].join(' ')}
+                        role="button"
+                        tabIndex={patternSelected ? 0 : -1}
+                        aria-disabled={!patternSelected}
+                        onClick={() => {
+                          if (!patternSelected) return
+                          launchFocusedPractice(node.slug, mode)
+                        }}
+                        onKeyDown={(event) => {
+                          if (!patternSelected) return
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            launchFocusedPractice(node.slug, mode)
+                          }
+                        }}
+                      >
+                        <div className="dashboard-mode-header">
+                          <span>{modeLabel}</span>
+                          <span className={`coach-status-value coach-status-value-${readinessTone(modeSummary.readiness)}`}>
+                            {modeSummary.readiness}%
+                          </span>
                         </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </article>
-          ))}
+                        <p className="dashboard-mode-meta">
+                          {modeSummary.practicedCards}/{modeSummary.totalCards} cards · {modeSummary.attemptCount} submits
+                        </p>
+                        <p className="dashboard-mode-meta">
+                          Avg {modeSummary.avgAccuracy}% · {modeSummary.stale ? 'Review due' : 'Fresh enough'}
+                        </p>
+                        <DashboardModeActivityTracker
+                          modeLabel={modeLabel}
+                          modeSummary={modeSummary}
+                          onOpenCalendar={(nextModeLabel, nextModeSummary) =>
+                            setActiveCalendar({ modeLabel: nextModeLabel, modeSummary: nextModeSummary })}
+                        />
+                        <p className="dashboard-mode-launch-hint">
+                          {patternSelected
+                            ? `Generate focused ${modeLabel.toLowerCase()} set`
+                            : 'Select core methods first'}
+                        </p>
+                        {(modeSummary.untouchedCards > 0 || modeSummary.staleCards > 0) && (
+                          <div className="dashboard-summary">
+                            {modeSummary.untouchedCards > 0 && (
+                              <span className="coach-metric-chip">{modeSummary.untouchedCards} untouched</span>
+                            )}
+                            {modeSummary.staleCards > 0 && (
+                              <span className="coach-metric-chip">{modeSummary.staleCards} stale</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </article>
+            )
+          })}
         </div>
 
         {reviewQueue.length > 0 && (
@@ -201,7 +453,7 @@ export default function DashboardPage() {
                         {item.pattern} · {formatTemplateModeLabel(item.templateMode)} · {item.attemptCount} submits
                       </p>
                     </div>
-                    <span className={`coach-status-chip coach-status-chip-${readinessTone(item.readiness)}`}>
+                    <span className={`coach-status-value coach-status-value-${readinessTone(item.readiness)}`}>
                       {item.readiness}%
                     </span>
                   </div>
@@ -219,6 +471,13 @@ export default function DashboardPage() {
           </section>
         )}
       </section>
+      {activeCalendar && (
+        <DashboardActivityModal
+          modeLabel={activeCalendar.modeLabel}
+          modeSummary={activeCalendar.modeSummary}
+          onClose={() => setActiveCalendar(null)}
+        />
+      )}
     </div>
   )
 }

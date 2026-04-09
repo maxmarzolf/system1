@@ -1,8 +1,9 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vs, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { useSearchParams } from 'react-router-dom'
 import type { Flashcard } from './data/flashcards'
-import { skillMap } from './data/skill-map'
+import { skillMap, type SkillMapNode } from './data/skill-map'
 import { getLiveCoachFrequencyProfile, loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoachTuning'
 import { loadStoredSubmissionTuning } from './submissionTuning'
 import TopNav from './TopNav'
@@ -137,6 +138,15 @@ const TEMPLATE_MODE_FILE_LABELS: Record<TemplateMode, string> = {
   skeleton: 'skeleton.py',
   full: 'recall.py',
 }
+
+const patternToSlug = (pattern: string) =>
+  pattern
+    .toLowerCase()
+    .replace(/\//g, ' ')
+    .replace(/&/g, ' ')
+    .replace(/-/g, ' ')
+    .trim()
+    .replace(/\s+/g, '-')
 
 const ensureTemplateModes = (modes: TemplateMode[]) => {
   const next = TEMPLATE_MODE_ORDER.filter((mode) => modes.includes(mode))
@@ -656,6 +666,7 @@ const computeLineReview = (expectedCode: string, actualCode: string) => {
 
 function App() {
   const { theme } = useTheme()
+  const [searchParams] = useSearchParams()
   const questionType = 'skill-map' as const
   const [sessionOrderType, setSessionOrderType] = useState<SessionOrder>('original')
   const [enabledTemplateModes, setEnabledTemplateModes] = useState<TemplateMode[]>(() => [...DEFAULT_TEMPLATE_MODES])
@@ -712,10 +723,45 @@ function App() {
   const lastIdleLiveCoachRefreshAtRef = useRef(0)
   const coachRequestVersionRef = useRef(0)
   const skillMapDeckRequestVersionRef = useRef(0)
+  const focusedPatternSlug = searchParams.get('focusPattern')?.trim() || ''
+  const focusedModeParam = searchParams.get('focusMode')?.trim() || ''
+  const focusedPatternNode = useMemo(
+    () => skillMap.find((node) => patternToSlug(node.pattern) === focusedPatternSlug) ?? null,
+    [focusedPatternSlug]
+  )
+  const focusedTemplateMode = useMemo<TemplateMode | null>(() => {
+    if (focusedModeParam === 'pseudo' || focusedModeParam === 'skeleton' || focusedModeParam === 'full') {
+      return focusedModeParam
+    }
+    return null
+  }, [focusedModeParam])
+  const requestedSkillMap = useMemo<SkillMapNode[]>(() => {
+    if (!focusedPatternNode) return skillMap
+    return focusedPatternNode.methods.map((method) => ({
+      pattern: focusedPatternNode.pattern,
+      methods: [method],
+    }))
+  }, [focusedPatternNode])
+  const requestedSkillMapSignature = useMemo(
+    () => JSON.stringify(requestedSkillMap),
+    [requestedSkillMap]
+  )
+  const requestedQuestionType = focusedPatternNode ? 'skill-map-targeted' : questionType
+  const targetedDeckLabel = focusedPatternNode
+    ? `${focusedPatternNode.pattern} • ${focusedTemplateMode ? TEMPLATE_MODE_LABELS[focusedTemplateMode] : 'Focused'}`
+    : ''
 
   const filteredDeck = useMemo(() => skillMapDeck, [skillMapDeck])
   const activeTemplateModes = useMemo(() => ensureTemplateModes(enabledTemplateModes), [enabledTemplateModes])
   const currentTemplateMode = activeTemplateModes[Math.min(currentTemplateModeIndex, activeTemplateModes.length - 1)] ?? 'full'
+
+  useEffect(() => {
+    if (focusedTemplateMode) {
+      setEnabledTemplateModes([focusedTemplateMode])
+      return
+    }
+    setEnabledTemplateModes([...DEFAULT_TEMPLATE_MODES])
+  }, [focusedTemplateMode])
 
   const fetchSkillMapDeck = async () => {
     skillMapDeckRequestVersionRef.current += 1
@@ -729,9 +775,9 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          questionType: 'skill-map',
-          count: skillMap.length,
-          skillMap,
+          questionType: requestedQuestionType,
+          count: requestedSkillMap.length,
+          skillMap: requestedSkillMap,
           llmProvider,
         }),
       })
@@ -788,7 +834,7 @@ function App() {
 
   useEffect(() => {
     void fetchSkillMapDeck()
-  }, [llmProvider, skillMapRefreshToken])
+  }, [llmProvider, requestedQuestionType, requestedSkillMapSignature, skillMapRefreshToken])
 
   useEffect(() => {
     saveStoredLiveCoachTuning(liveCoachTuning)
@@ -841,7 +887,7 @@ function App() {
     if (currentTemplateMode === 'skeleton') return normalizeTyping(skeletonTarget)
     return fullSolutionTarget
   }, [currentTemplateMode, fullSolutionTarget, pseudoTarget, skeletonTarget])
-  const currentQuestionType = `${questionType}:${currentTemplateMode}`
+  const currentQuestionType = `${requestedQuestionType}:${currentTemplateMode}`
   const currentSkillTags = useMemo(
     () => [...card.tags, `template-${currentTemplateMode}`],
     [card.tags, currentTemplateMode]
@@ -1297,7 +1343,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode: 'main-recall',
-          questionType,
+          questionType: requestedQuestionType,
           orderType: sessionOrderType,
           attempts,
           correctCount,
@@ -1646,6 +1692,11 @@ function App() {
             <h2>{card.title}</h2>
             <p className="difficulty"><span className="leetcode-num">#{card.id}</span> {card.difficulty}</p>
             <p className="card-template-summary">{templateProgressText}</p>
+            {focusedPatternNode && (
+              <p className="card-template-summary">
+                Focused deck: {targetedDeckLabel} core methods
+              </p>
+            )}
           </div>
           <div className="card-header-side">
             <div className="template-mode-toggles" aria-label="Template modes">

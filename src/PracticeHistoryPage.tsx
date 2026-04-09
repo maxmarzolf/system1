@@ -237,8 +237,8 @@ export default function PracticeHistoryPage() {
                             {formatTemplateModeLabel(entry.templateMode)} · {entry.liveFeedbackCount} live feedback {entry.liveFeedbackCount === 1 ? 'snapshot' : 'snapshots'} · {(entry.elapsedMs / 1000).toFixed(1)}s
                           </p>
                         </div>
-                        <span className={`coach-status-chip coach-status-chip-${entryTone}`}>
-                          {entry.exact ? 'Sound' : `${entry.accuracy}%`}
+                        <span className={`coach-status-value coach-status-value-${entryTone}`}>
+                          {entry.accuracy}%
                         </span>
                       </div>
                       {entry.liveCoachUsed && (
