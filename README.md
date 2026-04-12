@@ -199,6 +199,36 @@ Verification:
 - API response from `POST /api/coach/attempt-feedback` includes `"llmUsed": true` when the model response is used.
 - During submit/revise, the Submission Feedback panel shows a waiting placeholder state and then renders pills/content only after the new response arrives.
 
+### Submission Feedback Behavior
+
+Submission feedback (`draftMode=false`) is now LLM-only.
+
+- No heuristic fallback is returned to users for submission grading/feedback.
+- Backend retries LLM submission generation up to 3 times before failure.
+- On failure, backend returns a structured error payload and frontend shows a modal with the provider-specific message.
+
+Error payload shape for failed submission feedback requests:
+
+```json
+{
+   "detail": {
+      "code": "submission_feedback_no_response",
+      "message": "Claude API error: insufficient credits. Add credits in your provider billing and try again.",
+      "provider": "claude",
+      "providerLabel": "Claude",
+      "apiErrorCode": "provider_insufficient_credits"
+   }
+}
+```
+
+Common `apiErrorCode` values include:
+- `provider_auth_error`
+- `provider_insufficient_credits`
+- `provider_rate_limited`
+- `provider_model_error`
+- `provider_network_error`
+- `provider_timeout`
+
 ### Reset Practice History
 
 To clear only generated practice history and coaching artifacts without touching seeded source data:

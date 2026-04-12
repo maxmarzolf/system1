@@ -14,7 +14,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.config import settings
 from app.database import get_pool
@@ -67,6 +67,224 @@ ANTHROPIC_MODEL_FALLBACKS = (
     "claude-sonnet-4-20250514",
     "claude-3-haiku-20240307",
 )
+SUBMISSION_LLM_MAX_RETRIES = 3
+SUBMISSION_LLM_RETRY_DELAYS_SECONDS = (0.3, 0.6, 0.9)
+
+
+class SubmissionFeedbackUnavailableError(RuntimeError):
+    def __init__(self, code: str, message: str, provider: str, api_error_code: str = ""):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.provider = provider
+        self.api_error_code = api_error_code
+
+
+def _llm_provider_label(provider: str) -> str:
+    if provider == "claude":
+        return "Claude"
+    return "ChatGPT"
+
+
+def _submission_feedback_error_detail(
+    code: str,
+    message: str,
+    provider: str,
+    api_error_code: str = "",
+) -> dict[str, str]:
+    return {
+        "code": code,
+        "message": message,
+        "provider": provider,
+        "providerLabel": _llm_provider_label(provider),
+        "apiErrorCode": api_error_code,
+    }
+
+
+def _extract_provider_error_message(payload_text: str) -> str:
+    text = payload_text.strip()
+    if not text:
+        return ""
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        return text[:300]
+
+    if isinstance(parsed, dict):
+        error_block = parsed.get("error")
+        if isinstance(error_block, dict):
+            message = str(error_block.get("message", "")).strip()
+            if message:
+                return message
+        message = str(parsed.get("message", "")).strip()
+        if message:
+            return message
+    return text[:300]
+
+
+def _submission_provider_error_from_http(
+    provider: str,
+    status_code: int,
+    payload_text: str,
+) -> tuple[str, str, bool]:
+    detail = _extract_provider_error_message(payload_text)
+    detail_lower = detail.lower()
+    label = _llm_provider_label(provider)
+
+    if "credit balance is too low" in detail_lower or "insufficient" in detail_lower and "credit" in detail_lower:
+        return (
+            "provider_insufficient_credits",
+            f"{label} API error: insufficient credits. Add credits in your provider billing and try again.",
+            False,
+        )
+    if status_code in {401, 403} or "api key" in detail_lower or "authentication" in detail_lower:
+        return (
+            "provider_auth_error",
+            f"{label} API error: authentication failed. Verify the API key in backend .env.",
+            False,
+        )
+    if status_code == 429 or "rate" in detail_lower and "limit" in detail_lower:
+        return (
+            "provider_rate_limited",
+            f"{label} API error: rate limited. Please retry in a moment.",
+            True,
+        )
+    if status_code in {400, 404} and "model" in detail_lower:
+        return (
+            "provider_model_error",
+            f"{label} API error: model configuration is invalid or unavailable.",
+            False,
+        )
+
+    if status_code >= 500:
+        return (
+            "provider_server_error",
+            f"{label} API error: upstream service issue ({status_code}). Please retry shortly.",
+            True,
+        )
+
+    if detail:
+        return (
+            "provider_request_error",
+            f"{label} API error: {detail}",
+            False,
+        )
+    return (
+        "provider_request_error",
+        f"{label} API error: request failed with status {status_code}.",
+        False,
+    )
+
+
+def _submission_provider_error_from_exception(provider: str, error: Exception) -> tuple[str, str, bool]:
+    label = _llm_provider_label(provider)
+    if isinstance(error, TimeoutError):
+        return (
+            "provider_timeout",
+            f"{label} API error: request timed out. Please retry.",
+            True,
+        )
+    if isinstance(error, urllib.error.URLError):
+        reason = str(getattr(error, "reason", "")).strip()
+        detail = f" ({reason})" if reason else ""
+        return (
+            "provider_network_error",
+            f"{label} API error: network/connectivity issue{detail}.",
+            True,
+        )
+    return (
+        "provider_unknown_error",
+        f"{label} API error: unexpected request failure.",
+        True,
+    )
+
+
+def _call_llm_json_for_submission(
+    system_prompt: str,
+    user_payload: dict[str, Any],
+    provider: str,
+) -> tuple[dict[str, Any] | None, str, str, bool]:
+    try:
+        if provider == "claude":
+            if not settings.coach_anthropic_api_key:
+                return None, "provider_auth_error", "Claude API key is missing.", False
+            url = f"{settings.coach_anthropic_base_url.rstrip('/')}/messages"
+            model = str(settings.coach_anthropic_model or "").strip() or "claude-sonnet-4-6"
+            body = {
+                "model": model,
+                "temperature": 0.2,
+                "max_tokens": 1800,
+                "system": f"{system_prompt}\nReturn only valid JSON. Do not include markdown.",
+                "messages": [{"role": "user", "content": json.dumps(user_payload)}],
+            }
+            data = json.dumps(body).encode("utf-8")
+            request = urllib.request.Request(
+                url,
+                data=data,
+                method="POST",
+                headers={
+                    "x-api-key": settings.coach_anthropic_api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+            )
+            with urllib.request.urlopen(request, timeout=30) as response:
+                raw = response.read().decode("utf-8")
+                payload = json.loads(raw)
+                content = payload.get("content", [])
+                if not isinstance(content, list):
+                    return None, "provider_response_format_error", "Claude API returned an unexpected response format.", True
+                text_parts: list[str] = []
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        text_parts.append(str(item.get("text", "")))
+                if not text_parts:
+                    return None, "provider_empty_response", "Claude API returned an empty response.", True
+                parsed = _extract_json_dict("\n".join(text_parts))
+                if not isinstance(parsed, dict):
+                    return None, "provider_invalid_json", "Claude API response could not be parsed as JSON.", True
+                return parsed, "", "", False
+
+        if not settings.coach_openai_api_key:
+            return None, "provider_auth_error", "ChatGPT API key is missing.", False
+
+        url = f"{settings.coach_openai_base_url.rstrip('/')}/chat/completions"
+        body = {
+            "model": settings.coach_openai_model,
+            "temperature": 0.2,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps(user_payload)},
+            ],
+        }
+        data = json.dumps(body).encode("utf-8")
+        request = urllib.request.Request(
+            url,
+            data=data,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {settings.coach_openai_api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            raw = response.read().decode("utf-8")
+            payload = json.loads(raw)
+            content = payload["choices"][0]["message"]["content"]
+            parsed = _extract_json_dict(content)
+            if not isinstance(parsed, dict):
+                return None, "provider_invalid_json", "ChatGPT API response could not be parsed as JSON.", True
+            return parsed, "", "", False
+    except urllib.error.HTTPError as error:
+        details = error.read().decode("utf-8", errors="replace")
+        code, message, retryable = _submission_provider_error_from_http(provider, error.code, details)
+        logger.warning("%s request failed (%s): %s", _llm_provider_label(provider), error.code, details[:400])
+        return None, code, message, retryable
+    except (urllib.error.URLError, KeyError, IndexError, ValueError, TypeError, TimeoutError) as error:
+        code, message, retryable = _submission_provider_error_from_exception(provider, error)
+        logger.warning("%s request failed: %s", _llm_provider_label(provider), error)
+        return None, code, message, retryable
 
 
 def _normalize_code(code: str) -> str:
@@ -3016,7 +3234,13 @@ async def _attempt_feedback_with_optional_llm(
 ) -> dict[str, Any]:
     provider = _resolve_available_llm_provider(body.llmProvider)
     if not _llm_provider_available(provider):
-        return heuristic
+        if body.draftMode:
+            return heuristic
+        raise SubmissionFeedbackUnavailableError(
+            code="submission_feedback_missing_api_key",
+            message="Update backend .env with your API key.",
+            provider=provider,
+        )
 
     tuning = _merged_live_tuning(body)
     template_mode = _template_mode_value(body.templateMode)
@@ -3163,11 +3387,10 @@ async def _attempt_feedback_with_optional_llm(
             ],
         }
 
-    llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)
-    if not llm_response:
-        return heuristic
-
     if body.draftMode:
+        llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)
+        if not llm_response:
+            return heuristic
         required = [
             "diagnosis",
             "primaryFocus",
@@ -3181,14 +3404,47 @@ async def _attempt_feedback_with_optional_llm(
         if any(key not in llm_response for key in required):
             return heuristic
     else:
-        # Anthropic can occasionally omit a non-critical field; keep valid model
-        # output rather than fully reverting to heuristics.
-        has_submission_content = any(
+        llm_response: dict[str, Any] | None = None
+        last_error_code = ""
+        last_error_message = ""
+        for attempt in range(1, SUBMISSION_LLM_MAX_RETRIES + 1):
+            llm_response, error_code, error_message, retryable = await asyncio.to_thread(
+                _call_llm_json_for_submission,
+                system_prompt,
+                llm_payload,
+                provider,
+            )
+            has_submission_content = isinstance(llm_response, dict) and any(
+                key in llm_response and str(llm_response.get(key, "")).strip()
+                for key in ("fullFeedback", "diagnosis", "primaryFocus", "immediateCorrection")
+            )
+            if has_submission_content:
+                break
+
+            last_error_code = error_code
+            last_error_message = error_message
+
+            logger.warning(
+                "Submission feedback LLM attempt %s/%s failed for provider '%s'.",
+                attempt,
+                SUBMISSION_LLM_MAX_RETRIES,
+                provider,
+            )
+            if attempt < SUBMISSION_LLM_MAX_RETRIES and retryable:
+                await asyncio.sleep(SUBMISSION_LLM_RETRY_DELAYS_SECONDS[attempt - 1])
+            elif attempt < SUBMISSION_LLM_MAX_RETRIES and not retryable:
+                break
+
+        if not isinstance(llm_response, dict) or not any(
             key in llm_response and str(llm_response.get(key, "")).strip()
             for key in ("fullFeedback", "diagnosis", "primaryFocus", "immediateCorrection")
-        )
-        if not has_submission_content:
-            return heuristic
+        ):
+            raise SubmissionFeedbackUnavailableError(
+                code="submission_feedback_no_response",
+                message=last_error_message or f"Feedback cannot be generated at this time. No response from {_llm_provider_label(provider)}.",
+                provider=provider,
+                api_error_code=last_error_code,
+            )
 
     corrected_version = str(llm_response.get("correctedVersion", heuristic.get("correctedVersion", ""))).strip()
     corrected_version = corrected_version.removeprefix("```python").removeprefix("```").removesuffix("```").strip()
@@ -3396,11 +3652,45 @@ async def coach_attempt_evaluation(body: CoachAttemptEvaluationRequest):
 @router.post("/attempt-feedback", response_model=CoachAttemptFeedbackResponse)
 async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
     provider = _resolve_available_llm_provider(body.llmProvider)
+    if not body.draftMode and not _llm_provider_available(provider):
+        raise HTTPException(
+            status_code=400,
+            detail=_submission_feedback_error_detail(
+                "submission_feedback_missing_api_key",
+                "Update backend .env with your API key.",
+                provider,
+                "provider_auth_error",
+            ),
+        )
+
     history = await _load_attempt_history(body)
     live_history = await _load_live_feedback_history(body.interactionId)
     history_summary = _summarize_attempt_history(history)
     heuristic = _heuristic_attempt_feedback(body, history_summary, live_history)
-    feedback = await _attempt_feedback_with_optional_llm(body, heuristic, history, live_history)
+    try:
+        feedback = await _attempt_feedback_with_optional_llm(body, heuristic, history, live_history)
+    except SubmissionFeedbackUnavailableError as error:
+        raise HTTPException(
+            status_code=503,
+            detail=_submission_feedback_error_detail(
+                error.code,
+                error.message,
+                error.provider,
+                error.api_error_code,
+            ),
+        ) from error
+
+    if not body.draftMode and not bool(feedback.get("llmUsed")):
+        raise HTTPException(
+            status_code=503,
+            detail=_submission_feedback_error_detail(
+                "submission_feedback_no_response",
+                f"Feedback cannot be generated at this time. No response from {_llm_provider_label(provider)}.",
+                provider,
+                "provider_empty_response",
+            ),
+        )
+
     feedback["llmProvider"] = provider if bool(feedback.get("llmUsed")) else ""
     await _persist_feedback_event(body, feedback)
     feedback.pop("signals", None)

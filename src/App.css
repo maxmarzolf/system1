@@ -671,6 +671,36 @@
   color: var(--hc-fg);
 }
 
+.submission-feedback-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.62);
+  z-index: 10010;
+}
+
+.submission-feedback-popover {
+  position: relative;
+  width: min(28rem, calc(100vw - 2rem));
+  padding: 0.9rem;
+  border: 2px solid var(--hc-accent);
+  outline: 1px solid var(--hc-border-dim);
+  background: var(--hc-menu-bg), var(--hc-bg);
+  box-shadow:
+    0 24px 54px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(0, 0, 0, 0.9);
+  color: var(--hc-fg);
+}
+
+.submission-feedback-popover h4 {
+  margin: 0.25rem 0 0.6rem;
+  font-size: 1rem;
+  color: var(--hc-fg);
+}
+
 .dashboard-activity-popover-header {
   display: flex;
   align-items: flex-start;

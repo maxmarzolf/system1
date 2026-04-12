@@ -60,6 +60,11 @@ type CoachAttemptFeedback = {
   llmProvider?: string
 }
 
+type SubmissionFailureModalState = {
+  providerLabel: string
+  message: string
+}
+
 type CoachSessionPlan = {
   headline: string
   focusTheme: string
@@ -709,6 +714,7 @@ function App() {
   const [coachFeedback, setCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
   const [coachLoading, setCoachLoading] = useState(false)
   const [coachError, setCoachError] = useState('')
+  const [submissionFailureModal, setSubmissionFailureModal] = useState<SubmissionFailureModalState | null>(null)
   const [sessionPlan, setSessionPlan] = useState<CoachSessionPlan | null>(null)
   const [sessionPlanLoading, setSessionPlanLoading] = useState(false)
   const [sessionPlanError, setSessionPlanError] = useState('')
@@ -828,6 +834,7 @@ function App() {
     setCoachFeedback(null)
     setCoachLoading(false)
     setCoachError('')
+    setSubmissionFailureModal(null)
     setSessionPlan(null)
     setSessionPlanLoading(false)
     setSessionPlanError('')
@@ -1045,6 +1052,7 @@ function App() {
     setCoachFeedback(null)
     setCoachLoading(false)
     setCoachError('')
+    setSubmissionFailureModal(null)
     liveCoachRequestVersionRef.current = 0
     lastLiveCoachMilestoneRef.current = ''
     lastLiveCoachLengthRef.current = 0
@@ -1267,6 +1275,7 @@ function App() {
     setCoachFeedback(null)
     setCoachLoading(true)
     setCoachError('')
+    setSubmissionFailureModal(null)
     try {
       const response = await fetch(apiUrl('/api/coach/attempt-feedback'), {
         method: 'POST',
@@ -1296,7 +1305,43 @@ function App() {
           submissionTuning,
         }),
       })
-      if (!response.ok) throw new Error('Unable to load coach feedback')
+      if (!response.ok) {
+        let parsedError: unknown = null
+        try {
+          parsedError = await response.json()
+        } catch {
+          parsedError = null
+        }
+
+        const fallbackProviderLabel =
+          LLM_PROVIDER_OPTIONS.find((option) => option.value === llmProvider)?.label ?? 'LLM'
+        const detail =
+          parsedError &&
+          typeof parsedError === 'object' &&
+          parsedError !== null &&
+          'detail' in parsedError &&
+          typeof (parsedError as { detail?: unknown }).detail === 'object' &&
+          (parsedError as { detail?: unknown }).detail !== null
+            ? ((parsedError as { detail: Record<string, unknown> }).detail)
+            : null
+
+        const code = typeof detail?.code === 'string' ? detail.code : ''
+        if (code === 'submission_feedback_missing_api_key' || code === 'submission_feedback_no_response') {
+          const providerLabel =
+            typeof detail?.providerLabel === 'string' && detail.providerLabel.trim().length > 0
+              ? detail.providerLabel
+              : fallbackProviderLabel
+          const message =
+            typeof detail?.message === 'string' && detail.message.trim().length > 0
+              ? detail.message
+              : `Feedback cannot be generated at this time. No response from ${providerLabel}.`
+          setSubmissionFailureModal({
+            providerLabel,
+            message,
+          })
+        }
+        throw new Error('Unable to load coach feedback')
+      }
       const feedback = (await response.json()) as CoachAttemptFeedback
       if (currentCardIdRef.current !== requestCardId || coachRequestVersionRef.current !== requestVersion) return null
       setCoachFeedback(feedback)
@@ -1659,6 +1704,29 @@ function App() {
 
   return (
     <div className="app">
+      {submissionFailureModal && (
+        <div className="submission-feedback-modal" onClick={() => setSubmissionFailureModal(null)}>
+          <div
+            className="submission-feedback-popover"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Submission feedback unavailable"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="dashboard-activity-eyebrow">Submission feedback unavailable</p>
+            <h4>Feedback cannot be generated at this time.</h4>
+            <p className="coach-panel-copy" style={{ marginBottom: '0.55rem' }}>
+              {submissionFailureModal.message}
+            </p>
+            <div className="actions" style={{ marginTop: 0 }}>
+              <button type="button" className="secondary" onClick={() => setSubmissionFailureModal(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <TopNav
         activeLabel="Skill Map"
         sessionOrderType={sessionOrderType}
