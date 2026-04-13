@@ -129,7 +129,7 @@ export default function SubmissionTuningPage() {
             <div>
               <h3>Tracked Dimensions</h3>
               <p className="hint" style={{ marginTop: '0.35rem' }}>
-                These are the dimensions the heuristic grader now checks for pseudocode and skeleton submissions.
+                These are the dimensions the heuristic grader now checks for pseudocode and skeleton attempts.
               </p>
             </div>
           </div>
@@ -142,7 +142,7 @@ export default function SubmissionTuningPage() {
             ))}
           </div>
           <p className="hint" style={{ marginTop: '1rem' }}>
-            Full-solution grading still tracks code-specific signals like syntax validity, indentation drift, early line
+            Full-template grading still tracks code-specific signals like syntax validity, indentation drift, early line
             drift, and omitted versus extra lines.
           </p>
         </div>

@@ -69,18 +69,6 @@ services:
     networks:
       - flashcard-network
 
-  adminer:
-    image: adminer:latest
-    container_name: flashcard-adminer
-    ports:
-      - "8080:8080"
-    networks:
-      - flashcard-network
-    depends_on:
-      - postgres
-    environment:
-      ADMINER_DEFAULT_SERVER: postgres
-
 networks:
   flashcard-network:
     driver: bridge

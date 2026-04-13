@@ -112,7 +112,7 @@ type RecallAttemptSnapshot = {
   hasLoop: boolean
 }
 
-type DraftStructure = {
+type LiveStructure = {
   nonEmptyLines: number
   hasSignature: boolean
   hasGuard: boolean
@@ -568,7 +568,7 @@ const summarizeRecallAttempt = (
   ),
 })
 
-const analyzeDraftStructure = (code: string, templateMode: TemplateMode): DraftStructure => {
+const analyzeLiveStructure = (code: string, templateMode: TemplateMode): LiveStructure => {
   const lines = code.replace(/\r\n/g, '\n').split('\n')
   const nonEmptyLines = lines.filter((line) => line.trim().length > 0).length
   const hasSignature = lines.some((line) =>
@@ -616,37 +616,37 @@ const analyzeDraftStructure = (code: string, templateMode: TemplateMode): DraftS
   }
 }
 
-const buildLiveCoachFallback = (draft: DraftStructure, isGraphQuestion: boolean) => {
+const buildLiveCoachFallback = (liveStructure: LiveStructure, isGraphQuestion: boolean) => {
   if (isGraphQuestion) {
-    if (!draft.hasSignature) return 'The very next step is to write the function signature and name the graph inputs you will reason about.'
-    if (!draft.hasBookkeeping) return 'The very next step is to add the visited or frontier state right under the signature.'
-    if (!draft.traversalKind) return 'The very next step is to choose DFS or BFS and write the line that creates that traversal.'
-    if (draft.hasPlaceholder) return 'The very next step is to replace the placeholder with the real state update.'
-    if (!draft.hasGuard) return 'The very next step is to add the guard that skips invalid or already-seen states.'
-    if (!draft.hasLoop) return 'The very next step is to write the loop or recursive call that advances the traversal once.'
+    if (!liveStructure.hasSignature) return 'The very next step is to write the function signature and name the graph inputs you will reason about.'
+    if (!liveStructure.hasBookkeeping) return 'The very next step is to add the visited or frontier state right under the signature.'
+    if (!liveStructure.traversalKind) return 'The very next step is to choose DFS or BFS and write the line that creates that traversal.'
+    if (liveStructure.hasPlaceholder) return 'The very next step is to replace the placeholder with the real state update.'
+    if (!liveStructure.hasGuard) return 'The very next step is to add the guard that skips invalid or already-seen states.'
+    if (!liveStructure.hasLoop) return 'The very next step is to write the loop or recursive call that advances the traversal once.'
     return 'The very next step is to add one concrete state-update line and then check that the traversal invariant still holds.'
   }
 
-  if (!draft.hasSignature) return 'The very next step is to write the function signature and name the state you will track.'
-  if (draft.hasPlaceholder) return 'The very next step is to replace the placeholder with the actual state transition.'
-  if (!draft.hasLoop) return 'The very next step is to write the main loop or recursive call that moves the algorithm forward.'
+  if (!liveStructure.hasSignature) return 'The very next step is to write the function signature and name the state you will track.'
+  if (liveStructure.hasPlaceholder) return 'The very next step is to replace the placeholder with the actual state transition.'
+  if (!liveStructure.hasLoop) return 'The very next step is to write the main loop or recursive call that moves the algorithm forward.'
   return 'The very next step is to add one concrete state-update line instead of expanding the whole solution at once.'
 }
 
-const buildLiveCoachWhy = (draft: DraftStructure, isGraphQuestion: boolean) => {
+const buildLiveCoachWhy = (liveStructure: LiveStructure, isGraphQuestion: boolean) => {
   if (isGraphQuestion) {
-    if (!draft.hasSignature) return 'Once the opening anchor is on the page, the rest of the graph logic has somewhere stable to attach.'
-    if (!draft.hasBookkeeping) return 'Right now the traversal has no concrete state to update, so extra control flow will feel vague.'
-    if (!draft.traversalKind) return 'Committing to the traversal first makes every later line easier to justify.'
-    if (draft.hasPlaceholder) return 'A placeholder hides the real algorithmic move, so the draft cannot become trustworthy yet.'
-    if (!draft.hasGuard) return 'The stop or skip rule usually makes graph code feel immediately cleaner.'
-    if (!draft.hasLoop) return 'You already have enough setup; now the draft needs motion.'
+    if (!liveStructure.hasSignature) return 'Once the opening anchor is on the page, the rest of the graph logic has somewhere stable to attach.'
+    if (!liveStructure.hasBookkeeping) return 'Right now the traversal has no concrete state to update, so extra control flow will feel vague.'
+    if (!liveStructure.traversalKind) return 'Committing to the traversal first makes every later line easier to justify.'
+    if (liveStructure.hasPlaceholder) return 'A placeholder hides the real algorithmic move, so the current answer cannot become trustworthy yet.'
+    if (!liveStructure.hasGuard) return 'The stop or skip rule usually makes graph code feel immediately cleaner.'
+    if (!liveStructure.hasLoop) return 'You already have enough setup; now the current answer needs motion.'
     return 'You are close enough that one good structural line is more valuable than a rewrite.'
   }
 
-  if (!draft.hasSignature) return 'A clear entry point makes the rest of the draft easier to reason about.'
-  if (draft.hasPlaceholder) return 'The placeholder is the one spot where the algorithm still is not real.'
-  if (!draft.hasLoop) return 'The setup is there; now the algorithm needs one line of movement.'
+  if (!liveStructure.hasSignature) return 'A clear entry point makes the rest of the answer easier to reason about.'
+  if (liveStructure.hasPlaceholder) return 'The placeholder is the one spot where the algorithm still is not real.'
+  if (!liveStructure.hasLoop) return 'The setup is there; now the algorithm needs one line of movement.'
   return 'At this point, a single concrete line will help more than broad advice.'
 }
 
@@ -843,6 +843,7 @@ function App() {
 
   useEffect(() => {
     void fetchSkillMapDeck()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [llmProvider, requestedQuestionType, requestedSkillMapSignature, skillMapRefreshToken])
 
   useEffect(() => {
@@ -1190,7 +1191,7 @@ function App() {
     accuracy: number
     exact: boolean
     previousAttempts: RecallAttemptSnapshot[]
-    draft: DraftStructure
+    liveStructure: LiveStructure
   }) => {
     if (!liveCoachTuning.enabled) return
     const requestCardId = card.id
@@ -1223,15 +1224,15 @@ function App() {
           mode: 'main-recall',
           templateMode: currentTemplateMode,
           enabledTemplateModes: activeTemplateModes,
-          draftMode: true,
-          draftMilestones: {
-            nonEmptyLines: payload.draft.nonEmptyLines,
-            hasSignature: payload.draft.hasSignature,
-            hasGuard: payload.draft.hasGuard,
-            traversalKind: payload.draft.traversalKind ?? '',
-            hasLoop: payload.draft.hasLoop,
-            hasPlaceholder: payload.draft.hasPlaceholder,
-            hasBookkeeping: payload.draft.hasBookkeeping,
+          liveMode: true,
+          liveMilestones: {
+            nonEmptyLines: payload.liveStructure.nonEmptyLines,
+            hasSignature: payload.liveStructure.hasSignature,
+            hasGuard: payload.liveStructure.hasGuard,
+            traversalKind: payload.liveStructure.traversalKind ?? '',
+            hasLoop: payload.liveStructure.hasLoop,
+            hasPlaceholder: payload.liveStructure.hasPlaceholder,
+            hasBookkeeping: payload.liveStructure.hasBookkeeping,
           },
           liveCoachTuning,
           submissionTuning,
@@ -1530,8 +1531,8 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionFinished])
 
-  const draftStructure = useMemo(
-    () => analyzeDraftStructure(mainInput, currentTemplateMode),
+  const liveStructure = useMemo(
+    () => analyzeLiveStructure(mainInput, currentTemplateMode),
     [currentTemplateMode, mainInput]
   )
   const lineReview = useMemo(
@@ -1567,19 +1568,19 @@ function App() {
     liveCoachFeedback?.nextMove ||
     liveCoachFeedback?.immediateCorrection ||
     liveCoachFeedback?.primaryFocus ||
-    buildLiveCoachFallback(draftStructure, isGraphQuestion)
+    buildLiveCoachFallback(liveStructure, isGraphQuestion)
   const liveCoachWhy =
     liveCoachFeedback?.why ||
     liveCoachFeedback?.diagnosis ||
     liveCoachFeedback?.primaryFocus ||
-    buildLiveCoachWhy(draftStructure, isGraphQuestion)
+    buildLiveCoachWhy(liveStructure, isGraphQuestion)
   const triggerLiveCoachRefresh = useEffectEvent((trimmedInput: string) => {
     const interactionId = currentInteractionId || createInteractionId()
     if (!currentInteractionId) setCurrentInteractionId(interactionId)
     const target = practiceTarget
     const accuracy = estimateTemplateAccuracy(currentTemplateMode, target, trimmedInput)
 
-    lastLiveCoachMilestoneRef.current = draftStructure.milestoneKey
+    lastLiveCoachMilestoneRef.current = liveStructure.milestoneKey
     lastLiveCoachLengthRef.current = trimmedInput.length
 
     void requestLiveCoachFeedback({
@@ -1590,7 +1591,7 @@ function App() {
       accuracy,
       exact: currentTemplateMode === 'full' ? trimmedInput === target : false,
       previousAttempts: currentCardRecallHistory,
-      draft: draftStructure,
+      liveStructure: liveStructure,
     })
   })
   const latestSubmittedAttempt =
@@ -1641,7 +1642,7 @@ function App() {
     if (!hasDeck || mainPhase !== 'typing' || sessionFinished || hasAnsweredCurrent) return
 
     const trimmedInput = normalizeTyping(mainInput)
-    if (trimmedInput.length < 12 || draftStructure.nonEmptyLines < 2) {
+    if (trimmedInput.length < 12 || liveStructure.nonEmptyLines < 2) {
       setLiveCoachFeedback(null)
       setLiveCoachLoading(false)
       setLiveCoachError('')
@@ -1651,7 +1652,7 @@ function App() {
     }
 
     const shouldRefresh =
-      draftStructure.milestoneKey !== lastLiveCoachMilestoneRef.current ||
+      liveStructure.milestoneKey !== lastLiveCoachMilestoneRef.current ||
       Math.abs(trimmedInput.length - lastLiveCoachLengthRef.current) >= liveCoachFrequencyProfile.milestoneCharDelta
 
     if (!shouldRefresh) return
@@ -1662,7 +1663,7 @@ function App() {
 
     return () => window.clearTimeout(timeoutId)
   }, [
-    draftStructure,
+    liveStructure,
     hasDeck,
     hasAnsweredCurrent,
     liveCoachFrequencyProfile.debounceMs,
@@ -1679,7 +1680,7 @@ function App() {
 
     const intervalId = window.setInterval(() => {
       const trimmedInput = normalizeTyping(mainInput)
-      if (trimmedInput.length < 12 || draftStructure.nonEmptyLines < 2) return
+      if (trimmedInput.length < 12 || liveStructure.nonEmptyLines < 2) return
 
       const now = Date.now()
       const idleForMs = now - (lastMainInputEditAtRef.current || now)
@@ -1695,7 +1696,7 @@ function App() {
 
     return () => window.clearInterval(intervalId)
   }, [
-    draftStructure.nonEmptyLines,
+    liveStructure.nonEmptyLines,
     hasDeck,
     hasAnsweredCurrent,
     liveCoachFrequencyProfile.idleRefreshMs,
@@ -1984,7 +1985,7 @@ function App() {
                           </div>
                           {!liveCoachTuning.enabled && (
                             <p className="hint" style={{ margin: 0 }}>
-                              Live feedback is paused. No draft feedback requests will be sent until you resume it.
+                              Live feedback is paused. No live feedback requests will be sent until you resume it.
                             </p>
                           )}
                           {liveCoachTuning.enabled && (

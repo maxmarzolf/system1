@@ -146,7 +146,7 @@ export default function PracticeHistoryPage() {
               {cardId ? `Card ${cardId}` : 'Skill-tag history'} · {questionType}
             </p>
             <p className="hint practice-history-page-intro">
-              Stored submissions, live coach snapshots, and final feedback for the current practice context.
+              Stored final attempts, live coach snapshots, and final feedback for the current practice context.
             </p>
           </div>
           {skillTags.length > 0 && (
@@ -170,7 +170,7 @@ export default function PracticeHistoryPage() {
               <div>
                 <h3>Recent Submission History</h3>
                 <p className="hint" style={{ marginTop: '0.35rem' }}>
-                  The backend keeps generated questions, live coach snapshots, and final submission feedback together so future prompts can adapt.
+                  The backend keeps generated drills, live coach snapshots, and final feedback together so future prompts can adapt.
                 </p>
               </div>
               {practiceHistorySummary && (
@@ -213,7 +213,7 @@ export default function PracticeHistoryPage() {
               </div>
             )}
 
-            {practiceHistoryLoading && <p className="coach-muted">Loading recent submissions...</p>}
+            {practiceHistoryLoading && <p className="coach-muted">Loading recent attempts...</p>}
             {!practiceHistoryLoading && practiceHistoryError && <p className="coach-error">{practiceHistoryError}</p>}
             {!practiceHistoryLoading && !practiceHistoryError && practiceHistory.length === 0 && (
               <p className="coach-muted">No stored submission history yet for this skill pattern.</p>
