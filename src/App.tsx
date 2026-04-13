@@ -123,11 +123,12 @@ type DraftStructure = {
   milestoneKey: string
 }
 
-type LlmProvider = 'openai' | 'claude'
+type LlmProvider = 'openai' | 'claude' | 'gemma'
 
 const LLM_PROVIDER_OPTIONS: Array<{ value: LlmProvider, label: string }> = [
   { value: 'openai', label: 'ChatGPT' },
   { value: 'claude', label: 'Claude' },
+  { value: 'gemma', label: 'Gemma 4' },
 ]
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
@@ -1616,7 +1617,9 @@ function App() {
         ? 'Claude'
         : coachFeedback.llmProvider === 'openai'
           ? 'ChatGPT'
-          : 'LLM'
+          : coachFeedback.llmProvider === 'gemma'
+            ? 'Gemma 4'
+            : 'LLM'
       : 'Rules'
   const submissionAttemptStatusText = mainCloseEnough
     ? hasNextTemplateMode && nextTemplateMode

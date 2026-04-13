@@ -83,6 +83,8 @@ class SubmissionFeedbackUnavailableError(RuntimeError):
 def _llm_provider_label(provider: str) -> str:
     if provider == "claude":
         return "Claude"
+    if provider == "gemma":
+        return "Gemma"
     return "ChatGPT"
 
 
@@ -244,6 +246,36 @@ def _call_llm_json_for_submission(
                 if not isinstance(parsed, dict):
                     return None, "provider_invalid_json", "Claude API response could not be parsed as JSON.", True
                 return parsed, "", "", False
+
+        if provider == "gemma":
+            if not settings.coach_gemma_api_key:
+                return None, "provider_auth_error", "Gemma API key is missing.", False
+            model = str(settings.coach_gemma_model or "").strip() or "gemma-4-31b-it"
+            url = f"{settings.coach_gemma_base_url.rstrip('/')}/models/{model}:generateContent?key={settings.coach_gemma_api_key}"
+            prompt = f"{system_prompt}\nReturn only valid JSON. Do not include markdown.\n\n{json.dumps(user_payload)}"
+            body = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
+            }
+            data = json.dumps(body).encode("utf-8")
+            request = urllib.request.Request(
+                url,
+                data=data,
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(request, timeout=60) as response:
+                raw = response.read().decode("utf-8")
+                payload = json.loads(raw)
+                candidates = payload.get("candidates", [])
+                if candidates and isinstance(candidates, list):
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    text_parts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("text")]
+                    if text_parts:
+                        parsed = _extract_json_dict("\n".join(text_parts))
+                        if isinstance(parsed, dict):
+                            return parsed, "", "", False
+                return None, "provider_invalid_json", "Gemma API response could not be parsed as JSON.", True
 
         if not settings.coach_openai_api_key:
             return None, "provider_auth_error", "ChatGPT API key is missing.", False
@@ -1116,64 +1148,613 @@ def _detect_placeholder_issue(actual_lines: list[str]) -> str:
     return ""
 
 
-def _build_submission_issue_list(
-    expected_lines: list[str],
-    actual_lines: list[str],
-    structure: dict[str, list[str]],
-    syntax_error: bool,
-    missing_count: int,
-    extra_count: int,
-    skill_tags: list[str],
-) -> list[str]:
-    issues: list[str] = []
+SUBMISSION_DIMENSION_ORDER = (
+    "contract",
+    "pattern",
+    "state",
+    "control_flow",
+    "invariant",
+    "state_updates",
+    "ordering",
+    "answer_path",
+    "edge_cases",
+    "recall_fidelity",
+)
 
-    for issue in (
-        _detect_two_pointer_direction_issue(actual_lines, skill_tags),
-        _detect_binary_search_bound_issue(actual_lines, skill_tags),
+
+SUBMISSION_DIMENSION_LABELS = {
+    "contract": "Problem contract",
+    "pattern": "Core pattern",
+    "state": "State representation",
+    "control_flow": "Control flow shape",
+    "invariant": "Invariant or decision rule",
+    "state_updates": "State update correctness",
+    "ordering": "Step ordering",
+    "answer_path": "Answer recording or return path",
+    "edge_cases": "Edge-case coverage",
+    "recall_fidelity": "Recall fidelity",
+    "executability": "Syntax and executability",
+    "fluency": "Speed and fluency",
+}
+
+
+SUBMISSION_DIMENSION_WEIGHTS = {
+    "contract": 0.08,
+    "pattern": 0.12,
+    "state": 0.12,
+    "control_flow": 0.12,
+    "invariant": 0.16,
+    "state_updates": 0.14,
+    "ordering": 0.08,
+    "answer_path": 0.10,
+    "edge_cases": 0.04,
+    "recall_fidelity": 0.04,
+}
+
+
+def _dimension_status(score: float, not_applicable: bool = False) -> str:
+    if not_applicable:
+        return "not_applicable"
+    if score >= 80:
+        return "pass"
+    if score >= 45:
+        return "partial"
+    return "fail"
+
+
+def _submission_dimension(
+    key: str,
+    score: float,
+    evidence: list[str] | None = None,
+    missing: list[str] | None = None,
+    not_applicable: bool = False,
+) -> dict[str, Any]:
+    normalized_score = round(max(0.0, min(100.0, score)), 1)
+    return {
+        "key": key,
+        "label": SUBMISSION_DIMENSION_LABELS.get(key, key.replace("_", " ").title()),
+        "status": _dimension_status(normalized_score, not_applicable),
+        "score": normalized_score,
+        "evidence": [item for item in (evidence or []) if str(item).strip()][:4],
+        "missing": [item for item in (missing or []) if str(item).strip()][:4],
+    }
+
+
+def _template_dimension_score(analysis: dict[str, Any], key: str, fallback: float = 0.0) -> float:
+    for dimension in analysis.get("dimensions", []):
+        if isinstance(dimension, dict) and dimension.get("key") == key:
+            return float(dimension.get("score", fallback) or fallback)
+    return fallback
+
+
+def _matched_any_key(analysis: dict[str, Any], keys: list[str]) -> bool:
+    matched_keys = {str(key) for key in analysis.get("matchedKeys", [])}
+    return any(key in matched_keys for key in keys)
+
+
+def _missing_labels_for_keys(analysis: dict[str, Any], keys: list[str]) -> list[str]:
+    missing_keys = [str(key) for key in analysis.get("missingKeys", [])]
+    missing_labels = [str(label) for label in analysis.get("missingLabels", [])]
+    by_key = {key: missing_labels[index] for index, key in enumerate(missing_keys) if index < len(missing_labels)}
+    return [by_key[key] for key in keys if key in by_key]
+
+
+def _pattern_step_keys(pattern_tag: str) -> dict[str, list[str]]:
+    return {
+        "sliding-window": {
+            "pattern": ["expand", "repair", "shrink", "score"],
+            "state": ["state"],
+            "control_flow": ["expand", "repair", "shrink"],
+            "invariant": ["repair", "shrink"],
+            "state_updates": ["expand", "shrink"],
+            "answer_path": ["score", "return"],
+        },
+        "two-pointers": {
+            "pattern": ["pointers", "loop", "compare", "move"],
+            "state": ["pointers"],
+            "control_flow": ["loop", "move"],
+            "invariant": ["compare", "move"],
+            "state_updates": ["move"],
+            "answer_path": ["return"],
+        },
+        "binary-search": {
+            "pattern": ["bounds", "loop", "mid", "compare", "update"],
+            "state": ["bounds", "mid"],
+            "control_flow": ["loop", "update"],
+            "invariant": ["compare", "update"],
+            "state_updates": ["update"],
+            "answer_path": ["return"],
+        },
+        "dynamic-programming": {
+            "pattern": ["state", "base", "loop", "transition"],
+            "state": ["state", "base"],
+            "control_flow": ["loop"],
+            "invariant": ["transition"],
+            "state_updates": ["transition"],
+            "answer_path": ["return"],
+        },
+        "dp": {
+            "pattern": ["state", "base", "loop", "transition"],
+            "state": ["state", "base"],
+            "control_flow": ["loop"],
+            "invariant": ["transition"],
+            "state_updates": ["transition"],
+            "answer_path": ["return"],
+        },
+    }.get(
+        pattern_tag,
+        {
+            "pattern": ["state", "flow", "update"],
+            "state": ["state"],
+            "control_flow": ["flow"],
+            "invariant": ["update"],
+            "state_updates": ["update"],
+            "answer_path": ["return"],
+        },
+    )
+
+
+def _rubric_score(dimensions: dict[str, dict[str, Any]]) -> float:
+    total = 0.0
+    weight_total = 0.0
+    for key in SUBMISSION_DIMENSION_ORDER:
+        dimension = dimensions.get(key)
+        if not dimension or dimension.get("status") == "not_applicable":
+            continue
+        weight = SUBMISSION_DIMENSION_WEIGHTS.get(key, 0.0)
+        total += float(dimension.get("score", 0) or 0) * weight
+        weight_total += weight
+    return round(total / weight_total, 1) if weight_total else 0.0
+
+
+def _submission_modifier_results(
+    body: CoachAttemptFeedbackRequest,
+    template_mode: str,
+    syntax_valid: bool,
+) -> dict[str, Any]:
+    executable_score = 100.0
+    executable_evidence = ["No executable-code requirement for pseudocode mode."]
+    executable_missing: list[str] = []
+    executable_na = template_mode == TemplateMode.pseudo.value
+
+    if template_mode != TemplateMode.pseudo.value:
+        executable_score = 100.0 if syntax_valid else 0.0
+        executable_evidence = ["Python syntax parses."] if syntax_valid else []
+        executable_missing = [] if syntax_valid else ["Make the submitted Python parse before treating it as a sound recall."]
+
+    elapsed_seconds = body.elapsedMs / 1000
+    if elapsed_seconds <= 45:
+        fluency_score = 100.0
+        fluency_evidence = [f"Completed in {elapsed_seconds:.1f}s, which suggests fast recall."]
+        fluency_missing: list[str] = []
+    elif elapsed_seconds <= 90:
+        fluency_score = 70.0
+        fluency_evidence = [f"Completed in {elapsed_seconds:.1f}s with workable pace."]
+        fluency_missing = ["Compress time only after the core rubric is sound."]
+    else:
+        fluency_score = 35.0
+        fluency_evidence = []
+        fluency_missing = [f"Recall took {elapsed_seconds:.1f}s; rebuild fluency after fixing the primary miss."]
+
+    return {
+        "executability": _submission_dimension(
+            "executability",
+            executable_score,
+            executable_evidence,
+            executable_missing,
+            not_applicable=executable_na,
+        ),
+        "fluency": _submission_dimension("fluency", fluency_score, fluency_evidence, fluency_missing),
+    }
+
+
+def _submission_verdict(score: float, syntax_valid: bool, body: CoachAttemptFeedbackRequest) -> str:
+    if not body.userAnswer.strip() or not syntax_valid:
+        return "invalid"
+    if body.exact or score >= 88:
+        return "sound"
+    if score >= 72:
+        return "close"
+    if score >= 45:
+        return "partial"
+    return "wrong"
+
+
+def _primary_submission_failure(dimensions: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    ordered_failures = [
+        dimension for key, dimension in dimensions.items()
+        if key in SUBMISSION_DIMENSION_ORDER and dimension.get("status") == "fail"
+    ]
+    ordered_partials = [
+        dimension for key, dimension in dimensions.items()
+        if key in SUBMISSION_DIMENSION_ORDER and dimension.get("status") == "partial"
+    ]
+    candidates = ordered_failures or ordered_partials
+    if not candidates:
+        return {
+            "key": "sound",
+            "label": "Sound recall",
+            "severity": "minor",
+            "evidence": ["All core submission dimensions are passing."],
+        }
+
+    priority = {
+        "contract": 0,
+        "pattern": 1,
+        "invariant": 2,
+        "state_updates": 3,
+        "state": 4,
+        "control_flow": 5,
+        "answer_path": 6,
+        "ordering": 7,
+        "edge_cases": 8,
+        "recall_fidelity": 9,
+    }
+    chosen = sorted(candidates, key=lambda item: (priority.get(str(item.get("key")), 99), float(item.get("score", 0))))[0]
+    severity = "blocking" if chosen.get("status") == "fail" and chosen.get("key") in {"contract", "pattern", "invariant", "state_updates"} else "major"
+    return {
+        "key": chosen["key"],
+        "label": chosen["label"],
+        "severity": severity,
+        "evidence": chosen.get("missing") or chosen.get("evidence") or [],
+    }
+
+
+def _submission_strengths(dimensions: dict[str, dict[str, Any]], modifiers: dict[str, dict[str, Any]]) -> list[str]:
+    strengths: list[str] = []
+    for key in SUBMISSION_DIMENSION_ORDER:
+        dimension = dimensions.get(key, {})
+        if dimension.get("status") == "pass":
+            label = str(dimension.get("label", key))
+            strengths.append(f"{label} is preserved.")
+        if len(strengths) >= 3:
+            break
+    if len(strengths) < 3 and modifiers.get("fluency", {}).get("status") == "pass":
+        strengths.append("Recall speed is moving toward automaticity.")
+    return strengths or ["The completed attempt gives a clear signal for the next rep."]
+
+
+def _submission_error_tags(primary_failure: dict[str, Any], dimensions: dict[str, dict[str, Any]], modifiers: dict[str, dict[str, Any]]) -> list[str]:
+    tags: list[str] = []
+    primary_key = str(primary_failure.get("key", "")).strip()
+    if primary_key and primary_key != "sound":
+        tags.append(primary_key)
+    for key in SUBMISSION_DIMENSION_ORDER:
+        if dimensions.get(key, {}).get("status") == "fail" and key not in tags:
+            tags.append(key)
+    for key in ("executability", "fluency"):
+        if modifiers.get(key, {}).get("status") == "fail" and key not in tags:
+            tags.append(key)
+    return tags[:6] or ["sound"]
+
+
+def _submission_recommended_action(verdict: str, primary_failure: dict[str, Any]) -> str:
+    key = str(primary_failure.get("key", "sound"))
+    if verdict == "sound":
+        return "Run one more clean rep and try to keep the same structure under a slightly lower time cap."
+    actions = {
+        "contract": "Restate the function contract, then rewrite only the signature and return responsibility.",
+        "pattern": "Name the pattern and write its required moves before attempting the full answer again.",
+        "state": "List the state variables from memory, then rebuild the solution around those variables.",
+        "control_flow": "Write the loop or recursion shape first, then add details inside it.",
+        "invariant": "Say the invariant out loud, then rewrite only the branch that enforces it.",
+        "state_updates": "Trace one iteration and rewrite the state update that actually changes the algorithm.",
+        "ordering": "Replay the algorithm as ordered steps before typing code again.",
+        "answer_path": "Rewrite the answer-recording and return path before another full rep.",
+        "edge_cases": "Add the minimal empty/not-found/boundary case that protects the template.",
+        "recall_fidelity": "Compare against the target, then retype only the missing or drifted lines.",
+        "executability": "Fix the syntax or placeholder issue first, then rerun the same submission without changing the algorithm.",
+    }
+    return actions.get(key, "Redo one focused rep on the primary failed dimension before chasing speed.")
+
+
+def _build_template_submission_rubric(
+    body: CoachAttemptFeedbackRequest,
+    template_mode: str,
+) -> dict[str, Any]:
+    tuning = _merged_submission_tuning(body.submissionTuning)
+    analysis = _analyze_template_attempt(body.userAnswer, body.skillTags, template_mode, tuning, body.expectedAnswer)
+    pattern_tag = _primary_pattern_tag(body.skillTags)
+    key_groups = _pattern_step_keys(pattern_tag)
+    contract = analysis.get("contract", {}) if isinstance(analysis.get("contract"), dict) else {}
+    missing_params = [str(value) for value in contract.get("missingParams", [])]
+    extra_params = [str(value) for value in contract.get("extraParams", [])]
+    syntax_valid = bool(analysis.get("syntaxValid", True))
+
+    def step_dimension(key: str, score: float, step_keys: list[str]) -> dict[str, Any]:
+        matched = _matched_any_key(analysis, step_keys)
+        missing = _missing_labels_for_keys(analysis, step_keys)
+        evidence = [f"Detected {SUBMISSION_DIMENSION_LABELS.get(key, key).lower()} signals."] if matched else []
+        return _submission_dimension(key, score, evidence, missing)
+
+    contract_score = max(0.0, 100.0 - float(contract.get("penalty", 0) or 0) * 6.0)
+    dimensions = {
+        "contract": _submission_dimension(
+            "contract",
+            contract_score,
+            ["Function contract is preserved."] if not missing_params and not extra_params else [],
+            [*([f"Missing parameter: {param}" for param in missing_params]), *([f"Extra parameter: {param}" for param in extra_params])],
+        ),
+        "pattern": step_dimension("pattern", float(analysis.get("criticalCoverage", 0) or 0), key_groups["pattern"]),
+        "state": step_dimension("state", _template_dimension_score(analysis, "state_management", 0), key_groups["state"]),
+        "control_flow": step_dimension("control_flow", _template_dimension_score(analysis, "control_flow", 0), key_groups["control_flow"]),
+        "invariant": step_dimension("invariant", _template_dimension_score(analysis, "invariant_logic", 0), key_groups["invariant"]),
+        "state_updates": step_dimension(
+            "state_updates",
+            round((float(analysis.get("coreLogicScore", 0) or 0) + _template_dimension_score(analysis, "invariant_logic", 0)) / 2, 1),
+            key_groups["state_updates"],
+        ),
+        "ordering": _submission_dimension(
+            "ordering",
+            float(analysis.get("orderScore", 0) or 0),
+            ["Detected the expected step order."] if float(analysis.get("orderScore", 0) or 0) >= 80 else [],
+            ["Put the recalled steps in the same cause-and-effect order as the pattern."] if float(analysis.get("orderScore", 0) or 0) < 80 else [],
+        ),
+        "answer_path": step_dimension("answer_path", _template_dimension_score(analysis, "answer_update", 0), key_groups["answer_path"]),
+        "edge_cases": _submission_dimension(
+            "edge_cases",
+            70.0 if _matched_any_key(analysis, ["return"]) else 35.0,
+            ["Return path gives at least minimal fallback coverage."] if _matched_any_key(analysis, ["return"]) else [],
+            ["Name the minimal fallback or boundary behavior."] if not _matched_any_key(analysis, ["return"]) else [],
+        ),
+        "recall_fidelity": _submission_dimension(
+            "recall_fidelity",
+            float(body.accuracy),
+            [f"Recall score from evaluator: {round(body.accuracy)}%."],
+            [f"Missing: {label}" for label in analysis.get("missingLabels", [])[:3]],
+        ),
+    }
+    modifiers = _submission_modifier_results(body, template_mode, syntax_valid)
+    score = _rubric_score(dimensions)
+    verdict = _submission_verdict(score, syntax_valid, body)
+    primary_failure = _primary_submission_failure(dimensions)
+    strengths = _submission_strengths(dimensions, modifiers)
+    recommended_action = _submission_recommended_action(verdict, primary_failure)
+
+    return {
+        "verdict": verdict,
+        "score": {
+            "overall": score,
+            "conceptual": round((dimensions["pattern"]["score"] + dimensions["invariant"]["score"] + dimensions["state_updates"]["score"]) / 3, 1),
+            "fidelity": dimensions["recall_fidelity"]["score"],
+            "executable": modifiers["executability"]["score"],
+            "fluency": modifiers["fluency"]["score"],
+        },
+        "dimensions": dimensions,
+        "modifiers": modifiers,
+        "primaryFailure": primary_failure,
+        "strengths": strengths,
+        "recommendedAction": recommended_action,
+        "analysis": analysis,
+    }
+
+
+def _line_set_score(expected_lines: list[str], actual_lines: list[str], anchors: list[str]) -> float:
+    if not anchors:
+        return 100.0
+    actual_set = {line.strip() for line in actual_lines if line.strip()}
+    matched = sum(1 for anchor in anchors if anchor.strip() in actual_set)
+    return round((matched / len(anchors)) * 100, 1)
+
+
+def _anchor_lines(expected_lines: list[str], predicate) -> list[str]:
+    return [line for line in expected_lines if predicate(line.strip())]
+
+
+def _build_full_submission_rubric(body: CoachAttemptFeedbackRequest) -> dict[str, Any]:
+    expected_lines = _normalize_code(body.expectedAnswer)
+    actual_lines = _normalize_code(body.userAnswer)
+    syntax_valid = not _has_syntax_error(body.userAnswer) if body.userAnswer.strip() else False
+    first_mismatch = _first_mismatch_line(expected_lines, actual_lines)
+    indent_errors = _indent_errors(expected_lines, actual_lines)
+    missing_count, extra_count = _missing_extra_counts(expected_lines, actual_lines)
+    structure = _attempt_structure_summary(expected_lines, actual_lines)
+    contract = _template_contract_drift(body.expectedAnswer, body.userAnswer, _merged_submission_tuning(body.submissionTuning))
+    pattern_tag = _primary_pattern_tag(body.skillTags)
+
+    return_lines = _anchor_lines(expected_lines, lambda line: line.startswith("return "))
+    control_lines = _anchor_lines(expected_lines, lambda line: line.startswith(("for ", "while ", "if ", "elif ", "else:")))
+    update_lines = _anchor_lines(expected_lines, lambda line: any(token in line for token in (" = ", "+=", "-=", ".append(", ".pop(", "heappush", "heappop")))
+    state_lines = _anchor_lines(expected_lines, lambda line: any(token in line for token in ("left", "right", "count", "counts", "seen", "queue", "stack", "dp", "parent", "heap", "best", "answer", "result")))
+    guard_lines = _anchor_lines(expected_lines, lambda line: line.startswith("if ") or "continue" in line or "return" in line)
+
+    pattern_score = _line_set_score(expected_lines, actual_lines, control_lines + update_lines + return_lines)
+    state_score = _line_set_score(expected_lines, actual_lines, state_lines)
+    control_score = _line_set_score(expected_lines, actual_lines, control_lines)
+    update_score = _line_set_score(expected_lines, actual_lines, update_lines)
+    answer_score = _line_set_score(expected_lines, actual_lines, return_lines)
+    edge_score = _line_set_score(expected_lines, actual_lines, guard_lines) if guard_lines else 70.0
+    ordering_score = 100.0 if first_mismatch is None else max(0.0, 100.0 - min(first_mismatch, 10) * 8.0)
+    recall_score = max(0.0, float(body.accuracy) - min(missing_count, 8) * 2.5 - min(extra_count, 8) * 1.5)
+    contract_penalty = float(contract.get("penalty", 0) or 0)
+    contract_score = max(0.0, 100.0 - contract_penalty * 6.0)
+
+    pattern_issues = [
+        _detect_two_pointer_direction_issue(actual_lines, body.skillTags),
+        _detect_binary_search_bound_issue(actual_lines, body.skillTags),
         _detect_placeholder_issue(actual_lines),
         _detect_missing_return_issue(expected_lines, actual_lines),
-    ):
-        if issue:
-            issues.append(issue)
+    ]
+    pattern_issues = [issue for issue in pattern_issues if issue]
+    if pattern_issues:
+        update_score = min(update_score, 35.0)
+        pattern_score = min(pattern_score, 55.0)
 
-    if syntax_error:
-        issues.append("The attempt is not runnable yet because the Python syntax or block structure breaks before the full algorithm can execute.")
+    dimensions = {
+        "contract": _submission_dimension(
+            "contract",
+            contract_score,
+            ["Function contract is preserved."] if contract_score >= 80 else [],
+            [f"Contract drift: {item}" for item in [*contract.get("missingParams", []), *contract.get("extraParams", [])]],
+        ),
+        "pattern": _submission_dimension(
+            "pattern",
+            pattern_score,
+            [f"Detected the expected {pattern_tag or 'algorithm'} control/update shape."] if pattern_score >= 80 else [],
+            pattern_issues or structure.get("missing", []),
+        ),
+        "state": _submission_dimension(
+            "state",
+            state_score,
+            ["Key state lines are present."] if state_score >= 80 else [],
+            ["Recover the state variables the template maintains."] if state_score < 80 else [],
+        ),
+        "control_flow": _submission_dimension(
+            "control_flow",
+            control_score,
+            ["Main branch/loop shape is present."] if control_score >= 80 else [],
+            ["Restore the main loop, branch, or recursion structure."] if control_score < 80 else [],
+        ),
+        "invariant": _submission_dimension(
+            "invariant",
+            min(pattern_score, update_score),
+            ["Pattern decision rule appears consistent."] if min(pattern_score, update_score) >= 80 else [],
+            pattern_issues or ["Make the rule that preserves the invariant explicit."],
+        ),
+        "state_updates": _submission_dimension(
+            "state_updates",
+            update_score,
+            ["State update lines are present."] if update_score >= 80 else [],
+            ["Restore the update that changes state in the correct direction."] if update_score < 80 else [],
+        ),
+        "ordering": _submission_dimension(
+            "ordering",
+            ordering_score,
+            ["No ordering drift detected."] if first_mismatch is None else [],
+            [f"First drift occurs around line {first_mismatch}."] if first_mismatch is not None else [],
+        ),
+        "answer_path": _submission_dimension(
+            "answer_path",
+            answer_score,
+            ["Return path is present."] if answer_score >= 80 else [],
+            ["Add or correct the return/answer-recording path."] if answer_score < 80 else [],
+        ),
+        "edge_cases": _submission_dimension(
+            "edge_cases",
+            edge_score,
+            ["Guard or fallback behavior is present."] if edge_score >= 80 else [],
+            ["Protect the minimal guard, empty, or not-found behavior."] if edge_score < 80 else [],
+        ),
+        "recall_fidelity": _submission_dimension(
+            "recall_fidelity",
+            recall_score,
+            [f"Evaluator accuracy: {round(body.accuracy)}%."],
+            [
+                *([f"{missing_count} expected line(s) missing."] if missing_count else []),
+                *([f"{extra_count} extra line(s) drift from target."] if extra_count else []),
+                *([f"{indent_errors} indentation drift(s)."] if indent_errors else []),
+            ],
+        ),
+    }
+    modifiers = _submission_modifier_results(body, TemplateMode.full.value, syntax_valid)
+    score = _rubric_score(dimensions)
+    verdict = _submission_verdict(score, syntax_valid, body)
+    primary_failure = _primary_submission_failure(dimensions)
+    if not syntax_valid:
+        primary_failure = {
+            "key": "executability",
+            "label": SUBMISSION_DIMENSION_LABELS["executability"],
+            "severity": "blocking",
+            "evidence": modifiers["executability"]["missing"],
+        }
+    strengths = _submission_strengths(dimensions, modifiers)
+    recommended_action = _submission_recommended_action(verdict, primary_failure)
 
-    if structure["missing"]:
-        issues.append(
-            f"You are missing one or more core structural pieces of the pattern: {', '.join(structure['missing'][:3])}."
+    return {
+        "verdict": verdict,
+        "score": {
+            "overall": score,
+            "conceptual": round((dimensions["pattern"]["score"] + dimensions["invariant"]["score"] + dimensions["state_updates"]["score"]) / 3, 1),
+            "fidelity": dimensions["recall_fidelity"]["score"],
+            "executable": modifiers["executability"]["score"],
+            "fluency": modifiers["fluency"]["score"],
+        },
+        "dimensions": dimensions,
+        "modifiers": modifiers,
+        "primaryFailure": primary_failure,
+        "strengths": strengths,
+        "recommendedAction": recommended_action,
+        "codeSignals": {
+            "firstMismatchLine": first_mismatch,
+            "indentErrors": indent_errors,
+            "missingCount": missing_count,
+            "extraCount": extra_count,
+            "syntaxValid": syntax_valid,
+            "structure": structure,
+        },
+    }
+
+
+def _build_submission_rubric(body: CoachAttemptFeedbackRequest, template_mode: str) -> dict[str, Any]:
+    if template_mode == TemplateMode.full.value:
+        return _build_full_submission_rubric(body)
+    return _build_template_submission_rubric(body, template_mode)
+
+
+def _heuristic_submission_feedback(
+    body: CoachAttemptFeedbackRequest,
+    history_summary: dict[str, Any],
+    template_mode: str,
+) -> dict[str, Any]:
+    rubric = _build_submission_rubric(body, template_mode)
+    primary_failure = rubric["primaryFailure"]
+    verdict = str(rubric["verdict"])
+    template_label = _algorithmic_template_label(body.skillTags, template_mode)
+    principle = _pattern_principle(body.skillTags)
+    strengths = [str(item) for item in rubric.get("strengths", [])][:3]
+    recommended_action = str(rubric.get("recommendedAction", "Redo one focused rep on the primary failed dimension."))
+
+    if verdict == "sound":
+        diagnosis = f"{template_label.capitalize()} is sound at {round(float(rubric['score']['overall']))}% rubric strength."
+        primary_focus = "Preserve this solution under speed pressure."
+        why = "The core submission dimensions are passing."
+    else:
+        diagnosis = (
+            f"{template_label.capitalize()} is {verdict}; primary miss is "
+            f"{str(primary_failure.get('label', 'submission quality')).lower()}."
         )
-    elif missing_count > 0:
-        issues.append("Some key lines are omitted, so the overall pattern is recognizable but the implementation is still incomplete.")
+        primary_focus = f"Fix {str(primary_failure.get('label', 'the primary miss')).lower()}."
+        why = "; ".join(str(item) for item in primary_failure.get("evidence", [])[:2]) or diagnosis
 
-    if extra_count > 0:
-        issues.append("A few extra lines drift away from the target implementation and make the invariant harder to trust.")
+    if history_summary["attemptCount"] > 0:
+        diagnosis += (
+            f" Recent baseline: {history_summary['recentAvgAccuracy']}% over "
+            f"{history_summary['attemptCount']} related attempt(s)."
+        )
 
-    deduped: list[str] = []
-    for issue in issues:
-        if issue and issue not in deduped:
-            deduped.append(issue)
-    return deduped
+    full_feedback = (
+        f"{diagnosis} {why}".strip()
+        if verdict != "sound"
+        else f"{diagnosis} {strengths[0] if strengths else 'Core recall is stable.'}"
+    )
+    corrected_version = body.expectedAnswer.strip() if body.userAnswer.strip() and not body.exact else ""
+    error_tags = _submission_error_tags(primary_failure, rubric["dimensions"], rubric["modifiers"])
 
-
-def _build_submission_feedback(
-    template_label: str, issues: list[str], strengths: list[str], principle: str, history_summary: dict[str, Any]
-) -> str:
-    weakest_tag = str(history_summary.get("weakestTag") or "").strip()
-
-    if issues:
-        headline = issues[0].rstrip(".")
-        if weakest_tag:
-            return f"Your {template_label} needs work: {headline}, and `{weakest_tag}` is still the main recurring weak spot."
-        return f"Your {template_label} needs work: {headline}."
-
-    if strengths:
-        headline = strengths[0].rstrip(".")
-        if principle:
-            return f"Your {template_label} is strong: {headline}, and the key rule is {principle.rstrip('.').lower()}."
-        return f"Your {template_label} is strong: {headline}."
-
-    return f"Your {template_label} is close, but the main thing now is preserving the invariant all the way through the function."
+    return {
+        "diagnosis": diagnosis,
+        "primaryFocus": primary_focus,
+        "immediateCorrection": recommended_action,
+        "keepInMind": principle,
+        "affirmation": strengths[0] if strengths else "",
+        "nextMove": recommended_action,
+        "why": why,
+        "microDrill": f"One focused rep: fix {str(primary_failure.get('label', 'the primary miss')).lower()}, compare, then redo the full answer.",
+        "nextRepTarget": (
+            f"Next rep target: {verdict if verdict == 'sound' else 'sound'} solution with "
+            f">= {min(100, max(85, round(float(rubric['score']['overall']) + 5)))}% rubric strength."
+        ),
+        "strengths": strengths,
+        "errorTags": error_tags,
+        "fullFeedback": full_feedback,
+        "correctedVersion": corrected_version,
+        "llmUsed": False,
+        "signals": {
+            "submission_rubric": rubric,
+            "history_summary": history_summary,
+            "principle": principle,
+            "template_mode": template_mode,
+        },
+    }
 
 
 async def _load_attempt_history(body: CoachAttemptFeedbackRequest) -> list[dict[str, Any]]:
@@ -2314,119 +2895,6 @@ def _heuristic_pseudo_live_feedback(
     return response
 
 
-def _heuristic_template_submission_feedback(
-    body: CoachAttemptFeedbackRequest,
-    history_summary: dict[str, Any],
-    template_mode: str,
-) -> dict[str, Any]:
-    tuning = _merged_submission_tuning(body.submissionTuning)
-    analysis = _analyze_template_attempt(body.userAnswer, body.skillTags, template_mode, tuning, body.expectedAnswer)
-    matched_labels = [str(label) for label in analysis["matchedLabels"]]
-    missing_labels = [str(label) for label in analysis["missingLabels"]]
-    missing_keys = [str(key) for key in analysis["missingKeys"]]
-    blocker_key = missing_keys[0] if missing_keys else "template"
-    blocker_label = missing_labels[0] if missing_labels else "template flow"
-    principle = _pattern_principle(body.skillTags)
-    template_label = _algorithmic_template_label(body.skillTags, template_mode)
-    mode_label = "pseudocode" if template_mode == TemplateMode.pseudo.value else "skeleton"
-
-    strengths = []
-    core_logic_score = float(analysis.get("coreLogicScore", body.accuracy))
-    contract = analysis.get("contract", {}) if isinstance(analysis.get("contract"), dict) else {}
-    extra_params = [str(value) for value in contract.get("extraParams", [])]
-    if matched_labels:
-        strengths.append(f"You preserved {', '.join(matched_labels[:3])}, so the core logic is still visible.")
-    if body.accuracy >= 85:
-        strengths.append(f"High {mode_label} coverage under recall pressure.")
-    if not strengths:
-        strengths.append(f"You completed a full {mode_label} rep, which gives trainable signal.")
-
-    if body.exact or analysis["sound"]:
-        primary_focus = f"Keep the {mode_label} outline stable."
-        immediate = f"Run another {mode_label} rep and keep the same step order."
-    elif core_logic_score >= 75:
-        primary_focus = f"Keep the core {mode_label} logic and tighten one missing structural step."
-        immediate = "Rewrite the same outline once, but make the skipped step explicit."
-    else:
-        primary_focus = f"Lock in {blocker_label.lower()}."
-        immediate = _pseudo_live_focus_copy(blocker_key, blocker_label)[1]
-
-    diagnosis = (
-        f"{mode_label.capitalize()} accuracy {round(body.accuracy)}% in {body.elapsedMs / 1000:.1f}s."
-    )
-    if body.exact or analysis["sound"]:
-        diagnosis += " Core logic is preserved."
-    elif core_logic_score >= 75:
-        diagnosis += " Core logic is mostly preserved; the main miss is structural precision."
-    elif missing_labels:
-        diagnosis += f" Biggest gap: {missing_labels[0].lower()}."
-    else:
-        diagnosis += " Core template steps are present."
-    if extra_params:
-        diagnosis += f" Contract drift noted: added parameter {extra_params[0]}."
-
-    if history_summary["attemptCount"] > 0:
-        diagnosis += (
-            f" Historical baseline: {history_summary['recentAvgAccuracy']}% over "
-            f"{history_summary['attemptCount']} related attempt(s)."
-        )
-
-    issues: list[str] = []
-    if extra_params:
-        issues.append(
-            f"The function contract drifted slightly by adding {', '.join(extra_params[:2])}, but this is secondary to the algorithm flow."
-        )
-    if missing_labels and core_logic_score < 75:
-        issues.append(
-            f"The {mode_label} is missing key structural pieces: {', '.join(missing_labels[:3]).lower()}."
-        )
-    if not body.exact and not issues and core_logic_score >= 75:
-        issues.append(
-            f"The {mode_label} keeps the right algorithmic flow, but one or two steps are underspecified."
-        )
-    if not body.exact and not issues:
-        issues.append(
-            f"The {mode_label} has the right shape, but one or two invariant steps are still too vague."
-        )
-
-    full_feedback = _build_submission_feedback(template_label, issues, strengths, principle, history_summary)
-    corrected_version = body.expectedAnswer.strip() if body.userAnswer.strip() and not body.exact else ""
-    micro_drill = (
-        f"3 reps: hide the answer, write the {mode_label}, compare, then immediately rewrite only the missing step."
-    )
-    next_target = (
-        f"Next rep target: >= {min(100, max(80, int(body.accuracy) + 5))}% {mode_label} coverage under "
-        f"{max(15, int((body.elapsedMs / 1000) * 0.85))}s."
-    )
-    if body.exact or analysis["sound"]:
-        next_target = (
-            f"Next rep target: another sound {mode_label} rep under {max(15, int((body.elapsedMs / 1000) * 0.85))}s."
-        )
-
-    error_tags = [blocker_key] if missing_keys else ["sound"]
-    return {
-        "diagnosis": diagnosis,
-        "primaryFocus": primary_focus,
-        "immediateCorrection": immediate,
-        "keepInMind": principle,
-        "affirmation": strengths[0] if strengths else "",
-        "nextMove": immediate,
-        "why": issues[0] if issues else diagnosis,
-        "microDrill": micro_drill,
-        "nextRepTarget": next_target,
-        "strengths": strengths[:3],
-        "errorTags": error_tags,
-        "fullFeedback": full_feedback,
-        "correctedVersion": corrected_version,
-        "llmUsed": False,
-        "signals": {
-            "template_mode": template_mode,
-            "template_analysis": analysis,
-            "submission_tuning": tuning,
-        },
-    }
-
-
 def _heuristic_live_feedback(
     body: CoachAttemptFeedbackRequest,
     history_summary: dict[str, Any],
@@ -2653,168 +3121,7 @@ def _heuristic_attempt_feedback(
         return _heuristic_live_feedback(body, history_summary, live_history)
 
     template_mode = _template_mode_value(body.templateMode)
-    if template_mode != TemplateMode.full.value:
-        return _heuristic_template_submission_feedback(body, history_summary, template_mode)
-
-    expected_lines = _normalize_code(body.expectedAnswer)
-    actual_lines = _normalize_code(body.userAnswer)
-    first_mismatch = _first_mismatch_line(expected_lines, actual_lines)
-    indent_errors = _indent_errors(expected_lines, actual_lines)
-    missing_count, extra_count = _missing_extra_counts(expected_lines, actual_lines)
-    syntax_error = _has_syntax_error(body.userAnswer) if body.userAnswer.strip() else True
-    structure = _attempt_structure_summary(expected_lines, actual_lines)
-    opening_similarity = _line_similarity(
-        _trim_line(expected_lines[0]) if expected_lines else "",
-        _trim_line(actual_lines[0]) if actual_lines else "",
-    )
-
-    error_tags: list[str] = []
-    if syntax_error:
-        error_tags.append("syntax")
-    if indent_errors > 0:
-        error_tags.append("indentation")
-    if missing_count > 0:
-        error_tags.append("omission")
-    if extra_count > 0:
-        error_tags.append("intrusion")
-    if first_mismatch is not None and first_mismatch <= 3:
-        error_tags.append("opening-anchor")
-    if body.elapsedMs > 90_000:
-        error_tags.append("slow-recall")
-    if body.exact:
-        error_tags.append("sound")
-
-    strengths: list[str] = []
-    if structure["matched"]:
-        strengths.append(f"You preserved key structure: {', '.join(structure['matched'][:3])}.")
-    if body.accuracy >= 90:
-        strengths.append("High structural similarity under recall pressure.")
-    if not syntax_error and body.userAnswer.strip():
-        strengths.append("Python syntax remained valid.")
-    if body.elapsedMs <= 45_000 and body.userAnswer.strip():
-        strengths.append("Recall speed is moving toward automaticity.")
-    if not strengths:
-        strengths.append("You completed a full recall attempt, which gives trainable signal.")
-
-    principle = _pattern_principle(body.skillTags)
-    template_label = _algorithmic_template_label(body.skillTags, template_mode)
-    submission_issues = _build_submission_issue_list(
-        expected_lines,
-        actual_lines,
-        structure,
-        syntax_error,
-        missing_count,
-        extra_count,
-        body.skillTags,
-    )
-    corrected_version = body.expectedAnswer.strip() if body.userAnswer.strip() and not body.exact else ""
-
-    if syntax_error:
-        primary_focus = "Stabilize syntax before chasing speed."
-        immediate = "Fix the first syntax break and retype only that block once from memory."
-    elif submission_issues and "pointer movement is backwards" in submission_issues[0]:
-        primary_focus = "Fix the direction of the pointer updates."
-        immediate = "Re-type the comparison branches and say out loud which pointer changes the value in the needed direction."
-    elif submission_issues and "binary-search invariant" in submission_issues[0]:
-        primary_focus = "Restore the binary-search interval invariant."
-        immediate = "Walk the left/right meaning once, then rewrite only the bound updates."
-    elif structure["missing"]:
-        primary_focus = f"Rebuild the missing structural pieces: {', '.join(structure['missing'][:2])}."
-        immediate = "Retype once while naming the purpose of each missing line before you enter it."
-    elif missing_count > 0:
-        primary_focus = "Recover omitted logical steps."
-        immediate = f"Rehearse the {missing_count} missing line(s) as a contiguous chunk."
-    elif indent_errors > 0:
-        primary_focus = "Tighten indentation precision."
-        immediate = "Repeat once with strict 4-space indentation and colon-driven nesting."
-    elif first_mismatch is not None and first_mismatch <= 3:
-        primary_focus = "Lock in the opening anchor lines."
-        immediate = "Say the first 3 lines aloud, then retype immediately."
-    elif body.elapsedMs > 60_000:
-        primary_focus = "Increase recall speed without accuracy loss."
-        immediate = "Run one timed rep with a 20% lower time cap than this attempt."
-    else:
-        primary_focus = "Push from almost-right to a sound solution."
-        immediate = "Re-run now and fix the logical step that is still unsound."
-
-    diagnosis = (
-        f"Accuracy {round(body.accuracy)}% in {body.elapsedMs / 1000:.1f}s; "
-        f"first drift at line {first_mismatch if first_mismatch is not None else 'none'}."
-    )
-    if body.exact:
-        diagnosis += " Sound solution achieved."
-    elif submission_issues:
-        diagnosis += f" Main issue: {submission_issues[0]}"
-    elif indent_errors > 0:
-        diagnosis += " Core logic is present but indentation drifted."
-    else:
-        diagnosis += " Mostly correct; errors are precision-level."
-
-    if history_summary["attemptCount"] > 0:
-        diagnosis += (
-            f" Historical baseline: {history_summary['recentAvgAccuracy']}% over "
-            f"{history_summary['attemptCount']} related attempt(s)."
-        )
-        if history_summary["weakestTag"]:
-            diagnosis += f" Weakest recurring tag: {history_summary['weakestTag']}."
-        if history_summary["repeatedErrorTags"]:
-            diagnosis += (
-                " Repeated coach flags: "
-                f"{', '.join(history_summary['repeatedErrorTags'][:2])}."
-            )
-
-    micro_drill = (
-        "2-minute loop: hide answer, type from memory, compare, then immediately retype only the mismatched lines."
-    )
-    if error_tags and "opening-anchor" in error_tags:
-        micro_drill = "3 reps: type only function signature + base case, then full answer once."
-    elif "indentation" in error_tags:
-        micro_drill = "3 reps: copy recall with explicit indentation count (0/4/8 spaces) before each line."
-    elif "syntax" in error_tags:
-        micro_drill = "3 reps: type with a brief pause after each ':' and 'return' to protect structure."
-
-    next_target = (
-        f"Next rep target: >= {min(100, max(85, int(body.accuracy) + 5))}% accuracy under "
-        f"{max(20, int((body.elapsedMs / 1000) * 0.8))}s."
-    )
-    if body.exact:
-        next_target = (
-            f"Next rep target: another sound solution under {max(15, int((body.elapsedMs / 1000) * 0.85))}s."
-        )
-
-    full_feedback = _build_submission_feedback(
-        template_label,
-        submission_issues,
-        strengths,
-        principle,
-        history_summary,
-    )
-
-    return {
-        "diagnosis": diagnosis,
-        "primaryFocus": primary_focus,
-        "immediateCorrection": immediate,
-        "keepInMind": principle,
-        "microDrill": micro_drill,
-        "nextRepTarget": next_target,
-        "strengths": strengths[:3],
-        "errorTags": error_tags,
-        "fullFeedback": full_feedback,
-        "correctedVersion": corrected_version,
-        "llmUsed": False,
-        "signals": {
-            "first_mismatch": first_mismatch,
-            "indent_errors": indent_errors,
-            "missing_count": missing_count,
-            "extra_count": extra_count,
-            "syntax_error": syntax_error,
-            "opening_similarity": round(opening_similarity, 3),
-            "structure": structure,
-            "history_summary": history_summary,
-            "submission_issues": submission_issues,
-            "principle": principle,
-        },
-    }
+    return _heuristic_submission_feedback(body, history_summary, template_mode)
 
 
 def _heuristic_session_plan(body: CoachSessionPlanRequest) -> dict[str, Any]:
@@ -3060,6 +3367,8 @@ def _normalize_llm_provider(value: str) -> str:
         return "claude"
     if normalized in {"openai", "chatgpt", "gpt"}:
         return "openai"
+    if normalized in {"gemma", "gemma4", "google"}:
+        return "gemma"
     return ""
 
 
@@ -3072,7 +3381,7 @@ def _resolve_llm_provider(requested_provider: str) -> str:
 def _preferred_provider_chain(requested_provider: str) -> list[str]:
     requested = _normalize_llm_provider(str(requested_provider or ""))
     configured = _normalize_llm_provider(str(settings.coach_llm_provider or ""))
-    chain = [requested, configured, "claude", "openai"]
+    chain = [requested, configured, "gemma", "claude", "openai"]
     ordered: list[str] = []
     for provider in chain:
         if provider and provider not in ordered:
@@ -3090,6 +3399,8 @@ def _resolve_available_llm_provider(requested_provider: str) -> str:
 def _llm_provider_available(provider: str) -> bool:
     if provider == "claude":
         return bool(settings.coach_anthropic_api_key)
+    if provider == "gemma":
+        return bool(settings.coach_gemma_api_key)
     return bool(settings.coach_openai_api_key)
 
 
@@ -3220,9 +3531,45 @@ def _call_claude_json(system_prompt: str, user_payload: dict[str, Any]) -> dict[
     return None
 
 
+def _call_gemma_json(system_prompt: str, user_payload: dict[str, Any]) -> dict[str, Any] | None:
+    if not settings.coach_gemma_api_key:
+        return None
+
+    model = str(settings.coach_gemma_model or "").strip() or "gemma-4-31b-it"
+    url = f"{settings.coach_gemma_base_url.rstrip('/')}/models/{model}:generateContent?key={settings.coach_gemma_api_key}"
+    prompt = f"{system_prompt}\nReturn only valid JSON. Do not include markdown.\n\n{json.dumps(user_payload)}"
+    body = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
+    }
+    data = json.dumps(body).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            raw = response.read().decode("utf-8")
+            payload = json.loads(raw)
+            candidates = payload.get("candidates", [])
+            if candidates and isinstance(candidates, list):
+                parts = candidates[0].get("content", {}).get("parts", [])
+                text_parts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("text")]
+                if text_parts:
+                    return _extract_json_dict("\n".join(text_parts))
+            return None
+    except (urllib.error.URLError, KeyError, IndexError, ValueError, TypeError, TimeoutError) as error:
+        logger.warning("Gemma request failed: %s", error)
+        return None
+
+
 def _call_llm_json(system_prompt: str, user_payload: dict[str, Any], provider: str) -> dict[str, Any] | None:
     if provider == "claude":
         return _call_claude_json(system_prompt, user_payload)
+    if provider == "gemma":
+        return _call_gemma_json(system_prompt, user_payload)
     return _call_openai_json(system_prompt, user_payload)
 
 
@@ -3371,11 +3718,15 @@ async def _attempt_feedback_with_optional_llm(
     }
 
     if not body.draftMode:
+        for live_only_key in ("liveStage", "stalledOnSameBlocker", "stalledDurationMs", "draftMilestones", "liveTuning"):
+            llm_payload.pop(live_only_key, None)
+        llm_payload["submissionRubric"] = heuristic.get("signals", {}).get("submission_rubric", {})
         llm_payload["submissionStyle"] = {
             "goal": f"Grade the user's {submission_template_label} in one sentence.",
             "do": [
+                "Use submissionRubric as the source of truth for what passed, what failed, and the primary failure.",
                 "Lead with whether the submission is sound, close, or needs work.",
-                "Mention the biggest miss or the strongest correct structural move.",
+                "Mention the primary failure when the rubric is not sound, or the strongest passing dimension when it is sound.",
                 "Keep fullFeedback to exactly one sentence in natural prose.",
                 "Provide correctedVersion when the attempt is not exact; use expectedAnswer as the ground truth.",
             ],

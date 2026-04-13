@@ -37,6 +37,18 @@ class Settings(BaseSettings):
         default="https://api.anthropic.com/v1",
         validation_alias=AliasChoices("COACH_ANTHROPIC_BASE_URL"),
     )
+    coach_gemma_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("COACH_GEMMA_API_KEY"),
+    )
+    coach_gemma_model: str = Field(
+        default="gemma-4-31b-it",
+        validation_alias=AliasChoices("COACH_GEMMA_MODEL"),
+    )
+    coach_gemma_base_url: str = Field(
+        default="https://generativelanguage.googleapis.com/v1beta",
+        validation_alias=AliasChoices("COACH_GEMMA_BASE_URL"),
+    )
 
     model_config = SettingsConfigDict(
         env_prefix="",
