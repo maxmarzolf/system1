@@ -108,9 +108,6 @@
   --hc-diff-missing-strong-bg: rgba(244, 135, 113, 0.15);
   --hc-diff-missing-underline: rgba(244, 135, 113, 0.6);
   --hc-diff-extra-strong-bg: rgba(137, 209, 133, 0.15);
-  --hc-option-dimmed-border: #333333;
-  --hc-option-correct-contrast: #000000;
-  --hc-option-incorrect-contrast: #000000;
   --hc-theme-button-bg: rgba(111, 195, 223, 0.08);
   --hc-theme-button-active-bg: rgba(111, 195, 223, 0.14);
   --hc-theme-button-border: var(--hc-border-dim);
@@ -227,9 +224,6 @@
   --hc-diff-missing-strong-bg: rgba(180, 35, 24, 0.12);
   --hc-diff-missing-underline: rgba(180, 35, 24, 0.55);
   --hc-diff-extra-strong-bg: rgba(17, 99, 41, 0.12);
-  --hc-option-dimmed-border: #8b8b8b;
-  --hc-option-correct-contrast: #ffffff;
-  --hc-option-incorrect-contrast: #ffffff;
   --hc-theme-button-bg: rgba(0, 95, 184, 0.08);
   --hc-theme-button-active-bg: rgba(0, 95, 184, 0.14);
   --hc-theme-button-border: var(--hc-border-dim);

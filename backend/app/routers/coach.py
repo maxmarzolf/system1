@@ -2206,17 +2206,17 @@ async def _persist_feedback_event(
         await conn.execute(
             """
             INSERT INTO coach_feedback_events
-                (interaction_id, card_id, generated_card_id, question_type, feedback_stage, draft_mode,
+                (interaction_id, card_id, generated_card_id, question_type, feedback_stage, live_mode,
                  prompt, expected_answer, user_answer, accuracy, exact, elapsed_ms, skill_tags,
-                 previous_attempts, draft_milestones, feedback, llm_used, created_at)
+                 previous_attempts, live_milestones, feedback, llm_used, created_at)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
             """,
             body.interactionId,
             body.cardId,
             body.cardId,
             body.questionType,
-            "live" if body.draftMode else "submission",
-            body.draftMode,
+            "live" if body.liveMode else "submission",
+            body.liveMode,
             body.prompt,
             body.expectedAnswer,
             body.userAnswer,
@@ -2225,20 +2225,20 @@ async def _persist_feedback_event(
             body.elapsedMs,
             body.skillTags,
             json.dumps(body.previousAttempts),
-            json.dumps(body.draftMilestones),
+            json.dumps(body.liveMilestones),
             json.dumps(feedback),
             bool(feedback.get("llmUsed")),
             now,
         )
 
 
-def _draft_flag(body: CoachAttemptFeedbackRequest, key: str, default: bool = False) -> bool:
-    value = body.draftMilestones.get(key, default)
+def _live_flag(body: CoachAttemptFeedbackRequest, key: str, default: bool = False) -> bool:
+    value = body.liveMilestones.get(key, default)
     return bool(value)
 
 
-def _draft_value(body: CoachAttemptFeedbackRequest, key: str, default: Any = "") -> Any:
-    return body.draftMilestones.get(key, default)
+def _live_value(body: CoachAttemptFeedbackRequest, key: str, default: Any = "") -> Any:
+    return body.liveMilestones.get(key, default)
 
 
 def _limit_words(text: str, limit: int = 30) -> str:
@@ -2501,7 +2501,7 @@ def _sliding_window_guidance(lines: list[str], stage: str) -> tuple[str, str, st
                 "Connect the shrink loop to `counts` and `left`."
             )
         why = (
-            "The draft notices invalid windows, but it doesn't repair them yet."
+            "The current answer notices invalid windows, but it doesn't repair them yet."
         )
         return next_step, why, keep
 
@@ -2533,7 +2533,7 @@ def _two_pointer_guidance(lines: list[str], stage: str) -> tuple[str, str, str]:
     if not progress["has_pair_value"]:
         return (
             "The very next step is to compute or name the value formed by the current left and right pointers.",
-            "Until the draft makes the current pair explicit, there is nothing concrete to compare or react to.",
+            "Until the current answer makes the current pair explicit, there is nothing concrete to compare or react to.",
             keep,
         )
 
@@ -2558,7 +2558,7 @@ def _two_pointer_guidance(lines: list[str], stage: str) -> tuple[str, str, str]:
     if not progress["has_success_path"]:
         return (
             "The very next step is to add the success path for the case where the current pair satisfies the condition.",
-            "The movement logic is there, but the draft still needs a clear exit when the answer is found.",
+            "The movement logic is there, but the current answer still needs a clear exit when the answer is found.",
             keep,
         )
 
@@ -2620,9 +2620,9 @@ def _dp_guidance(lines: list[str], stage: str) -> tuple[str, str, str]:
         next_step = (
             "Define the DP state array before you write more control flow."
             if stage in ("early", "mid")
-            else "Instantiate the DP state array so the rest of the draft has real state to update."
+            else "Instantiate the DP state array so the rest of the answer has real state to update."
         )
-        why = "The draft has structure, but the state container is not on the page yet."
+        why = "The current answer has structure, but the state container is not on the page yet."
         return next_step, why, keep
 
     if not progress["has_base_case"]:
@@ -2635,7 +2635,7 @@ def _dp_guidance(lines: list[str], stage: str) -> tuple[str, str, str]:
     if not progress["has_loop"]:
         return (
             "Add the traversal that fills the state from the base case outward.",
-            "The state meaning is starting to settle, but the draft has no update path yet.",
+            "The state meaning is starting to settle, but the current answer has no update path yet.",
             keep,
         )
 
@@ -2881,12 +2881,12 @@ def _heuristic_pseudo_live_feedback(
         tuning=tuning,
     )
     response["signals"] = {
-        "draft_mode": True,
+        "live_mode": True,
         "live_stage": _live_feedback_stage(body.elapsedMs),
         "effective_live_stage": _live_feedback_stage(body.elapsedMs),
         "pattern_tag": _primary_pattern_tag(body.skillTags),
         "history_summary": history_summary,
-        "draft_milestones": body.draftMilestones,
+        "live_milestones": body.liveMilestones,
         "live_blocker_key": blocker_key,
         "stalled_duration_ms": stalled_duration_ms,
         "live_tuning": tuning,
@@ -2909,12 +2909,12 @@ def _heuristic_live_feedback(
     is_graph_question = any(
         tag in body.skillTags for tag in ("graph", "dfs-bfs", "graph-traversal", "union-find")
     )
-    has_signature = _draft_flag(body, "hasSignature")
-    has_guard = _draft_flag(body, "hasGuard")
-    has_loop = _draft_flag(body, "hasLoop")
-    has_placeholder = _draft_flag(body, "hasPlaceholder")
-    has_bookkeeping = _draft_flag(body, "hasBookkeeping")
-    traversal_kind = str(_draft_value(body, "traversalKind", "")).strip()
+    has_signature = _live_flag(body, "hasSignature")
+    has_guard = _live_flag(body, "hasGuard")
+    has_loop = _live_flag(body, "hasLoop")
+    has_placeholder = _live_flag(body, "hasPlaceholder")
+    has_bookkeeping = _live_flag(body, "hasBookkeeping")
+    traversal_kind = str(_live_value(body, "traversalKind", "")).strip()
     base_stage = _live_feedback_stage(body.elapsedMs)
     pattern_tag = _primary_pattern_tag(body.skillTags)
 
@@ -2929,7 +2929,7 @@ def _heuristic_live_feedback(
         blocker_key = "signature"
         primary_focus = "Anchor the solution first."
         next_move = "Write the function signature and name the state you will track."
-        why = "The draft needs an entry point before the algorithm can settle."
+        why = "The current answer needs an entry point before the algorithm can settle."
         keep_in_mind = "A clear entry point gives every later line a stable job."
         error_tags.append("opening-anchor")
     elif is_graph_question and not has_bookkeeping:
@@ -2950,14 +2950,14 @@ def _heuristic_live_feedback(
         blocker_key = "placeholder"
         primary_focus = "Replace the placeholder with a real update."
         next_move = "Replace the placeholder with the real state change for this step."
-        why = "The draft has structure, but one placeholder is still carrying algorithmic work."
+        why = "The current answer has structure, but one placeholder is still carrying algorithmic work."
         keep_in_mind = _pattern_principle(body.skillTags)
         error_tags.append("placeholder")
     elif is_graph_question and not has_guard:
         blocker_key = "graph-guard"
         primary_focus = "Write the skip rule."
         next_move = "Add the guard that decides which states should be skipped before expanding neighbors."
-        why = "The traversal shape is there, but the draft still needs the rule that keeps exploration clean."
+        why = "The traversal shape is there, but the current answer still needs the rule that keeps exploration clean."
         keep_in_mind = _graph_keep_in_mind(traversal_kind, has_guard)
         error_tags.append("guard")
     else:
@@ -3065,7 +3065,7 @@ def _heuristic_live_feedback(
             blocker_key = "state-update"
             primary_focus = "Keep the next move structural."
             next_move = _live_next_step_for_pattern(pattern_tag, stage, has_loop)
-            why = "The draft has enough structure now, so one concrete update will help more than a rewrite."
+            why = "The current answer has enough structure now, so one concrete update will help more than a rewrite."
             keep_in_mind = _pattern_principle(body.skillTags)
             error_tags.append("state-update")
 
@@ -3100,12 +3100,12 @@ def _heuristic_live_feedback(
         tuning=tuning,
     )
     response["signals"] = {
-        "draft_mode": True,
+        "live_mode": True,
         "live_stage": base_stage,
         "effective_live_stage": stage if "stage" in locals() else base_stage,
         "pattern_tag": pattern_tag,
         "history_summary": history_summary,
-        "draft_milestones": body.draftMilestones,
+        "live_milestones": body.liveMilestones,
         "live_blocker_key": blocker_key,
         "stalled_duration_ms": stalled_duration_ms,
         "live_tuning": tuning,
@@ -3117,7 +3117,7 @@ def _heuristic_live_feedback(
 def _heuristic_attempt_feedback(
     body: CoachAttemptFeedbackRequest, history_summary: dict[str, Any], live_history: list[dict[str, Any]]
 ) -> dict[str, Any]:
-    if body.draftMode:
+    if body.liveMode:
         return _heuristic_live_feedback(body, history_summary, live_history)
 
     template_mode = _template_mode_value(body.templateMode)
@@ -3581,7 +3581,7 @@ async def _attempt_feedback_with_optional_llm(
 ) -> dict[str, Any]:
     provider = _resolve_available_llm_provider(body.llmProvider)
     if not _llm_provider_available(provider):
-        if body.draftMode:
+        if body.liveMode:
             return heuristic
         raise SubmissionFeedbackUnavailableError(
             code="submission_feedback_missing_api_key",
@@ -3591,12 +3591,12 @@ async def _attempt_feedback_with_optional_llm(
 
     tuning = _merged_live_tuning(body)
     template_mode = _template_mode_value(body.templateMode)
-    live_stage = str(heuristic.get("signals", {}).get("effective_live_stage") or _live_feedback_stage(body.elapsedMs)) if body.draftMode else ""
+    live_stage = str(heuristic.get("signals", {}).get("effective_live_stage") or _live_feedback_stage(body.elapsedMs)) if body.liveMode else ""
     live_blocker_key = str(heuristic.get("signals", {}).get("live_blocker_key", "")).strip()
     stalled_duration_ms = _consecutive_blocker_duration_ms(live_history, live_blocker_key, body.elapsedMs)
     stalled = stalled_duration_ms >= int(tuning["stallThresholdSeconds"]) * 1000
     reveal_expected_answer = (
-        not body.draftMode
+        not body.liveMode
         or _stage_at_least(live_stage, str(tuning["canonicalAnswerStage"]))
     )
     tone_instruction = {
@@ -3627,7 +3627,7 @@ async def _attempt_feedback_with_optional_llm(
     submission_template_label = _algorithmic_template_label(body.skillTags, template_mode)
 
     system_prompt = (
-        "You are a calm memorization coach watching a draft in progress. Return strict JSON with keys: "
+        "You are a calm memorization coach watching a live answer in progress. Return strict JSON with keys: "
         "affirmation, nextMove, why, diagnosis, primaryFocus, immediateCorrection, keepInMind, microDrill, nextRepTarget, strengths, errorTags. "
         "Teach the pattern through one structural blocker only. Do not mention multiple issues. "
         "Describe what is already on the page when there is something stable to reinforce; otherwise leave affirmation empty. "
@@ -3637,7 +3637,7 @@ async def _attempt_feedback_with_optional_llm(
         "Make nextMove a single concrete structural move. Make why a single calm sentence explaining that move. "
         "Set diagnosis equal to why and immediateCorrection equal to nextMove. "
         "Every live-feedback string field must be 20 words or fewer."
-        if body.draftMode
+        if body.liveMode
         else (
             "You are a senior interview coach. Return strict JSON with keys: "
             "diagnosis, primaryFocus, immediateCorrection, fullFeedback, correctedVersion, microDrill, nextRepTarget, strengths, errorTags. "
@@ -3657,9 +3657,9 @@ async def _attempt_feedback_with_optional_llm(
         "strengths",
         "errorTags",
     ]
-    if body.draftMode:
+    if body.liveMode:
         response_shape.append("keepInMind")
-    if not body.draftMode:
+    if not body.liveMode:
         response_shape.extend(["fullFeedback", "correctedVersion"])
 
     llm_payload = {
@@ -3697,13 +3697,13 @@ async def _attempt_feedback_with_optional_llm(
         ],
         "historySummary": _summarize_attempt_history(history),
         "previousAttempts": body.previousAttempts[-3:],
-        "draftMode": body.draftMode,
+        "liveMode": body.liveMode,
         "templateMode": template_mode,
         "enabledTemplateModes": [_template_mode_value(item) for item in body.enabledTemplateModes],
         "liveStage": live_stage,
         "stalledOnSameBlocker": stalled,
         "stalledDurationMs": stalled_duration_ms,
-        "draftMilestones": body.draftMilestones,
+        "liveMilestones": body.liveMilestones,
         "liveTuning": tuning,
         "submissionTuning": _merged_submission_tuning(body.submissionTuning),
         "responseShape": response_shape,
@@ -3717,8 +3717,8 @@ async def _attempt_feedback_with_optional_llm(
         },
     }
 
-    if not body.draftMode:
-        for live_only_key in ("liveStage", "stalledOnSameBlocker", "stalledDurationMs", "draftMilestones", "liveTuning"):
+    if not body.liveMode:
+        for live_only_key in ("liveStage", "stalledOnSameBlocker", "stalledDurationMs", "liveMilestones", "liveTuning"):
             llm_payload.pop(live_only_key, None)
         llm_payload["submissionRubric"] = heuristic.get("signals", {}).get("submission_rubric", {})
         llm_payload["submissionStyle"] = {
@@ -3738,7 +3738,7 @@ async def _attempt_feedback_with_optional_llm(
             ],
         }
 
-    if body.draftMode:
+    if body.liveMode:
         llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)
         if not llm_response:
             return heuristic
@@ -3817,7 +3817,7 @@ async def _attempt_feedback_with_optional_llm(
         "correctedVersion": corrected_version or str(heuristic.get("correctedVersion", "")),
         "llmUsed": True,
     }
-    if body.draftMode:
+    if body.liveMode:
         if not response["affirmation"]:
             response["affirmation"] = str(response["strengths"][0]) if response["strengths"] else ""
         response["nextMove"] = response["nextMove"] or response["immediateCorrection"]
@@ -4003,7 +4003,7 @@ async def coach_attempt_evaluation(body: CoachAttemptEvaluationRequest):
 @router.post("/attempt-feedback", response_model=CoachAttemptFeedbackResponse)
 async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
     provider = _resolve_available_llm_provider(body.llmProvider)
-    if not body.draftMode and not _llm_provider_available(provider):
+    if not body.liveMode and not _llm_provider_available(provider):
         raise HTTPException(
             status_code=400,
             detail=_submission_feedback_error_detail(
@@ -4031,7 +4031,7 @@ async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
             ),
         ) from error
 
-    if not body.draftMode and not bool(feedback.get("llmUsed")):
+    if not body.liveMode and not bool(feedback.get("llmUsed")):
         raise HTTPException(
             status_code=503,
             detail=_submission_feedback_error_detail(

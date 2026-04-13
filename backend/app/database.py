@@ -10,7 +10,7 @@ pool: asyncpg.Pool | None = None
 async def connect() -> asyncpg.Pool:
     global pool
     pool = await asyncpg.create_pool(settings.database_url)
-    await _apply_mode_migration(pool)
+    await _apply_storage_cleanup(pool)
     await _ensure_recall_history_schema(pool)
     await _ensure_practice_history_schema(pool)
     return pool
@@ -28,15 +28,10 @@ def get_pool() -> asyncpg.Pool:
     return pool
 
 
-async def _apply_mode_migration(db_pool: asyncpg.Pool) -> None:
-    allowed_modes = (
-        "'main-recall', 'snap-classify', 'template-hunt', 'gut-check', 'no-go-trap', 'near-miss-duel', "
-        "'multiple-choice', 'full-solution'"
-    )
-
+async def _apply_storage_cleanup(db_pool: asyncpg.Pool) -> None:
     async with db_pool.acquire() as conn:
         await conn.execute(
-            f"""
+            """
             DO $$
             BEGIN
                 IF EXISTS (
@@ -47,7 +42,7 @@ async def _apply_mode_migration(db_pool: asyncpg.Pool) -> None:
                 ) THEN
                     EXECUTE $sql$
                         DELETE FROM score_attempts
-                        WHERE mode = 'typing-race'
+                        WHERE mode <> 'main-recall'
                     $sql$;
 
                     EXECUTE $sql$
@@ -58,24 +53,19 @@ async def _apply_mode_migration(db_pool: asyncpg.Pool) -> None:
                     EXECUTE $sql$
                         ALTER TABLE score_attempts
                         ADD CONSTRAINT score_attempts_mode_check
-                        CHECK (mode IN ({allowed_modes}))
-                    $sql$;
-                END IF;
-
-                IF EXISTS (
-                    SELECT 1
-                    FROM information_schema.tables
-                    WHERE table_schema = 'public'
-                      AND table_name = 'questions'
-                ) THEN
-                    EXECUTE $sql$
-                        DELETE FROM questions
-                        WHERE mode = 'typing-race'
+                        CHECK (mode IN ('main-recall'))
                     $sql$;
                 END IF;
             EXCEPTION
                 WHEN duplicate_object THEN NULL;
             END $$;
+
+            DROP TABLE IF EXISTS submissions CASCADE;
+            DROP TABLE IF EXISTS question_topics CASCADE;
+            DROP TABLE IF EXISTS answers CASCADE;
+            DROP TABLE IF EXISTS questions CASCADE;
+            DROP TABLE IF EXISTS topics CASCADE;
+            DROP TABLE IF EXISTS flashcards CASCADE;
             """
         )
 
@@ -89,6 +79,9 @@ async def _ensure_recall_history_schema(db_pool: asyncpg.Pool) -> None:
 
             ALTER TABLE score_attempts
             ADD COLUMN IF NOT EXISTS category_tags TEXT[] DEFAULT '{}';
+
+            ALTER TABLE score_attempts
+            DROP COLUMN IF EXISTS options;
 
             ALTER TABLE score_attempts
             ADD COLUMN IF NOT EXISTS accuracy REAL NOT NULL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100);
@@ -182,7 +175,7 @@ async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
                 generated_card_id VARCHAR(80),
                 question_type VARCHAR(50) NOT NULL DEFAULT '',
                 feedback_stage VARCHAR(20) NOT NULL CHECK (feedback_stage IN ('live', 'submission')),
-                draft_mode BOOLEAN NOT NULL DEFAULT FALSE,
+                live_mode BOOLEAN NOT NULL DEFAULT FALSE,
                 prompt TEXT,
                 expected_answer TEXT,
                 user_answer TEXT,
@@ -191,11 +184,17 @@ async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
                 elapsed_ms INTEGER NOT NULL DEFAULT 0 CHECK (elapsed_ms >= 0),
                 skill_tags TEXT[] DEFAULT '{}',
                 previous_attempts JSONB,
-                draft_milestones JSONB,
+                live_milestones JSONB,
                 feedback JSONB NOT NULL DEFAULT '{}'::jsonb,
                 llm_used BOOLEAN NOT NULL DEFAULT FALSE,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
+
+            ALTER TABLE coach_feedback_events
+            ADD COLUMN IF NOT EXISTS live_mode BOOLEAN NOT NULL DEFAULT FALSE;
+
+            ALTER TABLE coach_feedback_events
+            ADD COLUMN IF NOT EXISTS live_milestones JSONB;
 
             CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_interaction
                 ON coach_feedback_events(interaction_id);
@@ -211,5 +210,44 @@ async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
 
             CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_skill_tags
                 ON coach_feedback_events USING GIN(skill_tags);
+            """
+        )
+        await conn.execute(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'coach_feedback_events'
+                      AND column_name = 'draft_mode'
+                ) THEN
+                    EXECUTE $sql$
+                        UPDATE coach_feedback_events
+                        SET live_mode = draft_mode
+                    $sql$;
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'coach_feedback_events'
+                      AND column_name = 'draft_milestones'
+                ) THEN
+                    EXECUTE $sql$
+                        UPDATE coach_feedback_events
+                        SET live_milestones = draft_milestones
+                        WHERE live_milestones IS NULL
+                    $sql$;
+                END IF;
+            END $$;
+
+            ALTER TABLE coach_feedback_events
+            DROP COLUMN IF EXISTS draft_mode;
+
+            ALTER TABLE coach_feedback_events
+            DROP COLUMN IF EXISTS draft_milestones;
             """
         )

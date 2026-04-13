@@ -11,8 +11,6 @@ from pydantic import BaseModel, Field
 
 class GameMode(str, Enum):
     main_recall = "main-recall"
-    multiple_choice = "multiple-choice"
-    full_solution = "full-solution"
 
 
 class TemplateMode(str, Enum):
@@ -30,7 +28,6 @@ class AttemptCreate(BaseModel):
     question: str | None = None
     questionType: str = ""
     categoryTags: list[str] = []
-    options: list[dict] | None = None
     correctAnswer: str | None = None
     userAnswer: str | None = None
     mode: GameMode
@@ -65,8 +62,8 @@ class CoachAttemptFeedbackRequest(BaseModel):
     templateMode: TemplateMode = TemplateMode.full
     enabledTemplateModes: list[TemplateMode] = [TemplateMode.full]
     previousAttempts: list[dict] = []
-    draftMode: bool = False
-    draftMilestones: dict[str, Any] = {}
+    liveMode: bool = False
+    liveMilestones: dict[str, Any] = {}
     liveCoachTuning: dict[str, Any] = {}
     submissionTuning: dict[str, Any] = {}
     llmProvider: str = "openai"

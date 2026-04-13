@@ -71,7 +71,7 @@ export default function CoachTuningPage() {
                   updateLiveCoachTuning('specificitySource', event.target.value as LiveCoachTuning['specificitySource'])
                 }
               >
-                <option value="time-and-quality">Time + draft quality</option>
+                <option value="time-and-quality">Time + live answer quality</option>
                 <option value="time-only">Time only</option>
               </select>
             </label>

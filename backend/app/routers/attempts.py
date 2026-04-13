@@ -23,11 +23,11 @@ async def create_attempt(body: AttemptCreate):
         row = await conn.fetchrow(
             """
             INSERT INTO score_attempts
-                (card_id, card_title, question, question_type, category_tags, options,
+                (card_id, card_title, question, question_type, category_tags,
                  correct_answer, user_answer, mode, correct, accuracy, exact, elapsed_ms,
                  interaction_id, generated_card_id, generated_card, template_mode,
                  live_coach_used, coach_feedback, created_at, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
             RETURNING id
             """,
             body.cardId,
@@ -35,7 +35,6 @@ async def create_attempt(body: AttemptCreate):
             body.question,
             body.questionType,
             body.categoryTags,
-            _json.dumps(body.options) if body.options else None,
             body.correctAnswer,
             body.userAnswer,
             body.mode.value,
