@@ -70,6 +70,10 @@ ANTHROPIC_MODEL_FALLBACKS = (
 )
 SUBMISSION_LLM_MAX_RETRIES = 3
 SUBMISSION_LLM_RETRY_DELAYS_SECONDS = (0.3, 0.6, 0.9)
+ASSESSOR_FASTEST_PROVIDER_CHAIN = ("gemma", "claude", "openai")
+ASSESSOR_MAX_TOKENS = 600
+NARRATOR_MAX_TOKENS = 1800
+DRILL_GEN_MAX_TOKENS = 2000
 
 
 class SubmissionFeedbackUnavailableError(RuntimeError):
@@ -320,16 +324,6 @@ def _call_llm_json_for_submission(
         return None, code, message, retryable
 
 
-def _normalize_code(code: str) -> str:
-    return (
-        code.replace("\r\n", "\n")
-        .split("\n")
-    )
-
-
-def _trim_line(line: str) -> str:
-    return line.rstrip()
-
 
 class _IdentifierCanonicalizer(ast.NodeTransformer):
     def __init__(self):
@@ -451,52 +445,6 @@ def _evaluate_attempt_by_template_mode(
     return _analyze_template_attempt(user_answer, skill_tags, template_mode, submission_tuning, expected_answer)
 
 
-def _live_stage_rank(stage: str) -> int:
-    return LIVE_STAGE_ORDER.get(stage, 0)
-
-
-def _live_stage_from_rank(rank: int) -> str:
-    normalized = max(0, min(rank, max(LIVE_STAGE_ORDER.values())))
-    for stage, stage_rank in LIVE_STAGE_ORDER.items():
-        if stage_rank == normalized:
-            return stage
-    return "early"
-
-
-def _merged_live_tuning(body: CoachAttemptFeedbackRequest) -> dict[str, Any]:
-    raw = body.liveCoachTuning if isinstance(body.liveCoachTuning, dict) else {}
-    tuning = {**LIVE_TUNING_DEFAULTS}
-
-    tuning["focusMode"] = str(raw.get("focusMode", tuning["focusMode"])).strip() or tuning["focusMode"]
-    tuning["tone"] = str(raw.get("tone", tuning["tone"])).strip() or tuning["tone"]
-    tuning["singleIssue"] = bool(raw.get("singleIssue", tuning["singleIssue"]))
-    tuning["showPatternNames"] = bool(raw.get("showPatternNames", tuning["showPatternNames"]))
-    specificity = str(raw.get("specificitySource", tuning["specificitySource"])).strip()
-    tuning["specificitySource"] = specificity or tuning["specificitySource"]
-    feedback_frequency = str(raw.get("feedbackFrequency", tuning["feedbackFrequency"])).strip()
-    tuning["feedbackFrequency"] = (
-        feedback_frequency if feedback_frequency in LIVE_FEEDBACK_FREQUENCIES else tuning["feedbackFrequency"]
-    )
-    tuning["allowExactEditsWhenStuck"] = bool(
-        raw.get("allowExactEditsWhenStuck", tuning["allowExactEditsWhenStuck"])
-    )
-    canonical_stage = str(raw.get("canonicalAnswerStage", tuning["canonicalAnswerStage"])).strip()
-    tuning["canonicalAnswerStage"] = (
-        canonical_stage if canonical_stage in LIVE_STAGE_ORDER else tuning["canonicalAnswerStage"]
-    )
-    affirmation_mode = str(raw.get("affirmationMode", tuning["affirmationMode"])).strip()
-    tuning["affirmationMode"] = affirmation_mode or tuning["affirmationMode"]
-    try:
-        tuning["driftThresholdAttempts"] = max(1, int(raw.get("driftThresholdAttempts", tuning["driftThresholdAttempts"])))
-    except (TypeError, ValueError):
-        pass
-    try:
-        tuning["stallThresholdSeconds"] = max(15, int(raw.get("stallThresholdSeconds", tuning["stallThresholdSeconds"])))
-    except (TypeError, ValueError):
-        pass
-    return tuning
-
-
 def _merged_submission_tuning(raw_tuning: dict[str, Any] | None) -> dict[str, Any]:
     raw = raw_tuning if isinstance(raw_tuning, dict) else {}
     tuning = {**SUBMISSION_TUNING_DEFAULTS}
@@ -513,53 +461,6 @@ def _merged_submission_tuning(raw_tuning: dict[str, Any] | None) -> dict[str, An
     tuning["requireAnswerStep"] = bool(raw.get("requireAnswerStep", tuning["requireAnswerStep"]))
     tuning["allowExtraParameters"] = bool(raw.get("allowExtraParameters", tuning["allowExtraParameters"]))
     return tuning
-
-
-def _stage_at_least(stage: str, minimum_stage: str) -> bool:
-    return _live_stage_rank(stage) >= _live_stage_rank(minimum_stage)
-
-
-def _line_similarity(expected: str, actual: str) -> float:
-    if not expected and not actual:
-        return 1.0
-    max_len = max(len(expected), len(actual), 1)
-    matches = sum(1 for idx in range(min(len(expected), len(actual))) if expected[idx] == actual[idx])
-    return matches / max_len
-
-
-def _first_mismatch_line(expected_lines: list[str], actual_lines: list[str]) -> int | None:
-    max_len = max(len(expected_lines), len(actual_lines))
-    for idx in range(max_len):
-        exp = _trim_line(expected_lines[idx]) if idx < len(expected_lines) else ""
-        got = _trim_line(actual_lines[idx]) if idx < len(actual_lines) else ""
-        if exp != got:
-            return idx + 1
-    return None
-
-
-def _indent_errors(expected_lines: list[str], actual_lines: list[str]) -> int:
-    errors = 0
-    for idx in range(min(len(expected_lines), len(actual_lines))):
-        exp = _trim_line(expected_lines[idx])
-        got = _trim_line(actual_lines[idx])
-        if exp.lstrip() and exp.lstrip() == got.lstrip():
-            exp_indent = len(exp) - len(exp.lstrip(" "))
-            got_indent = len(got) - len(got.lstrip(" "))
-            if exp_indent != got_indent:
-                errors += 1
-    return errors
-
-
-def _missing_extra_counts(expected_lines: list[str], actual_lines: list[str]) -> tuple[int, int]:
-    expected_counter = Counter(line.strip() for line in expected_lines if line.strip())
-    actual_counter = Counter(line.strip() for line in actual_lines if line.strip())
-    missing = 0
-    extra = 0
-    for line, count in expected_counter.items():
-        missing += max(0, count - actual_counter.get(line, 0))
-    for line, count in actual_counter.items():
-        extra += max(0, count - expected_counter.get(line, 0))
-    return missing, extra
 
 
 def _has_syntax_error(code: str) -> bool:
@@ -992,772 +893,6 @@ def _analyze_template_attempt(
     }
 
 
-def _attempt_structure_summary(expected_lines: list[str], actual_lines: list[str]) -> dict[str, list[str]]:
-    expected_set = {line.strip() for line in expected_lines if line.strip()}
-    actual_set = {line.strip() for line in actual_lines if line.strip()}
-    matched: list[str] = []
-    missing: list[str] = []
-
-    def push(label: str, anchor: str | None):
-        if not anchor:
-            return
-        if anchor.strip() in actual_set:
-            matched.append(label)
-        else:
-            missing.append(label)
-
-    signature = next((line for line in expected_lines if line.strip().startswith("def ")), None)
-    guard = next((line for line in expected_lines if line.strip().startswith("if ")), None)
-    traversal = next((line for line in expected_lines if line.strip().startswith(("for ", "while "))), None)
-    state_update = next(
-        (
-            line
-            for line in expected_lines
-            if any(token in line for token in ("append(", "pop(", " = ", "+=", "-="))
-        ),
-        None,
-    )
-    return_line = next((line for line in expected_lines if line.strip().startswith("return ")), None)
-
-    push("signature", signature)
-    push("guard", guard)
-    push("traversal", traversal)
-    push("state update", state_update)
-    push("return path", return_line)
-
-    if not matched and expected_set & actual_set:
-        matched.append("partial structure")
-
-    return {"matched": matched, "missing": missing}
-
-
-def _non_empty_lines(lines: list[str]) -> list[str]:
-    return [line.strip() for line in lines if line.strip()]
-
-
-def _extract_branch_updates(lines: list[str]) -> list[tuple[str, list[str]]]:
-    branches: list[tuple[str, list[str]]] = []
-    index = 0
-    while index < len(lines):
-        raw = lines[index]
-        stripped = raw.strip()
-        if not stripped.startswith(("if ", "elif ", "else:")):
-            index += 1
-            continue
-
-        indent = len(raw) - len(raw.lstrip(" "))
-        updates: list[str] = []
-        probe = index + 1
-        while probe < len(lines):
-            child = lines[probe]
-            child_stripped = child.strip()
-            if not child_stripped:
-                probe += 1
-                continue
-            child_indent = len(child) - len(child.lstrip(" "))
-            if child_indent <= indent:
-                break
-            updates.append(child_stripped)
-            probe += 1
-
-        branches.append((stripped, updates))
-        index = probe
-
-    return branches
-
-
-def _pattern_principle(skill_tags: list[str]) -> str:
-    ordered_rules = [
-        ("two-pointers", "For the two-pointer pattern on a sorted array, move the side that can improve the comparison: left grows the value, right shrinks it."),
-        ("sliding-window", "For sliding-window problems, keep the window invariant explicit: expand, shrink until valid, then score the current window."),
-        ("binary-search", "For binary search, protect the interval invariant first and only move the bound that cannot still hold the answer."),
-        ("dfs-bfs", "For DFS and BFS, decide when a state becomes visited before you start coding neighbors, then apply that rule consistently."),
-        ("graph-traversal", "For graph traversal, define the frontier, the visited rule, and the neighbor update before you fill in edge cases."),
-        ("backtracking", "For backtracking, every choice should be paired with an undo step so sibling branches start from clean state."),
-        ("heap", "For heap problems, be explicit about what stays in the heap and what gets evicted when the heap exceeds its intended size."),
-        ("union-find", "For union find, keep find and union responsibilities separate: find compresses paths, union connects roots."),
-        ("dynamic-programming", "For dynamic programming, define what the state means before writing transitions; the update should read directly from that definition."),
-        ("dp", "For dynamic programming, define what the state means before writing transitions; the update should read directly from that definition."),
-        ("intervals", "For interval problems, sort once, then make every step answer a simple question: extend the current interval or start a new one."),
-        ("prefix-sums", "For prefix sums, query with the old prefix state before recording the current prefix so counts stay aligned."),
-        ("monotonic-stack", "For monotonic stack problems, the stack stores unresolved items until a new value breaks the invariant and resolves them."),
-        ("stack", "For stack-based patterns, be explicit about what the stack represents before pushing or popping."),
-    ]
-    for tag, rule in ordered_rules:
-        if tag in skill_tags:
-            return rule
-    return "In senior interviews, make the invariant explicit early so each update has a reason for being there."
-
-
-def _detect_two_pointer_direction_issue(actual_lines: list[str], skill_tags: list[str]) -> str:
-    if "two-pointers" not in skill_tags:
-        return ""
-
-    saw_large_branch_wrong = False
-    saw_small_branch_wrong = False
-    for condition, updates in _extract_branch_updates(actual_lines):
-        if "target" not in condition:
-            continue
-        joined_updates = " ".join(updates)
-        if ">" in condition and re.search(r"\bleft\s*\+=\s*1\b", joined_updates):
-            saw_large_branch_wrong = True
-        if "<" in condition and re.search(r"\bright\s*-=\s*1\b", joined_updates):
-            saw_small_branch_wrong = True
-
-    if saw_large_branch_wrong or saw_small_branch_wrong:
-        return (
-            "Your pointer movement is backwards. On a sorted two-pointer scan, move left when the value is too small and move right when it is too large."
-        )
-    return ""
-
-
-def _detect_binary_search_bound_issue(actual_lines: list[str], skill_tags: list[str]) -> str:
-    if "binary-search" not in skill_tags:
-        return ""
-
-    wrong_lower_bound = False
-    wrong_upper_bound = False
-    for condition, updates in _extract_branch_updates(actual_lines):
-        joined_updates = " ".join(updates)
-        if "< target" in condition and re.search(r"\bright\s*=\s*mid\b", joined_updates):
-            wrong_lower_bound = True
-        if ("else:" in condition or ">=" in condition) and re.search(r"\bleft\s*=\s*mid\s*\+?\s*1\b", joined_updates):
-            wrong_upper_bound = True
-
-    if wrong_lower_bound or wrong_upper_bound:
-        return (
-            "Your bound movement breaks the binary-search invariant. When the middle value is still too small, discard the left half; otherwise keep the candidate answer in the search range."
-        )
-    return ""
-
-
-def _detect_missing_return_issue(expected_lines: list[str], actual_lines: list[str]) -> str:
-    expected_returns = [line for line in _non_empty_lines(expected_lines) if line.startswith("return ")]
-    actual_returns = [line for line in _non_empty_lines(actual_lines) if line.startswith("return ")]
-    if not expected_returns:
-        return ""
-    if not actual_returns:
-        return "Your attempt never reaches an explicit return path, so the function is incomplete even if the main loop is close."
-    if len(actual_returns) < len(expected_returns):
-        return "You are missing part of the return path. In interview code, make sure the failure/default case is explicit."
-    return ""
-
-
-def _detect_placeholder_issue(actual_lines: list[str]) -> str:
-    if any(re.search(r"\b(pass|something|todo|tbd)\b", line.strip(), re.IGNORECASE) for line in actual_lines):
-        return "Placeholders are still doing algorithmic work here. In a senior interview, even rough code should name the real state update."
-    return ""
-
-
-SUBMISSION_DIMENSION_ORDER = (
-    "contract",
-    "pattern",
-    "state",
-    "control_flow",
-    "invariant",
-    "state_updates",
-    "ordering",
-    "answer_path",
-    "edge_cases",
-    "recall_fidelity",
-)
-
-
-SUBMISSION_DIMENSION_LABELS = {
-    "contract": "Problem contract",
-    "pattern": "Core pattern",
-    "state": "State representation",
-    "control_flow": "Control flow shape",
-    "invariant": "Invariant or decision rule",
-    "state_updates": "State update correctness",
-    "ordering": "Step ordering",
-    "answer_path": "Answer recording or return path",
-    "edge_cases": "Edge-case coverage",
-    "recall_fidelity": "Recall fidelity",
-    "executability": "Syntax and executability",
-    "fluency": "Speed and fluency",
-}
-
-
-SUBMISSION_DIMENSION_WEIGHTS = {
-    "contract": 0.08,
-    "pattern": 0.12,
-    "state": 0.12,
-    "control_flow": 0.12,
-    "invariant": 0.16,
-    "state_updates": 0.14,
-    "ordering": 0.08,
-    "answer_path": 0.10,
-    "edge_cases": 0.04,
-    "recall_fidelity": 0.04,
-}
-
-
-def _dimension_status(score: float, not_applicable: bool = False) -> str:
-    if not_applicable:
-        return "not_applicable"
-    if score >= 80:
-        return "pass"
-    if score >= 45:
-        return "partial"
-    return "fail"
-
-
-def _submission_dimension(
-    key: str,
-    score: float,
-    evidence: list[str] | None = None,
-    missing: list[str] | None = None,
-    not_applicable: bool = False,
-) -> dict[str, Any]:
-    normalized_score = round(max(0.0, min(100.0, score)), 1)
-    return {
-        "key": key,
-        "label": SUBMISSION_DIMENSION_LABELS.get(key, key.replace("_", " ").title()),
-        "status": _dimension_status(normalized_score, not_applicable),
-        "score": normalized_score,
-        "evidence": [item for item in (evidence or []) if str(item).strip()][:4],
-        "missing": [item for item in (missing or []) if str(item).strip()][:4],
-    }
-
-
-def _template_dimension_score(analysis: dict[str, Any], key: str, fallback: float = 0.0) -> float:
-    for dimension in analysis.get("dimensions", []):
-        if isinstance(dimension, dict) and dimension.get("key") == key:
-            return float(dimension.get("score", fallback) or fallback)
-    return fallback
-
-
-def _matched_any_key(analysis: dict[str, Any], keys: list[str]) -> bool:
-    matched_keys = {str(key) for key in analysis.get("matchedKeys", [])}
-    return any(key in matched_keys for key in keys)
-
-
-def _missing_labels_for_keys(analysis: dict[str, Any], keys: list[str]) -> list[str]:
-    missing_keys = [str(key) for key in analysis.get("missingKeys", [])]
-    missing_labels = [str(label) for label in analysis.get("missingLabels", [])]
-    by_key = {key: missing_labels[index] for index, key in enumerate(missing_keys) if index < len(missing_labels)}
-    return [by_key[key] for key in keys if key in by_key]
-
-
-def _pattern_step_keys(pattern_tag: str) -> dict[str, list[str]]:
-    return {
-        "sliding-window": {
-            "pattern": ["expand", "repair", "shrink", "score"],
-            "state": ["state"],
-            "control_flow": ["expand", "repair", "shrink"],
-            "invariant": ["repair", "shrink"],
-            "state_updates": ["expand", "shrink"],
-            "answer_path": ["score", "return"],
-        },
-        "two-pointers": {
-            "pattern": ["pointers", "loop", "compare", "move"],
-            "state": ["pointers"],
-            "control_flow": ["loop", "move"],
-            "invariant": ["compare", "move"],
-            "state_updates": ["move"],
-            "answer_path": ["return"],
-        },
-        "binary-search": {
-            "pattern": ["bounds", "loop", "mid", "compare", "update"],
-            "state": ["bounds", "mid"],
-            "control_flow": ["loop", "update"],
-            "invariant": ["compare", "update"],
-            "state_updates": ["update"],
-            "answer_path": ["return"],
-        },
-        "dynamic-programming": {
-            "pattern": ["state", "base", "loop", "transition"],
-            "state": ["state", "base"],
-            "control_flow": ["loop"],
-            "invariant": ["transition"],
-            "state_updates": ["transition"],
-            "answer_path": ["return"],
-        },
-        "dp": {
-            "pattern": ["state", "base", "loop", "transition"],
-            "state": ["state", "base"],
-            "control_flow": ["loop"],
-            "invariant": ["transition"],
-            "state_updates": ["transition"],
-            "answer_path": ["return"],
-        },
-    }.get(
-        pattern_tag,
-        {
-            "pattern": ["state", "flow", "update"],
-            "state": ["state"],
-            "control_flow": ["flow"],
-            "invariant": ["update"],
-            "state_updates": ["update"],
-            "answer_path": ["return"],
-        },
-    )
-
-
-def _rubric_score(dimensions: dict[str, dict[str, Any]]) -> float:
-    total = 0.0
-    weight_total = 0.0
-    for key in SUBMISSION_DIMENSION_ORDER:
-        dimension = dimensions.get(key)
-        if not dimension or dimension.get("status") == "not_applicable":
-            continue
-        weight = SUBMISSION_DIMENSION_WEIGHTS.get(key, 0.0)
-        total += float(dimension.get("score", 0) or 0) * weight
-        weight_total += weight
-    return round(total / weight_total, 1) if weight_total else 0.0
-
-
-def _submission_modifier_results(
-    body: CoachAttemptFeedbackRequest,
-    template_mode: str,
-    syntax_valid: bool,
-) -> dict[str, Any]:
-    executable_score = 100.0
-    executable_evidence = ["No executable-code requirement for pseudocode mode."]
-    executable_missing: list[str] = []
-    executable_na = template_mode == TemplateMode.pseudo.value
-
-    if template_mode != TemplateMode.pseudo.value:
-        executable_score = 100.0 if syntax_valid else 0.0
-        executable_evidence = ["Python syntax parses."] if syntax_valid else []
-        executable_missing = [] if syntax_valid else ["Make the submitted Python parse before treating it as a sound recall."]
-
-    elapsed_seconds = body.elapsedMs / 1000
-    if elapsed_seconds <= 45:
-        fluency_score = 100.0
-        fluency_evidence = [f"Completed in {elapsed_seconds:.1f}s, which suggests fast recall."]
-        fluency_missing: list[str] = []
-    elif elapsed_seconds <= 90:
-        fluency_score = 70.0
-        fluency_evidence = [f"Completed in {elapsed_seconds:.1f}s with workable pace."]
-        fluency_missing = ["Compress time only after the core rubric is sound."]
-    else:
-        fluency_score = 35.0
-        fluency_evidence = []
-        fluency_missing = [f"Recall took {elapsed_seconds:.1f}s; rebuild fluency after fixing the primary miss."]
-
-    return {
-        "executability": _submission_dimension(
-            "executability",
-            executable_score,
-            executable_evidence,
-            executable_missing,
-            not_applicable=executable_na,
-        ),
-        "fluency": _submission_dimension("fluency", fluency_score, fluency_evidence, fluency_missing),
-    }
-
-
-def _submission_verdict(score: float, syntax_valid: bool, body: CoachAttemptFeedbackRequest) -> str:
-    if not body.userAnswer.strip() or not syntax_valid:
-        return "invalid"
-    if body.exact or score >= 88:
-        return "sound"
-    if score >= 72:
-        return "close"
-    if score >= 45:
-        return "partial"
-    return "wrong"
-
-
-def _primary_submission_failure(dimensions: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    ordered_failures = [
-        dimension for key, dimension in dimensions.items()
-        if key in SUBMISSION_DIMENSION_ORDER and dimension.get("status") == "fail"
-    ]
-    ordered_partials = [
-        dimension for key, dimension in dimensions.items()
-        if key in SUBMISSION_DIMENSION_ORDER and dimension.get("status") == "partial"
-    ]
-    candidates = ordered_failures or ordered_partials
-    if not candidates:
-        return {
-            "key": "sound",
-            "label": "Sound recall",
-            "severity": "minor",
-            "evidence": ["All core submission dimensions are passing."],
-        }
-
-    priority = {
-        "contract": 0,
-        "pattern": 1,
-        "invariant": 2,
-        "state_updates": 3,
-        "state": 4,
-        "control_flow": 5,
-        "answer_path": 6,
-        "ordering": 7,
-        "edge_cases": 8,
-        "recall_fidelity": 9,
-    }
-    chosen = sorted(candidates, key=lambda item: (priority.get(str(item.get("key")), 99), float(item.get("score", 0))))[0]
-    severity = "blocking" if chosen.get("status") == "fail" and chosen.get("key") in {"contract", "pattern", "invariant", "state_updates"} else "major"
-    return {
-        "key": chosen["key"],
-        "label": chosen["label"],
-        "severity": severity,
-        "evidence": chosen.get("missing") or chosen.get("evidence") or [],
-    }
-
-
-def _submission_strengths(dimensions: dict[str, dict[str, Any]], modifiers: dict[str, dict[str, Any]]) -> list[str]:
-    strengths: list[str] = []
-    for key in SUBMISSION_DIMENSION_ORDER:
-        dimension = dimensions.get(key, {})
-        if dimension.get("status") == "pass":
-            label = str(dimension.get("label", key))
-            strengths.append(f"{label} is preserved.")
-        if len(strengths) >= 3:
-            break
-    if len(strengths) < 3 and modifiers.get("fluency", {}).get("status") == "pass":
-        strengths.append("Recall speed is moving toward automaticity.")
-    return strengths or ["The completed attempt gives a clear signal for the next rep."]
-
-
-def _submission_error_tags(primary_failure: dict[str, Any], dimensions: dict[str, dict[str, Any]], modifiers: dict[str, dict[str, Any]]) -> list[str]:
-    tags: list[str] = []
-    primary_key = str(primary_failure.get("key", "")).strip()
-    if primary_key and primary_key != "sound":
-        tags.append(primary_key)
-    for key in SUBMISSION_DIMENSION_ORDER:
-        if dimensions.get(key, {}).get("status") == "fail" and key not in tags:
-            tags.append(key)
-    for key in ("executability", "fluency"):
-        if modifiers.get(key, {}).get("status") == "fail" and key not in tags:
-            tags.append(key)
-    return tags[:6] or ["sound"]
-
-
-def _submission_recommended_action(verdict: str, primary_failure: dict[str, Any]) -> str:
-    key = str(primary_failure.get("key", "sound"))
-    if verdict == "sound":
-        return "Run one more clean rep and try to keep the same structure under a slightly lower time cap."
-    actions = {
-        "contract": "Restate the function contract, then rewrite only the signature and return responsibility.",
-        "pattern": "Name the pattern and write its required moves before attempting the full answer again.",
-        "state": "List the state variables from memory, then rebuild the solution around those variables.",
-        "control_flow": "Write the loop or recursion shape first, then add details inside it.",
-        "invariant": "Say the invariant out loud, then rewrite only the branch that enforces it.",
-        "state_updates": "Trace one iteration and rewrite the state update that actually changes the algorithm.",
-        "ordering": "Replay the algorithm as ordered steps before typing code again.",
-        "answer_path": "Rewrite the answer-recording and return path before another full rep.",
-        "edge_cases": "Add the minimal empty/not-found/boundary case that protects the template.",
-        "recall_fidelity": "Compare against the target, then retype only the missing or drifted lines.",
-        "executability": "Fix the syntax or placeholder issue first, then rerun the same submission without changing the algorithm.",
-    }
-    return actions.get(key, "Redo one focused rep on the primary failed dimension before chasing speed.")
-
-
-def _build_template_submission_rubric(
-    body: CoachAttemptFeedbackRequest,
-    template_mode: str,
-) -> dict[str, Any]:
-    tuning = _merged_submission_tuning(body.submissionTuning)
-    analysis = _analyze_template_attempt(body.userAnswer, body.skillTags, template_mode, tuning, body.expectedAnswer)
-    pattern_tag = _primary_pattern_tag(body.skillTags)
-    key_groups = _pattern_step_keys(pattern_tag)
-    contract = analysis.get("contract", {}) if isinstance(analysis.get("contract"), dict) else {}
-    missing_params = [str(value) for value in contract.get("missingParams", [])]
-    extra_params = [str(value) for value in contract.get("extraParams", [])]
-    syntax_valid = bool(analysis.get("syntaxValid", True))
-
-    def step_dimension(key: str, score: float, step_keys: list[str]) -> dict[str, Any]:
-        matched = _matched_any_key(analysis, step_keys)
-        missing = _missing_labels_for_keys(analysis, step_keys)
-        evidence = [f"Detected {SUBMISSION_DIMENSION_LABELS.get(key, key).lower()} signals."] if matched else []
-        return _submission_dimension(key, score, evidence, missing)
-
-    contract_score = max(0.0, 100.0 - float(contract.get("penalty", 0) or 0) * 6.0)
-    dimensions = {
-        "contract": _submission_dimension(
-            "contract",
-            contract_score,
-            ["Function contract is preserved."] if not missing_params and not extra_params else [],
-            [*([f"Missing parameter: {param}" for param in missing_params]), *([f"Extra parameter: {param}" for param in extra_params])],
-        ),
-        "pattern": step_dimension("pattern", float(analysis.get("criticalCoverage", 0) or 0), key_groups["pattern"]),
-        "state": step_dimension("state", _template_dimension_score(analysis, "state_management", 0), key_groups["state"]),
-        "control_flow": step_dimension("control_flow", _template_dimension_score(analysis, "control_flow", 0), key_groups["control_flow"]),
-        "invariant": step_dimension("invariant", _template_dimension_score(analysis, "invariant_logic", 0), key_groups["invariant"]),
-        "state_updates": step_dimension(
-            "state_updates",
-            round((float(analysis.get("coreLogicScore", 0) or 0) + _template_dimension_score(analysis, "invariant_logic", 0)) / 2, 1),
-            key_groups["state_updates"],
-        ),
-        "ordering": _submission_dimension(
-            "ordering",
-            float(analysis.get("orderScore", 0) or 0),
-            ["Detected the expected step order."] if float(analysis.get("orderScore", 0) or 0) >= 80 else [],
-            ["Put the recalled steps in the same cause-and-effect order as the pattern."] if float(analysis.get("orderScore", 0) or 0) < 80 else [],
-        ),
-        "answer_path": step_dimension("answer_path", _template_dimension_score(analysis, "answer_update", 0), key_groups["answer_path"]),
-        "edge_cases": _submission_dimension(
-            "edge_cases",
-            70.0 if _matched_any_key(analysis, ["return"]) else 35.0,
-            ["Return path gives at least minimal fallback coverage."] if _matched_any_key(analysis, ["return"]) else [],
-            ["Name the minimal fallback or boundary behavior."] if not _matched_any_key(analysis, ["return"]) else [],
-        ),
-        "recall_fidelity": _submission_dimension(
-            "recall_fidelity",
-            float(body.accuracy),
-            [f"Recall score from evaluator: {round(body.accuracy)}%."],
-            [f"Missing: {label}" for label in analysis.get("missingLabels", [])[:3]],
-        ),
-    }
-    modifiers = _submission_modifier_results(body, template_mode, syntax_valid)
-    score = _rubric_score(dimensions)
-    verdict = _submission_verdict(score, syntax_valid, body)
-    primary_failure = _primary_submission_failure(dimensions)
-    strengths = _submission_strengths(dimensions, modifiers)
-    recommended_action = _submission_recommended_action(verdict, primary_failure)
-
-    return {
-        "verdict": verdict,
-        "score": {
-            "overall": score,
-            "conceptual": round((dimensions["pattern"]["score"] + dimensions["invariant"]["score"] + dimensions["state_updates"]["score"]) / 3, 1),
-            "fidelity": dimensions["recall_fidelity"]["score"],
-            "executable": modifiers["executability"]["score"],
-            "fluency": modifiers["fluency"]["score"],
-        },
-        "dimensions": dimensions,
-        "modifiers": modifiers,
-        "primaryFailure": primary_failure,
-        "strengths": strengths,
-        "recommendedAction": recommended_action,
-        "analysis": analysis,
-    }
-
-
-def _line_set_score(expected_lines: list[str], actual_lines: list[str], anchors: list[str]) -> float:
-    if not anchors:
-        return 100.0
-    actual_set = {line.strip() for line in actual_lines if line.strip()}
-    matched = sum(1 for anchor in anchors if anchor.strip() in actual_set)
-    return round((matched / len(anchors)) * 100, 1)
-
-
-def _anchor_lines(expected_lines: list[str], predicate) -> list[str]:
-    return [line for line in expected_lines if predicate(line.strip())]
-
-
-def _build_full_submission_rubric(body: CoachAttemptFeedbackRequest) -> dict[str, Any]:
-    expected_lines = _normalize_code(body.expectedAnswer)
-    actual_lines = _normalize_code(body.userAnswer)
-    syntax_valid = not _has_syntax_error(body.userAnswer) if body.userAnswer.strip() else False
-    first_mismatch = _first_mismatch_line(expected_lines, actual_lines)
-    indent_errors = _indent_errors(expected_lines, actual_lines)
-    missing_count, extra_count = _missing_extra_counts(expected_lines, actual_lines)
-    structure = _attempt_structure_summary(expected_lines, actual_lines)
-    contract = _template_contract_drift(body.expectedAnswer, body.userAnswer, _merged_submission_tuning(body.submissionTuning))
-    pattern_tag = _primary_pattern_tag(body.skillTags)
-
-    return_lines = _anchor_lines(expected_lines, lambda line: line.startswith("return "))
-    control_lines = _anchor_lines(expected_lines, lambda line: line.startswith(("for ", "while ", "if ", "elif ", "else:")))
-    update_lines = _anchor_lines(expected_lines, lambda line: any(token in line for token in (" = ", "+=", "-=", ".append(", ".pop(", "heappush", "heappop")))
-    state_lines = _anchor_lines(expected_lines, lambda line: any(token in line for token in ("left", "right", "count", "counts", "seen", "queue", "stack", "dp", "parent", "heap", "best", "answer", "result")))
-    guard_lines = _anchor_lines(expected_lines, lambda line: line.startswith("if ") or "continue" in line or "return" in line)
-
-    pattern_score = _line_set_score(expected_lines, actual_lines, control_lines + update_lines + return_lines)
-    state_score = _line_set_score(expected_lines, actual_lines, state_lines)
-    control_score = _line_set_score(expected_lines, actual_lines, control_lines)
-    update_score = _line_set_score(expected_lines, actual_lines, update_lines)
-    answer_score = _line_set_score(expected_lines, actual_lines, return_lines)
-    edge_score = _line_set_score(expected_lines, actual_lines, guard_lines) if guard_lines else 70.0
-    ordering_score = 100.0 if first_mismatch is None else max(0.0, 100.0 - min(first_mismatch, 10) * 8.0)
-    recall_score = max(0.0, float(body.accuracy) - min(missing_count, 8) * 2.5 - min(extra_count, 8) * 1.5)
-    contract_penalty = float(contract.get("penalty", 0) or 0)
-    contract_score = max(0.0, 100.0 - contract_penalty * 6.0)
-
-    pattern_issues = [
-        _detect_two_pointer_direction_issue(actual_lines, body.skillTags),
-        _detect_binary_search_bound_issue(actual_lines, body.skillTags),
-        _detect_placeholder_issue(actual_lines),
-        _detect_missing_return_issue(expected_lines, actual_lines),
-    ]
-    pattern_issues = [issue for issue in pattern_issues if issue]
-    if pattern_issues:
-        update_score = min(update_score, 35.0)
-        pattern_score = min(pattern_score, 55.0)
-
-    dimensions = {
-        "contract": _submission_dimension(
-            "contract",
-            contract_score,
-            ["Function contract is preserved."] if contract_score >= 80 else [],
-            [f"Contract drift: {item}" for item in [*contract.get("missingParams", []), *contract.get("extraParams", [])]],
-        ),
-        "pattern": _submission_dimension(
-            "pattern",
-            pattern_score,
-            [f"Detected the expected {pattern_tag or 'algorithm'} control/update shape."] if pattern_score >= 80 else [],
-            pattern_issues or structure.get("missing", []),
-        ),
-        "state": _submission_dimension(
-            "state",
-            state_score,
-            ["Key state lines are present."] if state_score >= 80 else [],
-            ["Recover the state variables the template maintains."] if state_score < 80 else [],
-        ),
-        "control_flow": _submission_dimension(
-            "control_flow",
-            control_score,
-            ["Main branch/loop shape is present."] if control_score >= 80 else [],
-            ["Restore the main loop, branch, or recursion structure."] if control_score < 80 else [],
-        ),
-        "invariant": _submission_dimension(
-            "invariant",
-            min(pattern_score, update_score),
-            ["Pattern decision rule appears consistent."] if min(pattern_score, update_score) >= 80 else [],
-            pattern_issues or ["Make the rule that preserves the invariant explicit."],
-        ),
-        "state_updates": _submission_dimension(
-            "state_updates",
-            update_score,
-            ["State update lines are present."] if update_score >= 80 else [],
-            ["Restore the update that changes state in the correct direction."] if update_score < 80 else [],
-        ),
-        "ordering": _submission_dimension(
-            "ordering",
-            ordering_score,
-            ["No ordering drift detected."] if first_mismatch is None else [],
-            [f"First drift occurs around line {first_mismatch}."] if first_mismatch is not None else [],
-        ),
-        "answer_path": _submission_dimension(
-            "answer_path",
-            answer_score,
-            ["Return path is present."] if answer_score >= 80 else [],
-            ["Add or correct the return/answer-recording path."] if answer_score < 80 else [],
-        ),
-        "edge_cases": _submission_dimension(
-            "edge_cases",
-            edge_score,
-            ["Guard or fallback behavior is present."] if edge_score >= 80 else [],
-            ["Protect the minimal guard, empty, or not-found behavior."] if edge_score < 80 else [],
-        ),
-        "recall_fidelity": _submission_dimension(
-            "recall_fidelity",
-            recall_score,
-            [f"Evaluator accuracy: {round(body.accuracy)}%."],
-            [
-                *([f"{missing_count} expected line(s) missing."] if missing_count else []),
-                *([f"{extra_count} extra line(s) drift from target."] if extra_count else []),
-                *([f"{indent_errors} indentation drift(s)."] if indent_errors else []),
-            ],
-        ),
-    }
-    modifiers = _submission_modifier_results(body, TemplateMode.full.value, syntax_valid)
-    score = _rubric_score(dimensions)
-    verdict = _submission_verdict(score, syntax_valid, body)
-    primary_failure = _primary_submission_failure(dimensions)
-    if not syntax_valid:
-        primary_failure = {
-            "key": "executability",
-            "label": SUBMISSION_DIMENSION_LABELS["executability"],
-            "severity": "blocking",
-            "evidence": modifiers["executability"]["missing"],
-        }
-    strengths = _submission_strengths(dimensions, modifiers)
-    recommended_action = _submission_recommended_action(verdict, primary_failure)
-
-    return {
-        "verdict": verdict,
-        "score": {
-            "overall": score,
-            "conceptual": round((dimensions["pattern"]["score"] + dimensions["invariant"]["score"] + dimensions["state_updates"]["score"]) / 3, 1),
-            "fidelity": dimensions["recall_fidelity"]["score"],
-            "executable": modifiers["executability"]["score"],
-            "fluency": modifiers["fluency"]["score"],
-        },
-        "dimensions": dimensions,
-        "modifiers": modifiers,
-        "primaryFailure": primary_failure,
-        "strengths": strengths,
-        "recommendedAction": recommended_action,
-        "codeSignals": {
-            "firstMismatchLine": first_mismatch,
-            "indentErrors": indent_errors,
-            "missingCount": missing_count,
-            "extraCount": extra_count,
-            "syntaxValid": syntax_valid,
-            "structure": structure,
-        },
-    }
-
-
-def _build_submission_rubric(body: CoachAttemptFeedbackRequest, template_mode: str) -> dict[str, Any]:
-    if template_mode == TemplateMode.full.value:
-        return _build_full_submission_rubric(body)
-    return _build_template_submission_rubric(body, template_mode)
-
-
-def _heuristic_submission_feedback(
-    body: CoachAttemptFeedbackRequest,
-    history_summary: dict[str, Any],
-    template_mode: str,
-) -> dict[str, Any]:
-    rubric = _build_submission_rubric(body, template_mode)
-    primary_failure = rubric["primaryFailure"]
-    verdict = str(rubric["verdict"])
-    template_label = _algorithmic_template_label(body.skillTags, template_mode)
-    principle = _pattern_principle(body.skillTags)
-    strengths = [str(item) for item in rubric.get("strengths", [])][:3]
-    recommended_action = str(rubric.get("recommendedAction", "Redo one focused rep on the primary failed dimension."))
-
-    if verdict == "sound":
-        diagnosis = f"{template_label.capitalize()} is sound at {round(float(rubric['score']['overall']))}% rubric strength."
-        primary_focus = "Preserve this solution under speed pressure."
-        why = "The core submission dimensions are passing."
-    else:
-        diagnosis = (
-            f"{template_label.capitalize()} is {verdict}; primary miss is "
-            f"{str(primary_failure.get('label', 'submission quality')).lower()}."
-        )
-        primary_focus = f"Fix {str(primary_failure.get('label', 'the primary miss')).lower()}."
-        why = "; ".join(str(item) for item in primary_failure.get("evidence", [])[:2]) or diagnosis
-
-    if history_summary["attemptCount"] > 0:
-        diagnosis += (
-            f" Recent baseline: {history_summary['recentAvgAccuracy']}% over "
-            f"{history_summary['attemptCount']} related attempt(s)."
-        )
-
-    full_feedback = (
-        f"{diagnosis} {why}".strip()
-        if verdict != "sound"
-        else f"{diagnosis} {strengths[0] if strengths else 'Core recall is stable.'}"
-    )
-    corrected_version = body.expectedAnswer.strip() if body.userAnswer.strip() and not body.exact else ""
-    error_tags = _submission_error_tags(primary_failure, rubric["dimensions"], rubric["modifiers"])
-
-    return {
-        "diagnosis": diagnosis,
-        "primaryFocus": primary_focus,
-        "immediateCorrection": recommended_action,
-        "keepInMind": principle,
-        "affirmation": strengths[0] if strengths else "",
-        "nextMove": recommended_action,
-        "why": why,
-        "microDrill": f"One focused rep: fix {str(primary_failure.get('label', 'the primary miss')).lower()}, compare, then redo the full answer.",
-        "nextRepTarget": (
-            f"Next rep target: {verdict if verdict == 'sound' else 'sound'} solution with "
-            f">= {min(100, max(85, round(float(rubric['score']['overall']) + 5)))}% rubric strength."
-        ),
-        "strengths": strengths,
-        "errorTags": error_tags,
-        "fullFeedback": full_feedback,
-        "correctedVersion": corrected_version,
-        "submissionRubric": compact_submission_rubric(rubric),
-        "llmUsed": False,
-        "signals": {
-            "submission_rubric": rubric,
-            "history_summary": history_summary,
-            "principle": principle,
-            "template_mode": template_mode,
-        },
-    }
-
 
 async def _load_attempt_history(body: CoachAttemptFeedbackRequest) -> list[dict[str, Any]]:
     return await _load_practice_history(body.cardId, body.questionType, body.skillTags, limit=20)
@@ -1998,36 +1133,6 @@ async def _load_practice_history(
     return history
 
 
-async def _load_live_feedback_history(interaction_id: str | None, limit: int = 16) -> list[dict[str, Any]]:
-    if not interaction_id:
-        return []
-
-    pool = get_pool()
-    async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT feedback, elapsed_ms AS "elapsedMs", created_at
-            FROM coach_feedback_events
-            WHERE interaction_id = $1
-              AND feedback_stage = 'live'
-            ORDER BY created_at ASC
-            LIMIT $2
-            """,
-            interaction_id,
-            limit,
-        )
-
-    history: list[dict[str, Any]] = []
-    for row in rows:
-        feedback = _parse_json_field(row["feedback"], {})
-        history.append({
-            "elapsedMs": int(row["elapsedMs"] or 0),
-            "feedback": feedback,
-            "createdAt": row["created_at"].isoformat() if row["created_at"] else "",
-        })
-    return history
-
-
 def _summarize_attempt_history(history: list[dict[str, Any]]) -> dict[str, Any]:
     template_mode_summaries = {
         mode: {
@@ -2094,34 +1199,6 @@ def _summarize_attempt_history(history: list[dict[str, Any]]) -> dict[str, Any]:
         "dimensionSummary": dimension_summary,
         "templateModes": template_mode_summaries,
     }
-
-
-def _consecutive_blocker_duration_ms(
-    live_history: list[dict[str, Any]], blocker_key: str, current_elapsed_ms: int
-) -> int:
-    if not blocker_key or not live_history:
-        return 0
-
-    matching_elapsed_ms: list[int] = []
-    for item in reversed(live_history):
-        feedback = item.get("feedback", {})
-        signals = feedback.get("signals", {}) if isinstance(feedback, dict) else {}
-        history_key = str(signals.get("live_blocker_key", "")).strip()
-        if history_key != blocker_key:
-            break
-        matching_elapsed_ms.append(int(item.get("elapsedMs", 0) or 0))
-
-    if not matching_elapsed_ms:
-        return 0
-
-    oldest_elapsed_ms = min(matching_elapsed_ms)
-    return max(0, current_elapsed_ms - oldest_elapsed_ms)
-
-
-def _should_mention_repeated_drift(history_summary: dict[str, Any], tuning: dict[str, Any]) -> bool:
-    attempt_count = int(history_summary.get("attemptCount", 0) or 0)
-    weakest_tag = str(history_summary.get("weakestTag", "")).strip()
-    return bool(weakest_tag) and attempt_count >= int(tuning["driftThresholdAttempts"])
 
 
 def _summarize_skill_map_progress(
@@ -2248,52 +1325,6 @@ async def _persist_feedback_event(
         )
 
 
-def _live_flag(body: CoachAttemptFeedbackRequest, key: str, default: bool = False) -> bool:
-    value = body.liveMilestones.get(key, default)
-    return bool(value)
-
-
-def _live_value(body: CoachAttemptFeedbackRequest, key: str, default: Any = "") -> Any:
-    return body.liveMilestones.get(key, default)
-
-
-def _limit_words(text: str, limit: int = 30) -> str:
-    words = text.strip().split()
-    if len(words) <= limit:
-        return " ".join(words)
-    return " ".join(words[:limit]).rstrip(".,;:") + "..."
-
-
-def _truncate_live_feedback_fields(feedback: dict[str, Any]) -> dict[str, Any]:
-    limited = {**feedback}
-    for key in (
-        "diagnosis",
-        "primaryFocus",
-        "immediateCorrection",
-        "keepInMind",
-        "microDrill",
-        "nextRepTarget",
-        "affirmation",
-        "nextMove",
-        "why",
-    ):
-        if key in limited:
-            limited[key] = _limit_words(str(limited.get(key, "")), 20)
-    if "strengths" in limited and isinstance(limited["strengths"], list):
-        limited["strengths"] = [_limit_words(str(item), 20) for item in limited["strengths"][:3]]
-    return limited
-
-
-def _live_feedback_stage(elapsed_ms: int) -> str:
-    if elapsed_ms >= 90_000:
-        return "very-late"
-    if elapsed_ms >= 60_000:
-        return "late"
-    if elapsed_ms >= 30_000:
-        return "mid"
-    return "early"
-
-
 def _primary_pattern_tag(skill_tags: list[str]) -> str:
     for tag in (
         "sliding-window",
@@ -2349,795 +1380,6 @@ def _algorithmic_template_label(skill_tags: list[str], template_mode: str) -> st
         TemplateMode.skeleton.value: f"{pattern_name} skeleton",
         TemplateMode.full.value: f"{pattern_name} template",
     }.get(template_mode, f"{pattern_name} template")
-
-
-def _live_window_next_step(stage: str) -> str:
-    if stage == "very-late":
-        return (
-            "The very next step is to add `while len(count) > k:` after you increment the incoming value, "
-            "then shrink from the left by decrementing `count[nums[left]]`, deleting empty entries, and moving `left`."
-        )
-    if stage == "late":
-        return (
-            "The very next step is to add the shrink loop after you expand the window, and have that loop move `left` "
-            "while updating the counts until the window is valid again."
-        )
-    if stage == "mid":
-        return (
-            "The very next step is to add the control flow that restores the window invariant whenever the window becomes invalid."
-        )
-    return (
-        "The very next step is to decide what makes the window valid and add the logic that restores that rule after each expand step."
-    )
-
-
-def _live_two_pointer_next_step(stage: str) -> str:
-    if stage == "very-late":
-        return (
-            "The very next step is to add the comparison branches that move `left` when the value is too small and `right` when it is too large."
-        )
-    if stage == "late":
-        return (
-            "The very next step is to write the branch logic that updates exactly one pointer based on whether the current comparison is too small or too large."
-        )
-    if stage == "mid":
-        return (
-            "The very next step is to state the comparison rule and connect it to one pointer movement."
-        )
-    return (
-        "The very next step is to decide which pointer should move when the current pair does not satisfy the invariant."
-    )
-
-
-def _live_binary_search_next_step(stage: str) -> str:
-    if stage == "very-late":
-        return (
-            "The very next step is to write the branch that discards one half from `mid`, updating only the bound that can no longer contain the answer."
-        )
-    if stage == "late":
-        return (
-            "The very next step is to add the bound-update branch from `mid` so the interval invariant stays true after each comparison."
-        )
-    if stage == "mid":
-        return (
-            "The very next step is to define what `left` and `right` mean, then update the bound that is definitely impossible."
-        )
-    return (
-        "The very next step is to restate the search interval invariant before you move either bound."
-    )
-
-
-def _general_next_step(stage: str, has_loop: bool) -> str:
-    if not has_loop:
-        if stage in ("late", "very-late"):
-            return "The very next step is to add the main control flow that advances the state once."
-        if stage == "mid":
-            return "The very next step is to write the control flow that makes the algorithm move instead of just setting up state."
-        return "The very next step is to choose the control flow that repeatedly applies your invariant."
-    if stage in ("late", "very-late"):
-        return "The very next step is to add the single state-update line that makes the loop or recursion do real work."
-    return "The very next step is to add one concrete state update, not three."
-
-
-def _live_next_step_for_pattern(pattern_tag: str, stage: str, has_loop: bool) -> str:
-    if pattern_tag == "sliding-window":
-        return _live_window_next_step(stage)
-    if pattern_tag == "two-pointers":
-        return _live_two_pointer_next_step(stage)
-    if pattern_tag == "binary-search":
-        return _live_binary_search_next_step(stage)
-    return _general_next_step(stage, has_loop)
-
-
-def _has_line(lines: list[str], pattern: str) -> bool:
-    return any(re.search(pattern, line) for line in lines)
-
-
-def _sliding_window_progress(lines: list[str]) -> dict[str, bool]:
-    return {
-        "has_expand": _has_line(lines, r"\b(count|counts)\[.+\]\s*=\s*\1\.get\(.+\)\s*\+\s*1"),
-        "has_shrink_loop": _has_line(lines, r"^\s*while\s+.+:"),
-        "has_shrink_update": _has_line(lines, r"\b(count|counts)\[nums\[left\]\]\s*[-+*/]?="),
-        "has_cleanup": _has_line(lines, r"\bdel\s+(count|counts)\[nums\[left\]\]|\b(count|counts)\.pop\("),
-        "has_left_move": _has_line(lines, r"\bleft\s*\+=\s*1\b"),
-        "has_score": _has_line(lines, r"\b(best|answer|result)\s*=\s*max\("),
-    }
-
-
-def _two_pointer_progress(lines: list[str]) -> dict[str, bool]:
-    return {
-        "has_pair_value": _has_line(lines, r"nums\[left\].+nums\[right\]|nums\[right\].+nums\[left\]"),
-        "has_compare": _has_line(lines, r"^\s*if\s+.+target.+:|^\s*elif\s+.+target.+:"),
-        "has_left_move": _has_line(lines, r"\bleft\s*\+=\s*1\b"),
-        "has_right_move": _has_line(lines, r"\bright\s*-=\s*1\b"),
-        "has_success_path": _has_line(lines, r"^\s*return\s+True\b|^\s*return\s+\[left,\s*right\]"),
-    }
-
-
-def _binary_search_progress(lines: list[str]) -> dict[str, bool]:
-    return {
-        "has_mid": _has_line(lines, r"\bmid\s*="),
-        "has_compare": _has_line(lines, r"^\s*if\s+.+mid.+:|^\s*if\s+nums\[mid\]"),
-        "has_left_update": _has_line(lines, r"\bleft\s*=\s*mid(\s*\+\s*1)?\b"),
-        "has_right_update": _has_line(lines, r"\bright\s*=\s*mid\b|\bright\s*=\s*mid\s*-\s*1\b"),
-        "has_return": _has_line(lines, r"^\s*return\b"),
-    }
-
-
-def _dp_progress(lines: list[str]) -> dict[str, bool]:
-    return {
-        "has_state_array": _has_line(lines, r"\bdp\s*=\s*\[") or _has_line(lines, r"\bdp\s*=\s*list\("),
-        "has_base_case": _has_line(lines, r"\bdp\[[^\]]+\]\s*=") or _has_line(lines, r"^\s*if\s+not\s+"),
-        "has_loop": _has_line(lines, r"^\s*(for|while)\b"),
-        "has_transition": _has_line(lines, r"\bdp\[[^\]]+\]\s*=.*dp\[[^\]]+\]"),
-        "has_return": _has_line(lines, r"^\s*return\b"),
-    }
-
-
-def _sliding_window_guidance(lines: list[str], stage: str) -> tuple[str, str, str]:
-    progress = _sliding_window_progress(lines)
-    keep = "Sliding window rhythm: expand, restore validity, then score."
-
-    if not progress["has_expand"]:
-        return (
-            "Add the outer traversal over `right` so each step adds the incoming value to `counts`.",
-            "The window doesn't expand or shrink yet; it only sets up state.",
-            keep,
-        )
-
-    if not progress["has_shrink_loop"]:
-        if stage == "very-late":
-            next_step = (
-                "Add `while len(counts) > k:` after expanding so the window shrinks back to valid."
-            )
-        elif stage == "late":
-            next_step = (
-                "Add the shrink loop after expanding so the window becomes valid again."
-            )
-        else:
-            next_step = (
-                "Add control flow that restores the window invariant after each expand."
-            )
-        why = (
-            "The window expands, but nothing repairs it before scoring."
-        )
-        return next_step, why, keep
-
-    if not progress["has_shrink_update"] or not progress["has_left_move"]:
-        if stage == "very-late":
-            next_step = (
-                "Update counts for `nums[left]` and move `left` inside the shrink loop."
-            )
-        elif stage == "late":
-            next_step = (
-                "Make the shrink loop change the left side of the window."
-            )
-        else:
-            next_step = (
-                "Connect the shrink loop to `counts` and `left`."
-            )
-        why = (
-            "The current answer notices invalid windows, but it doesn't repair them yet."
-        )
-        return next_step, why, keep
-
-    if not progress["has_cleanup"]:
-        return (
-            "Remove values from `counts` when their frequency reaches zero.",
-            "Without cleanup, `counts` can stop matching the actual window.",
-            "Counts should describe only the current window.",
-        )
-
-    if not progress["has_score"]:
-        return (
-            "Update `best` after the window is valid.",
-            "The window now moves correctly, but nothing records an answer.",
-            "Score only after restoring validity.",
-        )
-
-    return (
-        "Keep each iteration ordered: expand, repair, then score.",
-        "The pieces are there; preserving that order keeps the invariant true.",
-        keep,
-    )
-
-
-def _two_pointer_guidance(lines: list[str], stage: str) -> tuple[str, str, str]:
-    progress = _two_pointer_progress(lines)
-    keep = "With two pointers, each comparison should justify moving exactly one side of the search."
-
-    if not progress["has_pair_value"]:
-        return (
-            "The very next step is to compute or name the value formed by the current left and right pointers.",
-            "Until the current answer makes the current pair explicit, there is nothing concrete to compare or react to.",
-            keep,
-        )
-
-    if not progress["has_compare"]:
-        return (
-            "The very next step is to compare the current pair against the target condition.",
-            "You already know what the pointers are looking at. The missing piece is the rule that decides whether the current pair is too small, too large, or done.",
-            keep,
-        )
-
-    if not progress["has_left_move"] or not progress["has_right_move"]:
-        next_step = (
-            "The very next step is to connect each comparison outcome to the pointer movement that improves the search."
-            if stage in ("early", "mid")
-            else "The very next step is to finish the comparison branches so one branch moves `left` and the other moves `right`."
-        )
-        why = (
-            "The comparison is on the page, but the algorithm still needs the movement rule that turns that comparison into progress."
-        )
-        return next_step, why, keep
-
-    if not progress["has_success_path"]:
-        return (
-            "The very next step is to add the success path for the case where the current pair satisfies the condition.",
-            "The movement logic is there, but the current answer still needs a clear exit when the answer is found.",
-            keep,
-        )
-
-    return (
-        "The very next step is to verify that every pointer movement preserves the meaning of the search.",
-        "The structure is mostly there, so correctness now depends on whether each branch moves the side that can actually improve the comparison.",
-        keep,
-    )
-
-
-def _binary_search_guidance(lines: list[str], stage: str) -> tuple[str, str, str]:
-    progress = _binary_search_progress(lines)
-    keep = "In binary search, protect the interval invariant first and let every bound update follow from that meaning."
-
-    if not progress["has_mid"]:
-        return (
-            "The very next step is to compute the middle of the current search interval.",
-            "The loop exists, but without a middle element the search cannot decide which half is impossible.",
-            keep,
-        )
-
-    if not progress["has_compare"]:
-        return (
-            "The very next step is to compare the middle value to the target condition.",
-            "You have the interval and the midpoint. The missing piece is the comparison that tells the search which half can be discarded.",
-            keep,
-        )
-
-    if not progress["has_left_update"] or not progress["has_right_update"]:
-        next_step = (
-            "The very next step is to turn the comparison into a bound update that discards the impossible half."
-            if stage in ("early", "mid")
-            else "The very next step is to finish the comparison branches so one branch updates `left` and the other updates `right` according to the interval meaning."
-        )
-        why = (
-            "The search can now inspect the midpoint, but it still is not shrinking the interval in a principled way."
-        )
-        return next_step, why, keep
-
-    if not progress["has_return"]:
-        return (
-            "The very next step is to add the return that matches what the final interval means.",
-            "Once the interval logic is done, the function still needs a clear way to turn that invariant into an answer.",
-            keep,
-        )
-
-    return (
-        "The very next step is to sanity-check that each bound update matches the interval invariant you intended.",
-        "Binary search often looks complete before it is correct, so the remaining work is making sure the bound semantics and return value agree.",
-        keep,
-    )
-
-
-def _dp_guidance(lines: list[str], stage: str) -> tuple[str, str, str]:
-    progress = _dp_progress(lines)
-    keep = "For DP recall, lock down the state meaning first, then let each update read from that meaning."
-
-    if not progress["has_state_array"]:
-        next_step = (
-            "Define the DP state array before you write more control flow."
-            if stage in ("early", "mid")
-            else "Instantiate the DP state array so the rest of the answer has real state to update."
-        )
-        why = "The current answer has structure, but the state container is not on the page yet."
-        return next_step, why, keep
-
-    if not progress["has_base_case"]:
-        return (
-            "Add the base case that gives the DP array its first true value.",
-            "The state array exists, but nothing anchors what its entries mean yet.",
-            keep,
-        )
-
-    if not progress["has_loop"]:
-        return (
-            "Add the traversal that fills the state from the base case outward.",
-            "The state meaning is starting to settle, but the current answer has no update path yet.",
-            keep,
-        )
-
-    if not progress["has_transition"]:
-        next_step = (
-            "Write the transition that computes one DP entry from earlier state."
-            if stage in ("early", "mid")
-            else "Make the loop update each DP entry from the prior state it depends on."
-        )
-        why = "The scaffold is there, but the recurrence has not become a concrete update yet."
-        return next_step, why, keep
-
-    if not progress["has_return"]:
-        return (
-            "Add the return that reads the answer from the DP state you built.",
-            "The recurrence is taking shape, but the function still needs to expose the final state.",
-            keep,
-        )
-
-    return (
-        "Keep each DP line tied to the state meaning you chose.",
-        "The structure is taking shape, so the main risk now is losing the state definition as the loop grows.",
-        keep,
-    )
-
-
-def _graph_keep_in_mind(traversal_kind: str, has_guard: bool) -> str:
-    if traversal_kind == "dfs":
-        return "In DFS, decide when a node becomes visited and apply that rule before exploring neighbors."
-    if traversal_kind in ("bfs", "queue"):
-        return "In BFS, every queued item should already be valid, and unseen neighbors should enter the frontier exactly once."
-    if has_guard:
-        return "For graph code, keep three things stable: representation, visited rule, and how neighbors enter the frontier."
-    return "For graph code, the visited rule is what keeps the traversal from becoming ambiguous."
-
-
-def _stable_live_affirmation(
-    pattern_tag: str,
-    is_graph_question: bool,
-    has_signature: bool,
-    has_bookkeeping: bool,
-    has_loop: bool,
-    lines: list[str],
-    tuning: dict[str, Any],
-) -> str:
-    if tuning["affirmationMode"] == "never":
-        return ""
-
-    if is_graph_question:
-        if has_bookkeeping and has_loop:
-            return "Your graph state and traversal shell are a common setup."
-        if has_bookkeeping:
-            return "Your graph state variables are on the page and are a common approach."
-        if has_signature:
-            return "Your graph entry point is on the page and is ready for traversal logic."
-        return ""
-
-    if pattern_tag == "sliding-window":
-        progress = _sliding_window_progress(lines)
-        if progress["has_expand"] and progress["has_shrink_loop"]:
-            return "Your outer traversal and repair step are a common setup."
-        if progress["has_expand"]:
-            return "Your outer traversal is on the page and is a common approach."
-    elif pattern_tag == "two-pointers":
-        progress = _two_pointer_progress(lines)
-        if progress["has_pair_value"] and progress["has_compare"]:
-            return "Your pointer setup and comparison rule are a common approach."
-        if progress["has_pair_value"]:
-            return "Your pointer setup is on the page and is a common approach."
-    elif pattern_tag == "binary-search":
-        progress = _binary_search_progress(lines)
-        if progress["has_mid"] and progress["has_compare"]:
-            return "Your interval and midpoint structure are a common approach."
-    elif pattern_tag in ("dynamic-programming", "dp"):
-        progress = _dp_progress(lines)
-        if progress["has_state_array"] and progress["has_loop"]:
-            return "Your state array and outer traversal are a common approach."
-        if progress["has_state_array"]:
-            return "Your state variables are on the page and are a common approach."
-
-    if has_signature and has_loop:
-        return "Your outer structure is on the page and is a workable start."
-    if has_signature:
-        return "Your entry point is on the page and is ready for the next move."
-    return ""
-
-
-def _compose_live_feedback(
-    blocker_key: str,
-    primary_focus: str,
-    next_move: str,
-    why: str,
-    keep_in_mind: str,
-    affirmation: str,
-    error_tags: list[str],
-    history_summary: dict[str, Any],
-    tuning: dict[str, Any],
-) -> dict[str, Any]:
-    why_text = why.strip()
-    if _should_mention_repeated_drift(history_summary, tuning):
-        weakest_tag = str(history_summary.get("weakestTag", "")).strip()
-        why_text = f"{why_text.rstrip('.')} Recent attempts have drifted on {weakest_tag} too."
-
-    return _truncate_live_feedback_fields({
-        "diagnosis": why_text,
-        "primaryFocus": primary_focus,
-        "immediateCorrection": next_move,
-        "keepInMind": keep_in_mind,
-        "affirmation": affirmation,
-        "nextMove": next_move,
-        "why": why_text,
-        "microDrill": "Repeat just this move once before adding more.",
-        "nextRepTarget": "Keep this move stable on the next rep.",
-        "strengths": [affirmation] if affirmation else [],
-        "errorTags": error_tags[:1] if tuning["singleIssue"] else error_tags[:6],
-        "fullFeedback": "",
-        "correctedVersion": "",
-        "llmUsed": False,
-    })
-
-
-def _live_primary_focus(pattern_tag: str, is_graph_question: bool, has_loop: bool) -> str:
-    if is_graph_question:
-        return "Clarify the graph traversal structure."
-    if pattern_tag == "sliding-window":
-        return "Advance the sliding-window invariant."
-    if pattern_tag == "two-pointers":
-        return "Connect the pointer logic to the comparison."
-    if pattern_tag == "binary-search":
-        return "Protect the search interval invariant."
-    if not has_loop:
-        return "Start the control flow that moves the algorithm."
-    return "Advance the current structure one clear step."
-
-
-def _pseudo_live_focus_copy(missing_key: str, missing_label: str) -> tuple[str, str, str]:
-    mapping = {
-        "entry": (
-            "Anchor the outline.",
-            "Start with a named function or entry point so the rest of the template has a stable frame.",
-            "A named entry point makes the rest of the outline easier to place.",
-        ),
-        "state": (
-            "Name the state you track.",
-            "State the variables or invariant you will maintain before describing more flow.",
-            "Without the tracked state, later steps stay vague.",
-        ),
-        "expand": (
-            "Add the outer expand step.",
-            "Write the step that takes in the next value before you describe repairs or scoring.",
-            "The window needs an incoming-step description before the invariant can react.",
-        ),
-        "repair": (
-            "State the invariant repair rule.",
-            "Describe when the window becomes invalid and the loop that restores validity.",
-            "That repair rule is what turns a traversal into a sliding-window template.",
-        ),
-        "shrink": (
-            "Make the left-side repair explicit.",
-            "Say how the left side changes while you restore the invariant.",
-            "Without the shrink step, the invariant never becomes concrete.",
-        ),
-        "score": (
-            "Say how you record the answer.",
-            "Add the step that updates the best or current answer after the invariant is valid.",
-            "Templates feel complete only once the answer-recording step is named.",
-        ),
-        "loop": (
-            "Add the main loop in words.",
-            "Describe the repeated control-flow step before adding more detail.",
-            "The outline needs motion before it needs precision.",
-        ),
-        "compare": (
-            "State the comparison rule.",
-            "Write the rule that decides which branch or pointer move happens next.",
-            "That comparison is the invariant's decision point.",
-        ),
-        "move": (
-            "Name the movement step.",
-            "Describe which pointer or boundary changes when the comparison goes one way or the other.",
-            "Without the movement rule, the template does not advance.",
-        ),
-        "mid": (
-            "Call out the midpoint step.",
-            "Add the midpoint calculation or middle-choice step before the branch logic.",
-            "Binary-search logic needs the middle anchor before it can discard half the space.",
-        ),
-        "update": (
-            "Make the update rule explicit.",
-            "Name the state or boundary update that follows from the invariant.",
-            "A template becomes reusable when the update rule is explicit.",
-        ),
-        "return": (
-            "Finish with the return path.",
-            "Add the final answer step so the outline has a clear exit.",
-            "An outline still feels unfinished until the answer path is named.",
-        ),
-    }
-    return mapping.get(
-        missing_key,
-        (
-            f"Lock in {missing_label}.",
-            f"Add the {missing_label.lower()} step before you expand the outline.",
-            "One missing structural step is still carrying too much of the template.",
-        ),
-    )
-
-
-def _heuristic_pseudo_live_feedback(
-    body: CoachAttemptFeedbackRequest,
-    history_summary: dict[str, Any],
-    live_history: list[dict[str, Any]],
-) -> dict[str, Any]:
-    tuning = _merged_live_tuning(body)
-    analysis = _analyze_template_attempt(
-        body.userAnswer,
-        body.skillTags,
-        TemplateMode.pseudo.value,
-        body.submissionTuning,
-        body.expectedAnswer,
-    )
-    missing_keys = [str(key) for key in analysis["missingKeys"]]
-    missing_labels = [str(label) for label in analysis["missingLabels"]]
-    matched_labels = [str(label) for label in analysis["matchedLabels"]]
-    blocker_key = missing_keys[0] if missing_keys else "outline"
-    blocker_label = missing_labels[0] if missing_labels else "outline order"
-    primary_focus, next_move, why = _pseudo_live_focus_copy(blocker_key, blocker_label)
-    stalled_duration_ms = _consecutive_blocker_duration_ms(live_history, blocker_key, body.elapsedMs)
-    stalled = stalled_duration_ms >= int(tuning["stallThresholdSeconds"]) * 1000
-    affirmation = ""
-    if tuning["affirmationMode"] != "never" and matched_labels:
-        affirmation = f"You already named {matched_labels[0].lower()}, which is a stable anchor."
-
-    response = _compose_live_feedback(
-        blocker_key=blocker_key,
-        primary_focus=primary_focus,
-        next_move=next_move,
-        why=why,
-        keep_in_mind=_pattern_principle(body.skillTags),
-        affirmation=affirmation,
-        error_tags=[blocker_key],
-        history_summary=history_summary,
-        tuning=tuning,
-    )
-    response["signals"] = {
-        "live_mode": True,
-        "live_stage": _live_feedback_stage(body.elapsedMs),
-        "effective_live_stage": _live_feedback_stage(body.elapsedMs),
-        "pattern_tag": _primary_pattern_tag(body.skillTags),
-        "history_summary": history_summary,
-        "live_milestones": body.liveMilestones,
-        "live_blocker_key": blocker_key,
-        "stalled_duration_ms": stalled_duration_ms,
-        "live_tuning": tuning,
-        "template_mode": TemplateMode.pseudo.value,
-    }
-    return response
-
-
-def _heuristic_live_feedback(
-    body: CoachAttemptFeedbackRequest,
-    history_summary: dict[str, Any],
-    live_history: list[dict[str, Any]],
-) -> dict[str, Any]:
-    template_mode = _template_mode_value(body.templateMode)
-    if template_mode == TemplateMode.pseudo.value:
-        return _heuristic_pseudo_live_feedback(body, history_summary, live_history)
-
-    actual_lines = _normalize_code(body.userAnswer)
-    tuning = _merged_live_tuning(body)
-    is_graph_question = any(
-        tag in body.skillTags for tag in ("graph", "dfs-bfs", "graph-traversal", "union-find")
-    )
-    has_signature = _live_flag(body, "hasSignature")
-    has_guard = _live_flag(body, "hasGuard")
-    has_loop = _live_flag(body, "hasLoop")
-    has_placeholder = _live_flag(body, "hasPlaceholder")
-    has_bookkeeping = _live_flag(body, "hasBookkeeping")
-    traversal_kind = str(_live_value(body, "traversalKind", "")).strip()
-    base_stage = _live_feedback_stage(body.elapsedMs)
-    pattern_tag = _primary_pattern_tag(body.skillTags)
-
-    blocker_key = ""
-    primary_focus = ""
-    next_move = ""
-    why = ""
-    keep_in_mind = ""
-    error_tags: list[str] = []
-
-    if not has_signature:
-        blocker_key = "signature"
-        primary_focus = "Anchor the solution first."
-        next_move = "Write the function signature and name the state you will track."
-        why = "The current answer needs an entry point before the algorithm can settle."
-        keep_in_mind = "A clear entry point gives every later line a stable job."
-        error_tags.append("opening-anchor")
-    elif is_graph_question and not has_bookkeeping:
-        blocker_key = "graph-bookkeeping"
-        primary_focus = "Make the graph state explicit."
-        next_move = "Put the visited or frontier state on the page before adding more graph flow."
-        why = "The traversal shell is present, but it has no concrete state to update yet."
-        keep_in_mind = _graph_keep_in_mind(traversal_kind, has_guard)
-        error_tags.append("state-setup")
-    elif is_graph_question and not traversal_kind:
-        blocker_key = "graph-traversal-choice"
-        primary_focus = "Choose the traversal."
-        next_move = "Commit to one frontier structure before you add more graph detail."
-        why = "The setup has started, but the graph still has no clear movement model."
-        keep_in_mind = _graph_keep_in_mind(traversal_kind, has_guard)
-        error_tags.append("traversal-choice")
-    elif has_placeholder:
-        blocker_key = "placeholder"
-        primary_focus = "Replace the placeholder with a real update."
-        next_move = "Replace the placeholder with the real state change for this step."
-        why = "The current answer has structure, but one placeholder is still carrying algorithmic work."
-        keep_in_mind = _pattern_principle(body.skillTags)
-        error_tags.append("placeholder")
-    elif is_graph_question and not has_guard:
-        blocker_key = "graph-guard"
-        primary_focus = "Write the skip rule."
-        next_move = "Add the guard that decides which states should be skipped before expanding neighbors."
-        why = "The traversal shape is there, but the current answer still needs the rule that keeps exploration clean."
-        keep_in_mind = _graph_keep_in_mind(traversal_kind, has_guard)
-        error_tags.append("guard")
-    else:
-        stage_rank = _live_stage_rank(base_stage)
-        if tuning["specificitySource"] == "time-and-quality":
-            quality_penalty = 0
-            if body.accuracy < 35:
-                quality_penalty += 1
-            if not has_loop:
-                quality_penalty += 1
-            if pattern_tag in ("dynamic-programming", "dp") and not _dp_progress(actual_lines)["has_state_array"]:
-                quality_penalty += 1
-            if pattern_tag == "sliding-window" and not _sliding_window_progress(actual_lines)["has_shrink_loop"]:
-                quality_penalty += 1
-            if quality_penalty >= 2:
-                stage_rank += 1
-        stage = _live_stage_from_rank(stage_rank)
-
-        if pattern_tag == "sliding-window":
-            progress = _sliding_window_progress(actual_lines)
-            next_move, why, keep_in_mind = _sliding_window_guidance(actual_lines, stage)
-            if not progress["has_expand"]:
-                blocker_key = "window-expand"
-                error_tags.append("control-flow")
-            elif not progress["has_shrink_loop"]:
-                blocker_key = "window-shrink-loop"
-                error_tags.append("invariant")
-            elif not progress["has_shrink_update"] or not progress["has_left_move"]:
-                blocker_key = "window-shrink-update"
-                error_tags.append("state-update")
-            elif not progress["has_cleanup"]:
-                blocker_key = "window-cleanup"
-                error_tags.append("state-update")
-            elif not progress["has_score"]:
-                blocker_key = "window-score"
-                error_tags.append("answer-recording")
-            else:
-                blocker_key = "window-order"
-                error_tags.append("invariant")
-        elif pattern_tag == "two-pointers":
-            progress = _two_pointer_progress(actual_lines)
-            next_move, why, keep_in_mind = _two_pointer_guidance(actual_lines, stage)
-            if not progress["has_pair_value"]:
-                blocker_key = "pair-value"
-                error_tags.append("comparison-setup")
-            elif not progress["has_compare"]:
-                blocker_key = "pair-compare"
-                error_tags.append("comparison")
-            elif not progress["has_left_move"] or not progress["has_right_move"]:
-                blocker_key = "pointer-movement"
-                error_tags.append("pointer-movement")
-            elif not progress["has_success_path"]:
-                blocker_key = "success-path"
-                error_tags.append("return-path")
-            else:
-                blocker_key = "pointer-invariant"
-                error_tags.append("invariant")
-        elif pattern_tag == "binary-search":
-            progress = _binary_search_progress(actual_lines)
-            next_move, why, keep_in_mind = _binary_search_guidance(actual_lines, stage)
-            if not progress["has_mid"]:
-                blocker_key = "midpoint"
-                error_tags.append("midpoint")
-            elif not progress["has_compare"]:
-                blocker_key = "mid-compare"
-                error_tags.append("comparison")
-            elif not progress["has_left_update"] or not progress["has_right_update"]:
-                blocker_key = "bound-update"
-                error_tags.append("interval-update")
-            elif not progress["has_return"]:
-                blocker_key = "return-path"
-                error_tags.append("return-path")
-            else:
-                blocker_key = "interval-invariant"
-                error_tags.append("invariant")
-        elif pattern_tag in ("dynamic-programming", "dp"):
-            progress = _dp_progress(actual_lines)
-            next_move, why, keep_in_mind = _dp_guidance(actual_lines, stage)
-            if not progress["has_state_array"]:
-                blocker_key = "dp-state-array"
-                error_tags.append("state-setup")
-            elif not progress["has_base_case"]:
-                blocker_key = "dp-base-case"
-                error_tags.append("base-case")
-            elif not progress["has_loop"]:
-                blocker_key = "control-flow"
-                error_tags.append("control-flow")
-            elif not progress["has_transition"]:
-                blocker_key = "dp-transition"
-                error_tags.append("transition")
-            elif not progress["has_return"]:
-                blocker_key = "return-path"
-                error_tags.append("return-path")
-            else:
-                blocker_key = "dp-state-meaning"
-                error_tags.append("state-meaning")
-        elif not has_loop and (traversal_kind or not is_graph_question):
-            blocker_key = "control-flow"
-            primary_focus = "Start the main control flow."
-            next_move = _live_next_step_for_pattern(pattern_tag, stage, has_loop)
-            why = "The setup is on the page, but the algorithm still needs the move that advances state."
-            keep_in_mind = _pattern_principle(body.skillTags)
-            error_tags.append("control-flow")
-        else:
-            blocker_key = "state-update"
-            primary_focus = "Keep the next move structural."
-            next_move = _live_next_step_for_pattern(pattern_tag, stage, has_loop)
-            why = "The current answer has enough structure now, so one concrete update will help more than a rewrite."
-            keep_in_mind = _pattern_principle(body.skillTags)
-            error_tags.append("state-update")
-
-        if not primary_focus:
-            primary_focus = _live_primary_focus(pattern_tag, is_graph_question, has_loop)
-
-    stalled_duration_ms = _consecutive_blocker_duration_ms(live_history, blocker_key, body.elapsedMs)
-    stalled = stalled_duration_ms >= int(tuning["stallThresholdSeconds"]) * 1000
-
-    if stalled and tuning["allowExactEditsWhenStuck"]:
-        why = why.rstrip(".") + "."
-
-    affirmation = _stable_live_affirmation(
-        pattern_tag,
-        is_graph_question,
-        has_signature,
-        has_bookkeeping,
-        has_loop,
-        actual_lines,
-        tuning,
-    )
-
-    response = _compose_live_feedback(
-        blocker_key=blocker_key,
-        primary_focus=primary_focus or _live_primary_focus(pattern_tag, is_graph_question, has_loop),
-        next_move=next_move,
-        why=why,
-        keep_in_mind=keep_in_mind,
-        affirmation=affirmation,
-        error_tags=error_tags,
-        history_summary=history_summary,
-        tuning=tuning,
-    )
-    response["signals"] = {
-        "live_mode": True,
-        "live_stage": base_stage,
-        "effective_live_stage": stage if "stage" in locals() else base_stage,
-        "pattern_tag": pattern_tag,
-        "history_summary": history_summary,
-        "live_milestones": body.liveMilestones,
-        "live_blocker_key": blocker_key,
-        "stalled_duration_ms": stalled_duration_ms,
-        "live_tuning": tuning,
-        "template_mode": template_mode,
-    }
-    return response
-
-
-def _heuristic_attempt_feedback(
-    body: CoachAttemptFeedbackRequest, history_summary: dict[str, Any], live_history: list[dict[str, Any]]
-) -> dict[str, Any]:
-    if body.liveMode:
-        return _heuristic_live_feedback(body, history_summary, live_history)
-
-    template_mode = _template_mode_value(body.templateMode)
-    return _heuristic_submission_feedback(body, history_summary, template_mode)
 
 
 def _heuristic_session_plan(body: CoachSessionPlanRequest) -> dict[str, Any]:
@@ -3412,6 +1654,18 @@ def _resolve_available_llm_provider(requested_provider: str) -> str:
     return _resolve_llm_provider(requested_provider)
 
 
+def _resolve_fastest_llm_provider() -> str:
+    """Pick the fastest-available provider for the Heuristic Assessor.
+
+    Ignores the user's preferred provider — latency matters more here.
+    Order: Gemma → Claude → OpenAI.
+    """
+    for candidate in ASSESSOR_FASTEST_PROVIDER_CHAIN:
+        if _llm_provider_available(candidate):
+            return candidate
+    return ASSESSOR_FASTEST_PROVIDER_CHAIN[-1]
+
+
 def _llm_provider_available(provider: str) -> bool:
     if provider == "claude":
         return bool(settings.coach_anthropic_api_key)
@@ -3446,7 +1700,7 @@ def _extract_json_dict(value: str) -> dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def _call_openai_json(system_prompt: str, user_payload: dict[str, Any]) -> dict[str, Any] | None:
+def _call_openai_json(system_prompt: str, user_payload: dict[str, Any], max_tokens: int = 1800) -> dict[str, Any] | None:
     if not settings.coach_openai_api_key:
         return None
 
@@ -3454,6 +1708,7 @@ def _call_openai_json(system_prompt: str, user_payload: dict[str, Any]) -> dict[
     body = {
         "model": settings.coach_openai_model,
         "temperature": 0.2,
+        "max_tokens": max_tokens,
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": system_prompt},
@@ -3480,7 +1735,7 @@ def _call_openai_json(system_prompt: str, user_payload: dict[str, Any]) -> dict[
         return None
 
 
-def _call_claude_json(system_prompt: str, user_payload: dict[str, Any]) -> dict[str, Any] | None:
+def _call_claude_json(system_prompt: str, user_payload: dict[str, Any], max_tokens: int = 1800) -> dict[str, Any] | None:
     if not settings.coach_anthropic_api_key:
         return None
 
@@ -3495,7 +1750,7 @@ def _call_claude_json(system_prompt: str, user_payload: dict[str, Any]) -> dict[
         body = {
             "model": model,
             "temperature": 0.2,
-            "max_tokens": 1800,
+            "max_tokens": max_tokens,
             "system": f"{system_prompt}\nReturn only valid JSON. Do not include markdown.",
             "messages": [
                 {"role": "user", "content": json.dumps(user_payload)},
@@ -3547,7 +1802,7 @@ def _call_claude_json(system_prompt: str, user_payload: dict[str, Any]) -> dict[
     return None
 
 
-def _call_gemma_json(system_prompt: str, user_payload: dict[str, Any]) -> dict[str, Any] | None:
+def _call_gemma_json(system_prompt: str, user_payload: dict[str, Any], max_tokens: int = 1800) -> dict[str, Any] | None:
     if not settings.coach_gemma_api_key:
         return None
 
@@ -3556,7 +1811,7 @@ def _call_gemma_json(system_prompt: str, user_payload: dict[str, Any]) -> dict[s
     prompt = f"{system_prompt}\nReturn only valid JSON. Do not include markdown.\n\n{json.dumps(user_payload)}"
     body = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
+        "generationConfig": {"temperature": 0.2, "maxOutputTokens": max_tokens, "responseMimeType": "application/json"},
     }
     data = json.dumps(body).encode("utf-8")
     request = urllib.request.Request(
@@ -3581,268 +1836,319 @@ def _call_gemma_json(system_prompt: str, user_payload: dict[str, Any]) -> dict[s
         return None
 
 
-def _call_llm_json(system_prompt: str, user_payload: dict[str, Any], provider: str) -> dict[str, Any] | None:
+def _call_llm_json(system_prompt: str, user_payload: dict[str, Any], provider: str, max_tokens: int = 1800) -> dict[str, Any] | None:
     if provider == "claude":
-        return _call_claude_json(system_prompt, user_payload)
+        return _call_claude_json(system_prompt, user_payload, max_tokens)
     if provider == "gemma":
-        return _call_gemma_json(system_prompt, user_payload)
-    return _call_openai_json(system_prompt, user_payload)
+        return _call_gemma_json(system_prompt, user_payload, max_tokens)
+    return _call_openai_json(system_prompt, user_payload, max_tokens)
 
 
-async def _attempt_feedback_with_optional_llm(
+# ---------------------------------------------------------------------------
+# Heuristic Assessor — Role 1
+# Lightweight structural analysis call. Fastest available provider, small
+# token budget. Used as the ONLY LLM call for live feedback, and as Stage 1
+# for submission feedback (feeds the Narrator).
+# ---------------------------------------------------------------------------
+
+def _assessor_system_prompt(live_mode: bool) -> str:
+    dimensions_spec = (
+        "dimensions: {"
+        "structure: {score: 0-100, note: str}, "
+        "correctness: {score: 0-100, note: str}, "
+        "completeness: {score: 0-100, note: str}, "
+        "patternFidelity: {score: 0-100, note: str}, "
+        "syntax: {valid: bool, error: str|null}, "
+        "completionTime: {score: 0-100, note: str}"
+        "}"
+    )
+    base = (
+        "You are a coding pattern analyst. Analyze the provided answer against the expected answer. "
+        f"Return strict JSON: {{v: 1, patternIdentified: str, {dimensions_spec}, "
+        "structuralElements: {hasSignature: bool, hasLoop: bool, hasShrinkStep: bool, hasScoreUpdate: bool, hasGuard: bool}, "
+        "primaryBlocker: str, blockerKey: str, verdict: 'sound'|'close'|'needs-work', "
+        "errorTags: str[], strengths: str[]"
+    )
+    if live_mode:
+        return (
+            base
+            + ", diagnosis: str, primaryFocus: str, immediateCorrection: str, "
+            "affirmation: str, nextMove: str, why: str, keepInMind: str, "
+            "microDrill: str, nextRepTarget: str}. "
+            "All narrative string fields must be 20 words or fewer. "
+            "Focus on one structural blocker only. "
+            "Leave affirmation empty unless something concrete is already correct. "
+            "Return only valid JSON. Do not include markdown."
+        )
+    return base + "}. Structural assessment only — no narrative fields. Return only valid JSON. Do not include markdown."
+
+
+def _fallback_heuristic_assessment(
     body: CoachAttemptFeedbackRequest,
-    heuristic: dict[str, Any],
-    history: list[dict[str, Any]],
-    live_history: list[dict[str, Any]],
+    template_mode: str,
 ) -> dict[str, Any]:
+    """Pure-Python fallback when all LLM providers are unavailable."""
+    primary_tag = body.skillTags[0] if body.skillTags else "general"
+    accuracy = float(body.accuracy or 0)
+    verdict = "sound" if accuracy >= 95 else ("close" if accuracy >= 80 else "needs-work")
+    primary_blocker = "review and complete the full solution structure"
+    blocker_key = "structure"
+
+    assessment: dict[str, Any] = {
+        "v": 1,
+        "patternIdentified": primary_tag,
+        "dimensions": {
+            "structure":       {"score": round(accuracy * 0.7), "note": ""},
+            "correctness":     {"score": round(accuracy), "note": ""},
+            "completeness":    {"score": round(accuracy * 0.8), "note": ""},
+            "patternFidelity": {"score": round(accuracy * 0.7), "note": ""},
+            "syntax":          {"valid": True, "error": None},
+            "completionTime":  {"score": 50, "note": ""},
+        },
+        "structuralElements": {
+            "hasSignature":   False,
+            "hasLoop":        False,
+            "hasShrinkStep":  False,
+            "hasScoreUpdate": False,
+            "hasGuard":       False,
+        },
+        "primaryBlocker": primary_blocker,
+        "blockerKey":     blocker_key,
+        "verdict":        verdict,
+        "errorTags":      [],
+        "strengths":      [],
+        "llmUsed":        False,
+    }
+
+    if body.liveMode:
+        assessment.update({
+            "diagnosis":           f"Focus on completing the {primary_tag} structure.",
+            "primaryFocus":        "Add the missing structural elements.",
+            "immediateCorrection": primary_blocker,
+            "affirmation":         "",
+            "nextMove":            primary_blocker,
+            "why":                 "One structural gap at a time.",
+            "keepInMind":          f"The {primary_tag} pattern has a fixed contract.",
+            "microDrill":          "One focused rep on the primary structure.",
+            "nextRepTarget":       "Sound solution with >= 90% rubric strength.",
+        })
+
+    return assessment
+
+
+async def _run_heuristic_assessor(
+    body: CoachAttemptFeedbackRequest,
+    template_mode: str,
+) -> dict[str, Any]:
+    """Call the Heuristic Assessor LLM (fastest available provider).
+
+    Returns a structured assessment dict. Falls back to pure-Python defaults
+    when all providers are unavailable or the response is invalid.
+    """
+    provider = _resolve_fastest_llm_provider()
+    if not _llm_provider_available(provider):
+        return _fallback_heuristic_assessment(body, template_mode)
+
+    system_prompt = _assessor_system_prompt(body.liveMode)
+    payload = {
+        "skillTags":           body.skillTags,
+        "templateMode":        template_mode,
+        "userAnswer":          (body.userAnswer or "")[:800],
+        "expectedAnswer":      (body.expectedAnswer or "")[:800],
+        "elapsedMs":           body.elapsedMs,
+        "precomputedAccuracy": body.accuracy,
+    }
+
+    result = await asyncio.to_thread(_call_llm_json, system_prompt, payload, provider, ASSESSOR_MAX_TOKENS)
+
+    if not isinstance(result, dict):
+        logger.warning("Heuristic assessor returned non-dict response from provider '%s'.", provider)
+        return _fallback_heuristic_assessment(body, template_mode)
+
+    required_keys = {"v", "patternIdentified", "dimensions", "primaryBlocker", "blockerKey", "verdict"}
+    missing = required_keys - result.keys()
+    if missing:
+        logger.warning("Heuristic assessor response missing keys %s from provider '%s'.", missing, provider)
+        return _fallback_heuristic_assessment(body, template_mode)
+
+    result.setdefault("llmUsed", True)
+    result.setdefault("errorTags", [])
+    result.setdefault("strengths", [])
+    return result
+
+
+def _assessment_to_live_response(assessment: dict[str, Any]) -> dict[str, Any]:
+    """Map an Assessor result to the CoachAttemptFeedbackResponse shape for live mode."""
+    strengths = [str(s) for s in assessment.get("strengths", [])[:3]]
+    primary_blocker = str(assessment.get("primaryBlocker", ""))
+    blocker_key = str(assessment.get("blockerKey", "primary gap"))
+    return {
+        "diagnosis":           str(assessment.get("diagnosis", primary_blocker)),
+        "primaryFocus":        str(assessment.get("primaryFocus", f"Fix {blocker_key}.")),
+        "immediateCorrection": str(assessment.get("immediateCorrection", primary_blocker)),
+        "affirmation":         str(assessment.get("affirmation", strengths[0] if strengths else "")),
+        "nextMove":            str(assessment.get("nextMove", primary_blocker)),
+        "why":                 str(assessment.get("why", "")),
+        "keepInMind":          str(assessment.get("keepInMind", "")),
+        "microDrill":          str(assessment.get("microDrill", "")),
+        "nextRepTarget":       str(assessment.get("nextRepTarget", "")),
+        "strengths":           strengths,
+        "errorTags":           [str(t) for t in assessment.get("errorTags", [])[:6]],
+        "fullFeedback":        "",
+        "correctedVersion":    "",
+        "llmUsed":             bool(assessment.get("llmUsed", True)),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Feedback Narrator — Role 2 (submission only)
+# Higher-quality narrative coaching text. Uses the user's preferred provider.
+# Receives a clean Assessor output instead of raw heuristic signals.
+# ---------------------------------------------------------------------------
+
+def _narrator_submission_system_prompt(template_label: str, body: CoachAttemptFeedbackRequest) -> str:
+    tuning = _merged_submission_tuning(body.submissionTuning)
+    grading_mode = str(tuning.get("gradingMode", "core-logic"))
+    grading_instruction = {
+        "core-logic": "Focus on whether the core algorithmic logic is sound.",
+        "strict":     "Grade strictly — every structural detail matters.",
+        "lenient":    "Focus on intent and overall correctness; minor gaps are acceptable.",
+    }.get(grading_mode, "Focus on whether the core algorithmic logic is sound.")
+
+    return (
+        f"You are a senior interview coach reviewing a {template_label} solution. "
+        "Grade the submission in exactly one sentence in fullFeedback — lead with 'sound', 'close', or 'needs work'. "
+        f"{grading_instruction} "
+        "Base your diagnosis on the provided assessment dimensions. "
+        "Use correctedVersion only for meaningful structural corrections, never line-by-line rewrites. "
+        "Return strict JSON: diagnosis, primaryFocus, immediateCorrection, fullFeedback, correctedVersion, "
+        "microDrill, nextRepTarget, strengths (max 3), errorTags. "
+        "No markdown fences, no bullet prefixes."
+    )
+
+
+def _build_narrator_payload(
+    body: CoachAttemptFeedbackRequest,
+    assessment: dict[str, Any],
+    history: list[dict[str, Any]],
+    history_summary: dict[str, Any],
+    reveal_expected_answer: bool,
+) -> dict[str, Any]:
+    return {
+        "card": {"id": body.cardId, "title": body.cardTitle},
+        "attempt": {
+            "accuracy":       body.accuracy,
+            "exact":          body.exact,
+            "elapsedMs":      body.elapsedMs,
+            "expectedAnswer": (body.expectedAnswer or "")[:1200] if reveal_expected_answer else "",
+            "userAnswer":     (body.userAnswer or "")[:1200],
+        },
+        "assessment": {
+            "patternIdentified": assessment.get("patternIdentified", ""),
+            "dimensions":        assessment.get("dimensions", {}),
+            "primaryBlocker":    assessment.get("primaryBlocker", ""),
+            "blockerKey":        assessment.get("blockerKey", ""),
+            "verdict":           assessment.get("verdict", "needs-work"),
+            "errorTags":         assessment.get("errorTags", []),
+            "strengths":         assessment.get("strengths", []),
+        },
+        "skillTags": body.skillTags,
+        "historicalAttempts": [
+            {
+                "accuracy":     item.get("accuracy", 0),
+                "exact":        item.get("exact", False),
+                "templateMode": item.get("templateMode", TemplateMode.full.value),
+                "errorTags":    item.get("submissionFeedback", {}).get("errorTags", []) if isinstance(item.get("submissionFeedback"), dict) else [],
+                "primaryFocus": item.get("submissionFeedback", {}).get("primaryFocus", "") if isinstance(item.get("submissionFeedback"), dict) else "",
+                "createdAt":    item.get("createdAt", ""),
+            }
+            for item in history[:8]
+        ],
+        "submissionTuning": _merged_submission_tuning(body.submissionTuning),
+    }
+
+
+async def _attempt_feedback_with_narrator(
+    body: CoachAttemptFeedbackRequest,
+    assessment: dict[str, Any],
+    history: list[dict[str, Any]],
+    history_summary: dict[str, Any],
+) -> dict[str, Any]:
+    """Submission-only Narrator path. Calls LLM with the Assessor output as structured context."""
     provider = _resolve_available_llm_provider(body.llmProvider)
     if not _llm_provider_available(provider):
-        if body.liveMode:
-            return heuristic
         raise SubmissionFeedbackUnavailableError(
             code="submission_feedback_missing_api_key",
             message="Update backend .env with your API key.",
             provider=provider,
         )
 
-    tuning = _merged_live_tuning(body)
     template_mode = _template_mode_value(body.templateMode)
-    live_stage = str(heuristic.get("signals", {}).get("effective_live_stage") or _live_feedback_stage(body.elapsedMs)) if body.liveMode else ""
-    live_blocker_key = str(heuristic.get("signals", {}).get("live_blocker_key", "")).strip()
-    stalled_duration_ms = _consecutive_blocker_duration_ms(live_history, live_blocker_key, body.elapsedMs)
-    stalled = stalled_duration_ms >= int(tuning["stallThresholdSeconds"]) * 1000
-    reveal_expected_answer = (
-        not body.liveMode
-        or _stage_at_least(live_stage, str(tuning["canonicalAnswerStage"]))
-    )
-    tone_instruction = {
-        "calm": "Use calm language.",
-        "direct": "Use direct language.",
-        "technical": "Use precise technical language.",
-    }.get(str(tuning["tone"]), "Use calm language.")
-    focus_instruction = (
-        "Optimize for memorized reproduction rather than interview polish."
-        if str(tuning["focusMode"]) == "memorization"
-        else "Optimize for interview-ready structure."
-    )
-    pattern_name_instruction = (
-        "You may name the pattern when it materially clarifies the move."
-        if tuning["showPatternNames"]
-        else "Do not name the pattern explicitly."
-    )
-    explicit_edit_instruction = (
-        "If the user is clearly stalled, you may name the exact edit for one step."
-        if tuning["allowExactEditsWhenStuck"]
-        else "Do not give exact code edits."
-    )
-    template_instruction = {
-        TemplateMode.full.value: "The user is recalling the full Python template.",
-        TemplateMode.skeleton.value: "The user is recalling a Python skeleton with invariant comments and scaffold only.",
-        TemplateMode.pseudo.value: "The user is recalling the algorithm as pseudocode or plain-language steps.",
-    }.get(template_mode, "The user is recalling an algorithm template.")
     submission_template_label = _algorithmic_template_label(body.skillTags, template_mode)
+    reveal_expected_answer = True  # always reveal on submission
 
-    system_prompt = (
-        "You are a calm memorization coach watching a live answer in progress. Return strict JSON with keys: "
-        "affirmation, nextMove, why, diagnosis, primaryFocus, immediateCorrection, keepInMind, microDrill, nextRepTarget, strengths, errorTags. "
-        "Teach the pattern through one structural blocker only. Do not mention multiple issues. "
-        "Describe what is already on the page when there is something stable to reinforce; otherwise leave affirmation empty. "
-        f"{tone_instruction} {focus_instruction} {pattern_name_instruction} {template_instruction} "
-        "Avoid the phrase 'still missing'. Avoid coachy filler. Avoid full solutions, code skeletons, and line-by-line rewrites. "
-        f"Prefer higher-level phrasing over literal edits unless the user is clearly stalled and explicit edits are allowed. {explicit_edit_instruction} "
-        "Make nextMove a single concrete structural move. Make why a single calm sentence explaining that move. "
-        "Set diagnosis equal to why and immediateCorrection equal to nextMove. "
-        "Every live-feedback string field must be 20 words or fewer."
-        if body.liveMode
-        else (
-            "You are a senior interview coach. Return strict JSON with keys: "
-            "diagnosis, primaryFocus, immediateCorrection, fullFeedback, correctedVersion, microDrill, nextRepTarget, strengths, errorTags. "
-            "Use concise, concrete interview feedback grounded in the provided expectedAnswer and userAnswer. "
-            "Do not include markdown fences, bullet prefixes, or extra keys."
+    system_prompt = _narrator_submission_system_prompt(submission_template_label, body)
+    llm_payload = _build_narrator_payload(body, assessment, history, history_summary, reveal_expected_answer)
+
+    llm_response: dict[str, Any] | None = None
+    last_error_code = ""
+    last_error_message = ""
+
+    for attempt in range(1, SUBMISSION_LLM_MAX_RETRIES + 1):
+        llm_response, error_code, error_message, retryable = await asyncio.to_thread(
+            _call_llm_json_for_submission,
+            system_prompt,
+            llm_payload,
+            provider,
         )
-    )
-    response_shape = [
-        "affirmation",
-        "nextMove",
-        "why",
-        "diagnosis",
-        "primaryFocus",
-        "immediateCorrection",
-        "microDrill",
-        "nextRepTarget",
-        "strengths",
-        "errorTags",
-    ]
-    if body.liveMode:
-        response_shape.append("keepInMind")
-    if not body.liveMode:
-        response_shape.extend(["fullFeedback", "correctedVersion"])
-
-    llm_payload = {
-        "card": {"id": body.cardId, "title": body.cardTitle, "prompt": body.prompt},
-        "attempt": {
-            "accuracy": body.accuracy,
-            "exact": body.exact,
-            "elapsedMs": body.elapsedMs,
-            "expectedAnswer": (
-                body.expectedAnswer[:1200]
-                if reveal_expected_answer
-                else ""
-            ),
-            "userAnswer": body.userAnswer[:1200],
-        },
-        "skillTags": body.skillTags,
-        "historicalAttempts": [
-            {
-                "cardId": item.get("cardId", ""),
-                "question": str(item.get("question", ""))[:280],
-                "correctAnswer": str(item.get("correctAnswer", ""))[:320],
-                "userAnswer": str(item.get("userAnswer", ""))[:320],
-                "accuracy": item.get("accuracy", 0),
-                "exact": item.get("exact", False),
-                "elapsedMs": item.get("elapsedMs", 0),
-                "templateMode": item.get("templateMode", TemplateMode.full.value),
-                "liveCoachUsed": item.get("liveCoachUsed", False),
-                "categoryTags": item.get("categoryTags", []),
-                "liveFeedbackCount": item.get("liveFeedbackCount", 0),
-                "latestLiveFeedback": item.get("latestLiveFeedback", {}),
-                "submissionFeedback": item.get("submissionFeedback", {}),
-                "submissionRubric": item.get("submissionRubric", {}),
-                "createdAt": item.get("createdAt", ""),
-            }
-            for item in history[:8]
-        ],
-        "historySummary": _summarize_attempt_history(history),
-        "previousAttempts": body.previousAttempts[-3:],
-        "liveMode": body.liveMode,
-        "templateMode": template_mode,
-        "enabledTemplateModes": [_template_mode_value(item) for item in body.enabledTemplateModes],
-        "liveStage": live_stage,
-        "stalledOnSameBlocker": stalled,
-        "stalledDurationMs": stalled_duration_ms,
-        "liveMilestones": body.liveMilestones,
-        "liveTuning": tuning,
-        "submissionTuning": _merged_submission_tuning(body.submissionTuning),
-        "responseShape": response_shape,
-        "heuristic": {
-            "affirmation": heuristic.get("affirmation", ""),
-            "nextMove": heuristic.get("nextMove", heuristic["immediateCorrection"]),
-            "why": heuristic.get("why", heuristic["diagnosis"]),
-            "diagnosis": heuristic["diagnosis"],
-            "primaryFocus": heuristic["primaryFocus"],
-            "signals": heuristic["signals"],
-        },
-    }
-
-    if not body.liveMode:
-        for live_only_key in ("liveStage", "stalledOnSameBlocker", "stalledDurationMs", "liveMilestones", "liveTuning"):
-            llm_payload.pop(live_only_key, None)
-        llm_payload["submissionRubric"] = heuristic.get("signals", {}).get("submission_rubric", {})
-        llm_payload["submissionStyle"] = {
-            "goal": f"Grade the user's {submission_template_label} in one sentence.",
-            "do": [
-                "Use submissionRubric as the source of truth for what passed, what failed, and the primary failure.",
-                "Lead with whether the submission is sound, close, or needs work.",
-                "Mention the primary failure when the rubric is not sound, or the strongest passing dimension when it is sound.",
-                "Keep fullFeedback to exactly one sentence in natural prose.",
-                "Provide correctedVersion when the attempt is not exact; use expectedAnswer as the ground truth.",
-            ],
-            "avoid": [
-                "Do not say 'Next rep'.",
-                "Do not paste a skeleton or coachy filler.",
-                "Do not give vague praise without saying what was actually correct.",
-                "Do not turn fullFeedback into multiple sentences or paragraphs.",
-            ],
-        }
-
-    if body.liveMode:
-        llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)
-        if not llm_response:
-            return heuristic
-        required = [
-            "diagnosis",
-            "primaryFocus",
-            "immediateCorrection",
-            "microDrill",
-            "nextRepTarget",
-            "keepInMind",
-            "nextMove",
-            "why",
-        ]
-        if any(key not in llm_response for key in required):
-            return heuristic
-    else:
-        llm_response: dict[str, Any] | None = None
-        last_error_code = ""
-        last_error_message = ""
-        for attempt in range(1, SUBMISSION_LLM_MAX_RETRIES + 1):
-            llm_response, error_code, error_message, retryable = await asyncio.to_thread(
-                _call_llm_json_for_submission,
-                system_prompt,
-                llm_payload,
-                provider,
-            )
-            has_submission_content = isinstance(llm_response, dict) and any(
-                key in llm_response and str(llm_response.get(key, "")).strip()
-                for key in ("fullFeedback", "diagnosis", "primaryFocus", "immediateCorrection")
-            )
-            if has_submission_content:
-                break
-
-            last_error_code = error_code
-            last_error_message = error_message
-
-            logger.warning(
-                "Submission feedback LLM attempt %s/%s failed for provider '%s'.",
-                attempt,
-                SUBMISSION_LLM_MAX_RETRIES,
-                provider,
-            )
-            if attempt < SUBMISSION_LLM_MAX_RETRIES and retryable:
-                await asyncio.sleep(SUBMISSION_LLM_RETRY_DELAYS_SECONDS[attempt - 1])
-            elif attempt < SUBMISSION_LLM_MAX_RETRIES and not retryable:
-                break
-
-        if not isinstance(llm_response, dict) or not any(
+        has_content = isinstance(llm_response, dict) and any(
             key in llm_response and str(llm_response.get(key, "")).strip()
             for key in ("fullFeedback", "diagnosis", "primaryFocus", "immediateCorrection")
-        ):
-            raise SubmissionFeedbackUnavailableError(
-                code="submission_feedback_no_response",
-                message=last_error_message or f"Feedback cannot be generated at this time. No response from {_llm_provider_label(provider)}.",
-                provider=provider,
-                api_error_code=last_error_code,
-            )
+        )
+        if has_content:
+            break
 
-    corrected_version = str(llm_response.get("correctedVersion", heuristic.get("correctedVersion", ""))).strip()
+        last_error_code = error_code
+        last_error_message = error_message
+        logger.warning(
+            "Submission feedback LLM attempt %s/%s failed for provider '%s'.",
+            attempt, SUBMISSION_LLM_MAX_RETRIES, provider,
+        )
+        if attempt < SUBMISSION_LLM_MAX_RETRIES and retryable:
+            await asyncio.sleep(SUBMISSION_LLM_RETRY_DELAYS_SECONDS[attempt - 1])
+        elif attempt < SUBMISSION_LLM_MAX_RETRIES and not retryable:
+            break
+
+    if not isinstance(llm_response, dict) or not any(
+        key in llm_response and str(llm_response.get(key, "")).strip()
+        for key in ("fullFeedback", "diagnosis", "primaryFocus", "immediateCorrection")
+    ):
+        raise SubmissionFeedbackUnavailableError(
+            code="submission_feedback_no_response",
+            message=last_error_message or f"Feedback cannot be generated at this time. No response from {_llm_provider_label(provider)}.",
+            provider=provider,
+            api_error_code=last_error_code,
+        )
+
+    corrected_version = str(llm_response.get("correctedVersion", "")).strip()
     corrected_version = corrected_version.removeprefix("```python").removeprefix("```").removesuffix("```").strip()
 
-    response = {
-        **heuristic,
-        "affirmation": str(llm_response.get("affirmation", heuristic.get("affirmation", ""))),
-        "nextMove": str(llm_response.get("nextMove", heuristic.get("nextMove", heuristic["immediateCorrection"]))),
-        "why": str(llm_response.get("why", heuristic.get("why", heuristic["diagnosis"]))),
-        "diagnosis": str(llm_response.get("diagnosis", heuristic["diagnosis"])),
-        "primaryFocus": str(llm_response.get("primaryFocus", heuristic["primaryFocus"])),
-        "immediateCorrection": str(llm_response.get("immediateCorrection", heuristic["immediateCorrection"])),
-        "keepInMind": str(llm_response.get("keepInMind", heuristic.get("keepInMind", ""))),
-        "microDrill": str(llm_response.get("microDrill", heuristic["microDrill"])),
-        "nextRepTarget": str(llm_response.get("nextRepTarget", heuristic["nextRepTarget"])),
-        "strengths": [str(x) for x in llm_response.get("strengths", heuristic["strengths"])][:3],
-        "errorTags": [str(x) for x in llm_response.get("errorTags", heuristic["errorTags"])][:6],
-        "fullFeedback": str(llm_response.get("fullFeedback", heuristic.get("fullFeedback", ""))),
-        "correctedVersion": corrected_version or str(heuristic.get("correctedVersion", "")),
-        "llmUsed": True,
+    return {
+        "diagnosis":           str(llm_response.get("diagnosis", assessment.get("primaryBlocker", ""))),
+        "primaryFocus":        str(llm_response.get("primaryFocus", f"Fix {assessment.get('blockerKey', 'the primary miss')}.")),
+        "immediateCorrection": str(llm_response.get("immediateCorrection", "")),
+        "keepInMind":          str(llm_response.get("keepInMind", "")),
+        "affirmation":         str(llm_response.get("affirmation", "")),
+        "nextMove":            str(llm_response.get("nextMove", "")),
+        "why":                 str(llm_response.get("why", "")),
+        "microDrill":          str(llm_response.get("microDrill", "")),
+        "nextRepTarget":       str(llm_response.get("nextRepTarget", "")),
+        "strengths":           [str(x) for x in llm_response.get("strengths", assessment.get("strengths", []))][:3],
+        "errorTags":           [str(x) for x in llm_response.get("errorTags", assessment.get("errorTags", []))][:6],
+        "fullFeedback":        str(llm_response.get("fullFeedback", "")),
+        "correctedVersion":    corrected_version,
+        "llmUsed":             True,
     }
-    if body.liveMode:
-        if not response["affirmation"]:
-            response["affirmation"] = str(response["strengths"][0]) if response["strengths"] else ""
-        response["nextMove"] = response["nextMove"] or response["immediateCorrection"]
-        response["why"] = response["why"] or response["diagnosis"]
-        response["diagnosis"] = response["why"]
-        response["immediateCorrection"] = response["nextMove"]
-        return _truncate_live_feedback_fields(response)
-    return response
 
 
 async def _session_plan_with_optional_llm(
@@ -3907,20 +2213,41 @@ async def _skill_map_drills_with_optional_llm(
         "Return strict JSON with key drills, where drills is an array of objects with keys "
         "id, title, difficulty, prompt, solution, missing, hint, tags. "
         "Each drill must teach one reusable LeetCode move from the provided skill map, not a story problem. "
-        "Make them concise and pattern-first. Prefer one drill per pattern until you hit the requested count. "
+        "Make them concise and pattern-first. Prioritize patterns with low readiness or high error rates, "
+        "then fill remaining slots across remaining patterns. "
         "The solution must include exactly one '{{missing}}' placeholder, and missing must be the exact code that replaces it. "
         "Keep snippets short enough to memorize, but realistic enough to reuse in senior-level interviews. "
         "Tags must include 'skill-map' and a slug for the pattern."
     )
+
+    # Trim skill map nodes to just pattern + methods — no extra serialization overhead
+    trimmed_skill_map = [
+        {"pattern": node.pattern, "methods": node.methods}
+        for node in body.skillMap[: body.count]
+    ]
+
+    # Only send patterns that have been attempted or have low readiness — skip untouched zero-data entries
+    pattern_progress = {
+        slug: data
+        for slug, data in progress_summary.get("patterns", {}).items()
+        if data.get("attemptCount", 0) > 0 or data.get("readiness", 100) < 90
+    }
+
     llm_payload = {
         "questionType": body.questionType,
         "count": body.count,
-        "skillMap": [node.model_dump() for node in body.skillMap[: body.count]],
-        "practiceHistory": progress_summary,
-        "fallbackExample": heuristic["drills"][:3],
+        "skillMap": trimmed_skill_map,
+        "practiceHistory": {
+            "overall": progress_summary.get("overall", {}),
+            "patterns": pattern_progress,
+        },
+        "schema": {
+            "fields":     ["id", "title", "difficulty", "prompt", "solution", "missing", "hint", "tags"],
+            "constraint": "solution must contain exactly one {{missing}} placeholder",
+        },
     }
 
-    llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)
+    llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider, DRILL_GEN_MAX_TOKENS)
     if not llm_response or not isinstance(llm_response.get("drills"), list):
         return heuristic
 
@@ -4031,33 +2358,37 @@ async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
             ),
         )
 
+    template_mode = _template_mode_value(body.templateMode)
     history = await _load_attempt_history(body)
-    live_history = await _load_live_feedback_history(body.interactionId)
     history_summary = _summarize_attempt_history(history)
-    heuristic = _heuristic_attempt_feedback(body, history_summary, live_history)
-    try:
-        feedback = await _attempt_feedback_with_optional_llm(body, heuristic, history, live_history)
-    except SubmissionFeedbackUnavailableError as error:
-        raise HTTPException(
-            status_code=503,
-            detail=_submission_feedback_error_detail(
-                error.code,
-                error.message,
-                error.provider,
-                error.api_error_code,
-            ),
-        ) from error
+    assessment = await _run_heuristic_assessor(body, template_mode)
 
-    if not body.liveMode and not bool(feedback.get("llmUsed")):
-        raise HTTPException(
-            status_code=503,
-            detail=_submission_feedback_error_detail(
-                "submission_feedback_no_response",
-                f"Feedback cannot be generated at this time. No response from {_llm_provider_label(provider)}.",
-                provider,
-                "provider_empty_response",
-            ),
-        )
+    if body.liveMode:
+        feedback = _assessment_to_live_response(assessment)
+    else:
+        try:
+            feedback = await _attempt_feedback_with_narrator(body, assessment, history, history_summary)
+        except SubmissionFeedbackUnavailableError as error:
+            raise HTTPException(
+                status_code=503,
+                detail=_submission_feedback_error_detail(
+                    error.code,
+                    error.message,
+                    error.provider,
+                    error.api_error_code,
+                ),
+            ) from error
+
+        if not bool(feedback.get("llmUsed")):
+            raise HTTPException(
+                status_code=503,
+                detail=_submission_feedback_error_detail(
+                    "submission_feedback_no_response",
+                    f"Feedback cannot be generated at this time. No response from {_llm_provider_label(provider)}.",
+                    provider,
+                    "provider_empty_response",
+                ),
+            )
 
     feedback["llmProvider"] = provider if bool(feedback.get("llmUsed")) else ""
     await _persist_feedback_event(body, feedback)
