@@ -82,6 +82,13 @@ type SkillMapDrillsResponse = {
   llmUsed: boolean
 }
 
+type AdaptiveVariationResponse = {
+  drill: Flashcard
+  targetDimension: string
+  variationReason: string
+  llmUsed: boolean
+}
+
 type AttemptEvaluationResponse = {
   accuracy: number
   sound: boolean
@@ -183,6 +190,12 @@ const getPrimaryPatternTag = (tags: string[]) => {
   }
   if (tags.includes('graph') || tags.includes('graph-bfs')) return 'graph-traversal'
   return 'generic'
+}
+
+const getTemplatePatternTag = (pattern: string) => {
+  const slug = patternToSlug(pattern)
+  if (slug === 'heap-priority-queue') return 'heap'
+  return getPrimaryPatternTag([slug])
 }
 
 const shuffle = <T,>(array: T[]): T[] => {
@@ -540,6 +553,29 @@ const buildSkeletonTemplate = (patternTag: string) => {
   }
 }
 
+const extractPracticeEntryPoint = (templateMode: TemplateMode, target: string) => {
+  const lines = target.replace(/\r\n/g, '\n').split('\n')
+  const firstContentLine = lines.map((line) => line.trim()).find(Boolean) ?? ''
+
+  if (templateMode === 'pseudo') {
+    const pseudoMatch = firstContentLine.match(/^define\s+(.+)$/i)
+    return pseudoMatch?.[1]?.replace(/:\s*$/, '').trim() || ''
+  }
+
+  const functionMatch = firstContentLine.match(/^def\s+([A-Za-z_]\w*)\s*\(([^)]*)\):/)
+  if (functionMatch) {
+    return `${functionMatch[1]}(${functionMatch[2]})`
+  }
+
+  return ''
+}
+
+const buildPracticePrompt = (templateMode: TemplateMode, target: string) => {
+  const entryPoint = extractPracticeEntryPoint(templateMode, target)
+  const modeLabel = TEMPLATE_MODE_LABELS[templateMode]
+  return entryPoint ? `${modeLabel}: recall ${entryPoint}.` : `${modeLabel}: recall this template.`
+}
+
 const isPlaceholderLine = (line: string) => /\b(pass|something|todo|tbd)\b/i.test(line.trim())
 
 const createInteractionId = () =>
@@ -683,6 +719,10 @@ function App() {
   const [skillMapLoading, setSkillMapLoading] = useState(false)
   const [skillMapError, setSkillMapError] = useState('')
   const [skillMapRefreshToken, setSkillMapRefreshToken] = useState(0)
+  const [skillMapSessionVersion, setSkillMapSessionVersion] = useState(0)
+  const [adaptiveVariationLoading, setAdaptiveVariationLoading] = useState(false)
+  const [adaptiveVariationError, setAdaptiveVariationError] = useState('')
+  const [adaptiveVariationNote, setAdaptiveVariationNote] = useState('')
 
   const [sessionOrder, setSessionOrder] = useState<number[]>([])
   const [sessionPosition, setSessionPosition] = useState(0)
@@ -733,6 +773,7 @@ function App() {
   const lastIdleLiveCoachRefreshAtRef = useRef(0)
   const coachRequestVersionRef = useRef(0)
   const skillMapDeckRequestVersionRef = useRef(0)
+  const adaptiveVariationRequestKeyRef = useRef('')
   const focusedPatternSlug = searchParams.get('focusPattern')?.trim() || ''
   const focusedModeParam = searchParams.get('focusMode')?.trim() || ''
   const focusedPatternNode = useMemo(
@@ -756,6 +797,19 @@ function App() {
     () => JSON.stringify(requestedSkillMap),
     [requestedSkillMap]
   )
+  const requestedTemplateMode = focusedTemplateMode ?? DEFAULT_TEMPLATE_MODES[0]
+  const requestedTemplateTargets = useMemo(() => {
+    const targets: Record<string, Partial<Record<TemplateMode, string>>> = {}
+    requestedSkillMap.forEach((node) => {
+      const patternSlug = patternToSlug(node.pattern)
+      const patternTag = getTemplatePatternTag(node.pattern)
+      targets[patternSlug] = {
+        pseudo: normalizeTyping(buildPseudoTemplate(patternTag)),
+        skeleton: normalizeTyping(buildSkeletonTemplate(patternTag)),
+      }
+    })
+    return targets
+  }, [requestedSkillMap])
   const requestedQuestionType = focusedPatternNode ? 'skill-map-targeted' : questionType
   const targetedDeckLabel = focusedPatternNode
     ? `${focusedPatternNode.pattern} • ${focusedTemplateMode ? TEMPLATE_MODE_LABELS[focusedTemplateMode] : 'Focused'}`
@@ -788,6 +842,8 @@ function App() {
           questionType: requestedQuestionType,
           count: requestedSkillMap.length,
           skillMap: requestedSkillMap,
+          templateMode: requestedTemplateMode,
+          templateTargets: requestedTemplateTargets,
           llmProvider,
         }),
       })
@@ -795,9 +851,11 @@ function App() {
       const payload = (await response.json()) as SkillMapDrillsResponse
       if (skillMapDeckRequestVersionRef.current !== requestVersion) return
       setSkillMapDeck(payload.drills)
+      setSkillMapSessionVersion((prev) => prev + 1)
     } catch {
       if (skillMapDeckRequestVersionRef.current !== requestVersion) return
       setSkillMapDeck([])
+      setSkillMapSessionVersion((prev) => prev + 1)
       setSkillMapError('Skill map drill generation is unavailable right now.')
     } finally {
       if (skillMapDeckRequestVersionRef.current === requestVersion) {
@@ -846,7 +904,7 @@ function App() {
   useEffect(() => {
     void fetchSkillMapDeck()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [llmProvider, requestedQuestionType, requestedSkillMapSignature, skillMapRefreshToken])
+  }, [llmProvider, requestedQuestionType, requestedSkillMapSignature, requestedTemplateMode, skillMapRefreshToken])
 
   useEffect(() => {
     saveStoredLiveCoachTuning(liveCoachTuning)
@@ -856,7 +914,7 @@ function App() {
     if (skillMapLoading) return
     startSession()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredDeck, sessionOrderType, skillMapLoading])
+  }, [skillMapSessionVersion, sessionOrderType, skillMapLoading])
 
   useEffect(() => {
     if (!llmProviderMenuOpen) return
@@ -895,10 +953,17 @@ function App() {
     [primaryPatternTag]
   )
   const practiceTarget = useMemo(() => {
+    const generatedTarget = card.templateTargets?.[currentTemplateMode]?.trim()
+    if (generatedTarget) return normalizeTyping(generatedTarget)
     if (currentTemplateMode === 'pseudo') return normalizeTyping(pseudoTarget)
     if (currentTemplateMode === 'skeleton') return normalizeTyping(skeletonTarget)
     return fullSolutionTarget
-  }, [currentTemplateMode, fullSolutionTarget, pseudoTarget, skeletonTarget])
+  }, [card.templateTargets, currentTemplateMode, fullSolutionTarget, pseudoTarget, skeletonTarget])
+  const generatedPracticePrompt = card.templatePrompts?.[currentTemplateMode]?.trim() || card.prompt.trim()
+  const practicePrompt = useMemo(
+    () => generatedPracticePrompt || buildPracticePrompt(currentTemplateMode, practiceTarget),
+    [currentTemplateMode, generatedPracticePrompt, practiceTarget]
+  )
   const currentQuestionType = `${requestedQuestionType}:${currentTemplateMode}`
   const currentSkillTags = useMemo(
     () => [...card.tags, `template-${currentTemplateMode}`],
@@ -976,7 +1041,7 @@ function App() {
         body: JSON.stringify({
           cardId: card.id,
           cardTitle: card.title,
-          question: card.prompt,
+          question: practicePrompt,
           questionType: currentQuestionType,
           categoryTags: currentSkillTags,
           correctAnswer: payload.correctAnswer,
@@ -988,7 +1053,7 @@ function App() {
           elapsedMs: payload.elapsedMs,
           interactionId: payload.interactionId,
           generatedCardId: card.id,
-          generatedCard: card,
+          generatedCard: { ...card, prompt: practicePrompt },
           templateMode: payload.templateMode,
           liveCoachUsed: payload.liveCoachUsed,
           coachFeedback: payload.coachFeedback ?? null,
@@ -1024,6 +1089,67 @@ function App() {
     }
   }
 
+  const enqueueAdaptiveVariation = (drill: Flashcard, variationReason: string) => {
+    if (skillMapDeck.some((item) => item.id === drill.id)) return
+    const nextDeckIndex = skillMapDeck.length
+    setSkillMapDeck((prevDeck) => {
+      if (prevDeck.some((item) => item.id === drill.id)) return prevDeck
+      return [...prevDeck, drill]
+    })
+    setSessionOrder((prevOrder) => {
+      if (prevOrder.includes(nextDeckIndex)) return prevOrder
+      return [
+        ...prevOrder.slice(0, sessionPosition + 1),
+        nextDeckIndex,
+        ...prevOrder.slice(sessionPosition + 1),
+      ]
+    })
+    setAdaptiveVariationNote(variationReason || 'Targeted repair variation queued next.')
+  }
+
+  const requestAdaptiveVariation = async (payload: {
+    interactionId: string
+    expectedAnswer: string
+    userAnswer: string
+    submissionRubric: Record<string, unknown>
+  }) => {
+    const requestKey = `${card.id}:${currentTemplateMode}:${payload.interactionId}`
+    if (adaptiveVariationRequestKeyRef.current === requestKey) return
+    adaptiveVariationRequestKeyRef.current = requestKey
+    setAdaptiveVariationLoading(true)
+    setAdaptiveVariationError('')
+    setAdaptiveVariationNote('')
+
+    try {
+      const response = await fetch(apiUrl('/api/coach/adaptive-variation'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cardId: card.id,
+          cardTitle: card.title,
+          prompt: practicePrompt,
+          expectedAnswer: payload.expectedAnswer,
+          userAnswer: payload.userAnswer,
+          templateMode: currentTemplateMode,
+          skillTags: currentSkillTags,
+          submissionRubric: payload.submissionRubric,
+          llmProvider,
+        }),
+      })
+      if (!response.ok) throw new Error('Unable to generate adaptive variation')
+      const variation = (await response.json()) as AdaptiveVariationResponse
+      if (adaptiveVariationRequestKeyRef.current !== requestKey || currentCardIdRef.current !== card.id) return
+      enqueueAdaptiveVariation(variation.drill, variation.variationReason)
+    } catch {
+      if (adaptiveVariationRequestKeyRef.current !== requestKey || currentCardIdRef.current !== card.id) return
+      setAdaptiveVariationError('Targeted variation unavailable right now.')
+    } finally {
+      if (adaptiveVariationRequestKeyRef.current === requestKey && currentCardIdRef.current === card.id) {
+        setAdaptiveVariationLoading(false)
+      }
+    }
+  }
+
   const resetPerCardInteraction = () => {
     setCurrentTemplateModeIndex(0)
     setCurrentCardTemplateResults({})
@@ -1037,7 +1163,11 @@ function App() {
     setLiveCoachLoading(false)
     setLiveCoachError('')
     setLiveCoachUsedThisAttempt(false)
+    setAdaptiveVariationLoading(false)
+    setAdaptiveVariationError('')
+    setAdaptiveVariationNote('')
     liveCoachRequestVersionRef.current = 0
+    adaptiveVariationRequestKeyRef.current = ''
     lastLiveCoachMilestoneRef.current = ''
     lastLiveCoachLengthRef.current = 0
     lastMainInputEditAtRef.current = 0
@@ -1209,7 +1339,7 @@ function App() {
         body: JSON.stringify({
           cardId: card.id,
           cardTitle: card.title,
-          prompt: card.prompt,
+          prompt: practicePrompt,
           expectedAnswer: payload.expectedAnswer,
           userAnswer: payload.userAnswer,
           elapsedMs: payload.elapsedMs,
@@ -1288,7 +1418,7 @@ function App() {
         body: JSON.stringify({
           cardId: card.id,
           cardTitle: card.title,
-          prompt: card.prompt,
+          prompt: practicePrompt,
           expectedAnswer: payload.expectedAnswer,
           userAnswer: payload.userAnswer,
           elapsedMs: payload.elapsedMs,
@@ -1480,6 +1610,15 @@ function App() {
       coachFeedback: feedback,
       submissionRubric: feedback?.submissionRubric ?? null,
     })
+
+    if (!sound && feedback?.submissionRubric) {
+      void requestAdaptiveVariation({
+        interactionId,
+        expectedAnswer: normalizedTarget,
+        userAnswer: normalizedInput,
+        submissionRubric: feedback.submissionRubric,
+      })
+    }
 
     if (closeEnough && currentTemplateModeIndex >= activeTemplateModes.length - 1) {
       const completedModes = activeTemplateModes
@@ -1852,7 +1991,7 @@ function App() {
               </>
             ) : (
               <>
-                <p className="prompt">{card.prompt}</p>
+                <p className="prompt">{practicePrompt}</p>
               </>
             )}
           </div>
@@ -2066,6 +2205,15 @@ function App() {
                               <p className="coach-muted">
                                 <strong>Next step:</strong> {submissionFeedbackNextStep}
                               </p>
+                              {adaptiveVariationLoading && (
+                                <p className="coach-muted">Building a targeted repair variation...</p>
+                              )}
+                              {adaptiveVariationNote && (
+                                <p className="coach-muted">
+                                  <strong>Queued next:</strong> {adaptiveVariationNote}
+                                </p>
+                              )}
+                              {adaptiveVariationError && <p className="coach-error">{adaptiveVariationError}</p>}
                             </>
                           )}
                         </div>

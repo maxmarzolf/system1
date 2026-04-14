@@ -3,6 +3,8 @@ export type Flashcard = {
   title: string
   difficulty: 'Easy' | 'Med.' | 'Hard'
   prompt: string
+  templatePrompts?: Partial<Record<'pseudo' | 'skeleton' | 'full', string>>
+  templateTargets?: Partial<Record<'pseudo' | 'skeleton' | 'full', string>>
   solution: string
   missing: string
   hint: string

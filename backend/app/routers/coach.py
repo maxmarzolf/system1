@@ -19,6 +19,8 @@ from fastapi import APIRouter, HTTPException
 from app.config import settings
 from app.database import get_pool
 from app.models import (
+    AdaptiveVariationRequest,
+    AdaptiveVariationResponse,
     CoachAttemptEvaluationRequest,
     CoachAttemptEvaluationResponse,
     CoachAttemptFeedbackRequest,
@@ -61,6 +63,26 @@ SUBMISSION_TUNING_DEFAULTS: dict[str, Any] = {
     "rewardEquivalentPhrasing": True,
     "requireAnswerStep": True,
     "allowExtraParameters": True,
+}
+SUBMISSION_DIMENSION_LABELS = {
+    "contract": "Problem contract",
+    "pattern": "Core pattern",
+    "state": "State representation",
+    "control_flow": "Control flow shape",
+    "invariant": "Invariant or decision rule",
+    "state_updates": "State update correctness",
+    "ordering": "Step ordering",
+    "answer_path": "Answer recording or return path",
+    "edge_cases": "Edge-case coverage",
+    "recall_fidelity": "Recall fidelity",
+    "executability": "Syntax and executability",
+    "fluency": "Speed and fluency",
+    "structure": "Solution structure",
+    "correctness": "Correctness",
+    "completeness": "Completeness",
+    "patternFidelity": "Pattern fidelity",
+    "syntax": "Syntax and executability",
+    "completionTime": "Speed and fluency",
 }
 ANTHROPIC_MODEL_FALLBACKS = (
     "claude-sonnet-4-6",
@@ -1421,14 +1443,15 @@ def _heuristic_session_plan(body: CoachSessionPlanRequest) -> dict[str, Any]:
 
 
 def _pattern_slug(pattern: str) -> str:
-    return (
+    import re
+    return re.sub(
+        r"\s+",
+        "-",
         pattern.lower()
         .replace("/", " ")
         .replace("&", " ")
         .replace("-", " ")
-        .strip()
-        .replace("  ", " ")
-        .replace(" ", "-")
+        .strip(),
     )
 
 
@@ -1472,6 +1495,438 @@ def _method_focused_skill_drill(
         "prompt": f"Memorize a reusable {pattern.lower()} snippet while making the {focus} explicit.",
         "hint": f"{str(template.get('hint', '')).strip()} Focus lens: {focus}.".strip(),
         "tags": tags,
+    }
+
+
+def _clean_concise_prompt(value: str, max_chars: int = 80) -> str:
+    prompt = re.sub(r"\s+", " ", str(value or "").strip())
+    if len(prompt) <= max_chars:
+        return prompt
+    shortened = prompt[:max_chars].rsplit(" ", 1)[0].strip()
+    return f"{shortened}..."
+
+
+def _entry_point_from_template_target(template_mode: str, target: str) -> str:
+    lines = str(target or "").replace("\r\n", "\n").split("\n")
+    first_line = next((line.strip() for line in lines if line.strip()), "")
+    if template_mode == TemplateMode.pseudo.value:
+        match = re.match(r"define\s+(.+)$", first_line, flags=re.IGNORECASE)
+        return re.sub(r":\s*$", "", match.group(1)).strip() if match else ""
+
+    match = re.match(r"def\s+([A-Za-z_]\w*)\s*\(([^)]*)\):", first_line)
+    return f"{match.group(1)}({match.group(2)})" if match else ""
+
+
+def _fallback_template_prompt(pattern: str, template_mode: str, target: str) -> str:
+    mode_label = {
+        TemplateMode.pseudo.value: "Pseudo",
+        TemplateMode.skeleton.value: "Skeleton",
+        TemplateMode.full.value: "Full",
+    }.get(template_mode, "Recall")
+    entry_point = _entry_point_from_template_target(template_mode, target)
+    if entry_point:
+        return f"{mode_label}: recall {entry_point}."
+    return f"{mode_label}: recall {pattern.lower()}."
+
+
+def _template_targets_for_drill(
+    body: SkillMapDrillsRequest,
+    pattern_slug: str,
+    solution: str,
+    missing: str,
+    raw_template_targets: Any = None,
+) -> dict[str, str]:
+    request_targets = body.templateTargets.get(pattern_slug, {})
+    targets = {
+        mode: str(target)
+        for mode, target in request_targets.items()
+        if mode in TEMPLATE_MODE_ORDER and str(target).strip()
+    }
+    if isinstance(raw_template_targets, dict):
+        for mode, target in raw_template_targets.items():
+            if mode in TEMPLATE_MODE_ORDER and str(target).strip():
+                targets[mode] = str(target).replace("\r\n", "\n").strip()
+    full_target = str(solution or "").replace("{{missing}}", str(missing or "")).strip()
+    if full_target:
+        targets[TemplateMode.full.value] = full_target
+    return targets
+
+
+def _template_prompt_map(
+    body: SkillMapDrillsRequest,
+    pattern: str,
+    pattern_slug: str,
+    solution: str,
+    missing: str,
+    raw_template_prompts: Any = None,
+    template_targets: dict[str, str] | None = None,
+) -> dict[str, str]:
+    targets = template_targets or _template_targets_for_drill(body, pattern_slug, solution, missing)
+    raw_prompts = raw_template_prompts if isinstance(raw_template_prompts, dict) else {}
+    prompts: dict[str, str] = {}
+
+    for mode in TEMPLATE_MODE_ORDER:
+        raw_prompt = _clean_concise_prompt(str(raw_prompts.get(mode, "")).strip())
+        if raw_prompt:
+            prompts[mode] = raw_prompt
+            continue
+        target = targets.get(mode, "")
+        if target:
+            prompts[mode] = _fallback_template_prompt(pattern, mode, target)
+
+    return prompts
+
+
+ADAPTIVE_VARIATION_STRATEGIES = {
+    "contract": "preserve the function signature and named inputs before changing logic",
+    "pattern": "make the reusable algorithm shape unmistakable",
+    "state": "force the state variables to be named and initialized",
+    "control_flow": "make the loop and branch structure carry the algorithm",
+    "invariant": "state the decision rule that keeps the answer inside the search space",
+    "state_updates": "pressure the exact movement/update that changes state",
+    "ordering": "keep setup, decision, update, and return in cause-and-effect order",
+    "answer_path": "force explicit answer recording and return behavior",
+    "edge_cases": "include the smallest fallback or boundary behavior",
+    "recall_fidelity": "repeat the same core shape with fewer places to hide vague wording",
+    "executability": "keep the scaffold syntactically concrete enough to run",
+}
+
+
+def _adaptive_primary_failure(rubric: dict[str, Any]) -> dict[str, Any]:
+    primary = rubric.get("primaryFailure") if isinstance(rubric.get("primaryFailure"), dict) else {}
+    primary_key = str(primary.get("key", "")).strip()
+    if primary_key and primary_key != "sound":
+        return {
+            "key": primary_key,
+            "label": str(primary.get("label", "") or SUBMISSION_DIMENSION_LABELS.get(primary_key, primary_key.replace("_", " ").title())),
+        }
+
+    weakest: dict[str, Any] = {}
+    dimensions = rubric.get("dimensions") if isinstance(rubric.get("dimensions"), dict) else {}
+    modifiers = rubric.get("modifiers") if isinstance(rubric.get("modifiers"), dict) else {}
+    for key, dimension in {**dimensions, **modifiers}.items():
+        if not isinstance(dimension, dict):
+            continue
+        try:
+            score = float(dimension.get("score", 100) or 100)
+        except (TypeError, ValueError):
+            score = 100.0
+        if not weakest or score < float(weakest.get("score", 100)):
+            weakest = {
+                "key": str(dimension.get("key") or key),
+                "label": str(dimension.get("label") or SUBMISSION_DIMENSION_LABELS.get(str(key), str(key).replace("_", " ").title())),
+                "score": score,
+            }
+
+    if weakest:
+        return weakest
+    return {"key": "pattern", "label": SUBMISSION_DIMENSION_LABELS["pattern"]}
+
+
+def _score_from_assessment_dimension(dimension: dict[str, Any]) -> float:
+    if "score" in dimension:
+        try:
+            return round(float(dimension.get("score", 0) or 0), 1)
+        except (TypeError, ValueError):
+            return 0.0
+    if "valid" in dimension:
+        return 100.0 if bool(dimension.get("valid")) else 0.0
+    return 0.0
+
+
+def _status_from_score(score: float) -> str:
+    if score >= 80:
+        return "pass"
+    if score >= 45:
+        return "partial"
+    return "fail"
+
+
+def _submission_rubric_from_assessment(
+    body: CoachAttemptFeedbackRequest,
+    assessment: dict[str, Any],
+) -> dict[str, Any]:
+    raw_dimensions = assessment.get("dimensions") if isinstance(assessment.get("dimensions"), dict) else {}
+    dimensions: dict[str, dict[str, Any]] = {}
+    modifiers: dict[str, dict[str, Any]] = {}
+
+    for key, raw_dimension in raw_dimensions.items():
+        if not isinstance(raw_dimension, dict):
+            continue
+        score = _score_from_assessment_dimension(raw_dimension)
+        label = SUBMISSION_DIMENSION_LABELS.get(str(key), str(key).replace("_", " ").title())
+        dimension = {
+            "key": str(key),
+            "label": label,
+            "status": _status_from_score(score),
+            "score": score,
+            "evidence": [str(raw_dimension.get("note", "")).strip()] if str(raw_dimension.get("note", "")).strip() else [],
+            "missing": [],
+        }
+        if str(key) in {"syntax", "completionTime"}:
+            modifiers[str(key)] = dimension
+        else:
+            dimensions[str(key)] = dimension
+
+    verdict = str(assessment.get("verdict", "")).strip() or ("sound" if body.exact else "needs-work")
+    blocker_key = str(assessment.get("blockerKey", "")).strip()
+    if verdict == "sound" or not blocker_key:
+        primary_failure = {
+            "key": "sound",
+            "label": "Sound recall",
+            "severity": "minor",
+            "evidence": [str(item) for item in assessment.get("strengths", [])[:2] if str(item).strip()]
+            if isinstance(assessment.get("strengths"), list)
+            else [],
+        }
+    else:
+        primary_failure = {
+            "key": blocker_key,
+            "label": SUBMISSION_DIMENSION_LABELS.get(blocker_key, blocker_key.replace("_", " ").title()),
+            "severity": "blocking" if verdict == "needs-work" else "major",
+            "evidence": [str(assessment.get("primaryBlocker", "")).strip()]
+            if str(assessment.get("primaryBlocker", "")).strip()
+            else [],
+        }
+
+    dimension_scores = [
+        float(item.get("score", 0) or 0)
+        for item in [*dimensions.values(), *modifiers.values()]
+        if item.get("status") != "not_applicable"
+    ]
+    overall = round(sum(dimension_scores) / len(dimension_scores), 1) if dimension_scores else round(float(body.accuracy or 0), 1)
+
+    return {
+        "verdict": verdict,
+        "score": {
+            "overall": overall,
+            "conceptual": overall,
+            "fidelity": dimensions.get("patternFidelity", {}).get("score", overall),
+            "executable": modifiers.get("syntax", {}).get("score", 100.0),
+            "fluency": modifiers.get("completionTime", {}).get("score", 0.0),
+        },
+        "primaryFailure": primary_failure,
+        "dimensions": dimensions,
+        "modifiers": modifiers,
+        "recommendedAction": str(assessment.get("primaryBlocker", "")).strip(),
+    }
+
+
+def _binary_search_adaptive_target(template_mode: str, failure_key: str) -> tuple[str, str]:
+    if failure_key in {"answer_path", "edge_cases"}:
+        pseudo = "\n".join([
+            "Define first_occurrence(nums, target)",
+            "Initialize left, right, and answer as not found",
+            "While left is at or before right:",
+            "    Compute the midpoint",
+            "    If nums[mid] equals target:",
+            "        Record mid as the current answer",
+            "        Move right before mid to search earlier positions",
+            "    Else if nums[mid] is less than target:",
+            "        Move left past mid",
+            "    Else move right before mid",
+            "Return the recorded answer",
+        ])
+        code = "\n".join([
+            "def first_occurrence(nums, target):",
+            "    left, right = 0, len(nums) - 1",
+            "    answer = -1",
+            "",
+            "    while left <= right:",
+            "        mid = (left + right) // 2",
+            "        if nums[mid] == target:",
+            "            answer = mid",
+            "            right = mid - 1",
+            "        elif nums[mid] < target:",
+            "            left = mid + 1",
+            "        else:",
+            "            right = mid - 1",
+            "",
+            "    return answer",
+        ])
+        return (pseudo if template_mode == TemplateMode.pseudo.value else code, "answer recording")
+
+    if failure_key in {"invariant", "state_updates", "control_flow"}:
+        pseudo = "\n".join([
+            "Define first_true(low, high)",
+            "Keep the answer inside the half-open interval",
+            "While low is before high:",
+            "    Compute the midpoint candidate",
+            "    If the candidate is feasible:",
+            "        Keep mid by moving high to mid",
+            "    Otherwise:",
+            "        Rule out mid by moving low past mid",
+            "Return low as the first feasible answer",
+        ])
+        code = "\n".join([
+            "def first_true(low, high):",
+            "    while low < high:",
+            "        mid = (low + high) // 2",
+            "        if feasible(mid):",
+            "            high = mid",
+            "        else:",
+            "            low = mid + 1",
+            "",
+            "    return low",
+        ])
+        return (pseudo if template_mode == TemplateMode.pseudo.value else code, "half-open invariant")
+
+    pseudo = "\n".join([
+        "Define lower_bound(nums, target)",
+        "Initialize left at 0 and right at len(nums)",
+        "While left is before right:",
+        "    Compute the midpoint",
+        "    If nums[mid] is less than target:",
+        "        Move left past mid",
+        "    Otherwise:",
+        "        Keep mid by moving right to mid",
+        "Return left as the insertion point",
+    ])
+    code = "\n".join([
+        "def lower_bound(nums, target):",
+        "    left, right = 0, len(nums)",
+        "",
+        "    while left < right:",
+        "        mid = (left + right) // 2",
+        "        if nums[mid] < target:",
+        "            left = mid + 1",
+        "        else:",
+        "            right = mid",
+        "",
+        "    return left",
+    ])
+    return (pseudo if template_mode == TemplateMode.pseudo.value else code, "bounds setup")
+
+
+def _generic_adaptive_target(pattern_name: str, template_mode: str, failure_key: str) -> tuple[str, str]:
+    focus = ADAPTIVE_VARIATION_STRATEGIES.get(failure_key, ADAPTIVE_VARIATION_STRATEGIES["pattern"])
+    if template_mode == TemplateMode.pseudo.value:
+        return (
+            "\n".join([
+                f"Define {pattern_name.replace(' ', '_')}_repair(input)",
+                f"Name the state needed to {focus}",
+                "Iterate in the order the invariant expects",
+                "Update the state with one concrete movement rule",
+                "Return the answer produced by that state",
+            ]),
+            focus,
+        )
+    return (
+        "\n".join([
+            "def repair_template(items):",
+            "    state = init_state(items)",
+            "",
+            "    for item in items:",
+            f"        # {focus}",
+            "        state = update_state(state, item)",
+            "",
+            "    return build_answer(state)",
+        ]),
+        focus,
+    )
+
+
+def _adaptive_fallback_response(body: AdaptiveVariationRequest) -> dict[str, Any]:
+    template_mode = _template_mode_value(body.templateMode)
+    rubric = body.submissionRubric if isinstance(body.submissionRubric, dict) else {}
+    primary_failure = _adaptive_primary_failure(rubric)
+    failure_key = str(primary_failure.get("key", "pattern"))
+    failure_label = str(primary_failure.get("label", SUBMISSION_DIMENSION_LABELS.get(failure_key, "Core pattern")))
+    pattern_tag = _primary_pattern_tag(body.skillTags)
+    pattern_name = _pattern_display_name(body.skillTags) or "algorithm"
+    target, variation_focus = (
+        _binary_search_adaptive_target(template_mode, failure_key)
+        if pattern_tag == "binary-search"
+        else _generic_adaptive_target(pattern_name, template_mode, failure_key)
+    )
+    mode_label = {
+        TemplateMode.pseudo.value: "Pseudo",
+        TemplateMode.skeleton.value: "Skeleton",
+        TemplateMode.full.value: "Full",
+    }.get(template_mode, "Recall")
+    prompt = _clean_concise_prompt(f"{mode_label}: repair {failure_label.lower()}.")
+    target_dimension_tag = f"adaptive-{_pattern_slug(failure_key)}"
+    stamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S%f")
+    tags = [str(tag) for tag in body.skillTags if str(tag).strip()]
+    for tag in ("skill-map", "adaptive-variation", target_dimension_tag):
+        if tag not in tags:
+            tags.append(tag)
+
+    return {
+        "drill": {
+            "id": f"adaptive-{_pattern_slug(pattern_name)}-{_pattern_slug(failure_key)}-{stamp}",
+            "title": f"Adaptive Repair • {pattern_name.title()}: {failure_label}",
+            "difficulty": "Med.",
+            "prompt": prompt,
+            "templatePrompts": {template_mode: prompt},
+            "templateTargets": {template_mode: target, TemplateMode.full.value: target},
+            "solution": f"{target}\n{{{{missing}}}}",
+            "missing": "# repair complete",
+            "hint": f"Target the previous miss: {variation_focus}.",
+            "tags": tags,
+        },
+        "targetDimension": failure_key,
+        "variationReason": f"Generated to repair {failure_label.lower()}.",
+        "llmUsed": False,
+    }
+
+
+async def _adaptive_variation_with_optional_llm(body: AdaptiveVariationRequest) -> dict[str, Any]:
+    heuristic = _adaptive_fallback_response(body)
+    provider = _resolve_available_llm_provider(body.llmProvider)
+    if not _llm_provider_available(provider):
+        return heuristic
+
+    template_mode = _template_mode_value(body.templateMode)
+    primary_failure = _adaptive_primary_failure(body.submissionRubric if isinstance(body.submissionRubric, dict) else {})
+    failure_key = str(primary_failure.get("key", "pattern"))
+    failure_label = str(primary_failure.get("label", SUBMISSION_DIMENSION_LABELS.get(failure_key, "Core pattern")))
+    pattern_name = _pattern_display_name(body.skillTags) or "algorithm"
+    system_prompt = (
+        "Generate one adaptive recall variation for a coding interview trainer. "
+        "Return strict JSON with keys prompt, specimen, hint, title, variationReason. "
+        "The specimen is the exact next target the user should recall. "
+        "Keep the same algorithm family, but vary the specimen to pressure the targetDimension. "
+        "For pseudo mode, specimen must be concise pseudocode. For skeleton or full mode, specimen must be Python. "
+        "Prompt must be 12 words or fewer. Do not include markdown. Do not include '{{missing}}'."
+    )
+    llm_payload = {
+        "pattern": pattern_name,
+        "templateMode": template_mode,
+        "targetDimension": {"key": failure_key, "label": failure_label},
+        "strategy": ADAPTIVE_VARIATION_STRATEGIES.get(failure_key, ADAPTIVE_VARIATION_STRATEGIES["pattern"]),
+        "previousPrompt": body.prompt,
+        "previousTarget": body.expectedAnswer,
+        "userAnswer": body.userAnswer,
+        "submissionRubric": body.submissionRubric,
+        "fallbackExample": heuristic["drill"],
+    }
+    llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)
+    if not isinstance(llm_response, dict):
+        return heuristic
+
+    specimen = str(llm_response.get("specimen", "")).replace("\r\n", "\n").replace("{{missing}}", "").strip()
+    if not specimen:
+        return heuristic
+
+    prompt = _clean_concise_prompt(str(llm_response.get("prompt", "")).strip() or heuristic["drill"]["prompt"])
+    title = str(llm_response.get("title", "")).strip() or heuristic["drill"]["title"]
+    hint = str(llm_response.get("hint", "")).strip() or heuristic["drill"]["hint"]
+    reason = str(llm_response.get("variationReason", "")).strip() or heuristic["variationReason"]
+    drill = {
+        **heuristic["drill"],
+        "title": title,
+        "prompt": prompt,
+        "templatePrompts": {template_mode: prompt},
+        "templateTargets": {template_mode: specimen, TemplateMode.full.value: specimen},
+        "solution": f"{specimen}\n{{{{missing}}}}",
+        "hint": hint,
+    }
+    return {
+        "drill": drill,
+        "targetDimension": failure_key,
+        "variationReason": reason,
+        "llmUsed": True,
     }
 
 
@@ -1603,11 +2058,29 @@ def _fallback_skill_map_drills(
             difficulty = "Hard"
             prompt = f"{prompt} Keep this rep tight and exact with fewer mental cues."
 
+        template_targets = _template_targets_for_drill(
+            body,
+            slug,
+            str(template["solution"]),
+            str(template["missing"]),
+        )
+        template_prompts = _template_prompt_map(
+            body,
+            node.pattern,
+            slug,
+            str(template["solution"]),
+            str(template["missing"]),
+            template_targets=template_targets,
+        )
+        selected_prompt = template_prompts.get(_template_mode_value(body.templateMode)) or _clean_concise_prompt(prompt)
+
         drills.append({
             "id": f"skill-{slug}-{index + 1}",
             "title": template["title"],
             "difficulty": difficulty,
-            "prompt": prompt,
+            "prompt": selected_prompt,
+            "templatePrompts": template_prompts,
+            "templateTargets": template_targets,
             "solution": template["solution"],
             "missing": template["missing"],
             "hint": hint,
@@ -2211,11 +2684,16 @@ async def _skill_map_drills_with_optional_llm(
     system_prompt = (
         "You generate atomic Python recall drills for coding interview preparation. "
         "Return strict JSON with key drills, where drills is an array of objects with keys "
-        "id, title, difficulty, prompt, solution, missing, hint, tags. "
+        "id, title, difficulty, prompt, templatePrompts, templateTargets, solution, missing, hint, tags. "
         "Each drill must teach one reusable LeetCode move from the provided skill map, not a story problem. "
         "Make them concise and pattern-first. Prioritize patterns with low readiness or high error rates, "
         "then fill remaining slots across remaining patterns. "
         "The solution must include exactly one '{{missing}}' placeholder, and missing must be the exact code that replaces it. "
+        "The prompt must be very short: 12 words or fewer. "
+        "templateTargets may include pseudo and skeleton. Pseudo must be concise pseudocode. Skeleton must be a Python scaffold. "
+        "When you return templateTargets, make them specific to the drill's pattern and method instead of generic pattern text. "
+        "templatePrompts must be an object keyed by pseudo, skeleton, and full when those targets are provided. "
+        "Each templatePrompts value must be 12 words or fewer and must describe the exact provided template target, not a legacy or story prompt. "
         "Keep snippets short enough to memorize, but realistic enough to reuse in senior-level interviews. "
         "Tags must include 'skill-map' and a slug for the pattern."
     )
@@ -2236,15 +2714,29 @@ async def _skill_map_drills_with_optional_llm(
     llm_payload = {
         "questionType": body.questionType,
         "count": body.count,
+        "templateMode": _template_mode_value(body.templateMode),
+        "templateTargets": body.templateTargets,
         "skillMap": trimmed_skill_map,
         "practiceHistory": {
             "overall": progress_summary.get("overall", {}),
             "patterns": pattern_progress,
         },
         "schema": {
-            "fields":     ["id", "title", "difficulty", "prompt", "solution", "missing", "hint", "tags"],
+            "fields": [
+                "id",
+                "title",
+                "difficulty",
+                "prompt",
+                "templatePrompts",
+                "templateTargets",
+                "solution",
+                "missing",
+                "hint",
+                "tags",
+            ],
             "constraint": "solution must contain exactly one {{missing}} placeholder",
         },
+        "fallbackExample": heuristic["drills"][:3],
     }
 
     llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider, DRILL_GEN_MAX_TOKENS)
@@ -2263,11 +2755,31 @@ async def _skill_map_drills_with_optional_llm(
         tags = [str(tag).strip() for tag in tags_raw if str(tag).strip()] if isinstance(tags_raw, list) else []
         if "skill-map" not in tags:
             tags = ["skill-map", *tags]
+        fallback_node = body.skillMap[index] if index < len(body.skillMap) else None
+        pattern = fallback_node.pattern if fallback_node else str(raw.get("title", "algorithm"))
+        pattern_slug = _pattern_slug(pattern)
+        template_targets = _template_targets_for_drill(body, pattern_slug, solution, missing, raw.get("templateTargets", {}))
+        template_prompts = _template_prompt_map(
+            body,
+            pattern,
+            pattern_slug,
+            solution,
+            missing,
+            raw.get("templatePrompts", {}),
+            template_targets,
+        )
+        selected_prompt = (
+            template_prompts.get(_template_mode_value(body.templateMode))
+            or _clean_concise_prompt(str(raw.get("prompt", "")).strip())
+            or _fallback_template_prompt(pattern, _template_mode_value(body.templateMode), solution.replace("{{missing}}", missing))
+        )
         drills.append({
             "id": str(raw.get("id", f"skill-map-{index + 1}")),
             "title": str(raw.get("title", f"Skill Map Drill {index + 1}")),
             "difficulty": str(raw.get("difficulty", "Med.")),
-            "prompt": str(raw.get("prompt", "")).strip(),
+            "prompt": selected_prompt,
+            "templatePrompts": template_prompts,
+            "templateTargets": template_targets,
             "solution": solution,
             "missing": missing,
             "hint": str(raw.get("hint", "")).strip(),
@@ -2390,6 +2902,8 @@ async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
                 ),
             )
 
+    if not body.liveMode:
+        feedback["submissionRubric"] = _submission_rubric_from_assessment(body, assessment)
     feedback["llmProvider"] = provider if bool(feedback.get("llmUsed")) else ""
     await _persist_feedback_event(body, feedback)
     feedback.pop("signals", None)
@@ -2420,3 +2934,8 @@ async def coach_skill_map_drills(body: SkillMapDrillsRequest):
     stamped = _stamp_skill_map_drills(drills["drills"])
     await _persist_skill_map_drills(stamped, bool(drills.get("llmUsed")), progress_summary)
     return {"drills": stamped, "llmUsed": bool(drills.get("llmUsed"))}
+
+
+@router.post("/adaptive-variation", response_model=AdaptiveVariationResponse)
+async def coach_adaptive_variation(body: AdaptiveVariationRequest):
+    return await _adaptive_variation_with_optional_llm(body)

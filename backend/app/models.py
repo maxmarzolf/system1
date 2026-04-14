@@ -142,6 +142,8 @@ class SkillMapDrillCard(BaseModel):
     title: str = Field(min_length=1)
     difficulty: str = Field(default="Med.")
     prompt: str = Field(min_length=1)
+    templatePrompts: dict[str, str] = Field(default_factory=dict)
+    templateTargets: dict[str, str] = Field(default_factory=dict)
     solution: str = Field(min_length=1)
     missing: str = Field(min_length=1)
     hint: str = ""
@@ -152,11 +154,32 @@ class SkillMapDrillsRequest(BaseModel):
     questionType: str = "skill-map"
     count: int = Field(default=12, ge=1, le=20)
     skillMap: list[SkillMapNode] = []
+    templateMode: TemplateMode = TemplateMode.full
+    templateTargets: dict[str, dict[str, str]] = Field(default_factory=dict)
     llmProvider: str = "openai"
 
 
 class SkillMapDrillsResponse(BaseModel):
     drills: list[SkillMapDrillCard]
+    llmUsed: bool = False
+
+
+class AdaptiveVariationRequest(BaseModel):
+    cardId: str = Field(min_length=1)
+    cardTitle: str = ""
+    prompt: str = ""
+    expectedAnswer: str = Field(min_length=1)
+    userAnswer: str = ""
+    templateMode: TemplateMode = TemplateMode.full
+    skillTags: list[str] = []
+    submissionRubric: dict[str, Any] = Field(default_factory=dict)
+    llmProvider: str = "openai"
+
+
+class AdaptiveVariationResponse(BaseModel):
+    drill: SkillMapDrillCard
+    targetDimension: str = ""
+    variationReason: str = ""
     llmUsed: bool = False
 
 
