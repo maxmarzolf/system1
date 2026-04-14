@@ -27,7 +27,52 @@ type PracticeHistoryEntry = {
     diagnosis?: string
     primaryFocus?: string
   }
+  submissionRubric: SubmissionRubric
   createdAt: string
+}
+
+type RubricDimension = {
+  key?: string
+  label?: string
+  status?: string
+  score?: number
+  evidence?: string[]
+  missing?: string[]
+}
+
+type SubmissionRubric = {
+  verdict?: string
+  score?: {
+    overall?: number
+    conceptual?: number
+    fidelity?: number
+    executable?: number
+    fluency?: number
+  }
+  primaryFailure?: {
+    key?: string
+    label?: string
+    severity?: string
+    evidence?: string[]
+  }
+  dimensions?: Record<string, RubricDimension>
+  modifiers?: Record<string, RubricDimension>
+  recommendedAction?: string
+}
+
+type DimensionItem = {
+  key: string
+  label: string
+  avgScore?: number
+  weakCount?: number
+  failCount?: number
+}
+
+type DimensionSummary = {
+  rubricAttemptCount?: number
+  avgRubricScore?: number
+  topWeakDimension?: DimensionItem
+  weakDimensions?: DimensionItem[]
 }
 
 type PracticeHistorySummary = {
@@ -39,7 +84,8 @@ type PracticeHistorySummary = {
   weakestTag: string
   repeatedErrorTags: string[]
   recentPrimaryFocuses: string[]
-  templateModes: Record<string, { readiness: number }>
+  dimensionSummary: DimensionSummary
+  templateModes: Record<string, { readiness: number; dimensionSummary?: DimensionSummary }>
 }
 
 type PracticeHistoryResponse = {
@@ -70,6 +116,24 @@ const summarizeHistoryText = (entry: PracticeHistoryEntry) => {
     entry.latestLiveFeedback.immediateCorrection ||
     ''
   return liveSummary.trim() || 'No stored feedback yet for this submission.'
+}
+
+const dimensionLabel = (dimension?: { key?: string; label?: string }) =>
+  dimension?.label?.trim() || dimension?.key?.replace(/_/g, ' ') || ''
+
+const rubricDimensionsForDisplay = (rubric: SubmissionRubric) =>
+  Object.values({ ...(rubric.dimensions ?? {}), ...(rubric.modifiers ?? {}) })
+    .filter((dimension) => dimension.status && dimension.status !== 'not_applicable')
+    .sort((a, b) => {
+      const statusRank = (status?: string) => ({ fail: 0, partial: 1, pass: 2 }[status ?? ''] ?? 3)
+      return statusRank(a.status) - statusRank(b.status) || (a.score ?? 0) - (b.score ?? 0)
+    })
+    .slice(0, 6)
+
+const formatWeakDimension = (summary?: DimensionSummary) => {
+  const weak = summary?.topWeakDimension
+  if (!weak?.key) return ''
+  return `${dimensionLabel(weak)}${weak.avgScore !== undefined ? ` ${weak.avgScore}%` : ''}`
 }
 
 export default function PracticeHistoryPage() {
@@ -131,6 +195,7 @@ export default function PracticeHistoryPage() {
   const historyWeakestTag = practiceHistorySummary?.weakestTag?.trim() || ''
   const recentPrimaryFocuses =
     practiceHistorySummary?.recentPrimaryFocuses.map((focus) => focus.trim()).filter(Boolean) ?? []
+  const repeatedWeakDimensions = practiceHistorySummary?.dimensionSummary?.weakDimensions ?? []
   const pageTitle = cardTitle || cardId || 'Practice History'
   const hasContext = Boolean(cardId || skillTags.length > 0)
 
@@ -205,6 +270,19 @@ export default function PracticeHistoryPage() {
               </div>
             )}
 
+            {repeatedWeakDimensions.length > 0 && (
+              <div className="practice-history-rubric-summary">
+                <p className="practice-history-meta">Repeated weak dimensions</p>
+                <div className="practice-history-focuses">
+                  {repeatedWeakDimensions.slice(0, 5).map((dimension) => (
+                    <span key={dimension.key} className="coach-metric-chip">
+                      {dimensionLabel(dimension)} {dimension.avgScore ?? 0}%
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {recentPrimaryFocuses.length > 0 && (
               <div className="practice-history-focuses">
                 {recentPrimaryFocuses.map((focus) => (
@@ -244,6 +322,39 @@ export default function PracticeHistoryPage() {
                       {entry.liveCoachUsed && (
                         <div className="practice-history-focuses">
                           {entry.liveCoachUsed && <span className="coach-metric-chip">Live coach used</span>}
+                        </div>
+                      )}
+                      {entry.submissionRubric?.verdict && (
+                        <div className="practice-history-rubric-strip">
+                          <div className="practice-history-rubric-strip-top">
+                            <span className="coach-metric-chip">
+                              Verdict {entry.submissionRubric.verdict}
+                            </span>
+                            <span className="coach-metric-chip">
+                              Rubric {entry.submissionRubric.score?.overall ?? 0}%
+                            </span>
+                            {entry.submissionRubric.primaryFailure?.key && entry.submissionRubric.primaryFailure.key !== 'sound' && (
+                              <span className="coach-metric-chip">
+                                Primary {dimensionLabel(entry.submissionRubric.primaryFailure)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="practice-history-dimension-strip">
+                            {rubricDimensionsForDisplay(entry.submissionRubric).map((dimension) => (
+                              <span
+                                key={`${entry.attemptId}-${dimension.key}`}
+                                className={`practice-history-dimension-pill practice-history-dimension-pill-${dimension.status}`}
+                              >
+                                {dimensionLabel(dimension)} {dimension.score ?? 0}%
+                              </span>
+                            ))}
+                          </div>
+                          {(entry.submissionRubric.recommendedAction || formatWeakDimension(practiceHistorySummary?.templateModes?.[entry.templateMode]?.dimensionSummary)) && (
+                            <p className="practice-history-meta">
+                              {entry.submissionRubric.recommendedAction ||
+                                `Repair ${formatWeakDimension(practiceHistorySummary?.templateModes?.[entry.templateMode]?.dimensionSummary)} next.`}
+                            </p>
+                          )}
                         </div>
                       )}
                       <p className="practice-history-question">

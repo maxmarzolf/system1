@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS score_attempts (
     hint_used BOOLEAN NOT NULL DEFAULT FALSE,
     live_coach_used BOOLEAN NOT NULL DEFAULT FALSE,
     coach_feedback JSONB,
+    submission_rubric JSONB,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

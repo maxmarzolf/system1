@@ -20,6 +20,32 @@ type SkillMapModeActivity = {
   days: SkillMapActivityDay[]
 }
 
+type DimensionItem = {
+  key: string
+  label: string
+  avgScore?: number
+  weakCount?: number
+  failCount?: number
+  partialCount?: number
+  attemptCount?: number
+}
+
+type PrimaryFailureItem = {
+  key: string
+  label: string
+  count: number
+}
+
+type DimensionSummary = {
+  rubricAttemptCount?: number
+  avgRubricScore?: number
+  topWeakDimension?: DimensionItem
+  weakDimensions?: DimensionItem[]
+  topPrimaryFailure?: PrimaryFailureItem
+  primaryFailures?: PrimaryFailureItem[]
+  verdictCounts?: Record<string, number>
+}
+
 type SkillMapModeReadiness = {
   readiness: number
   attemptCount: number
@@ -32,6 +58,7 @@ type SkillMapModeReadiness = {
   lastSubmittedAt: string
   daysSinceLastSubmit: number | null
   stale: boolean
+  dimensionSummary: DimensionSummary
   activity: SkillMapModeActivity
 }
 
@@ -45,6 +72,7 @@ type SkillMapPatternReadiness = {
   practicedCards: number
   untouchedCards: number
   staleCards: number
+  dimensionSummary: DimensionSummary
   modes: Record<'pseudo' | 'skeleton' | 'full', SkillMapModeReadiness>
 }
 
@@ -57,6 +85,7 @@ type SkillMapCardReadiness = {
   attemptCount: number
   daysSinceLastSubmit: number | null
   stale: boolean
+  dimensionSummary: DimensionSummary
 }
 
 type SkillMapOverviewResponse = {
@@ -98,6 +127,30 @@ const parseCalendarDate = (value: string) => new Date(`${value}T12:00:00`)
 const formatCalendarDate = (value: string) => shortDateFormatter.format(parseCalendarDate(value))
 const formatCalendarLongDate = (value: string) => longDateFormatter.format(parseCalendarDate(value))
 const formatSubmittedAt = (value: string) => longDateFormatter.format(new Date(value))
+
+const dimensionLabel = (item?: DimensionItem | PrimaryFailureItem) =>
+  item?.label?.trim() || item?.key?.replace(/_/g, ' ') || ''
+
+const formatWeakDimension = (summary?: DimensionSummary) => {
+  const weak = summary?.topWeakDimension
+  if (!weak?.key) return 'No repeated weak dimension yet.'
+  const count = weak.weakCount ?? weak.failCount ?? 0
+  const countText = count > 0 ? ` · ${count} weak` : ''
+  return `${dimensionLabel(weak)}${weak.avgScore !== undefined ? ` · ${weak.avgScore}% avg` : ''}${countText}`
+}
+
+const formatPrimaryFailure = (summary?: DimensionSummary) => {
+  const primary = summary?.topPrimaryFailure
+  if (!primary?.key) return ''
+  return `${dimensionLabel(primary)}${primary.count ? ` · ${primary.count}x` : ''}`
+}
+
+const dimensionTone = (score?: number) => {
+  if (score === undefined) return 'empty'
+  if (score >= 80) return 'pass'
+  if (score >= 55) return 'partial'
+  return 'fail'
+}
 
 const activityIntensity = (count: number, peakDailyCount: number) => {
   if (count <= 0) return 'none'
@@ -326,6 +379,41 @@ export default function DashboardPage() {
             <span className="coach-metric-chip">{summary.patternsUntouched} untouched patterns</span>
           </div>
         )}
+        {summary && patterns.some((node) => (node.dimensionSummary?.weakDimensions?.length ?? 0) > 0) && (
+          <section className="dashboard-dimension-panel">
+            <div>
+              <p className="dashboard-activity-eyebrow">Dimension History</p>
+              <h3>Repeated repair targets</h3>
+            </div>
+            <div className="dashboard-dimension-grid">
+              {patterns
+                .filter((node) => (node.dimensionSummary?.weakDimensions?.length ?? 0) > 0)
+                .slice(0, 6)
+                .map((node) => {
+                  const weakDimensions = node.dimensionSummary.weakDimensions ?? []
+                  return (
+                    <article key={node.slug} className="dashboard-dimension-row">
+                      <div>
+                        <strong>{node.pattern}</strong>
+                        <p className="dashboard-mode-meta">{formatPrimaryFailure(node.dimensionSummary) || 'No primary failure trend yet'}</p>
+                      </div>
+                      <div className="dashboard-dimension-chips">
+                        {weakDimensions.slice(0, 4).map((dimension) => (
+                          <span
+                            key={`${node.slug}-${dimension.key}`}
+                            className={`dashboard-dimension-chip dashboard-dimension-chip-${dimensionTone(dimension.avgScore)}`}
+                            title={`${dimensionLabel(dimension)} · ${dimension.avgScore ?? 0}% average`}
+                          >
+                            {dimensionLabel(dimension)}
+                          </span>
+                        ))}
+                      </div>
+                    </article>
+                  )
+                })}
+            </div>
+          </section>
+        )}
         {summary && (
           <p className="skill-map-intro">
             Strong submit threshold: {summary.successThreshold}% • Review becomes due after about {summary.staleAfterDays} days.
@@ -407,6 +495,20 @@ export default function DashboardPage() {
                         <p className="dashboard-mode-meta">
                           Avg {modeSummary.avgAccuracy}% · {modeSummary.stale ? 'Review due' : 'Fresh enough'}
                         </p>
+                        {modeSummary.dimensionSummary?.rubricAttemptCount ? (
+                          <>
+                            <p className="dashboard-mode-meta">
+                              Weak spot: {formatWeakDimension(modeSummary.dimensionSummary)}
+                            </p>
+                            {formatPrimaryFailure(modeSummary.dimensionSummary) && (
+                              <p className="dashboard-mode-meta">
+                                Primary miss: {formatPrimaryFailure(modeSummary.dimensionSummary)}
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <p className="dashboard-mode-meta">Rubric history starts on the next submit.</p>
+                        )}
                         <DashboardModeActivityTracker
                           modeLabel={modeLabel}
                           modeSummary={modeSummary}
@@ -439,9 +541,9 @@ export default function DashboardPage() {
 
         {reviewQueue.length > 0 && (
           <section className="dashboard-review-queue">
-            <h3>Review Queue</h3>
+            <h3>Repair Queue</h3>
             <p className="skill-map-intro">
-              Lowest-readiness practiced card/mode combinations, with stale items surfaced first.
+              Start here when a pattern keeps failing for the same reason.
             </p>
             <div className="practice-history-list">
               {reviewQueue.map((item) => (
@@ -465,6 +567,14 @@ export default function DashboardPage() {
                         : `${item.daysSinceLastSubmit} day${item.daysSinceLastSubmit === 1 ? '' : 's'} since last submit.`}
                     {item.stale ? ' Review due.' : ''}
                   </p>
+                  {item.dimensionSummary?.rubricAttemptCount ? (
+                    <div className="practice-history-focuses">
+                      <span className="coach-metric-chip">Repair {formatWeakDimension(item.dimensionSummary)}</span>
+                      {formatPrimaryFailure(item.dimensionSummary) && (
+                        <span className="coach-metric-chip">Primary {formatPrimaryFailure(item.dimensionSummary)}</span>
+                      )}
+                    </div>
+                  ) : null}
                 </article>
               ))}
             </div>

@@ -41,6 +41,7 @@ class AttemptCreate(BaseModel):
     templateMode: TemplateMode = TemplateMode.full
     liveCoachUsed: bool = False
     coachFeedback: dict[str, Any] | None = None
+    submissionRubric: dict[str, Any] | None = None
 
 
 # ─── Response schemas ───
@@ -83,6 +84,7 @@ class CoachAttemptFeedbackResponse(BaseModel):
     errorTags: list[str] = []
     fullFeedback: str = ""
     correctedVersion: str = ""
+    submissionRubric: dict[str, Any] = {}
     llmUsed: bool = False
     llmProvider: str = ""
 
@@ -183,6 +185,7 @@ class CoachPracticeHistoryEntry(BaseModel):
     liveFeedbackCount: int = Field(default=0, ge=0)
     latestLiveFeedback: dict[str, Any] = {}
     submissionFeedback: dict[str, Any] = {}
+    submissionRubric: dict[str, Any] = {}
     createdAt: str = ""
 
 
@@ -222,6 +225,7 @@ class SkillMapModeReadiness(BaseModel):
     daysSinceLastSubmit: int | None = Field(default=None, ge=0)
     stale: bool = False
     liveCoachUsedCount: int = Field(default=0, ge=0)
+    dimensionSummary: dict[str, Any] = {}
     activity: SkillMapModeActivity = SkillMapModeActivity()
 
 
@@ -235,6 +239,7 @@ class SkillMapPatternReadiness(BaseModel):
     practicedCards: int = Field(default=0, ge=0)
     untouchedCards: int = Field(default=0, ge=0)
     staleCards: int = Field(default=0, ge=0)
+    dimensionSummary: dict[str, Any] = {}
     modes: dict[str, SkillMapModeReadiness] = {}
 
 
@@ -247,6 +252,7 @@ class SkillMapCardReadiness(BaseModel):
     attemptCount: int = Field(default=0, ge=0)
     daysSinceLastSubmit: int | None = Field(default=None, ge=0)
     stale: bool = False
+    dimensionSummary: dict[str, Any] = {}
 
 
 class SkillMapOverviewResponse(BaseModel):

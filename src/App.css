@@ -571,6 +571,72 @@
   letter-spacing: 0.03em;
 }
 
+.dashboard-dimension-panel {
+  margin: 1rem 0 1.2rem;
+  padding: 0.9rem;
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-card-surface-soft);
+}
+
+.dashboard-dimension-panel h3 {
+  margin: 0.2rem 0 0;
+}
+
+.dashboard-dimension-grid {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.85rem;
+}
+
+.dashboard-dimension-row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.8fr) minmax(0, 1.2fr);
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.65rem;
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-panel-bg);
+}
+
+.dashboard-dimension-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.dashboard-dimension-chip,
+.practice-history-dimension-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.55rem;
+  padding: 0.25rem 0.45rem;
+  border: 1px solid var(--hc-border-dim);
+  background: transparent;
+  color: var(--hc-fg);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.dashboard-dimension-chip-pass,
+.practice-history-dimension-pill-pass {
+  border-color: var(--hc-success);
+  color: var(--hc-success);
+}
+
+.dashboard-dimension-chip-partial,
+.practice-history-dimension-pill-partial {
+  border-color: var(--hc-warning);
+  color: var(--hc-warning);
+}
+
+.dashboard-dimension-chip-fail,
+.practice-history-dimension-pill-fail {
+  border-color: var(--hc-error);
+  color: var(--hc-error);
+}
+
 .dashboard-activity-strip,
 .dashboard-activity-weekdays,
 .dashboard-activity-grid {
@@ -1794,6 +1860,14 @@ button.link:hover {
   .dashboard-activity-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .dashboard-dimension-row {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-dimension-chips {
+    justify-content: flex-start;
+  }
 }
 
 .coach-tuning-panel {
@@ -1929,4 +2003,28 @@ button.link:hover {
 
 .practice-history-question {
   color: var(--hc-fg-dim);
+}
+
+.practice-history-rubric-summary {
+  margin-top: 0.9rem;
+  padding: 0.75rem;
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-panel-bg);
+}
+
+.practice-history-rubric-strip {
+  margin-top: 0.9rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--hc-border);
+}
+
+.practice-history-rubric-strip-top,
+.practice-history-dimension-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.practice-history-dimension-strip {
+  margin-top: 0.65rem;
 }

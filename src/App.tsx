@@ -40,6 +40,7 @@ type AttemptPayload = {
   templateMode: TemplateMode
   liveCoachUsed: boolean
   coachFeedback?: CoachAttemptFeedback | null
+  submissionRubric?: Record<string, unknown> | null
 }
 
 type CoachAttemptFeedback = {
@@ -56,6 +57,7 @@ type CoachAttemptFeedback = {
   errorTags: string[]
   fullFeedback?: string
   correctedVersion?: string
+  submissionRubric?: Record<string, unknown>
   llmUsed: boolean
   llmProvider?: string
 }
@@ -990,6 +992,7 @@ function App() {
           templateMode: payload.templateMode,
           liveCoachUsed: payload.liveCoachUsed,
           coachFeedback: payload.coachFeedback ?? null,
+          submissionRubric: payload.submissionRubric ?? null,
         }),
       })
     } catch {
@@ -1475,6 +1478,7 @@ function App() {
       templateMode: currentTemplateMode,
       liveCoachUsed: liveCoachUsedThisAttempt,
       coachFeedback: feedback,
+      submissionRubric: feedback?.submissionRubric ?? null,
     })
 
     if (closeEnough && currentTemplateModeIndex >= activeTemplateModes.length - 1) {

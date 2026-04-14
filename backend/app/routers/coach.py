@@ -32,6 +32,7 @@ from app.models import (
     TemplateMode,
 )
 from app.readiness import READINESS_MODE_ORDER, summarize_readiness
+from app.submission_rubric import compact_submission_rubric, summarize_submission_rubrics
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])
 logger = logging.getLogger(__name__)
@@ -1747,6 +1748,7 @@ def _heuristic_submission_feedback(
         "errorTags": error_tags,
         "fullFeedback": full_feedback,
         "correctedVersion": corrected_version,
+        "submissionRubric": compact_submission_rubric(rubric),
         "llmUsed": False,
         "signals": {
             "submission_rubric": rubric,
@@ -1798,6 +1800,7 @@ async def _load_practice_history(
                     sa.category_tags AS "categoryTags",
                     sa.generated_card AS "generatedCard",
                     sa.coach_feedback AS "submissionFeedback",
+                    sa.submission_rubric AS "submissionRubric",
                     sa.created_at,
                     COALESCE(live.live_feedback_count, 0) AS "liveFeedbackCount",
                     latest.feedback AS "latestLiveFeedback"
@@ -1862,6 +1865,7 @@ async def _load_practice_history(
                     sa.category_tags AS "categoryTags",
                     sa.generated_card AS "generatedCard",
                     sa.coach_feedback AS "submissionFeedback",
+                    sa.submission_rubric AS "submissionRubric",
                     sa.created_at,
                     COALESCE(live.live_feedback_count, 0) AS "liveFeedbackCount",
                     latest.feedback AS "latestLiveFeedback"
@@ -1924,6 +1928,7 @@ async def _load_practice_history(
                     sa.category_tags AS "categoryTags",
                     sa.generated_card AS "generatedCard",
                     sa.coach_feedback AS "submissionFeedback",
+                    sa.submission_rubric AS "submissionRubric",
                     sa.created_at,
                     COALESCE(live.live_feedback_count, 0) AS "liveFeedbackCount",
                     latest.feedback AS "latestLiveFeedback"
@@ -1987,6 +1992,7 @@ async def _load_practice_history(
             "liveFeedbackCount": int(row["liveFeedbackCount"] or 0),
             "latestLiveFeedback": _parse_json_field(row["latestLiveFeedback"], {}),
             "submissionFeedback": _parse_json_field(row["submissionFeedback"], {}),
+            "submissionRubric": compact_submission_rubric(row["submissionRubric"]),
             "createdAt": row["created_at"].isoformat() if row["created_at"] else "",
         })
     return history
@@ -2024,10 +2030,16 @@ async def _load_live_feedback_history(interaction_id: str | None, limit: int = 1
 
 def _summarize_attempt_history(history: list[dict[str, Any]]) -> dict[str, Any]:
     template_mode_summaries = {
-        mode: summarize_readiness([item for item in history if str(item.get("templateMode", "")) == mode])
+        mode: {
+            **summarize_readiness([item for item in history if str(item.get("templateMode", "")) == mode]),
+            "dimensionSummary": summarize_submission_rubrics([
+                item for item in history if str(item.get("templateMode", "")) == mode
+            ]),
+        }
         for mode in READINESS_MODE_ORDER
     }
     readiness_summary = summarize_readiness(history)
+    dimension_summary = summarize_submission_rubrics(history)
     if not history:
         return {
             "attemptCount": 0,
@@ -2039,6 +2051,7 @@ def _summarize_attempt_history(history: list[dict[str, Any]]) -> dict[str, Any]:
             "readiness": readiness_summary["readiness"],
             "daysSinceLastSubmit": readiness_summary["daysSinceLastSubmit"],
             "stale": readiness_summary["stale"],
+            "dimensionSummary": dimension_summary,
             "templateModes": template_mode_summaries,
         }
 
@@ -2078,6 +2091,7 @@ def _summarize_attempt_history(history: list[dict[str, Any]]) -> dict[str, Any]:
         "readiness": readiness_summary["readiness"],
         "daysSinceLastSubmit": readiness_summary["daysSinceLastSubmit"],
         "stale": readiness_summary["stale"],
+        "dimensionSummary": dimension_summary,
         "templateModes": template_mode_summaries,
     }
 
@@ -2129,6 +2143,7 @@ def _summarize_skill_map_progress(
             "latestPrimaryFocus": "",
             "latestQuestion": "",
             "stale": False,
+            "dimensionSummary": {},
         }
 
     accuracy_buckets: dict[str, list[float]] = {slug: [] for slug in progress_by_pattern}
@@ -2156,15 +2171,15 @@ def _summarize_skill_map_progress(
     for slug, summary in progress_by_pattern.items():
         accuracies = accuracy_buckets[slug]
         attempts = int(summary["attemptCount"])
-        readiness_summary = summarize_readiness(
-            [item for item in history if slug in {str(tag) for tag in item.get("categoryTags", [])}]
-        )
+        pattern_history = [item for item in history if slug in {str(tag) for tag in item.get("categoryTags", [])}]
+        readiness_summary = summarize_readiness(pattern_history)
         if accuracies:
             summary["avgAccuracy"] = round(sum(accuracies) / len(accuracies), 1)
             summary["exactRate"] = round((exact_counts[slug] / len(accuracies)) * 100, 1)
         summary["repeatedErrorTags"] = [tag for tag, count in error_counts[slug].most_common(3) if count >= 2]
         summary["readiness"] = readiness_summary["readiness"]
         summary["stale"] = readiness_summary["stale"]
+        summary["dimensionSummary"] = summarize_submission_rubrics(pattern_history)
         if attempts > 0 and float(summary["avgAccuracy"]) < 90:
             weak_patterns.append(slug)
 
@@ -2179,6 +2194,7 @@ def _summarize_skill_map_progress(
             "avgAccuracy": overall_avg_accuracy,
             "weakPatterns": weak_patterns[:5],
             "readiness": summarize_readiness(history)["readiness"],
+            "dimensionSummary": summarize_submission_rubrics(history),
         },
         "patterns": progress_by_pattern,
     }
@@ -3691,6 +3707,7 @@ async def _attempt_feedback_with_optional_llm(
                 "liveFeedbackCount": item.get("liveFeedbackCount", 0),
                 "latestLiveFeedback": item.get("latestLiveFeedback", {}),
                 "submissionFeedback": item.get("submissionFeedback", {}),
+                "submissionRubric": item.get("submissionRubric", {}),
                 "createdAt": item.get("createdAt", ""),
             }
             for item in history[:8]

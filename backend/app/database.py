@@ -99,6 +99,9 @@ async def _ensure_recall_history_schema(db_pool: asyncpg.Pool) -> None:
             ADD COLUMN IF NOT EXISTS coach_feedback JSONB;
 
             ALTER TABLE score_attempts
+            ADD COLUMN IF NOT EXISTS submission_rubric JSONB;
+
+            ALTER TABLE score_attempts
             ADD COLUMN IF NOT EXISTS template_mode VARCHAR(20) NOT NULL DEFAULT 'full';
 
             ALTER TABLE score_attempts
