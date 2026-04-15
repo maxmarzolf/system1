@@ -100,11 +100,11 @@ The coach pipeline uses three distinct LLM roles, each with its own provider sel
 
 | Role | Purpose | Provider selection | Max tokens |
 |------|---------|-------------------|------------|
-| **Heuristic Assessor** | Structural assessment of each attempt (replaces ~1500 lines of rule-based heuristics) | Fastest available: Gemma → Claude → OpenAI | 600 |
+| **Signal Assessor** | Structural assessment of each attempt (replaces ~1500 lines of rule-based signals) | Fastest available: Gemma → Claude → OpenAI | 600 |
 | **Feedback Narrator** | Narrative coaching text for submission feedback | User-selected provider with fallback chain | 1800 |
 | **Drill Generator** | Generates focused practice drills from skill-map history | User-selected provider with fallback chain | 2000 |
 
-Live feedback (`liveMode=true`) uses only the Heuristic Assessor — no Narrator call.
+Live feedback (`liveMode=true`) uses only the Signal Assessor — no Narrator call.
 Submission feedback (`liveMode=false`) runs Assessor → Narrator in sequence.
 
 **Assessor output schema (v1):**

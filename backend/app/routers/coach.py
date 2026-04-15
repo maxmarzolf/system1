@@ -1404,7 +1404,7 @@ def _algorithmic_template_label(skill_tags: list[str], template_mode: str) -> st
     }.get(template_mode, f"{pattern_name} template")
 
 
-def _heuristic_session_plan(body: CoachSessionPlanRequest) -> dict[str, Any]:
+def _signal_session_plan(body: CoachSessionPlanRequest) -> dict[str, Any]:
     weak_cards = sorted(body.weakestCards, key=lambda c: (c.accuracy, -c.elapsedMs))[:3]
     weak_labels = ", ".join(f"#{c.cardId} ({round(c.accuracy)}%)" for c in weak_cards) or "none"
 
@@ -1872,10 +1872,10 @@ def _adaptive_fallback_response(body: AdaptiveVariationRequest) -> dict[str, Any
 
 
 async def _adaptive_variation_with_optional_llm(body: AdaptiveVariationRequest) -> dict[str, Any]:
-    heuristic = _adaptive_fallback_response(body)
+    signal = _adaptive_fallback_response(body)
     provider = _resolve_available_llm_provider(body.llmProvider)
     if not _llm_provider_available(provider):
-        return heuristic
+        return signal
 
     template_mode = _template_mode_value(body.templateMode)
     primary_failure = _adaptive_primary_failure(body.submissionRubric if isinstance(body.submissionRubric, dict) else {})
@@ -1899,22 +1899,22 @@ async def _adaptive_variation_with_optional_llm(body: AdaptiveVariationRequest) 
         "previousTarget": body.expectedAnswer,
         "userAnswer": body.userAnswer,
         "submissionRubric": body.submissionRubric,
-        "fallbackExample": heuristic["drill"],
+        "fallbackExample": signal["drill"],
     }
     llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)
     if not isinstance(llm_response, dict):
-        return heuristic
+        return signal
 
     specimen = str(llm_response.get("specimen", "")).replace("\r\n", "\n").replace("{{missing}}", "").strip()
     if not specimen:
-        return heuristic
+        return signal
 
-    prompt = _clean_concise_prompt(str(llm_response.get("prompt", "")).strip() or heuristic["drill"]["prompt"])
-    title = str(llm_response.get("title", "")).strip() or heuristic["drill"]["title"]
-    hint = str(llm_response.get("hint", "")).strip() or heuristic["drill"]["hint"]
-    reason = str(llm_response.get("variationReason", "")).strip() or heuristic["variationReason"]
+    prompt = _clean_concise_prompt(str(llm_response.get("prompt", "")).strip() or signal["drill"]["prompt"])
+    title = str(llm_response.get("title", "")).strip() or signal["drill"]["title"]
+    hint = str(llm_response.get("hint", "")).strip() or signal["drill"]["hint"]
+    reason = str(llm_response.get("variationReason", "")).strip() or signal["variationReason"]
     drill = {
-        **heuristic["drill"],
+        **signal["drill"],
         "title": title,
         "prompt": prompt,
         "templatePrompts": {template_mode: prompt},
@@ -2128,7 +2128,7 @@ def _resolve_available_llm_provider(requested_provider: str) -> str:
 
 
 def _resolve_fastest_llm_provider() -> str:
-    """Pick the fastest-available provider for the Heuristic Assessor.
+    """Pick the fastest-available provider for the Signal Assessor.
 
     Ignores the user's preferred provider — latency matters more here.
     Order: Gemma → Claude → OpenAI.
@@ -2318,7 +2318,7 @@ def _call_llm_json(system_prompt: str, user_payload: dict[str, Any], provider: s
 
 
 # ---------------------------------------------------------------------------
-# Heuristic Assessor — Role 1
+# Signal Assessor — Role 1
 # Lightweight structural analysis call. Fastest available provider, small
 # token budget. Used as the ONLY LLM call for live feedback, and as Stage 1
 # for submission feedback (feeds the Narrator).
@@ -2356,7 +2356,7 @@ def _assessor_system_prompt(live_mode: bool) -> str:
     return base + "}. Structural assessment only — no narrative fields. Return only valid JSON. Do not include markdown."
 
 
-def _fallback_heuristic_assessment(
+def _fallback_signal_assessment(
     body: CoachAttemptFeedbackRequest,
     template_mode: str,
 ) -> dict[str, Any]:
@@ -2409,18 +2409,18 @@ def _fallback_heuristic_assessment(
     return assessment
 
 
-async def _run_heuristic_assessor(
+async def _run_signal_assessor(
     body: CoachAttemptFeedbackRequest,
     template_mode: str,
 ) -> dict[str, Any]:
-    """Call the Heuristic Assessor LLM (fastest available provider).
+    """Call the Signal Assessor LLM (fastest available provider).
 
     Returns a structured assessment dict. Falls back to pure-Python defaults
     when all providers are unavailable or the response is invalid.
     """
     provider = _resolve_fastest_llm_provider()
     if not _llm_provider_available(provider):
-        return _fallback_heuristic_assessment(body, template_mode)
+        return _fallback_signal_assessment(body, template_mode)
 
     system_prompt = _assessor_system_prompt(body.liveMode)
     payload = {
@@ -2435,14 +2435,14 @@ async def _run_heuristic_assessor(
     result = await asyncio.to_thread(_call_llm_json, system_prompt, payload, provider, ASSESSOR_MAX_TOKENS)
 
     if not isinstance(result, dict):
-        logger.warning("Heuristic assessor returned non-dict response from provider '%s'.", provider)
-        return _fallback_heuristic_assessment(body, template_mode)
+        logger.warning("Signal assessor returned non-dict response from provider '%s'.", provider)
+        return _fallback_signal_assessment(body, template_mode)
 
     required_keys = {"v", "patternIdentified", "dimensions", "primaryBlocker", "blockerKey", "verdict"}
     missing = required_keys - result.keys()
     if missing:
-        logger.warning("Heuristic assessor response missing keys %s from provider '%s'.", missing, provider)
-        return _fallback_heuristic_assessment(body, template_mode)
+        logger.warning("Signal assessor response missing keys %s from provider '%s'.", missing, provider)
+        return _fallback_signal_assessment(body, template_mode)
 
     result.setdefault("llmUsed", True)
     result.setdefault("errorTags", [])
@@ -2476,7 +2476,7 @@ def _assessment_to_live_response(assessment: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Feedback Narrator — Role 2 (submission only)
 # Higher-quality narrative coaching text. Uses the user's preferred provider.
-# Receives a clean Assessor output instead of raw heuristic signals.
+# Receives a clean Assessor output instead of raw signals.
 # ---------------------------------------------------------------------------
 
 def _narrator_submission_system_prompt(template_label: str, body: CoachAttemptFeedbackRequest) -> str:
@@ -2625,11 +2625,11 @@ async def _attempt_feedback_with_narrator(
 
 
 async def _session_plan_with_optional_llm(
-    body: CoachSessionPlanRequest, heuristic: dict[str, Any]
+    body: CoachSessionPlanRequest, signal: dict[str, Any]
 ) -> dict[str, Any]:
     provider = _resolve_available_llm_provider(body.llmProvider)
     if not _llm_provider_available(provider):
-        return heuristic
+        return signal
 
     system_prompt = (
         "You are a training coach building practical next-session plans for recall training. "
@@ -2646,24 +2646,24 @@ async def _session_plan_with_optional_llm(
             "avgElapsedMs": body.avgElapsedMs,
         },
         "weakestCards": [c.model_dump() for c in body.weakestCards[:5]],
-        "heuristic": heuristic,
+        "signal": signal,
     }
 
     llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)
     if not llm_response:
-        return heuristic
+        return signal
 
     required = ["headline", "focusTheme", "warmup", "mainSet", "cooldown", "note"]
     if any(key not in llm_response for key in required):
-        return heuristic
+        return signal
 
     return {
-        "headline": str(llm_response.get("headline", heuristic["headline"])),
-        "focusTheme": str(llm_response.get("focusTheme", heuristic["focusTheme"])),
-        "warmup": str(llm_response.get("warmup", heuristic["warmup"])),
-        "mainSet": str(llm_response.get("mainSet", heuristic["mainSet"])),
-        "cooldown": str(llm_response.get("cooldown", heuristic["cooldown"])),
-        "note": str(llm_response.get("note", heuristic["note"])),
+        "headline": str(llm_response.get("headline", signal["headline"])),
+        "focusTheme": str(llm_response.get("focusTheme", signal["focusTheme"])),
+        "warmup": str(llm_response.get("warmup", signal["warmup"])),
+        "mainSet": str(llm_response.get("mainSet", signal["mainSet"])),
+        "cooldown": str(llm_response.get("cooldown", signal["cooldown"])),
+        "note": str(llm_response.get("note", signal["note"])),
         "llmUsed": True,
     }
 
@@ -2675,11 +2675,11 @@ async def _load_skill_map_generation_summary(body: SkillMapDrillsRequest) -> dic
 
 
 async def _skill_map_drills_with_optional_llm(
-    body: SkillMapDrillsRequest, heuristic: dict[str, Any], progress_summary: dict[str, Any]
+    body: SkillMapDrillsRequest, signal: dict[str, Any], progress_summary: dict[str, Any]
 ) -> dict[str, Any]:
     provider = _resolve_available_llm_provider(body.llmProvider)
     if not _llm_provider_available(provider):
-        return heuristic
+        return signal
 
     system_prompt = (
         "You generate atomic Python recall drills for coding interview preparation. "
@@ -2736,21 +2736,21 @@ async def _skill_map_drills_with_optional_llm(
             ],
             "constraint": "solution must contain exactly one {{missing}} placeholder",
         },
-        "fallbackExample": heuristic["drills"][:3],
+        "fallbackExample": signal["drills"][:3],
     }
 
     llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider, DRILL_GEN_MAX_TOKENS)
     if not llm_response or not isinstance(llm_response.get("drills"), list):
-        return heuristic
+        return signal
 
     drills: list[dict[str, Any]] = []
     for index, raw in enumerate(llm_response["drills"][: body.count]):
         if not isinstance(raw, dict):
-            return heuristic
+            return signal
         solution = str(raw.get("solution", "")).strip()
         missing = str(raw.get("missing", "")).strip()
         if "{{missing}}" not in solution or not missing:
-            return heuristic
+            return signal
         tags_raw = raw.get("tags", [])
         tags = [str(tag).strip() for tag in tags_raw if str(tag).strip()] if isinstance(tags_raw, list) else []
         if "skill-map" not in tags:
@@ -2787,7 +2787,7 @@ async def _skill_map_drills_with_optional_llm(
         })
 
     if len(drills) != min(body.count, len(body.skillMap)):
-        return heuristic
+        return signal
 
     return {"drills": drills, "llmUsed": True}
 
@@ -2873,7 +2873,7 @@ async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
     template_mode = _template_mode_value(body.templateMode)
     history = await _load_attempt_history(body)
     history_summary = _summarize_attempt_history(history)
-    assessment = await _run_heuristic_assessor(body, template_mode)
+    assessment = await _run_signal_assessor(body, template_mode)
 
     if body.liveMode:
         feedback = _assessment_to_live_response(assessment)
@@ -2912,8 +2912,8 @@ async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
 
 @router.post("/session-plan", response_model=CoachSessionPlanResponse)
 async def coach_session_plan(body: CoachSessionPlanRequest):
-    heuristic = _heuristic_session_plan(body)
-    plan = await _session_plan_with_optional_llm(body, heuristic)
+    signal = _signal_session_plan(body)
+    plan = await _session_plan_with_optional_llm(body, signal)
     return plan
 
 
@@ -2929,8 +2929,8 @@ async def coach_practice_history(body: CoachPracticeHistoryRequest):
 @router.post("/skill-map-drills", response_model=SkillMapDrillsResponse)
 async def coach_skill_map_drills(body: SkillMapDrillsRequest):
     progress_summary = await _load_skill_map_generation_summary(body)
-    heuristic = _fallback_skill_map_drills(body, progress_summary)
-    drills = await _skill_map_drills_with_optional_llm(body, heuristic, progress_summary)
+    signal = _fallback_skill_map_drills(body, progress_summary)
+    drills = await _skill_map_drills_with_optional_llm(body, signal, progress_summary)
     stamped = _stamp_skill_map_drills(drills["drills"])
     await _persist_skill_map_drills(stamped, bool(drills.get("llmUsed")), progress_summary)
     return {"drills": stamped, "llmUsed": bool(drills.get("llmUsed"))}

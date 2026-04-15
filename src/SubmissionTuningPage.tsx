@@ -129,7 +129,7 @@ export default function SubmissionTuningPage() {
             <div>
               <h3>Tracked Dimensions</h3>
               <p className="hint" style={{ marginTop: '0.35rem' }}>
-                These are the dimensions the heuristic grader now checks for pseudocode and skeleton attempts.
+                These are the dimensions the signal grader now checks for pseudocode and skeleton attempts.
               </p>
             </div>
           </div>
