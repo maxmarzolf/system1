@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Coach Data Flow</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      body {
+        margin: 0;
+        background: #f7f8fb;
+        color: #17202a;
+      }
+
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 14px 18px;
+        background: rgba(255, 255, 255, 0.94);
+        border-bottom: 1px solid #d9dde5;
+        backdrop-filter: blur(10px);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 720;
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      button {
+        border: 1px solid #b8c0cc;
+        border-radius: 6px;
+        background: #fff;
+        padding: 8px 10px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: #eef2f7;
+      }
+
+      main {
+        padding: 24px;
+        overflow: auto;
+      }
+
+      .canvas {
+        width: max-content;
+        min-width: 100%;
+        transform-origin: top left;
+      }
+
+      .mermaid {
+        padding: 24px;
+        background: #fff;
+        border: 1px solid #d9dde5;
+        border-radius: 6px;
+        box-shadow: 0 8px 30px rgba(31, 45, 61, 0.08);
+      }
+
+      .hint {
+        margin: 12px 0 0;
+        color: #5d6877;
+        font-size: 13px;
+      }
+
+      @media print {
+        header {
+          display: none;
+        }
+
+        body {
+          background: #fff;
+        }
+
+        main {
+          padding: 0;
+          overflow: visible;
+        }
+
+        .canvas {
+          transform: none !important;
+        }
+
+        .mermaid {
+          border: 0;
+          box-shadow: none;
+        }
+
+        @page {
+          size: landscape;
+          margin: 0.35in;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Coach Data Flow</h1>
+        <p class="hint">Use browser zoom, the buttons, or Print / Save as PDF.</p>
+      </div>
+      <div class="actions">
+        <button type="button" id="zoomOut">Zoom out</button>
+        <button type="button" id="zoomIn">Zoom in</button>
+        <button type="button" id="reset">Reset</button>
+        <button type="button" id="print">Print / Save PDF</button>
+      </div>
+    </header>
+    <main>
+      <div class="canvas" id="canvas">
+        <pre class="mermaid">
+flowchart LR
+  subgraph INPUT["Input"]
+    A["User attempt"]
+    A1["expectedAnswer"]
+    A2["userAnswer"]
+    A3["templateMode"]
+    A4["skillTags"]
+    A5["elapsedMs / accuracy"]
+  end
+
+  subgraph ASSESSOR["1. Signal Assessor"]
+    B["LLM call required"]
+    S["signals"]
+    M["assessment metadata"]
+
+    S1["structure"]
+    S2["correctness"]
+    S3["completeness"]
+    S4["patternFidelity"]
+    S5["syntax"]
+    S6["completionTime"]
+
+    M1["patternIdentified"]
+    M2["primaryBlocker"]
+    M3["blockerKey"]
+    M4["verdict"]
+    M5["errorTags"]
+    M6["strengths"]
+  end
+
+  subgraph LIVE["Live Feedback Path"]
+    L1["liveMode = true"]
+    L2["Live coach response"]
+    L3["nextMove"]
+    L4["why"]
+    L5["affirmation"]
+  end
+
+  subgraph NARRATOR["2. Feedback Narrator"]
+    N1["liveMode = false"]
+    N2["LLM call required"]
+    N3["Narrated feedback"]
+    N4["fullFeedback"]
+    N5["correctedVersion"]
+    N6["microDrill"]
+    N7["nextRepTarget"]
+  end
+
+  subgraph MEMORY["Stored Result"]
+    R1["submissionRubric shape"]
+    R2["attempt history"]
+    R3["readiness / progress summary"]
+  end
+
+  subgraph GENERATOR["3. Drill Generator"]
+    G1["LLM call required"]
+    G2["Skill-map drills"]
+    G3["Adaptive repair variation"]
+  end
+
+  subgraph NEXT["Next Practice"]
+    P1["practice queue"]
+    P2["next user attempt"]
+  end
+
+  subgraph ERROR["Failure Rule"]
+    E1["No LLM provider"]
+    E2["Invalid LLM response"]
+    E3["Structured error"]
+    E4["Coach flow stops"]
+  end
+
+  A --> B
+  A1 --> B
+  A2 --> B
+  A3 --> B
+  A4 --> B
+  A5 --> B
+
+  B --> S
+  B --> M
+
+  S --> S1
+  S --> S2
+  S --> S3
+  S --> S4
+  S --> S5
+  S --> S6
+
+  M --> M1
+  M --> M2
+  M --> M3
+  M --> M4
+  M --> M5
+  M --> M6
+
+  S --> L1
+  M --> L1
+  L1 --> L2
+  L2 --> L3
+  L2 --> L4
+  L2 --> L5
+
+  S --> N1
+  M --> N1
+  A --> N1
+  N1 --> N2
+  N2 --> N3
+  N3 --> N4
+  N3 --> N5
+  N3 --> N6
+  N3 --> N7
+
+  S --> R1
+  M --> R1
+  N3 --> R2
+  R1 --> R2
+  R2 --> R3
+
+  R2 --> G1
+  R3 --> G1
+  S --> G1
+  M --> G1
+
+  G1 --> G2
+  G1 --> G3
+  G2 --> P1
+  G3 --> P1
+  P1 --> P2
+  P2 --> A
+
+  E1 --> E3
+  E2 --> E3
+  E3 --> E4
+  B -. can fail .-> E1
+  B -. can fail .-> E2
+  N2 -. can fail .-> E1
+  N2 -. can fail .-> E2
+  G1 -. can fail .-> E1
+  G1 -. can fail .-> E2
+        </pre>
+      </div>
+    </main>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+      mermaid.initialize({
+        startOnLoad: true,
+        securityLevel: "loose",
+        theme: "base",
+        flowchart: {
+          curve: "basis",
+          htmlLabels: true,
+          nodeSpacing: 55,
+          rankSpacing: 75
+        },
+        themeVariables: {
+          primaryColor: "#f5f8ff",
+          primaryBorderColor: "#5472a4",
+          primaryTextColor: "#17202a",
+          lineColor: "#667085",
+          secondaryColor: "#fff8e8",
+          tertiaryColor: "#edf7ef",
+          fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+        }
+      });
+
+      const canvas = document.getElementById("canvas");
+      let scale = 1;
+
+      const applyScale = () => {
+        canvas.style.transform = `scale(${scale})`;
+      };
+
+      document.getElementById("zoomIn").addEventListener("click", () => {
+        scale = Math.min(2.5, scale + 0.15);
+        applyScale();
+      });
+
+      document.getElementById("zoomOut").addEventListener("click", () => {
+        scale = Math.max(0.35, scale - 0.15);
+        applyScale();
+      });
+
+      document.getElementById("reset").addEventListener("click", () => {
+        scale = 1;
+        applyScale();
+      });
+
+      document.getElementById("print").addEventListener("click", () => {
+        window.print();
+      });
+    </script>
+  </body>
+</html>

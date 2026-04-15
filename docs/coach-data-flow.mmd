@@ -1,0 +1,140 @@
+flowchart LR
+  subgraph INPUT["Input"]
+    A["User attempt"]
+    A1["expectedAnswer"]
+    A2["userAnswer"]
+    A3["templateMode"]
+    A4["skillTags"]
+    A5["elapsedMs / accuracy"]
+  end
+
+  subgraph ASSESSOR["1. Signal Assessor"]
+    B["LLM call required"]
+    S["signals"]
+    M["assessment metadata"]
+
+    S1["structure"]
+    S2["correctness"]
+    S3["completeness"]
+    S4["patternFidelity"]
+    S5["syntax"]
+    S6["completionTime"]
+
+    M1["patternIdentified"]
+    M2["primaryBlocker"]
+    M3["blockerKey"]
+    M4["verdict"]
+    M5["errorTags"]
+    M6["strengths"]
+  end
+
+  subgraph LIVE["Live Feedback Path"]
+    L1["liveMode = true"]
+    L2["Live coach response"]
+    L3["nextMove"]
+    L4["why"]
+    L5["affirmation"]
+  end
+
+  subgraph NARRATOR["2. Feedback Narrator"]
+    N1["liveMode = false"]
+    N2["LLM call required"]
+    N3["Narrated feedback"]
+    N4["fullFeedback"]
+    N5["correctedVersion"]
+    N6["microDrill"]
+    N7["nextRepTarget"]
+  end
+
+  subgraph MEMORY["Stored Result"]
+    R1["submissionRubric shape"]
+    R2["attempt history"]
+    R3["readiness / progress summary"]
+  end
+
+  subgraph GENERATOR["3. Drill Generator"]
+    G1["LLM call required"]
+    G2["Skill-map drills"]
+    G3["Adaptive repair variation"]
+  end
+
+  subgraph NEXT["Next Practice"]
+    P1["practice queue"]
+    P2["next user attempt"]
+  end
+
+  subgraph ERROR["Failure Rule"]
+    E1["No LLM provider"]
+    E2["Invalid LLM response"]
+    E3["Structured error"]
+    E4["Coach flow stops"]
+  end
+
+  A --> B
+  A1 --> B
+  A2 --> B
+  A3 --> B
+  A4 --> B
+  A5 --> B
+
+  B --> S
+  B --> M
+
+  S --> S1
+  S --> S2
+  S --> S3
+  S --> S4
+  S --> S5
+  S --> S6
+
+  M --> M1
+  M --> M2
+  M --> M3
+  M --> M4
+  M --> M5
+  M --> M6
+
+  S --> L1
+  M --> L1
+  L1 --> L2
+  L2 --> L3
+  L2 --> L4
+  L2 --> L5
+
+  S --> N1
+  M --> N1
+  A --> N1
+  N1 --> N2
+  N2 --> N3
+  N3 --> N4
+  N3 --> N5
+  N3 --> N6
+  N3 --> N7
+
+  S --> R1
+  M --> R1
+  N3 --> R2
+  R1 --> R2
+  R2 --> R3
+
+  R2 --> G1
+  R3 --> G1
+  S --> G1
+  M --> G1
+
+  G1 --> G2
+  G1 --> G3
+  G2 --> P1
+  G3 --> P1
+  P1 --> P2
+  P2 --> A
+
+  E1 --> E3
+  E2 --> E3
+  E3 --> E4
+  B -. can fail .-> E1
+  B -. can fail .-> E2
+  N2 -. can fail .-> E1
+  N2 -. can fail .-> E2
+  G1 -. can fail .-> E1
+  G1 -. can fail .-> E2
