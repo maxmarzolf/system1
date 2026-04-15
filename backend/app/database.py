@@ -65,7 +65,6 @@ async def _apply_storage_cleanup(db_pool: asyncpg.Pool) -> None:
             DROP TABLE IF EXISTS answers CASCADE;
             DROP TABLE IF EXISTS questions CASCADE;
             DROP TABLE IF EXISTS topics CASCADE;
-            DROP TABLE IF EXISTS flashcards CASCADE;
             """
         )
 

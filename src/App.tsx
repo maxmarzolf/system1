@@ -2,12 +2,24 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vs, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useSearchParams } from 'react-router-dom'
-import type { Flashcard } from './data/flashcards'
 import { skillMap, type SkillMapNode } from './data/skill-map'
 import { getLiveCoachFrequencyProfile, loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoachTuning'
 import { loadStoredSubmissionTuning } from './submissionTuning'
 import TopNav from './TopNav'
 import { useTheme } from './theme'
+
+type Flashcard = {
+  id: string
+  title: string
+  difficulty: 'Easy' | 'Med.' | 'Hard'
+  prompt: string
+  templatePrompts?: Partial<Record<'pseudo' | 'skeleton' | 'full', string>>
+  templateTargets?: Partial<Record<'pseudo' | 'skeleton' | 'full', string>>
+  solution: string
+  missing: string
+  hint: string
+  tags: string[]
+}
 
 const emptySkillMapCard: Flashcard = {
   id: 'skill-map-loading',
@@ -269,7 +281,7 @@ const buildPseudoTemplate = (patternTag: string) => {
         '    Move left when the pair is too small',
         '    Move right when the pair is too large',
         '    Return as soon as the invariant is satisfied',
-        'Return the fallback answer if no pair works',
+        'Return False if no pair works',
       ].join('\n')
     case 'binary-search':
       return [
@@ -652,40 +664,6 @@ const analyzeLiveStructure = (code: string, templateMode: TemplateMode): LiveStr
       `lines-${Math.min(nonEmptyLines, 8)}`,
     ].join('|'),
   }
-}
-
-const buildLiveCoachFallback = (liveStructure: LiveStructure, isGraphQuestion: boolean) => {
-  if (isGraphQuestion) {
-    if (!liveStructure.hasSignature) return 'The very next step is to write the function signature and name the graph inputs you will reason about.'
-    if (!liveStructure.hasBookkeeping) return 'The very next step is to add the visited or frontier state right under the signature.'
-    if (!liveStructure.traversalKind) return 'The very next step is to choose DFS or BFS and write the line that creates that traversal.'
-    if (liveStructure.hasPlaceholder) return 'The very next step is to replace the placeholder with the real state update.'
-    if (!liveStructure.hasGuard) return 'The very next step is to add the guard that skips invalid or already-seen states.'
-    if (!liveStructure.hasLoop) return 'The very next step is to write the loop or recursive call that advances the traversal once.'
-    return 'The very next step is to add one concrete state-update line and then check that the traversal invariant still holds.'
-  }
-
-  if (!liveStructure.hasSignature) return 'The very next step is to write the function signature and name the state you will track.'
-  if (liveStructure.hasPlaceholder) return 'The very next step is to replace the placeholder with the actual state transition.'
-  if (!liveStructure.hasLoop) return 'The very next step is to write the main loop or recursive call that moves the algorithm forward.'
-  return 'The very next step is to add one concrete state-update line instead of expanding the whole solution at once.'
-}
-
-const buildLiveCoachWhy = (liveStructure: LiveStructure, isGraphQuestion: boolean) => {
-  if (isGraphQuestion) {
-    if (!liveStructure.hasSignature) return 'Once the opening anchor is on the page, the rest of the graph logic has somewhere stable to attach.'
-    if (!liveStructure.hasBookkeeping) return 'Right now the traversal has no concrete state to update, so extra control flow will feel vague.'
-    if (!liveStructure.traversalKind) return 'Committing to the traversal first makes every later line easier to justify.'
-    if (liveStructure.hasPlaceholder) return 'A placeholder hides the real algorithmic move, so the current answer cannot become trustworthy yet.'
-    if (!liveStructure.hasGuard) return 'The stop or skip rule usually makes graph code feel immediately cleaner.'
-    if (!liveStructure.hasLoop) return 'You already have enough setup; now the current answer needs motion.'
-    return 'You are close enough that one good structural line is more valuable than a rewrite.'
-  }
-
-  if (!liveStructure.hasSignature) return 'A clear entry point makes the rest of the answer easier to reason about.'
-  if (liveStructure.hasPlaceholder) return 'The placeholder is the one spot where the algorithm still is not real.'
-  if (!liveStructure.hasLoop) return 'The setup is there; now the algorithm needs one line of movement.'
-  return 'At this point, a single concrete line will help more than broad advice.'
 }
 
 const computeLineReview = (expectedCode: string, actualCode: string) => {
@@ -1448,7 +1426,7 @@ function App() {
           parsedError = null
         }
 
-        const fallbackProviderLabel =
+        const defaultProviderLabel =
           LLM_PROVIDER_OPTIONS.find((option) => option.value === llmProvider)?.label ?? 'LLM'
         const detail =
           parsedError &&
@@ -1461,11 +1439,16 @@ function App() {
             : null
 
         const code = typeof detail?.code === 'string' ? detail.code : ''
-        if (code === 'submission_feedback_missing_api_key' || code === 'submission_feedback_no_response') {
+        if (
+          code === 'submission_feedback_missing_api_key' ||
+          code === 'submission_feedback_no_response' ||
+          code.startsWith('coach_llm_') ||
+          code.startsWith('signal_assessor_')
+        ) {
           const providerLabel =
             typeof detail?.providerLabel === 'string' && detail.providerLabel.trim().length > 0
               ? detail.providerLabel
-              : fallbackProviderLabel
+              : defaultProviderLabel
           const message =
             typeof detail?.message === 'string' && detail.message.trim().length > 0
               ? detail.message
@@ -1682,8 +1665,6 @@ function App() {
     () => computeLineReview(practiceTarget, mainInput.replace(/\r\n/g, '\n')),
     [practiceTarget, mainInput]
   )
-  const isGraphQuestion =
-    card.tags.includes('graph') || card.tags.includes('graph-bfs')
   const currentCardRecallHistory = useMemo(
     () => mainRecallHistoryByCard[`${card.id}:${currentTemplateMode}`] ?? [],
     [card.id, currentTemplateMode, mainRecallHistoryByCard]
@@ -1711,12 +1692,12 @@ function App() {
     liveCoachFeedback?.nextMove ||
     liveCoachFeedback?.immediateCorrection ||
     liveCoachFeedback?.primaryFocus ||
-    buildLiveCoachFallback(liveStructure, isGraphQuestion)
+    'Waiting for Signal Assessor output.'
   const liveCoachWhy =
     liveCoachFeedback?.why ||
     liveCoachFeedback?.diagnosis ||
     liveCoachFeedback?.primaryFocus ||
-    buildLiveCoachWhy(liveStructure, isGraphQuestion)
+    'Live coaching requires a successful LLM response.'
   const triggerLiveCoachRefresh = useEffectEvent((trimmedInput: string) => {
     const interactionId = currentInteractionId || createInteractionId()
     if (!currentInteractionId) setCurrentInteractionId(interactionId)

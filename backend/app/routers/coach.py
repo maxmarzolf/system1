@@ -84,7 +84,7 @@ SUBMISSION_DIMENSION_LABELS = {
     "syntax": "Syntax and executability",
     "completionTime": "Speed and fluency",
 }
-ANTHROPIC_MODEL_FALLBACKS = (
+ANTHROPIC_MODEL_CANDIDATES = (
     "claude-sonnet-4-6",
     "claude-sonnet-4-5-20250929",
     "claude-sonnet-4-20250514",
@@ -128,6 +128,18 @@ def _submission_feedback_error_detail(
         "providerLabel": _llm_provider_label(provider),
         "apiErrorCode": api_error_code,
     }
+
+
+def _coach_llm_http_exception(error: SubmissionFeedbackUnavailableError) -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail=_submission_feedback_error_detail(
+            error.code,
+            error.message,
+            error.provider,
+            error.api_error_code,
+        ),
+    )
 
 
 def _extract_provider_error_message(payload_text: str) -> str:
@@ -920,16 +932,16 @@ async def _load_attempt_history(body: CoachAttemptFeedbackRequest) -> list[dict[
     return await _load_practice_history(body.cardId, body.questionType, body.skillTags, limit=20)
 
 
-def _parse_json_field(value: Any, fallback: Any) -> Any:
+def _parse_json_field(value: Any, default_value: Any) -> Any:
     if isinstance(value, (dict, list)):
         return value
     if isinstance(value, str):
         try:
             parsed = json.loads(value)
         except ValueError:
-            return fallback
-        return parsed if isinstance(parsed, type(fallback)) else fallback
-    return fallback
+            return default_value
+        return parsed if isinstance(parsed, type(default_value)) else default_value
+    return default_value
 
 
 async def _load_practice_history(
@@ -1404,44 +1416,6 @@ def _algorithmic_template_label(skill_tags: list[str], template_mode: str) -> st
     }.get(template_mode, f"{pattern_name} template")
 
 
-def _signal_session_plan(body: CoachSessionPlanRequest) -> dict[str, Any]:
-    weak_cards = sorted(body.weakestCards, key=lambda c: (c.accuracy, -c.elapsedMs))[:3]
-    weak_labels = ", ".join(f"#{c.cardId} ({round(c.accuracy)}%)" for c in weak_cards) or "none"
-
-    if body.avgAccuracy >= 95:
-        focus_theme = "Speed compression while protecting soundness."
-        warmup = "2 cards, one untimed sound rep each."
-        main_set = "6 timed reps at 85% of today’s average time. Stop if soundness drops twice."
-    elif body.avgAccuracy >= 85:
-        focus_theme = "Close the last precision gaps."
-        warmup = "3 opening-anchor drills (signature + base case)."
-        main_set = f"8 reps: alternate weak cards ({weak_labels}) with one strong card."
-    else:
-        focus_theme = "Stabilize structure before speed."
-        warmup = "3 slow sound reps with full compare after each attempt."
-        main_set = f"10 reps focused on weak cards ({weak_labels}); untimed until >90%."
-
-    cooldown = "1 sound rep on your easiest card to end with a clean memory trace."
-    note = (
-        "Keep one coaching focus per session. If accuracy falls for two consecutive reps, "
-        "drop speed pressure and rebuild soundness."
-    )
-    headline = (
-        f"{body.mode.value} session: {body.correctCount}/{body.attempts} sound, "
-        f"{round(body.avgAccuracy)}% avg accuracy."
-    )
-
-    return {
-        "headline": headline,
-        "focusTheme": focus_theme,
-        "warmup": warmup,
-        "mainSet": main_set,
-        "cooldown": cooldown,
-        "note": note,
-        "llmUsed": False,
-    }
-
-
 def _pattern_slug(pattern: str) -> str:
     import re
     return re.sub(
@@ -1453,49 +1427,6 @@ def _pattern_slug(pattern: str) -> str:
         .replace("-", " ")
         .strip(),
     )
-
-
-def _generic_skill_drill(pattern: str, methods: list[str], index: int) -> dict[str, Any]:
-    method = methods[0] if methods else "core invariant"
-    slug = _pattern_slug(pattern)
-    return {
-        "id": f"skill-{slug}-{index + 1}",
-        "title": f"Skill Map • {pattern}: {method.title()}",
-        "difficulty": "Med.",
-        "prompt": f"Memorize a reusable {pattern.lower()} snippet that makes the {method} explicit.",
-        "solution": "def solve(items):\n    for item in items:\n        {{missing}}\n    return items",
-        "missing": "pass",
-        "hint": f"Keep the {method} explicit enough that you could reuse it inside a real interview problem.",
-        "tags": ["skill-map", slug],
-    }
-
-
-def _method_focus_tag(method: str) -> str:
-    return _pattern_slug(method).replace(" ", "-")
-
-
-def _method_focused_skill_drill(
-    pattern: str,
-    method: str,
-    index: int,
-    base_template: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    slug = _pattern_slug(pattern)
-    focus = method.strip() or "core invariant"
-    template = {**(base_template or _generic_skill_drill(pattern, [focus], index))}
-    tags = [str(tag) for tag in template.get("tags", []) if str(tag).strip()]
-    method_tag = f"method-{_method_focus_tag(focus)}"
-    if method_tag not in tags:
-        tags.append(method_tag)
-
-    return {
-        **template,
-        "id": f"skill-{slug}-{_method_focus_tag(focus)}-{index + 1}",
-        "title": f"Skill Map • {pattern}: {focus.title()}",
-        "prompt": f"Memorize a reusable {pattern.lower()} snippet while making the {focus} explicit.",
-        "hint": f"{str(template.get('hint', '')).strip()} Focus lens: {focus}.".strip(),
-        "tags": tags,
-    }
 
 
 def _clean_concise_prompt(value: str, max_chars: int = 80) -> str:
@@ -1517,7 +1448,7 @@ def _entry_point_from_template_target(template_mode: str, target: str) -> str:
     return f"{match.group(1)}({match.group(2)})" if match else ""
 
 
-def _fallback_template_prompt(pattern: str, template_mode: str, target: str) -> str:
+def _template_prompt_from_target(pattern: str, template_mode: str, target: str) -> str:
     mode_label = {
         TemplateMode.pseudo.value: "Pseudo",
         TemplateMode.skeleton.value: "Skeleton",
@@ -1572,7 +1503,7 @@ def _template_prompt_map(
             continue
         target = targets.get(mode, "")
         if target:
-            prompts[mode] = _fallback_template_prompt(pattern, mode, target)
+            prompts[mode] = _template_prompt_from_target(pattern, mode, target)
 
     return prompts
 
@@ -1586,7 +1517,7 @@ ADAPTIVE_VARIATION_STRATEGIES = {
     "state_updates": "pressure the exact movement/update that changes state",
     "ordering": "keep setup, decision, update, and return in cause-and-effect order",
     "answer_path": "force explicit answer recording and return behavior",
-    "edge_cases": "include the smallest fallback or boundary behavior",
+    "edge_cases": "include the smallest boundary behavior",
     "recall_fidelity": "repeat the same core shape with fewer places to hide vague wording",
     "executability": "keep the scaffold syntactically concrete enough to run",
 }
@@ -1623,14 +1554,14 @@ def _adaptive_primary_failure(rubric: dict[str, Any]) -> dict[str, Any]:
     return {"key": "pattern", "label": SUBMISSION_DIMENSION_LABELS["pattern"]}
 
 
-def _score_from_assessment_dimension(dimension: dict[str, Any]) -> float:
-    if "score" in dimension:
+def _score_from_signal(signal: dict[str, Any]) -> float:
+    if "score" in signal:
         try:
-            return round(float(dimension.get("score", 0) or 0), 1)
+            return round(float(signal.get("score", 0) or 0), 1)
         except (TypeError, ValueError):
             return 0.0
-    if "valid" in dimension:
-        return 100.0 if bool(dimension.get("valid")) else 0.0
+    if "valid" in signal:
+        return 100.0 if bool(signal.get("valid")) else 0.0
     return 0.0
 
 
@@ -1646,21 +1577,21 @@ def _submission_rubric_from_assessment(
     body: CoachAttemptFeedbackRequest,
     assessment: dict[str, Any],
 ) -> dict[str, Any]:
-    raw_dimensions = assessment.get("dimensions") if isinstance(assessment.get("dimensions"), dict) else {}
+    raw_signals = assessment.get("signals") if isinstance(assessment.get("signals"), dict) else {}
     dimensions: dict[str, dict[str, Any]] = {}
     modifiers: dict[str, dict[str, Any]] = {}
 
-    for key, raw_dimension in raw_dimensions.items():
-        if not isinstance(raw_dimension, dict):
+    for key, raw_signal in raw_signals.items():
+        if not isinstance(raw_signal, dict):
             continue
-        score = _score_from_assessment_dimension(raw_dimension)
+        score = _score_from_signal(raw_signal)
         label = SUBMISSION_DIMENSION_LABELS.get(str(key), str(key).replace("_", " ").title())
         dimension = {
             "key": str(key),
             "label": label,
             "status": _status_from_score(score),
             "score": score,
-            "evidence": [str(raw_dimension.get("note", "")).strip()] if str(raw_dimension.get("note", "")).strip() else [],
+            "evidence": [str(raw_signal.get("note", "")).strip()] if str(raw_signal.get("note", "")).strip() else [],
             "missing": [],
         }
         if str(key) in {"syntax", "completionTime"}:
@@ -1712,170 +1643,15 @@ def _submission_rubric_from_assessment(
     }
 
 
-def _binary_search_adaptive_target(template_mode: str, failure_key: str) -> tuple[str, str]:
-    if failure_key in {"answer_path", "edge_cases"}:
-        pseudo = "\n".join([
-            "Define first_occurrence(nums, target)",
-            "Initialize left, right, and answer as not found",
-            "While left is at or before right:",
-            "    Compute the midpoint",
-            "    If nums[mid] equals target:",
-            "        Record mid as the current answer",
-            "        Move right before mid to search earlier positions",
-            "    Else if nums[mid] is less than target:",
-            "        Move left past mid",
-            "    Else move right before mid",
-            "Return the recorded answer",
-        ])
-        code = "\n".join([
-            "def first_occurrence(nums, target):",
-            "    left, right = 0, len(nums) - 1",
-            "    answer = -1",
-            "",
-            "    while left <= right:",
-            "        mid = (left + right) // 2",
-            "        if nums[mid] == target:",
-            "            answer = mid",
-            "            right = mid - 1",
-            "        elif nums[mid] < target:",
-            "            left = mid + 1",
-            "        else:",
-            "            right = mid - 1",
-            "",
-            "    return answer",
-        ])
-        return (pseudo if template_mode == TemplateMode.pseudo.value else code, "answer recording")
-
-    if failure_key in {"invariant", "state_updates", "control_flow"}:
-        pseudo = "\n".join([
-            "Define first_true(low, high)",
-            "Keep the answer inside the half-open interval",
-            "While low is before high:",
-            "    Compute the midpoint candidate",
-            "    If the candidate is feasible:",
-            "        Keep mid by moving high to mid",
-            "    Otherwise:",
-            "        Rule out mid by moving low past mid",
-            "Return low as the first feasible answer",
-        ])
-        code = "\n".join([
-            "def first_true(low, high):",
-            "    while low < high:",
-            "        mid = (low + high) // 2",
-            "        if feasible(mid):",
-            "            high = mid",
-            "        else:",
-            "            low = mid + 1",
-            "",
-            "    return low",
-        ])
-        return (pseudo if template_mode == TemplateMode.pseudo.value else code, "half-open invariant")
-
-    pseudo = "\n".join([
-        "Define lower_bound(nums, target)",
-        "Initialize left at 0 and right at len(nums)",
-        "While left is before right:",
-        "    Compute the midpoint",
-        "    If nums[mid] is less than target:",
-        "        Move left past mid",
-        "    Otherwise:",
-        "        Keep mid by moving right to mid",
-        "Return left as the insertion point",
-    ])
-    code = "\n".join([
-        "def lower_bound(nums, target):",
-        "    left, right = 0, len(nums)",
-        "",
-        "    while left < right:",
-        "        mid = (left + right) // 2",
-        "        if nums[mid] < target:",
-        "            left = mid + 1",
-        "        else:",
-        "            right = mid",
-        "",
-        "    return left",
-    ])
-    return (pseudo if template_mode == TemplateMode.pseudo.value else code, "bounds setup")
-
-
-def _generic_adaptive_target(pattern_name: str, template_mode: str, failure_key: str) -> tuple[str, str]:
-    focus = ADAPTIVE_VARIATION_STRATEGIES.get(failure_key, ADAPTIVE_VARIATION_STRATEGIES["pattern"])
-    if template_mode == TemplateMode.pseudo.value:
-        return (
-            "\n".join([
-                f"Define {pattern_name.replace(' ', '_')}_repair(input)",
-                f"Name the state needed to {focus}",
-                "Iterate in the order the invariant expects",
-                "Update the state with one concrete movement rule",
-                "Return the answer produced by that state",
-            ]),
-            focus,
-        )
-    return (
-        "\n".join([
-            "def repair_template(items):",
-            "    state = init_state(items)",
-            "",
-            "    for item in items:",
-            f"        # {focus}",
-            "        state = update_state(state, item)",
-            "",
-            "    return build_answer(state)",
-        ]),
-        focus,
-    )
-
-
-def _adaptive_fallback_response(body: AdaptiveVariationRequest) -> dict[str, Any]:
-    template_mode = _template_mode_value(body.templateMode)
-    rubric = body.submissionRubric if isinstance(body.submissionRubric, dict) else {}
-    primary_failure = _adaptive_primary_failure(rubric)
-    failure_key = str(primary_failure.get("key", "pattern"))
-    failure_label = str(primary_failure.get("label", SUBMISSION_DIMENSION_LABELS.get(failure_key, "Core pattern")))
-    pattern_tag = _primary_pattern_tag(body.skillTags)
-    pattern_name = _pattern_display_name(body.skillTags) or "algorithm"
-    target, variation_focus = (
-        _binary_search_adaptive_target(template_mode, failure_key)
-        if pattern_tag == "binary-search"
-        else _generic_adaptive_target(pattern_name, template_mode, failure_key)
-    )
-    mode_label = {
-        TemplateMode.pseudo.value: "Pseudo",
-        TemplateMode.skeleton.value: "Skeleton",
-        TemplateMode.full.value: "Full",
-    }.get(template_mode, "Recall")
-    prompt = _clean_concise_prompt(f"{mode_label}: repair {failure_label.lower()}.")
-    target_dimension_tag = f"adaptive-{_pattern_slug(failure_key)}"
-    stamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S%f")
-    tags = [str(tag) for tag in body.skillTags if str(tag).strip()]
-    for tag in ("skill-map", "adaptive-variation", target_dimension_tag):
-        if tag not in tags:
-            tags.append(tag)
-
-    return {
-        "drill": {
-            "id": f"adaptive-{_pattern_slug(pattern_name)}-{_pattern_slug(failure_key)}-{stamp}",
-            "title": f"Adaptive Repair • {pattern_name.title()}: {failure_label}",
-            "difficulty": "Med.",
-            "prompt": prompt,
-            "templatePrompts": {template_mode: prompt},
-            "templateTargets": {template_mode: target, TemplateMode.full.value: target},
-            "solution": f"{target}\n{{{{missing}}}}",
-            "missing": "# repair complete",
-            "hint": f"Target the previous miss: {variation_focus}.",
-            "tags": tags,
-        },
-        "targetDimension": failure_key,
-        "variationReason": f"Generated to repair {failure_label.lower()}.",
-        "llmUsed": False,
-    }
-
-
-async def _adaptive_variation_with_optional_llm(body: AdaptiveVariationRequest) -> dict[str, Any]:
-    signal = _adaptive_fallback_response(body)
+async def _adaptive_variation_with_llm(body: AdaptiveVariationRequest) -> dict[str, Any]:
     provider = _resolve_available_llm_provider(body.llmProvider)
     if not _llm_provider_available(provider):
-        return signal
+        raise SubmissionFeedbackUnavailableError(
+            code="coach_llm_missing_api_key",
+            message="Update backend .env with at least one coach LLM API key.",
+            provider=provider,
+            api_error_code="provider_auth_error",
+        )
 
     template_mode = _template_mode_value(body.templateMode)
     primary_failure = _adaptive_primary_failure(body.submissionRubric if isinstance(body.submissionRubric, dict) else {})
@@ -1899,28 +1675,55 @@ async def _adaptive_variation_with_optional_llm(body: AdaptiveVariationRequest) 
         "previousTarget": body.expectedAnswer,
         "userAnswer": body.userAnswer,
         "submissionRubric": body.submissionRubric,
-        "fallbackExample": signal["drill"],
     }
     llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)
     if not isinstance(llm_response, dict):
-        return signal
+        raise SubmissionFeedbackUnavailableError(
+            code="coach_llm_no_response",
+            message=f"Adaptive variation cannot be generated at this time. No response from {_llm_provider_label(provider)}.",
+            provider=provider,
+            api_error_code="provider_empty_response",
+        )
 
     specimen = str(llm_response.get("specimen", "")).replace("\r\n", "\n").replace("{{missing}}", "").strip()
     if not specimen:
-        return signal
+        raise SubmissionFeedbackUnavailableError(
+            code="coach_llm_invalid_response",
+            message=f"Adaptive variation cannot be generated at this time. Invalid response from {_llm_provider_label(provider)}.",
+            provider=provider,
+            api_error_code="provider_invalid_json",
+        )
 
-    prompt = _clean_concise_prompt(str(llm_response.get("prompt", "")).strip() or signal["drill"]["prompt"])
-    title = str(llm_response.get("title", "")).strip() or signal["drill"]["title"]
-    hint = str(llm_response.get("hint", "")).strip() or signal["drill"]["hint"]
-    reason = str(llm_response.get("variationReason", "")).strip() or signal["variationReason"]
+    prompt = _clean_concise_prompt(str(llm_response.get("prompt", "")).strip())
+    title = str(llm_response.get("title", "")).strip()
+    hint = str(llm_response.get("hint", "")).strip()
+    reason = str(llm_response.get("variationReason", "")).strip()
+    if not all([prompt, title, hint, reason]):
+        raise SubmissionFeedbackUnavailableError(
+            code="coach_llm_invalid_response",
+            message=f"Adaptive variation cannot be generated at this time. Invalid response from {_llm_provider_label(provider)}.",
+            provider=provider,
+            api_error_code="provider_invalid_json",
+        )
+
+    target_dimension_tag = f"adaptive-{_pattern_slug(failure_key)}"
+    stamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S%f")
+    tags = [str(tag) for tag in body.skillTags if str(tag).strip()]
+    for tag in ("skill-map", "adaptive-variation", target_dimension_tag):
+        if tag not in tags:
+            tags.append(tag)
+
     drill = {
-        **signal["drill"],
+        "id": f"adaptive-{_pattern_slug(pattern_name)}-{_pattern_slug(failure_key)}-{stamp}",
         "title": title,
+        "difficulty": "Med.",
         "prompt": prompt,
         "templatePrompts": {template_mode: prompt},
         "templateTargets": {template_mode: specimen, TemplateMode.full.value: specimen},
         "solution": f"{specimen}\n{{{{missing}}}}",
+        "missing": "# repair complete",
         "hint": hint,
+        "tags": tags,
     }
     return {
         "drill": drill,
@@ -1928,166 +1731,6 @@ async def _adaptive_variation_with_optional_llm(body: AdaptiveVariationRequest) 
         "variationReason": reason,
         "llmUsed": True,
     }
-
-
-def _fallback_skill_map_drills(
-    body: SkillMapDrillsRequest, progress_summary: dict[str, Any] | None = None
-) -> dict[str, Any]:
-    templates: dict[str, dict[str, Any]] = {
-        "sliding-window": {
-            "title": "Skill Map • Sliding Window: Window Score Update",
-            "prompt": "Memorize the reusable sliding-window template for tracking the best valid window after expand / shrink steps.",
-            "solution": "def longest_at_most_k(nums, k):\n    left = 0\n    counts = {}\n    best = 0\n    for right, value in enumerate(nums):\n        counts[value] = counts.get(value, 0) + 1\n        while len(counts) > k:\n            counts[nums[left]] -= 1\n            if counts[nums[left]] == 0:\n                del counts[nums[left]]\n            left += 1\n        {{missing}}\n    return best",
-            "missing": "best = max(best, right - left + 1)",
-            "hint": "The pattern is expand, shrink until valid, then score the current window.",
-            "tags": ["skill-map", "sliding-window"],
-        },
-        "two-pointers": {
-            "title": "Skill Map • Two Pointers: Sorted Pair Scan",
-            "prompt": "Memorize the two-pointer invariant for scanning a sorted array toward a target sum.",
-            "solution": "def has_pair(nums, target):\n    left, right = 0, len(nums) - 1\n    while left < right:\n        total = nums[left] + nums[right]\n        if total == target:\n            return True\n        if total < target:\n            {{missing}}\n        else:\n            right -= 1\n    return False",
-            "missing": "left += 1",
-            "hint": "Only move the pointer whose direction can improve the invariant.",
-            "tags": ["skill-map", "two-pointers"],
-        },
-        "binary-search": {
-            "title": "Skill Map • Binary Search: Lower Bound",
-            "prompt": "Memorize the lower-bound binary search template that finds the first index with value >= target.",
-            "solution": "def lower_bound(nums, target):\n    left, right = 0, len(nums)\n    while left < right:\n        mid = left + (right - left) // 2\n        if nums[mid] < target:\n            left = mid + 1\n        else:\n            {{missing}}\n    return left",
-            "missing": "right = mid",
-            "hint": "Keep the answer inside the half-open interval [left, right).",
-            "tags": ["skill-map", "binary-search"],
-        },
-        "dfs-bfs": {
-            "title": "Skill Map • DFS / BFS: Visited Rule",
-            "prompt": "Memorize the BFS visited-state rule that keeps graph traversal stable and reusable.",
-            "solution": "from collections import deque\n\ndef bfs_order(graph, start):\n    queue = deque([start])\n    seen = {start}\n    order = []\n    while queue:\n        node = queue.popleft()\n        order.append(node)\n        for nei in graph[node]:\n            if nei in seen:\n                continue\n            {{missing}}\n            queue.append(nei)\n    return order",
-            "missing": "seen.add(nei)",
-            "hint": "In BFS, decide exactly when a node becomes seen and do it consistently.",
-            "tags": ["skill-map", "dfs-bfs", "graph"],
-        },
-        "backtracking": {
-            "title": "Skill Map • Backtracking: Undo Step",
-            "prompt": "Memorize the choice / explore / undo rhythm that makes backtracking reusable.",
-            "solution": "def subsets(nums):\n    result = []\n    path = []\n    def dfs(index):\n        result.append(path[:])\n        for i in range(index, len(nums)):\n            path.append(nums[i])\n            dfs(i + 1)\n            {{missing}}\n    dfs(0)\n    return result",
-            "missing": "path.pop()",
-            "hint": "The undo step is what keeps sibling branches correct.",
-            "tags": ["skill-map", "backtracking"],
-        },
-        "heap-priority-queue": {
-            "title": "Skill Map • Heap: Keep Top K",
-            "prompt": "Memorize the min-heap maintenance pattern for keeping the top-k values in a stream.",
-            "solution": "import heapq\n\ndef top_k(nums, k):\n    heap = []\n    for value in nums:\n        heapq.heappush(heap, value)\n        if len(heap) > k:\n            {{missing}}\n    return heap",
-            "missing": "heapq.heappop(heap)",
-            "hint": "A min-heap keeps only the k best items by ejecting the smallest overflow item.",
-            "tags": ["skill-map", "heap"],
-        },
-        "union-find": {
-            "title": "Skill Map • Union Find: Path Compression",
-            "prompt": "Memorize the path-compression step inside find so the structure stays reusable across connectivity problems.",
-            "solution": "def find(parent, x):\n    if parent[x] != x:\n        {{missing}}\n    return parent[x]",
-            "missing": "parent[x] = find(parent, parent[x])",
-            "hint": "Compress on the way back so later finds become almost constant time.",
-            "tags": ["skill-map", "union-find", "graph"],
-        },
-        "dynamic-programming": {
-            "title": "Skill Map • DP: Transition Update",
-            "prompt": "Memorize a 1D dynamic-programming transition that makes state definition and update explicit.",
-            "solution": "def min_cost(costs):\n    dp = [0] * (len(costs) + 1)\n    for i in range(2, len(costs) + 1):\n        one = dp[i - 1] + costs[i - 1]\n        two = dp[i - 2] + costs[i - 2]\n        {{missing}}\n    return dp[-1]",
-            "missing": "dp[i] = min(one, two)",
-            "hint": "Say the state aloud first: what does dp[i] mean before you update it?",
-            "tags": ["skill-map", "dynamic-programming", "dp"],
-        },
-        "graph-traversal": {
-            "title": "Skill Map • Graph Traversal: Zero-Indegree Frontier",
-            "prompt": "Memorize the topological-sort frontier rule for nodes whose indegree just dropped to zero.",
-            "solution": "from collections import deque\n\ndef topo_sort(graph, indegree):\n    queue = deque([node for node, degree in indegree.items() if degree == 0])\n    order = []\n    while queue:\n        node = queue.popleft()\n        order.append(node)\n        for nei in graph[node]:\n            indegree[nei] -= 1\n            if indegree[nei] == 0:\n                {{missing}}\n    return order",
-            "missing": "queue.append(nei)",
-            "hint": "Topological BFS is just frontier management over zero-indegree nodes.",
-            "tags": ["skill-map", "graph-traversal", "graph"],
-        },
-        "intervals": {
-            "title": "Skill Map • Intervals: Append New Segment",
-            "prompt": "Memorize the post-sort interval merge pattern for deciding whether to extend or append.",
-            "solution": "def merge_intervals(intervals):\n    intervals.sort()\n    merged = [intervals[0][:]]\n    for start, end in intervals[1:]:\n        last_end = merged[-1][1]\n        if start <= last_end:\n            merged[-1][1] = max(last_end, end)\n        else:\n            {{missing}}\n    return merged",
-            "missing": "merged.append([start, end])",
-            "hint": "After sorting, every interval either extends the last one or starts a new bucket.",
-            "tags": ["skill-map", "intervals"],
-        },
-        "prefix-sums": {
-            "title": "Skill Map • Prefix Sums: Running Count Map",
-            "prompt": "Memorize the prefix-sum hashmap update that powers reusable subarray-counting patterns.",
-            "solution": "def count_subarrays(nums, k):\n    seen = {0: 1}\n    total = 0\n    count = 0\n    for value in nums:\n        total += value\n        count += seen.get(total - k, 0)\n        {{missing}}\n    return count",
-            "missing": "seen[total] = seen.get(total, 0) + 1",
-            "hint": "Query with the old prefix first, then record the current one.",
-            "tags": ["skill-map", "prefix-sums"],
-        },
-        "monotonic-stack": {
-            "title": "Skill Map • Monotonic Stack: Resolve While Popping",
-            "prompt": "Memorize the monotonic-stack pop rule that resolves the answer for each index as soon as the invariant breaks.",
-            "solution": "def next_greater(nums):\n    stack = []\n    answer = [-1] * len(nums)\n    for i, value in enumerate(nums):\n        while stack and nums[stack[-1]] < value:\n            index = stack.pop()\n            {{missing}}\n        stack.append(i)\n    return answer",
-            "missing": "answer[index] = value",
-            "hint": "The stack stores unresolved indices until a breaking value arrives.",
-            "tags": ["skill-map", "monotonic-stack", "stack"],
-        },
-    }
-
-    drills: list[dict[str, Any]] = []
-    progress_by_pattern = progress_summary.get("patterns", {}) if isinstance(progress_summary, dict) else {}
-    nodes = body.skillMap[: body.count] or []
-    for index, node in enumerate(nodes):
-        slug = _pattern_slug(node.pattern)
-        method_focus = node.methods[0].strip() if len(node.methods) == 1 else ""
-        base_template = templates.get(slug) or _generic_skill_drill(node.pattern, node.methods, index)
-        template = (
-            _method_focused_skill_drill(node.pattern, method_focus, index, base_template)
-            if method_focus
-            else base_template
-        )
-        progress = progress_by_pattern.get(slug, {})
-        focus_note = _progress_focus_note(progress)
-        difficulty = template["difficulty"] if "difficulty" in template else "Med."
-        prompt = template["prompt"]
-        hint = template["hint"]
-
-        if int(progress.get("attemptCount", 0)) > 0 and float(progress.get("avgAccuracy", 0)) < 85:
-            difficulty = "Easy"
-            if focus_note:
-                hint = f"{hint} {focus_note}".strip()
-        elif int(progress.get("attemptCount", 0)) >= 2 and float(progress.get("avgAccuracy", 0)) >= 95:
-            difficulty = "Hard"
-            prompt = f"{prompt} Keep this rep tight and exact with fewer mental cues."
-
-        template_targets = _template_targets_for_drill(
-            body,
-            slug,
-            str(template["solution"]),
-            str(template["missing"]),
-        )
-        template_prompts = _template_prompt_map(
-            body,
-            node.pattern,
-            slug,
-            str(template["solution"]),
-            str(template["missing"]),
-            template_targets=template_targets,
-        )
-        selected_prompt = template_prompts.get(_template_mode_value(body.templateMode)) or _clean_concise_prompt(prompt)
-
-        drills.append({
-            "id": f"skill-{slug}-{index + 1}",
-            "title": template["title"],
-            "difficulty": difficulty,
-            "prompt": selected_prompt,
-            "templatePrompts": template_prompts,
-            "templateTargets": template_targets,
-            "solution": template["solution"],
-            "missing": template["missing"],
-            "hint": hint,
-            "tags": template["tags"],
-        })
-
-    return {"drills": drills, "llmUsed": False}
 
 
 def _normalize_llm_provider(value: str) -> str:
@@ -2215,7 +1858,7 @@ def _call_claude_json(system_prompt: str, user_payload: dict[str, Any], max_toke
     url = f"{settings.coach_anthropic_base_url.rstrip('/')}/messages"
     configured_model = str(settings.coach_anthropic_model or "").strip()
     candidate_models: list[str] = []
-    for model in (configured_model, *ANTHROPIC_MODEL_FALLBACKS):
+    for model in (configured_model, *ANTHROPIC_MODEL_CANDIDATES):
         if model and model not in candidate_models:
             candidate_models.append(model)
 
@@ -2263,7 +1906,7 @@ def _call_claude_json(system_prompt: str, user_payload: dict[str, Any], max_toke
             details = error.read().decode("utf-8", errors="replace")
             model_not_found = error.code in {400, 404} and "model" in details.lower()
             if model_not_found:
-                logger.warning("Anthropic model '%s' unavailable (%s). Trying fallback model.", model, error.code)
+                logger.warning("Anthropic model '%s' unavailable (%s). Trying next configured model.", model, error.code)
                 continue
             logger.warning("Anthropic request failed (%s): %s", error.code, details[:400])
             return None
@@ -2271,7 +1914,7 @@ def _call_claude_json(system_prompt: str, user_payload: dict[str, Any], max_toke
             logger.warning("Anthropic request failed for model '%s': %s", model, error)
             return None
 
-    logger.warning("No usable Anthropic model found from configured/fallback candidates.")
+    logger.warning("No usable Anthropic model found from configured candidates.")
     return None
 
 
@@ -2325,8 +1968,8 @@ def _call_llm_json(system_prompt: str, user_payload: dict[str, Any], provider: s
 # ---------------------------------------------------------------------------
 
 def _assessor_system_prompt(live_mode: bool) -> str:
-    dimensions_spec = (
-        "dimensions: {"
+    signals_spec = (
+        "signals: {"
         "structure: {score: 0-100, note: str}, "
         "correctness: {score: 0-100, note: str}, "
         "completeness: {score: 0-100, note: str}, "
@@ -2337,7 +1980,7 @@ def _assessor_system_prompt(live_mode: bool) -> str:
     )
     base = (
         "You are a coding pattern analyst. Analyze the provided answer against the expected answer. "
-        f"Return strict JSON: {{v: 1, patternIdentified: str, {dimensions_spec}, "
+        f"Return strict JSON: {{v: 1, patternIdentified: str, {signals_spec}, "
         "structuralElements: {hasSignature: bool, hasLoop: bool, hasShrinkStep: bool, hasScoreUpdate: bool, hasGuard: bool}, "
         "primaryBlocker: str, blockerKey: str, verdict: 'sound'|'close'|'needs-work', "
         "errorTags: str[], strengths: str[]"
@@ -2356,71 +1999,23 @@ def _assessor_system_prompt(live_mode: bool) -> str:
     return base + "}. Structural assessment only — no narrative fields. Return only valid JSON. Do not include markdown."
 
 
-def _fallback_signal_assessment(
-    body: CoachAttemptFeedbackRequest,
-    template_mode: str,
-) -> dict[str, Any]:
-    """Pure-Python fallback when all LLM providers are unavailable."""
-    primary_tag = body.skillTags[0] if body.skillTags else "general"
-    accuracy = float(body.accuracy or 0)
-    verdict = "sound" if accuracy >= 95 else ("close" if accuracy >= 80 else "needs-work")
-    primary_blocker = "review and complete the full solution structure"
-    blocker_key = "structure"
-
-    assessment: dict[str, Any] = {
-        "v": 1,
-        "patternIdentified": primary_tag,
-        "dimensions": {
-            "structure":       {"score": round(accuracy * 0.7), "note": ""},
-            "correctness":     {"score": round(accuracy), "note": ""},
-            "completeness":    {"score": round(accuracy * 0.8), "note": ""},
-            "patternFidelity": {"score": round(accuracy * 0.7), "note": ""},
-            "syntax":          {"valid": True, "error": None},
-            "completionTime":  {"score": 50, "note": ""},
-        },
-        "structuralElements": {
-            "hasSignature":   False,
-            "hasLoop":        False,
-            "hasShrinkStep":  False,
-            "hasScoreUpdate": False,
-            "hasGuard":       False,
-        },
-        "primaryBlocker": primary_blocker,
-        "blockerKey":     blocker_key,
-        "verdict":        verdict,
-        "errorTags":      [],
-        "strengths":      [],
-        "llmUsed":        False,
-    }
-
-    if body.liveMode:
-        assessment.update({
-            "diagnosis":           f"Focus on completing the {primary_tag} structure.",
-            "primaryFocus":        "Add the missing structural elements.",
-            "immediateCorrection": primary_blocker,
-            "affirmation":         "",
-            "nextMove":            primary_blocker,
-            "why":                 "One structural gap at a time.",
-            "keepInMind":          f"The {primary_tag} pattern has a fixed contract.",
-            "microDrill":          "One focused rep on the primary structure.",
-            "nextRepTarget":       "Sound solution with >= 90% rubric strength.",
-        })
-
-    return assessment
-
-
 async def _run_signal_assessor(
     body: CoachAttemptFeedbackRequest,
     template_mode: str,
 ) -> dict[str, Any]:
     """Call the Signal Assessor LLM (fastest available provider).
 
-    Returns a structured assessment dict. Falls back to pure-Python defaults
-    when all providers are unavailable or the response is invalid.
+    Returns a structured assessment dict. LLM availability and valid signal
+    output are required for the coach pipeline to proceed.
     """
     provider = _resolve_fastest_llm_provider()
     if not _llm_provider_available(provider):
-        return _fallback_signal_assessment(body, template_mode)
+        raise SubmissionFeedbackUnavailableError(
+            code="signal_assessor_missing_api_key",
+            message="Update backend .env with at least one coach LLM API key.",
+            provider=provider,
+            api_error_code="provider_auth_error",
+        )
 
     system_prompt = _assessor_system_prompt(body.liveMode)
     payload = {
@@ -2436,17 +2031,27 @@ async def _run_signal_assessor(
 
     if not isinstance(result, dict):
         logger.warning("Signal assessor returned non-dict response from provider '%s'.", provider)
-        return _fallback_signal_assessment(body, template_mode)
+        raise SubmissionFeedbackUnavailableError(
+            code="signal_assessor_no_response",
+            message=f"Signal assessment cannot be generated at this time. No response from {_llm_provider_label(provider)}.",
+            provider=provider,
+            api_error_code="provider_empty_response",
+        )
 
-    required_keys = {"v", "patternIdentified", "dimensions", "primaryBlocker", "blockerKey", "verdict"}
+    required_keys = {"v", "patternIdentified", "signals", "primaryBlocker", "blockerKey", "verdict", "errorTags", "strengths"}
+    if body.liveMode:
+        required_keys |= {"diagnosis", "primaryFocus", "immediateCorrection", "nextMove", "why", "microDrill", "nextRepTarget"}
     missing = required_keys - result.keys()
-    if missing:
+    if missing or not isinstance(result.get("signals"), dict):
         logger.warning("Signal assessor response missing keys %s from provider '%s'.", missing, provider)
-        return _fallback_signal_assessment(body, template_mode)
+        raise SubmissionFeedbackUnavailableError(
+            code="signal_assessor_invalid_response",
+            message=f"Signal assessment cannot be generated at this time. Invalid response from {_llm_provider_label(provider)}.",
+            provider=provider,
+            api_error_code="provider_invalid_json",
+        )
 
-    result.setdefault("llmUsed", True)
-    result.setdefault("errorTags", [])
-    result.setdefault("strengths", [])
+    result["llmUsed"] = True
     return result
 
 
@@ -2492,7 +2097,7 @@ def _narrator_submission_system_prompt(template_label: str, body: CoachAttemptFe
         f"You are a senior interview coach reviewing a {template_label} solution. "
         "Grade the submission in exactly one sentence in fullFeedback — lead with 'sound', 'close', or 'needs work'. "
         f"{grading_instruction} "
-        "Base your diagnosis on the provided assessment dimensions. "
+        "Base your diagnosis on the provided assessment signals. "
         "Use correctedVersion only for meaningful structural corrections, never line-by-line rewrites. "
         "Return strict JSON: diagnosis, primaryFocus, immediateCorrection, fullFeedback, correctedVersion, "
         "microDrill, nextRepTarget, strengths (max 3), errorTags. "
@@ -2518,7 +2123,7 @@ def _build_narrator_payload(
         },
         "assessment": {
             "patternIdentified": assessment.get("patternIdentified", ""),
-            "dimensions":        assessment.get("dimensions", {}),
+            "signals":           assessment.get("signals", {}),
             "primaryBlocker":    assessment.get("primaryBlocker", ""),
             "blockerKey":        assessment.get("blockerKey", ""),
             "verdict":           assessment.get("verdict", "needs-work"),
@@ -2624,12 +2229,15 @@ async def _attempt_feedback_with_narrator(
     }
 
 
-async def _session_plan_with_optional_llm(
-    body: CoachSessionPlanRequest, signal: dict[str, Any]
-) -> dict[str, Any]:
+async def _session_plan_with_llm(body: CoachSessionPlanRequest) -> dict[str, Any]:
     provider = _resolve_available_llm_provider(body.llmProvider)
     if not _llm_provider_available(provider):
-        return signal
+        raise SubmissionFeedbackUnavailableError(
+            code="coach_llm_missing_api_key",
+            message="Update backend .env with at least one coach LLM API key.",
+            provider=provider,
+            api_error_code="provider_auth_error",
+        )
 
     system_prompt = (
         "You are a training coach building practical next-session plans for recall training. "
@@ -2646,24 +2254,33 @@ async def _session_plan_with_optional_llm(
             "avgElapsedMs": body.avgElapsedMs,
         },
         "weakestCards": [c.model_dump() for c in body.weakestCards[:5]],
-        "signal": signal,
     }
 
     llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)
     if not llm_response:
-        return signal
+        raise SubmissionFeedbackUnavailableError(
+            code="coach_llm_no_response",
+            message=f"Session plan cannot be generated at this time. No response from {_llm_provider_label(provider)}.",
+            provider=provider,
+            api_error_code="provider_empty_response",
+        )
 
     required = ["headline", "focusTheme", "warmup", "mainSet", "cooldown", "note"]
     if any(key not in llm_response for key in required):
-        return signal
+        raise SubmissionFeedbackUnavailableError(
+            code="coach_llm_invalid_response",
+            message=f"Session plan cannot be generated at this time. Invalid response from {_llm_provider_label(provider)}.",
+            provider=provider,
+            api_error_code="provider_invalid_json",
+        )
 
     return {
-        "headline": str(llm_response.get("headline", signal["headline"])),
-        "focusTheme": str(llm_response.get("focusTheme", signal["focusTheme"])),
-        "warmup": str(llm_response.get("warmup", signal["warmup"])),
-        "mainSet": str(llm_response.get("mainSet", signal["mainSet"])),
-        "cooldown": str(llm_response.get("cooldown", signal["cooldown"])),
-        "note": str(llm_response.get("note", signal["note"])),
+        "headline": str(llm_response["headline"]),
+        "focusTheme": str(llm_response["focusTheme"]),
+        "warmup": str(llm_response["warmup"]),
+        "mainSet": str(llm_response["mainSet"]),
+        "cooldown": str(llm_response["cooldown"]),
+        "note": str(llm_response["note"]),
         "llmUsed": True,
     }
 
@@ -2674,12 +2291,17 @@ async def _load_skill_map_generation_summary(body: SkillMapDrillsRequest) -> dic
     return _summarize_skill_map_progress(body.skillMap[: body.count], history)
 
 
-async def _skill_map_drills_with_optional_llm(
-    body: SkillMapDrillsRequest, signal: dict[str, Any], progress_summary: dict[str, Any]
+async def _skill_map_drills_with_llm(
+    body: SkillMapDrillsRequest, progress_summary: dict[str, Any]
 ) -> dict[str, Any]:
     provider = _resolve_available_llm_provider(body.llmProvider)
     if not _llm_provider_available(provider):
-        return signal
+        raise SubmissionFeedbackUnavailableError(
+            code="coach_llm_missing_api_key",
+            message="Update backend .env with at least one coach LLM API key.",
+            provider=provider,
+            api_error_code="provider_auth_error",
+        )
 
     system_prompt = (
         "You generate atomic Python recall drills for coding interview preparation. "
@@ -2736,27 +2358,41 @@ async def _skill_map_drills_with_optional_llm(
             ],
             "constraint": "solution must contain exactly one {{missing}} placeholder",
         },
-        "fallbackExample": signal["drills"][:3],
     }
 
     llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider, DRILL_GEN_MAX_TOKENS)
     if not llm_response or not isinstance(llm_response.get("drills"), list):
-        return signal
+        raise SubmissionFeedbackUnavailableError(
+            code="coach_llm_no_response",
+            message=f"Skill-map drills cannot be generated at this time. No response from {_llm_provider_label(provider)}.",
+            provider=provider,
+            api_error_code="provider_empty_response",
+        )
 
     drills: list[dict[str, Any]] = []
     for index, raw in enumerate(llm_response["drills"][: body.count]):
         if not isinstance(raw, dict):
-            return signal
+            raise SubmissionFeedbackUnavailableError(
+                code="coach_llm_invalid_response",
+                message=f"Skill-map drills cannot be generated at this time. Invalid response from {_llm_provider_label(provider)}.",
+                provider=provider,
+                api_error_code="provider_invalid_json",
+            )
         solution = str(raw.get("solution", "")).strip()
         missing = str(raw.get("missing", "")).strip()
         if "{{missing}}" not in solution or not missing:
-            return signal
+            raise SubmissionFeedbackUnavailableError(
+                code="coach_llm_invalid_response",
+                message=f"Skill-map drills cannot be generated at this time. Invalid response from {_llm_provider_label(provider)}.",
+                provider=provider,
+                api_error_code="provider_invalid_json",
+            )
         tags_raw = raw.get("tags", [])
         tags = [str(tag).strip() for tag in tags_raw if str(tag).strip()] if isinstance(tags_raw, list) else []
         if "skill-map" not in tags:
             tags = ["skill-map", *tags]
-        fallback_node = body.skillMap[index] if index < len(body.skillMap) else None
-        pattern = fallback_node.pattern if fallback_node else str(raw.get("title", "algorithm"))
+        source_node = body.skillMap[index] if index < len(body.skillMap) else None
+        pattern = source_node.pattern if source_node else str(raw.get("title", "algorithm"))
         pattern_slug = _pattern_slug(pattern)
         template_targets = _template_targets_for_drill(body, pattern_slug, solution, missing, raw.get("templateTargets", {}))
         template_prompts = _template_prompt_map(
@@ -2771,7 +2407,7 @@ async def _skill_map_drills_with_optional_llm(
         selected_prompt = (
             template_prompts.get(_template_mode_value(body.templateMode))
             or _clean_concise_prompt(str(raw.get("prompt", "")).strip())
-            or _fallback_template_prompt(pattern, _template_mode_value(body.templateMode), solution.replace("{{missing}}", missing))
+            or _template_prompt_from_target(pattern, _template_mode_value(body.templateMode), solution.replace("{{missing}}", missing))
         )
         drills.append({
             "id": str(raw.get("id", f"skill-map-{index + 1}")),
@@ -2787,7 +2423,12 @@ async def _skill_map_drills_with_optional_llm(
         })
 
     if len(drills) != min(body.count, len(body.skillMap)):
-        return signal
+        raise SubmissionFeedbackUnavailableError(
+            code="coach_llm_invalid_response",
+            message=f"Skill-map drills cannot be generated at this time. Invalid response from {_llm_provider_label(provider)}.",
+            provider=provider,
+            api_error_code="provider_invalid_json",
+        )
 
     return {"drills": drills, "llmUsed": True}
 
@@ -2859,12 +2500,12 @@ async def coach_attempt_evaluation(body: CoachAttemptEvaluationRequest):
 @router.post("/attempt-feedback", response_model=CoachAttemptFeedbackResponse)
 async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
     provider = _resolve_available_llm_provider(body.llmProvider)
-    if not body.liveMode and not _llm_provider_available(provider):
+    if not _llm_provider_available(provider):
         raise HTTPException(
-            status_code=400,
+            status_code=503,
             detail=_submission_feedback_error_detail(
-                "submission_feedback_missing_api_key",
-                "Update backend .env with your API key.",
+                "coach_llm_missing_api_key",
+                "Update backend .env with at least one coach LLM API key.",
                 provider,
                 "provider_auth_error",
             ),
@@ -2873,7 +2514,10 @@ async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
     template_mode = _template_mode_value(body.templateMode)
     history = await _load_attempt_history(body)
     history_summary = _summarize_attempt_history(history)
-    assessment = await _run_signal_assessor(body, template_mode)
+    try:
+        assessment = await _run_signal_assessor(body, template_mode)
+    except SubmissionFeedbackUnavailableError as error:
+        raise _coach_llm_http_exception(error) from error
 
     if body.liveMode:
         feedback = _assessment_to_live_response(assessment)
@@ -2881,15 +2525,7 @@ async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
         try:
             feedback = await _attempt_feedback_with_narrator(body, assessment, history, history_summary)
         except SubmissionFeedbackUnavailableError as error:
-            raise HTTPException(
-                status_code=503,
-                detail=_submission_feedback_error_detail(
-                    error.code,
-                    error.message,
-                    error.provider,
-                    error.api_error_code,
-                ),
-            ) from error
+            raise _coach_llm_http_exception(error) from error
 
         if not bool(feedback.get("llmUsed")):
             raise HTTPException(
@@ -2912,9 +2548,10 @@ async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
 
 @router.post("/session-plan", response_model=CoachSessionPlanResponse)
 async def coach_session_plan(body: CoachSessionPlanRequest):
-    signal = _signal_session_plan(body)
-    plan = await _session_plan_with_optional_llm(body, signal)
-    return plan
+    try:
+        return await _session_plan_with_llm(body)
+    except SubmissionFeedbackUnavailableError as error:
+        raise _coach_llm_http_exception(error) from error
 
 
 @router.post("/history", response_model=CoachPracticeHistoryResponse)
@@ -2929,8 +2566,10 @@ async def coach_practice_history(body: CoachPracticeHistoryRequest):
 @router.post("/skill-map-drills", response_model=SkillMapDrillsResponse)
 async def coach_skill_map_drills(body: SkillMapDrillsRequest):
     progress_summary = await _load_skill_map_generation_summary(body)
-    signal = _fallback_skill_map_drills(body, progress_summary)
-    drills = await _skill_map_drills_with_optional_llm(body, signal, progress_summary)
+    try:
+        drills = await _skill_map_drills_with_llm(body, progress_summary)
+    except SubmissionFeedbackUnavailableError as error:
+        raise _coach_llm_http_exception(error) from error
     stamped = _stamp_skill_map_drills(drills["drills"])
     await _persist_skill_map_drills(stamped, bool(drills.get("llmUsed")), progress_summary)
     return {"drills": stamped, "llmUsed": bool(drills.get("llmUsed"))}
@@ -2938,4 +2577,7 @@ async def coach_skill_map_drills(body: SkillMapDrillsRequest):
 
 @router.post("/adaptive-variation", response_model=AdaptiveVariationResponse)
 async def coach_adaptive_variation(body: AdaptiveVariationRequest):
-    return await _adaptive_variation_with_optional_llm(body)
+    try:
+        return await _adaptive_variation_with_llm(body)
+    except SubmissionFeedbackUnavailableError as error:
+        raise _coach_llm_http_exception(error) from error

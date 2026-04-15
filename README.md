@@ -101,8 +101,8 @@ The coach pipeline uses three distinct LLM roles, each with its own provider sel
 | Role | Purpose | Provider selection | Max tokens |
 |------|---------|-------------------|------------|
 | **Signal Assessor** | Structural assessment of each attempt (replaces ~1500 lines of rule-based signals) | Fastest available: Gemma → Claude → OpenAI | 600 |
-| **Feedback Narrator** | Narrative coaching text for submission feedback | User-selected provider with fallback chain | 1800 |
-| **Drill Generator** | Generates focused practice drills from skill-map history | User-selected provider with fallback chain | 2000 |
+| **Feedback Narrator** | Narrative coaching text for submission feedback | User-selected available provider | 1800 |
+| **Drill Generator** | Generates focused practice drills from skill-map history | User-selected available provider | 2000 |
 
 Live feedback (`liveMode=true`) uses only the Signal Assessor — no Narrator call.
 Submission feedback (`liveMode=false`) runs Assessor → Narrator in sequence.
@@ -112,7 +112,7 @@ Submission feedback (`liveMode=false`) runs Assessor → Narrator in sequence.
 {
   "v": 1,
   "patternIdentified": "sliding-window",
-  "dimensions": {
+  "signals": {
     "structure":       { "score": 60, "note": "..." },
     "correctness":     { "score": 45, "note": "..." },
     "completeness":    { "score": 50, "note": "..." },
@@ -208,7 +208,7 @@ Verification:
 
 Submission feedback (`liveMode=false`) is LLM-only.
 
-- No rule-based fallback is returned to users for submission grading/feedback.
+- No rule-based local response is returned to users for submission grading/feedback.
 - Backend retries LLM submission generation up to 3 times before failure.
 - On failure, backend returns a structured error payload and frontend shows a modal with the provider-specific message.
 
