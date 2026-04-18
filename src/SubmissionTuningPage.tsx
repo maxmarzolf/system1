@@ -43,7 +43,7 @@ export default function SubmissionTuningPage() {
 
   return (
     <div className="app">
-      <TopNav activeLabel="Tune Submission" />
+      <TopNav />
 
       <section className="card">
         <div className="card-header coach-tuning-page-header">

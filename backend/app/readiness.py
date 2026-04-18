@@ -30,10 +30,12 @@ def _clamp(value: float, lower: float, upper: float) -> float:
     return max(lower, min(upper, value))
 
 
-def support_cap(live_coach_used: bool) -> float:
+def support_cap(live_coach_used: bool, support_layer: str = "none") -> float:
     cap = 1.0
     if live_coach_used:
         cap -= 0.15
+    if support_layer == "ghost-reps":
+        cap = min(cap, 0.45)
     return _clamp(cap, 0.35, 1.0)
 
 
@@ -43,6 +45,7 @@ def attempt_mastery_score(attempt: dict[str, Any]) -> float:
         accuracy,
         support_cap(
             bool(attempt.get("liveCoachUsed")),
+            str(attempt.get("supportLayer") or attempt.get("support_layer") or "none"),
         ),
     )
     if float(attempt.get("accuracy", 0) or 0) < READINESS_SUCCESS_THRESHOLD:
@@ -101,7 +104,7 @@ def summarize_readiness(attempts: list[dict[str, Any]], now: datetime | None = N
         total_weight += weight
         accuracy = float(attempt.get("accuracy", 0) or 0)
         accuracies.append(accuracy)
-        if accuracy >= READINESS_SUCCESS_THRESHOLD:
+        if accuracy >= READINESS_SUCCESS_THRESHOLD and str(attempt.get("supportLayer") or attempt.get("support_layer") or "none") == "none":
             successful_attempts += 1
         if bool(attempt.get("liveCoachUsed")):
             live_coach_used_count += 1

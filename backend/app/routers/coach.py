@@ -7,6 +7,7 @@ import difflib
 import json
 import keyword
 import logging
+import random
 import re
 import urllib.error
 import urllib.request
@@ -92,10 +93,11 @@ ANTHROPIC_MODEL_CANDIDATES = (
 )
 SUBMISSION_LLM_MAX_RETRIES = 3
 SUBMISSION_LLM_RETRY_DELAYS_SECONDS = (0.3, 0.6, 0.9)
-ASSESSOR_FASTEST_PROVIDER_CHAIN = ("gemma", "claude", "openai")
 ASSESSOR_MAX_TOKENS = 600
 NARRATOR_MAX_TOKENS = 1800
-DRILL_GEN_MAX_TOKENS = 2000
+DRILL_GEN_MAX_TOKENS = 8000
+DRILL_GEN_OPENAI_TIMEOUT_SECONDS = 90
+DRILL_GEN_TEMPERATURE = 0.7
 
 
 class SubmissionFeedbackUnavailableError(RuntimeError):
@@ -965,6 +967,7 @@ async def _load_practice_history(
                     sa.exact,
                     sa.elapsed_ms AS "elapsedMs",
                     sa.template_mode AS "templateMode",
+                    sa.support_layer AS "supportLayer",
                     sa.live_coach_used AS "liveCoachUsed",
                     sa.category_tags AS "categoryTags",
                     sa.generated_card AS "generatedCard",
@@ -1030,6 +1033,7 @@ async def _load_practice_history(
                     sa.exact,
                     sa.elapsed_ms AS "elapsedMs",
                     sa.template_mode AS "templateMode",
+                    sa.support_layer AS "supportLayer",
                     sa.live_coach_used AS "liveCoachUsed",
                     sa.category_tags AS "categoryTags",
                     sa.generated_card AS "generatedCard",
@@ -1093,6 +1097,7 @@ async def _load_practice_history(
                     sa.exact,
                     sa.elapsed_ms AS "elapsedMs",
                     sa.template_mode AS "templateMode",
+                    sa.support_layer AS "supportLayer",
                     sa.live_coach_used AS "liveCoachUsed",
                     sa.category_tags AS "categoryTags",
                     sa.generated_card AS "generatedCard",
@@ -1155,6 +1160,7 @@ async def _load_practice_history(
             "exact": bool(row["exact"]),
             "elapsedMs": int(row["elapsedMs"] or 0),
             "templateMode": str(row["templateMode"] or TemplateMode.full.value),
+            "supportLayer": str(row["supportLayer"] or "none"),
             "liveCoachUsed": bool(row["liveCoachUsed"]),
             "categoryTags": list(row["categoryTags"] or []),
             "generatedCard": _parse_json_field(row["generatedCard"], {}),
@@ -1770,18 +1776,6 @@ def _resolve_available_llm_provider(requested_provider: str) -> str:
     return _resolve_llm_provider(requested_provider)
 
 
-def _resolve_fastest_llm_provider() -> str:
-    """Pick the fastest-available provider for the Signal Assessor.
-
-    Ignores the user's preferred provider — latency matters more here.
-    Order: Gemma → Claude → OpenAI.
-    """
-    for candidate in ASSESSOR_FASTEST_PROVIDER_CHAIN:
-        if _llm_provider_available(candidate):
-            return candidate
-    return ASSESSOR_FASTEST_PROVIDER_CHAIN[-1]
-
-
 def _llm_provider_available(provider: str) -> bool:
     if provider == "claude":
         return bool(settings.coach_anthropic_api_key)
@@ -1816,38 +1810,68 @@ def _extract_json_dict(value: str) -> dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def _call_openai_json(system_prompt: str, user_payload: dict[str, Any], max_tokens: int = 1800) -> dict[str, Any] | None:
+def _call_openai_json(
+    system_prompt: str,
+    user_payload: dict[str, Any],
+    max_tokens: int = 1800,
+    timeout_seconds: int = 30,
+    temperature: float = 0.2,
+) -> dict[str, Any] | None:
     if not settings.coach_openai_api_key:
         return None
 
     url = f"{settings.coach_openai_base_url.rstrip('/')}/chat/completions"
     body = {
         "model": settings.coach_openai_model,
-        "temperature": 0.2,
-        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "max_completion_tokens": max_tokens,
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": json.dumps(user_payload)},
         ],
     }
-    data = json.dumps(body).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=data,
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {settings.coach_openai_api_key}",
-            "Content-Type": "application/json",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+
+    def post_completion(request_body: dict[str, Any]) -> dict[str, Any]:
+        data = json.dumps(request_body).encode("utf-8")
+        request = urllib.request.Request(
+            url,
+            data=data,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {settings.coach_openai_api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             raw = response.read().decode("utf-8")
-            payload = json.loads(raw)
-            content = payload["choices"][0]["message"]["content"]
-            return _extract_json_dict(content)
-    except (urllib.error.URLError, KeyError, IndexError, ValueError, TypeError, TimeoutError):
+            return json.loads(raw)
+
+    try:
+        payload = post_completion(body)
+        content = payload["choices"][0]["message"]["content"]
+        return _extract_json_dict(content)
+    except urllib.error.HTTPError as error:
+        details = error.read().decode("utf-8", errors="replace")
+        if (
+            error.code == 400
+            and "max_completion_tokens" in details
+            and "unsupported" in details.lower()
+        ):
+            fallback_body = {**body}
+            fallback_body.pop("max_completion_tokens", None)
+            fallback_body["max_tokens"] = max_tokens
+            try:
+                payload = post_completion(fallback_body)
+                content = payload["choices"][0]["message"]["content"]
+                return _extract_json_dict(content)
+            except (urllib.error.URLError, KeyError, IndexError, ValueError, TypeError, TimeoutError) as fallback_error:
+                logger.warning("OpenAI fallback request failed: %s", fallback_error)
+                return None
+        logger.warning("OpenAI request failed (%s): %s", error.code, details[:400])
+        return None
+    except (urllib.error.URLError, KeyError, IndexError, ValueError, TypeError, TimeoutError) as error:
+        logger.warning("OpenAI request failed: %s", error)
         return None
 
 
@@ -1952,19 +1976,26 @@ def _call_gemma_json(system_prompt: str, user_payload: dict[str, Any], max_token
         return None
 
 
-def _call_llm_json(system_prompt: str, user_payload: dict[str, Any], provider: str, max_tokens: int = 1800) -> dict[str, Any] | None:
+def _call_llm_json(
+    system_prompt: str,
+    user_payload: dict[str, Any],
+    provider: str,
+    max_tokens: int = 1800,
+    timeout_seconds: int = 30,
+    temperature: float = 0.2,
+) -> dict[str, Any] | None:
     if provider == "claude":
         return _call_claude_json(system_prompt, user_payload, max_tokens)
     if provider == "gemma":
         return _call_gemma_json(system_prompt, user_payload, max_tokens)
-    return _call_openai_json(system_prompt, user_payload, max_tokens)
+    return _call_openai_json(system_prompt, user_payload, max_tokens, timeout_seconds, temperature)
 
 
 # ---------------------------------------------------------------------------
 # Signal Assessor — Role 1
-# Lightweight structural analysis call. Fastest available provider, small
-# token budget. Used as the ONLY LLM call for live feedback, and as Stage 1
-# for submission feedback (feeds the Narrator).
+# Lightweight structural analysis call using the request-selected provider.
+# Used as the ONLY LLM call for live feedback, and as Stage 1 for submission
+# feedback (feeds the Narrator).
 # ---------------------------------------------------------------------------
 
 def _assessor_system_prompt(live_mode: bool) -> str:
@@ -2003,12 +2034,12 @@ async def _run_signal_assessor(
     body: CoachAttemptFeedbackRequest,
     template_mode: str,
 ) -> dict[str, Any]:
-    """Call the Signal Assessor LLM (fastest available provider).
+    """Call the Signal Assessor LLM selected by the request.
 
     Returns a structured assessment dict. LLM availability and valid signal
     output are required for the coach pipeline to proceed.
     """
-    provider = _resolve_fastest_llm_provider()
+    provider = _resolve_available_llm_provider(body.llmProvider)
     if not _llm_provider_available(provider):
         raise SubmissionFeedbackUnavailableError(
             code="signal_assessor_missing_api_key",
@@ -2285,6 +2316,15 @@ async def _session_plan_with_llm(body: CoachSessionPlanRequest) -> dict[str, Any
     }
 
 
+def _normalize_drill_difficulty(value: Any) -> str:
+    difficulty = str(value or "").strip().lower().rstrip(".")
+    if difficulty in {"easy", "e", "beginner", "simple"}:
+        return "Easy"
+    if difficulty in {"hard", "h", "advanced", "difficult"}:
+        return "Hard"
+    return "Med."
+
+
 async def _load_skill_map_generation_summary(body: SkillMapDrillsRequest) -> dict[str, Any]:
     pattern_tags = [_pattern_slug(node.pattern) for node in body.skillMap[: body.count] if _pattern_slug(node.pattern)]
     history = await _load_practice_history("", body.questionType, pattern_tags, limit=max(20, body.count * 6))
@@ -2305,9 +2345,14 @@ async def _skill_map_drills_with_llm(
 
     system_prompt = (
         "You generate atomic Python recall drills for coding interview preparation. "
-        "Return strict JSON with key drills, where drills is an array of objects with keys "
+        "Return only a top-level JSON object shaped exactly like {\"drills\": [...]}. "
+        "The drills array must contain exactly the requested count of objects with keys "
         "id, title, difficulty, prompt, templatePrompts, templateTargets, solution, missing, hint, tags. "
+        "Do not return a single drill object without the drills wrapper. "
+        "Generate exactly one drill for each skillMap entry, in the same order as the skillMap array. "
+        "Do not generate a second drill for any pattern until every provided skillMap entry has one drill. "
         "Each drill must teach one reusable LeetCode move from the provided skill map, not a story problem. "
+        "Use the generationSeed and shuffled method order to vary titles, snippets, missing lines, and selected methods across calls. "
         "Make them concise and pattern-first. Prioritize patterns with low readiness or high error rates, "
         "then fill remaining slots across remaining patterns. "
         "The solution must include exactly one '{{missing}}' placeholder, and missing must be the exact code that replaces it. "
@@ -2320,10 +2365,15 @@ async def _skill_map_drills_with_llm(
         "Tags must include 'skill-map' and a slug for the pattern."
     )
 
-    # Trim skill map nodes to just pattern + methods — no extra serialization overhead
+    rng = random.SystemRandom()
+    generation_seed = f"{datetime.now(tz=timezone.utc).strftime('%Y%m%d%H%M%S%f')}-{rng.randrange(1_000_000)}"
+    generation_skill_map = list(body.skillMap[: body.count])
+    rng.shuffle(generation_skill_map)
+
+    # Trim skill map nodes to just pattern + shuffled methods — no extra serialization overhead
     trimmed_skill_map = [
-        {"pattern": node.pattern, "methods": node.methods}
-        for node in body.skillMap[: body.count]
+        {"pattern": node.pattern, "methods": rng.sample(list(node.methods), len(node.methods)) if node.methods else []}
+        for node in generation_skill_map
     ]
 
     # Only send patterns that have been attempted or have low readiness — skip untouched zero-data entries
@@ -2336,6 +2386,7 @@ async def _skill_map_drills_with_llm(
     llm_payload = {
         "questionType": body.questionType,
         "count": body.count,
+        "generationSeed": generation_seed,
         "templateMode": _template_mode_value(body.templateMode),
         "templateTargets": body.templateTargets,
         "skillMap": trimmed_skill_map,
@@ -2357,10 +2408,20 @@ async def _skill_map_drills_with_llm(
                 "tags",
             ],
             "constraint": "solution must contain exactly one {{missing}} placeholder",
+            "coverage": "drills[i] must correspond to skillMap[i]",
+            "variation": "avoid reusing the same title, prompt, missing line, or exact snippet shape from a previous generation",
         },
     }
 
-    llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider, DRILL_GEN_MAX_TOKENS)
+    llm_response = await asyncio.to_thread(
+        _call_llm_json,
+        system_prompt,
+        llm_payload,
+        provider,
+        DRILL_GEN_MAX_TOKENS,
+        DRILL_GEN_OPENAI_TIMEOUT_SECONDS,
+        DRILL_GEN_TEMPERATURE,
+    )
     if not llm_response or not isinstance(llm_response.get("drills"), list):
         raise SubmissionFeedbackUnavailableError(
             code="coach_llm_no_response",
@@ -2391,9 +2452,11 @@ async def _skill_map_drills_with_llm(
         tags = [str(tag).strip() for tag in tags_raw if str(tag).strip()] if isinstance(tags_raw, list) else []
         if "skill-map" not in tags:
             tags = ["skill-map", *tags]
-        source_node = body.skillMap[index] if index < len(body.skillMap) else None
+        source_node = generation_skill_map[index] if index < len(generation_skill_map) else None
         pattern = source_node.pattern if source_node else str(raw.get("title", "algorithm"))
         pattern_slug = _pattern_slug(pattern)
+        if pattern_slug and pattern_slug not in tags:
+            tags.append(pattern_slug)
         template_targets = _template_targets_for_drill(body, pattern_slug, solution, missing, raw.get("templateTargets", {}))
         template_prompts = _template_prompt_map(
             body,
@@ -2412,7 +2475,7 @@ async def _skill_map_drills_with_llm(
         drills.append({
             "id": str(raw.get("id", f"skill-map-{index + 1}")),
             "title": str(raw.get("title", f"Skill Map Drill {index + 1}")),
-            "difficulty": str(raw.get("difficulty", "Med.")),
+            "difficulty": _normalize_drill_difficulty(raw.get("difficulty", "Med.")),
             "prompt": selected_prompt,
             "templatePrompts": template_prompts,
             "templateTargets": template_targets,
@@ -2422,7 +2485,7 @@ async def _skill_map_drills_with_llm(
             "tags": tags,
         })
 
-    if len(drills) != min(body.count, len(body.skillMap)):
+    if len(drills) != min(body.count, len(generation_skill_map)):
         raise SubmissionFeedbackUnavailableError(
             code="coach_llm_invalid_response",
             message=f"Skill-map drills cannot be generated at this time. Invalid response from {_llm_provider_label(provider)}.",

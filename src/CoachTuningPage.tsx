@@ -16,7 +16,7 @@ export default function CoachTuningPage() {
 
   return (
     <div className="app">
-      <TopNav activeLabel="Tune Coach" />
+      <TopNav />
 
       <section className="card">
         <div className="card-header coach-tuning-page-header">

@@ -19,6 +19,11 @@ class TemplateMode(str, Enum):
     full = "full"
 
 
+class SupportLayer(str, Enum):
+    none = "none"
+    ghost_reps = "ghost-reps"
+
+
 # ─── Request schemas ───
 
 
@@ -39,6 +44,7 @@ class AttemptCreate(BaseModel):
     generatedCardId: str | None = None
     generatedCard: dict[str, Any] | None = None
     templateMode: TemplateMode = TemplateMode.full
+    supportLayer: SupportLayer = SupportLayer.none
     liveCoachUsed: bool = False
     coachFeedback: dict[str, Any] | None = None
     submissionRubric: dict[str, Any] | None = None
@@ -202,6 +208,7 @@ class CoachPracticeHistoryEntry(BaseModel):
     exact: bool = False
     elapsedMs: int = Field(default=0, ge=0)
     templateMode: str = TemplateMode.full.value
+    supportLayer: str = SupportLayer.none.value
     liveCoachUsed: bool = False
     categoryTags: list[str] = []
     generatedCard: dict[str, Any] = {}
@@ -238,6 +245,9 @@ class SkillMapModeActivity(BaseModel):
 class SkillMapModeReadiness(BaseModel):
     readiness: float = Field(default=0, ge=0, le=100)
     attemptCount: int = Field(default=0, ge=0)
+    ghostRepCount: int = Field(default=0, ge=0)
+    unsupportedAttemptCount: int = Field(default=0, ge=0)
+    workCount: int = Field(default=0, ge=0)
     successfulAttempts: int = Field(default=0, ge=0)
     avgAccuracy: float = Field(default=0, ge=0, le=100)
     totalCards: int = Field(default=0, ge=0)
@@ -258,6 +268,9 @@ class SkillMapPatternReadiness(BaseModel):
     methods: list[str] = []
     overallReadiness: float = Field(default=0, ge=0, le=100)
     overallAttemptCount: int = Field(default=0, ge=0)
+    ghostRepCount: int = Field(default=0, ge=0)
+    unsupportedAttemptCount: int = Field(default=0, ge=0)
+    workCount: int = Field(default=0, ge=0)
     totalCards: int = Field(default=0, ge=0)
     practicedCards: int = Field(default=0, ge=0)
     untouchedCards: int = Field(default=0, ge=0)
@@ -273,6 +286,9 @@ class SkillMapCardReadiness(BaseModel):
     templateMode: str = TemplateMode.full.value
     readiness: float = Field(default=0, ge=0, le=100)
     attemptCount: int = Field(default=0, ge=0)
+    ghostRepCount: int = Field(default=0, ge=0)
+    unsupportedAttemptCount: int = Field(default=0, ge=0)
+    workCount: int = Field(default=0, ge=0)
     daysSinceLastSubmit: int | None = Field(default=None, ge=0)
     stale: bool = False
     dimensionSummary: dict[str, Any] = {}

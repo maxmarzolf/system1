@@ -12,6 +12,7 @@ type PracticeHistoryEntry = {
   exact: boolean
   elapsedMs: number
   templateMode: 'pseudo' | 'skeleton' | 'full'
+  supportLayer: 'none' | 'ghost-reps'
   liveCoachUsed: boolean
   categoryTags: string[]
   generatedCard: {
@@ -102,6 +103,9 @@ const formatTemplateModeLabel = (templateMode: PracticeHistoryEntry['templateMod
     skeleton: 'Skeleton',
     full: 'Full',
   })[templateMode] ?? templateMode
+
+const formatSupportLayerLabel = (supportLayer: PracticeHistoryEntry['supportLayer']) =>
+  supportLayer === 'ghost-reps' ? 'Ghost Rep' : 'Unsupported'
 
 const summarizeHistoryText = (entry: PracticeHistoryEntry) => {
   const submissionSummary =
@@ -201,7 +205,7 @@ export default function PracticeHistoryPage() {
 
   return (
     <div className="app">
-      <TopNav activeLabel="Practice History" />
+      <TopNav />
 
       <section className="card">
         <div className="card-header practice-history-page-header">
@@ -312,16 +316,17 @@ export default function PracticeHistoryPage() {
                         <div>
                           <p className="practice-history-title">{entry.cardTitle || entry.cardId}</p>
                           <p className="practice-history-meta">
-                            {formatTemplateModeLabel(entry.templateMode)} · {entry.liveFeedbackCount} live feedback {entry.liveFeedbackCount === 1 ? 'snapshot' : 'snapshots'} · {(entry.elapsedMs / 1000).toFixed(1)}s
+                            {formatTemplateModeLabel(entry.templateMode)} · {formatSupportLayerLabel(entry.supportLayer)} · {entry.liveFeedbackCount} live feedback {entry.liveFeedbackCount === 1 ? 'snapshot' : 'snapshots'} · {(entry.elapsedMs / 1000).toFixed(1)}s
                           </p>
                         </div>
                         <span className={`coach-status-value coach-status-value-${entryTone}`}>
                           {entry.accuracy}%
                         </span>
                       </div>
-                      {entry.liveCoachUsed && (
+                      {(entry.liveCoachUsed || entry.supportLayer === 'ghost-reps') && (
                         <div className="practice-history-focuses">
                           {entry.liveCoachUsed && <span className="coach-metric-chip">Live coach used</span>}
+                          {entry.supportLayer === 'ghost-reps' && <span className="coach-metric-chip">Support Layer Ghost Reps</span>}
                         </div>
                       )}
                       {entry.submissionRubric?.verdict && (

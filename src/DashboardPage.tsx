@@ -49,6 +49,9 @@ type DimensionSummary = {
 type SkillMapModeReadiness = {
   readiness: number
   attemptCount: number
+  ghostRepCount: number
+  unsupportedAttemptCount: number
+  workCount: number
   successfulAttempts: number
   avgAccuracy: number
   totalCards: number
@@ -68,6 +71,9 @@ type SkillMapPatternReadiness = {
   methods: string[]
   overallReadiness: number
   overallAttemptCount: number
+  ghostRepCount: number
+  unsupportedAttemptCount: number
+  workCount: number
   totalCards: number
   practicedCards: number
   untouchedCards: number
@@ -76,24 +82,15 @@ type SkillMapPatternReadiness = {
   modes: Record<'pseudo' | 'skeleton' | 'full', SkillMapModeReadiness>
 }
 
-type SkillMapCardReadiness = {
-  cardId: string
-  title: string
-  pattern: string
-  templateMode: 'pseudo' | 'skeleton' | 'full'
-  readiness: number
-  attemptCount: number
-  daysSinceLastSubmit: number | null
-  stale: boolean
-  dimensionSummary: DimensionSummary
-}
-
 type SkillMapOverviewResponse = {
   summary: {
     totalGeneratedCards: number
     attemptedCards: number
     untouchedCards: number
     staleCards: number
+    ghostRepCount: number
+    unsupportedAttemptCount: number
+    workCount: number
     patternsStarted: number
     patternsUntouched: number
     avgPatternReadiness: number
@@ -101,7 +98,6 @@ type SkillMapOverviewResponse = {
     staleAfterDays: number
   }
   patterns: SkillMapPatternReadiness[]
-  reviewQueue: SkillMapCardReadiness[]
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
@@ -110,7 +106,7 @@ const ACTIVITY_WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 const shortDateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
 const longDateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 
-const formatTemplateModeLabel = (templateMode: SkillMapCardReadiness['templateMode']) =>
+const formatTemplateModeLabel = (templateMode: 'pseudo' | 'skeleton' | 'full') =>
   ({
     pseudo: 'Pseudo',
     skeleton: 'Skeleton',
@@ -234,6 +230,8 @@ function DashboardActivityModal({
   onClose: () => void
 }) {
   const activity = modeSummary.activity
+  const hasRubricHistory = Boolean(modeSummary.dimensionSummary?.rubricAttemptCount)
+  const primaryFailure = formatPrimaryFailure(modeSummary.dimensionSummary)
 
   return (
     <div className="dashboard-activity-modal" onClick={onClose}>
@@ -283,6 +281,44 @@ function DashboardActivityModal({
           </div>
         </div>
 
+        <div className="dashboard-activity-detail-grid">
+          <div className="dashboard-activity-detail">
+            <span>Cards</span>
+            <strong>{modeSummary.practicedCards}/{modeSummary.totalCards}</strong>
+          </div>
+          <div className="dashboard-activity-detail">
+            <span>Work</span>
+            <strong>{modeSummary.workCount}</strong>
+          </div>
+          <div className="dashboard-activity-detail">
+            <span>Ghost Reps</span>
+            <strong>{modeSummary.ghostRepCount}</strong>
+          </div>
+          <div className="dashboard-activity-detail">
+            <span>Recall</span>
+            <strong>{modeSummary.unsupportedAttemptCount}</strong>
+          </div>
+          <div className="dashboard-activity-detail">
+            <span>Avg</span>
+            <strong>{modeSummary.avgAccuracy}%</strong>
+          </div>
+          <div className="dashboard-activity-detail">
+            <span>Status</span>
+            <strong>{modeSummary.stale ? 'Review due' : 'Fresh enough'}</strong>
+          </div>
+        </div>
+
+        <div className="dashboard-activity-rubric">
+          {hasRubricHistory ? (
+            <>
+              <p>Weak spot: {formatWeakDimension(modeSummary.dimensionSummary)}</p>
+              {primaryFailure && <p>Primary miss: {primaryFailure}</p>}
+            </>
+          ) : (
+            <p>Rubric history starts on the next submit.</p>
+          )}
+        </div>
+
         <div className="dashboard-activity-calendar">
           <div className="dashboard-activity-weekdays">
             {ACTIVITY_WEEKDAY_LABELS.map((label, index) => (
@@ -323,7 +359,7 @@ export default function DashboardPage() {
   const [overview, setOverview] = useState<SkillMapOverviewResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [selectedPatternSlug, setSelectedPatternSlug] = useState('')
+  const [selectedMethodsByPattern, setSelectedMethodsByPattern] = useState<Record<string, string[]>>({})
   const [activeCalendar, setActiveCalendar] = useState<{ modeLabel: string; modeSummary: SkillMapModeReadiness } | null>(null)
 
   useEffect(() => {
@@ -351,83 +387,42 @@ export default function DashboardPage() {
 
   const summary = overview?.summary
   const patterns = overview?.patterns ?? []
-  const reviewQueue = overview?.reviewQueue ?? []
-  const launchFocusedPractice = (patternSlug: string, mode: 'pseudo' | 'skeleton' | 'full') => {
+  const toggleCoreMethod = (patternSlug: string, method: string) => {
+    setSelectedMethodsByPattern((current) => {
+      const currentMethods = current[patternSlug] ?? []
+      const methodSelected = currentMethods.includes(method)
+      const nextMethods = methodSelected
+        ? currentMethods.filter((item) => item !== method)
+        : [...currentMethods, method]
+      return {
+        ...current,
+        [patternSlug]: nextMethods,
+      }
+    })
+  }
+  const launchFocusedPractice = (patternSlug: string, mode: 'pseudo' | 'skeleton' | 'full', selectedMethods: string[]) => {
     const nextParams = new URLSearchParams({
       focusPattern: patternSlug,
       focusMode: mode,
     })
+    selectedMethods.forEach((method) => nextParams.append('focusMethod', method))
     navigate(`/?${nextParams.toString()}`)
   }
 
   return (
-    <div className="app">
-      <TopNav activeLabel="Dashboard" />
+    <div className="app app-dashboard">
+      <TopNav />
 
       <section className="dashboard">
-        <h2>Readiness Overview</h2>
-        <p className="skill-map-intro">
-          Final submits only. Readiness rises on strong independent reps, gets capped when live coaching was needed, and decays after a few days without practice.
-        </p>
-        {summary && (
-          <div className="dashboard-summary">
-            <span className="coach-metric-chip">{summary.avgPatternReadiness}% avg pattern readiness</span>
-            <span className="coach-metric-chip">{summary.attemptedCards}/{summary.totalGeneratedCards} cards worked</span>
-            <span className="coach-metric-chip">{summary.untouchedCards} untouched cards</span>
-            <span className="coach-metric-chip">{summary.staleCards} stale cards</span>
-            <span className="coach-metric-chip">{summary.patternsStarted} patterns started</span>
-            <span className="coach-metric-chip">{summary.patternsUntouched} untouched patterns</span>
-          </div>
-        )}
-        {summary && patterns.some((node) => (node.dimensionSummary?.weakDimensions?.length ?? 0) > 0) && (
-          <section className="dashboard-dimension-panel">
-            <div>
-              <p className="dashboard-activity-eyebrow">Dimension History</p>
-              <h3>Repeated repair targets</h3>
-            </div>
-            <div className="dashboard-dimension-grid">
-              {patterns
-                .filter((node) => (node.dimensionSummary?.weakDimensions?.length ?? 0) > 0)
-                .slice(0, 6)
-                .map((node) => {
-                  const weakDimensions = node.dimensionSummary.weakDimensions ?? []
-                  return (
-                    <article key={node.slug} className="dashboard-dimension-row">
-                      <div>
-                        <strong>{node.pattern}</strong>
-                        <p className="dashboard-mode-meta">{formatPrimaryFailure(node.dimensionSummary) || 'No primary failure trend yet'}</p>
-                      </div>
-                      <div className="dashboard-dimension-chips">
-                        {weakDimensions.slice(0, 4).map((dimension) => (
-                          <span
-                            key={`${node.slug}-${dimension.key}`}
-                            className={`dashboard-dimension-chip dashboard-dimension-chip-${dimensionTone(dimension.avgScore)}`}
-                            title={`${dimensionLabel(dimension)} · ${dimension.avgScore ?? 0}% average`}
-                          >
-                            {dimensionLabel(dimension)}
-                          </span>
-                        ))}
-                      </div>
-                    </article>
-                  )
-                })}
-            </div>
-          </section>
-        )}
-        {summary && (
-          <p className="skill-map-intro">
-            Strong submit threshold: {summary.successThreshold}% • Review becomes due after about {summary.staleAfterDays} days.
-          </p>
-        )}
         {error && <p className="skill-map-intro">{error}</p>}
         <div className="skill-map-grid">
           {loading && !error && <p className="skill-map-intro">Loading readiness overview...</p>}
           {patterns.map((node) => {
-            const patternSelected = selectedPatternSlug === node.slug
+            const selectedMethods = selectedMethodsByPattern[node.slug] ?? []
+            const patternSelected = selectedMethods.length > 0
             return (
               <article key={node.slug} className="skill-map-card">
                 <div className="skill-map-header">
-                  <span className="skill-map-level">Pattern</span>
                   <h3>{node.pattern}</h3>
                   <span className={`coach-status-value coach-status-value-${readinessTone(node.overallReadiness)}`}>
                     {node.overallReadiness}%
@@ -437,25 +432,35 @@ export default function DashboardPage() {
                   <span className="coach-metric-chip">{node.practicedCards}/{node.totalCards} cards worked</span>
                   <span className="coach-metric-chip">{node.untouchedCards} untouched</span>
                   <span className="coach-metric-chip">{node.staleCards} stale</span>
-                  <span className="coach-metric-chip">{node.overallAttemptCount} submits</span>
+                  <span className="coach-metric-chip">{node.workCount} work logged</span>
+                  <span className="coach-metric-chip">{node.ghostRepCount} Ghost Reps</span>
+                  <span className="coach-metric-chip">{node.unsupportedAttemptCount} recall attempts</span>
                 </div>
-                <button
-                  type="button"
+                <div
                   className={patternSelected ? 'skill-method-panel skill-method-panel-selected' : 'skill-method-panel'}
-                  onClick={() => setSelectedPatternSlug((current) => current === node.slug ? '' : node.slug)}
-                  aria-pressed={patternSelected}
                 >
                   <p className="skill-map-subtitle">Level 2: Core methods</p>
                   <div className="skill-method-list">
-                    {node.methods.map((method) => (
-                      <span key={method} className="skill-method-chip">{method}</span>
-                    ))}
+                    {node.methods.map((method) => {
+                      const methodSelected = selectedMethods.includes(method)
+                      return (
+                        <button
+                          key={method}
+                          type="button"
+                          className={methodSelected ? 'skill-method-chip skill-method-chip-selected' : 'skill-method-chip'}
+                          onClick={() => toggleCoreMethod(node.slug, method)}
+                          aria-pressed={methodSelected}
+                        >
+                          {method}
+                        </button>
+                      )
+                    })}
                   </div>
-                </button>
+                </div>
                 <p className="skill-map-target-note">
                   {patternSelected
-                    ? 'Core methods selected. Click a mode card to generate a focused set.'
-                    : 'Select the core-method block, then pick a mode to practice this pattern on purpose.'}
+                    ? `${selectedMethods.length} core method${selectedMethods.length === 1 ? '' : 's'} selected. Click a mode card to generate a focused set.`
+                    : 'Select one or more core methods, then pick a mode to practice this pattern on purpose.'}
                 </p>
                 <div className="dashboard-mode-grid">
                   {(['pseudo', 'skeleton', 'full'] as const).map((mode) => {
@@ -473,13 +478,13 @@ export default function DashboardPage() {
                         aria-disabled={!patternSelected}
                         onClick={() => {
                           if (!patternSelected) return
-                          launchFocusedPractice(node.slug, mode)
+                          launchFocusedPractice(node.slug, mode, selectedMethods)
                         }}
                         onKeyDown={(event) => {
                           if (!patternSelected) return
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault()
-                            launchFocusedPractice(node.slug, mode)
+                            launchFocusedPractice(node.slug, mode, selectedMethods)
                           }
                         }}
                       >
@@ -489,25 +494,32 @@ export default function DashboardPage() {
                             {modeSummary.readiness}%
                           </span>
                         </div>
-                        <p className="dashboard-mode-meta">
-                          {modeSummary.practicedCards}/{modeSummary.totalCards} cards · {modeSummary.attemptCount} submits
-                        </p>
-                        <p className="dashboard-mode-meta">
-                          Avg {modeSummary.avgAccuracy}% · {modeSummary.stale ? 'Review due' : 'Fresh enough'}
-                        </p>
-                        {modeSummary.dimensionSummary?.rubricAttemptCount ? (
+                        {patternSelected && (
                           <>
                             <p className="dashboard-mode-meta">
-                              Weak spot: {formatWeakDimension(modeSummary.dimensionSummary)}
+                              {modeSummary.practicedCards}/{modeSummary.totalCards} cards · {modeSummary.workCount} reps logged
                             </p>
-                            {formatPrimaryFailure(modeSummary.dimensionSummary) && (
-                              <p className="dashboard-mode-meta">
-                                Primary miss: {formatPrimaryFailure(modeSummary.dimensionSummary)}
-                              </p>
+                            <p className="dashboard-mode-meta">
+                              {modeSummary.ghostRepCount} Ghost Reps · {modeSummary.unsupportedAttemptCount} recall attempts
+                            </p>
+                            <p className="dashboard-mode-meta">
+                              Avg {modeSummary.avgAccuracy}% · {modeSummary.stale ? 'Review due' : 'Fresh enough'}
+                            </p>
+                            {modeSummary.dimensionSummary?.rubricAttemptCount ? (
+                              <>
+                                <p className="dashboard-mode-meta">
+                                  Weak spot: {formatWeakDimension(modeSummary.dimensionSummary)}
+                                </p>
+                                {formatPrimaryFailure(modeSummary.dimensionSummary) && (
+                                  <p className="dashboard-mode-meta">
+                                    Primary miss: {formatPrimaryFailure(modeSummary.dimensionSummary)}
+                                  </p>
+                                )}
+                              </>
+                            ) : (
+                              <p className="dashboard-mode-meta">Rubric history starts on the next submit.</p>
                             )}
                           </>
-                        ) : (
-                          <p className="dashboard-mode-meta">Rubric history starts on the next submit.</p>
                         )}
                         <DashboardModeActivityTracker
                           modeLabel={modeLabel}
@@ -515,12 +527,12 @@ export default function DashboardPage() {
                           onOpenCalendar={(nextModeLabel, nextModeSummary) =>
                             setActiveCalendar({ modeLabel: nextModeLabel, modeSummary: nextModeSummary })}
                         />
-                        <p className="dashboard-mode-launch-hint">
-                          {patternSelected
-                            ? `Generate focused ${modeLabel.toLowerCase()} set`
-                            : 'Select core methods first'}
-                        </p>
-                        {(modeSummary.untouchedCards > 0 || modeSummary.staleCards > 0) && (
+                        {patternSelected && (
+                          <p className="dashboard-mode-launch-hint">
+                            Generate focused {modeLabel.toLowerCase()} set
+                          </p>
+                        )}
+                        {patternSelected && (modeSummary.untouchedCards > 0 || modeSummary.staleCards > 0) && (
                           <div className="dashboard-summary">
                             {modeSummary.untouchedCards > 0 && (
                               <span className="coach-metric-chip">{modeSummary.untouchedCards} untouched</span>
@@ -539,47 +551,65 @@ export default function DashboardPage() {
           })}
         </div>
 
-        {reviewQueue.length > 0 && (
-          <section className="dashboard-review-queue">
-            <h3>Repair Queue</h3>
-            <p className="skill-map-intro">
-              Start here when a pattern keeps failing for the same reason.
-            </p>
-            <div className="practice-history-list">
-              {reviewQueue.map((item) => (
-                <article key={`${item.cardId}-${item.templateMode}`} className="practice-history-entry">
-                  <div className="practice-history-entry-top">
-                    <div>
-                      <p className="practice-history-title">{item.title || item.cardId}</p>
-                      <p className="practice-history-meta">
-                        {item.pattern} · {formatTemplateModeLabel(item.templateMode)} · {item.attemptCount} submits
-                      </p>
-                    </div>
-                    <span className={`coach-status-value coach-status-value-${readinessTone(item.readiness)}`}>
-                      {item.readiness}%
-                    </span>
-                  </div>
-                  <p className="practice-history-feedback">
-                    {item.daysSinceLastSubmit === null
-                      ? 'No recent submit stored.'
-                      : item.daysSinceLastSubmit === 0
-                        ? 'Practiced today.'
-                        : `${item.daysSinceLastSubmit} day${item.daysSinceLastSubmit === 1 ? '' : 's'} since last submit.`}
-                    {item.stale ? ' Review due.' : ''}
-                  </p>
-                  {item.dimensionSummary?.rubricAttemptCount ? (
-                    <div className="practice-history-focuses">
-                      <span className="coach-metric-chip">Repair {formatWeakDimension(item.dimensionSummary)}</span>
-                      {formatPrimaryFailure(item.dimensionSummary) && (
-                        <span className="coach-metric-chip">Primary {formatPrimaryFailure(item.dimensionSummary)}</span>
-                      )}
-                    </div>
-                  ) : null}
-                </article>
-              ))}
+        <div className="dashboard-overview">
+          <h2>Readiness Overview</h2>
+          <p className="skill-map-intro">
+            Readiness rises on strong independent recall, supported work is tracked separately, and stale skills decay after a few days without practice.
+          </p>
+          {summary && (
+            <div className="dashboard-summary">
+              <span className="coach-metric-chip">{summary.avgPatternReadiness}% avg pattern readiness</span>
+              <span className="coach-metric-chip">{summary.workCount} work logged</span>
+              <span className="coach-metric-chip">{summary.ghostRepCount} Ghost Reps</span>
+              <span className="coach-metric-chip">{summary.unsupportedAttemptCount} recall attempts</span>
+              <span className="coach-metric-chip">{summary.attemptedCards}/{summary.totalGeneratedCards} cards worked</span>
+              <span className="coach-metric-chip">{summary.untouchedCards} untouched cards</span>
+              <span className="coach-metric-chip">{summary.staleCards} stale cards</span>
+              <span className="coach-metric-chip">{summary.patternsStarted} patterns started</span>
+              <span className="coach-metric-chip">{summary.patternsUntouched} untouched patterns</span>
             </div>
-          </section>
-        )}
+          )}
+          {summary && patterns.some((node) => (node.dimensionSummary?.weakDimensions?.length ?? 0) > 0) && (
+            <section className="dashboard-dimension-panel">
+              <div>
+                <p className="dashboard-activity-eyebrow">Dimension History</p>
+                <h3>Repeated repair targets</h3>
+              </div>
+              <div className="dashboard-dimension-grid">
+                {patterns
+                  .filter((node) => (node.dimensionSummary?.weakDimensions?.length ?? 0) > 0)
+                  .slice(0, 6)
+                  .map((node) => {
+                    const weakDimensions = node.dimensionSummary.weakDimensions ?? []
+                    return (
+                      <article key={node.slug} className="dashboard-dimension-row">
+                        <div>
+                          <strong>{node.pattern}</strong>
+                          <p className="dashboard-mode-meta">{formatPrimaryFailure(node.dimensionSummary) || 'No primary failure trend yet'}</p>
+                        </div>
+                        <div className="dashboard-dimension-chips">
+                          {weakDimensions.slice(0, 4).map((dimension) => (
+                            <span
+                              key={`${node.slug}-${dimension.key}`}
+                              className={`dashboard-dimension-chip dashboard-dimension-chip-${dimensionTone(dimension.avgScore)}`}
+                              title={`${dimensionLabel(dimension)} · ${dimension.avgScore ?? 0}% average`}
+                            >
+                              {dimensionLabel(dimension)}
+                            </span>
+                          ))}
+                        </div>
+                      </article>
+                    )
+                  })}
+              </div>
+            </section>
+          )}
+          {summary && (
+            <p className="skill-map-intro">
+              Strong submit threshold: {summary.successThreshold}% • Review becomes due after about {summary.staleAfterDays} days.
+            </p>
+          )}
+        </div>
       </section>
       {activeCalendar && (
         <DashboardActivityModal

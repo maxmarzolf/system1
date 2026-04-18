@@ -31,8 +31,8 @@ async def create_attempt(body: AttemptCreate):
                 (card_id, card_title, question, question_type, category_tags,
                  correct_answer, user_answer, mode, correct, accuracy, exact, elapsed_ms,
                  interaction_id, generated_card_id, generated_card, template_mode,
-                 live_coach_used, coach_feedback, submission_rubric, created_at, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+                 support_layer, live_coach_used, coach_feedback, submission_rubric, created_at, updated_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
             RETURNING id
             """,
             body.cardId,
@@ -51,6 +51,7 @@ async def create_attempt(body: AttemptCreate):
             body.generatedCardId,
             _json.dumps(body.generatedCard) if body.generatedCard else None,
             body.templateMode.value,
+            body.supportLayer.value,
             body.liveCoachUsed,
             _json.dumps(body.coachFeedback) if body.coachFeedback else None,
             _json.dumps(submission_rubric) if submission_rubric else None,
@@ -196,6 +197,16 @@ def _build_mode_activity(attempts: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _build_support_counts(attempts: list[dict[str, Any]]) -> dict[str, int]:
+    ghost_rep_count = sum(1 for attempt in attempts if str(attempt.get("supportLayer", "none")) == "ghost-reps")
+    unsupported_attempt_count = len(attempts) - ghost_rep_count
+    return {
+        "ghostRepCount": ghost_rep_count,
+        "unsupportedAttemptCount": unsupported_attempt_count,
+        "workCount": len(attempts),
+    }
+
+
 @router.get("/skill-map-overview", response_model=SkillMapOverviewResponse)
 async def get_skill_map_overview():
     pool = get_pool()
@@ -229,6 +240,7 @@ async def get_skill_map_overview():
                 sa.accuracy,
                 sa.created_at,
                 sa.template_mode,
+                sa.support_layer,
                 sa.live_coach_used,
                 sa.submission_rubric
             FROM score_attempts sa
@@ -271,12 +283,19 @@ async def get_skill_map_overview():
     attempts_by_card_mode: dict[tuple[str, str], list[dict[str, Any]]] = {}
     attempts_by_pattern_mode: dict[tuple[str, str], list[dict[str, Any]]] = {}
     attempted_card_ids: set[str] = set()
+    total_ghost_rep_count = 0
+    total_unsupported_attempt_count = 0
 
     for row in attempt_rows:
         card_id = str(row["tracked_card_id"] or "").strip()
         if not card_id:
             continue
         template_mode = str(row["template_mode"] or "full").strip() or "full"
+        support_layer = str(row["support_layer"] or "none")
+        if support_layer == "ghost-reps":
+            total_ghost_rep_count += 1
+        else:
+            total_unsupported_attempt_count += 1
         category_tags = [str(tag) for tag in (row["category_tags"] or [])]
         matched_pattern_slugs = [tag for tag in category_tags if tag in known_pattern_slugs]
 
@@ -292,6 +311,7 @@ async def get_skill_map_overview():
         attempt = {
             "accuracy": float(row["accuracy"] or 0),
             "created_at": row["created_at"],
+            "supportLayer": support_layer,
             "liveCoachUsed": bool(row["live_coach_used"]),
             "submissionRubric": compact_submission_rubric(row["submission_rubric"]),
         }
@@ -310,15 +330,21 @@ async def get_skill_map_overview():
         practiced_cards_any_mode: set[str] = set()
         stale_cards_any_mode: set[str] = set()
         overall_attempt_count = 0
+        overall_ghost_rep_count = 0
+        overall_unsupported_attempt_count = 0
 
         for template_mode in READINESS_MODE_ORDER:
-            readiness_summary = summarize_readiness(attempts_by_pattern_mode.get((slug, template_mode), []))
+            pattern_mode_attempts = attempts_by_pattern_mode.get((slug, template_mode), [])
+            readiness_summary = summarize_readiness(pattern_mode_attempts)
+            mode_support_counts = _build_support_counts(pattern_mode_attempts)
             practiced_card_ids = {
                 card_id for card_id in pattern_card_ids if attempts_by_card_mode.get((card_id, template_mode))
             }
             stale_card_count = 0
             for card_id in practiced_card_ids:
-                card_readiness = summarize_readiness(attempts_by_card_mode.get((card_id, template_mode), []))
+                card_attempts = attempts_by_card_mode.get((card_id, template_mode), [])
+                card_readiness = summarize_readiness(card_attempts)
+                card_support_counts = _build_support_counts(card_attempts)
                 if card_readiness["stale"]:
                     stale_card_count += 1
                     stale_cards_any_mode.add(card_id)
@@ -329,26 +355,30 @@ async def get_skill_map_overview():
                     "templateMode": template_mode,
                     "readiness": card_readiness["readiness"],
                     "attemptCount": card_readiness["attemptCount"],
+                    **card_support_counts,
                     "daysSinceLastSubmit": card_readiness["daysSinceLastSubmit"],
                     "stale": card_readiness["stale"],
                     "dimensionSummary": summarize_submission_rubrics(
-                        attempts_by_card_mode.get((card_id, template_mode), [])
+                        card_attempts
                     ),
                 }
 
             practiced_cards_any_mode.update(practiced_card_ids)
             mode_summaries[template_mode] = {
                 **readiness_summary,
+                **mode_support_counts,
                 "totalCards": len(pattern_card_ids),
                 "practicedCards": len(practiced_card_ids),
                 "untouchedCards": max(len(pattern_card_ids) - len(practiced_card_ids), 0),
                 "staleCards": stale_card_count,
                 "dimensionSummary": summarize_submission_rubrics(
-                    attempts_by_pattern_mode.get((slug, template_mode), [])
+                    pattern_mode_attempts
                 ),
-                "activity": _build_mode_activity(attempts_by_pattern_mode.get((slug, template_mode), [])),
+                "activity": _build_mode_activity(pattern_mode_attempts),
             }
             overall_attempt_count += int(readiness_summary["attemptCount"])
+            overall_ghost_rep_count += int(mode_support_counts["ghostRepCount"])
+            overall_unsupported_attempt_count += int(mode_support_counts["unsupportedAttemptCount"])
 
         overall_readiness = round(
             sum(float(mode_summaries[mode]["readiness"]) for mode in READINESS_MODE_ORDER) / len(READINESS_MODE_ORDER),
@@ -360,6 +390,9 @@ async def get_skill_map_overview():
             "methods": pattern["methods"],
             "overallReadiness": overall_readiness,
             "overallAttemptCount": overall_attempt_count,
+            "ghostRepCount": overall_ghost_rep_count,
+            "unsupportedAttemptCount": overall_unsupported_attempt_count,
+            "workCount": overall_attempt_count,
             "totalCards": len(pattern_card_ids),
             "practicedCards": len(practiced_cards_any_mode),
             "untouchedCards": max(len(pattern_card_ids) - len(practiced_cards_any_mode), 0),
@@ -398,6 +431,9 @@ async def get_skill_map_overview():
             "attemptedCards": len(attempted_card_ids),
             "untouchedCards": max(len(generated_cards) - len(attempted_card_ids), 0),
             "staleCards": len(stale_card_ids),
+            "ghostRepCount": total_ghost_rep_count,
+            "unsupportedAttemptCount": total_unsupported_attempt_count,
+            "workCount": total_ghost_rep_count + total_unsupported_attempt_count,
             "patternsStarted": sum(1 for item in pattern_summaries if item["overallAttemptCount"] > 0),
             "patternsUntouched": sum(1 for item in pattern_summaries if item["overallAttemptCount"] == 0),
             "avgPatternReadiness": avg_pattern_readiness,

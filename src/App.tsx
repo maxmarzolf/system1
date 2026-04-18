@@ -32,8 +32,8 @@ const emptySkillMapCard: Flashcard = {
   tags: ['skill-map'],
 }
 
-type SessionOrder = 'shuffled' | 'original'
 type TemplateMode = 'pseudo' | 'skeleton' | 'full'
+type SupportLayer = 'none' | 'ghost-reps'
 type TemplateModeResult = {
   accuracy: number
   elapsedMs: number
@@ -50,6 +50,7 @@ type AttemptPayload = {
   elapsedMs: number
   interactionId: string
   templateMode: TemplateMode
+  supportLayer: SupportLayer
   liveCoachUsed: boolean
   coachFeedback?: CoachAttemptFeedback | null
   submissionRubric?: Record<string, unknown> | null
@@ -94,6 +95,15 @@ type SkillMapDrillsResponse = {
   llmUsed: boolean
 }
 
+type SkillMapDrillsRequest = {
+  questionType: string
+  count: number
+  skillMap: SkillMapNode[]
+  templateMode: TemplateMode
+  templateTargets: Record<string, Partial<Record<TemplateMode, string>>>
+  llmProvider: LlmProvider
+}
+
 type AdaptiveVariationResponse = {
   drill: Flashcard
   targetDimension: string
@@ -126,6 +136,7 @@ type RecallAttemptSnapshot = {
   accuracy: number
   exact: boolean
   elapsedMs: number
+  supportLayer: SupportLayer
   usedPlaceholder: boolean
   hasGuard: boolean
   hasBookkeeping: boolean
@@ -154,6 +165,32 @@ const LLM_PROVIDER_OPTIONS: Array<{ value: LlmProvider, label: string }> = [
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 const apiUrl = (path: string) => `${API_BASE_URL}${path}`
+const skillMapDeckRequestCache = new Map<string, Promise<SkillMapDrillsResponse>>()
+
+const requestSkillMapDrills = (body: SkillMapDrillsRequest) => {
+  const requestKey = JSON.stringify(body)
+  const existingRequest = skillMapDeckRequestCache.get(requestKey)
+  if (existingRequest) return existingRequest
+
+  const request = fetch(apiUrl('/api/coach/skill-map-drills'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: requestKey,
+  })
+    .then(async (response) => {
+      if (!response.ok) throw new Error('Unable to generate skill map drills')
+      return (await response.json()) as SkillMapDrillsResponse
+    })
+    .finally(() => {
+      if (skillMapDeckRequestCache.get(requestKey) === request) {
+        skillMapDeckRequestCache.delete(requestKey)
+      }
+    })
+
+  skillMapDeckRequestCache.set(requestKey, request)
+  return request
+}
+
 const TEMPLATE_MODE_ORDER: TemplateMode[] = ['pseudo', 'skeleton', 'full']
 const DEFAULT_TEMPLATE_MODES: TemplateMode[] = ['full']
 const TEMPLATE_MODE_LABELS: Record<TemplateMode, string> = {
@@ -208,15 +245,6 @@ const getTemplatePatternTag = (pattern: string) => {
   const slug = patternToSlug(pattern)
   if (slug === 'heap-priority-queue') return 'heap'
   return getPrimaryPatternTag([slug])
-}
-
-const shuffle = <T,>(array: T[]): T[] => {
-  const shuffled = [...array]
-  for (let i = shuffled.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
-  }
-  return shuffled
 }
 
 const normalizeTyping = (value: string) =>
@@ -601,12 +629,14 @@ const summarizeRecallAttempt = (
   exact: boolean,
   elapsedMs: number,
   attemptNumber: number,
-  templateMode: TemplateMode
+  templateMode: TemplateMode,
+  supportLayer: SupportLayer
 ): RecallAttemptSnapshot => ({
   attemptNumber,
   accuracy,
   exact,
   elapsedMs,
+  supportLayer,
   usedPlaceholder: actualLines.some((line) => isPlaceholderLine(line)),
   hasGuard: actualLines.some((line) => /^\s*if\b/.test(line) && /not|visited|seen|< 0|>=/.test(line)),
   hasBookkeeping: actualLines.some((line) =>
@@ -691,8 +721,8 @@ function App() {
   const { theme } = useTheme()
   const [searchParams] = useSearchParams()
   const questionType = 'skill-map' as const
-  const [sessionOrderType, setSessionOrderType] = useState<SessionOrder>('original')
   const [enabledTemplateModes, setEnabledTemplateModes] = useState<TemplateMode[]>(() => [...DEFAULT_TEMPLATE_MODES])
+  const [supportLayer, setSupportLayer] = useState<SupportLayer>('none')
   const [skillMapDeck, setSkillMapDeck] = useState<Flashcard[]>([])
   const [skillMapLoading, setSkillMapLoading] = useState(false)
   const [skillMapError, setSkillMapError] = useState('')
@@ -741,6 +771,7 @@ function App() {
   const [sessionPlanError, setSessionPlanError] = useState('')
   const mainInputRef = useRef<HTMLTextAreaElement | null>(null)
   const mainHighlightRef = useRef<HTMLDivElement | null>(null)
+  const mainGhostRef = useRef<HTMLDivElement | null>(null)
   const mainGutterRef = useRef<HTMLDivElement | null>(null)
   const llmProviderMenuRef = useRef<HTMLDivElement | null>(null)
   const currentCardIdRef = useRef('')
@@ -754,6 +785,8 @@ function App() {
   const adaptiveVariationRequestKeyRef = useRef('')
   const focusedPatternSlug = searchParams.get('focusPattern')?.trim() || ''
   const focusedModeParam = searchParams.get('focusMode')?.trim() || ''
+  const focusedMethodParams = searchParams.getAll('focusMethod').map((method) => method.trim()).filter(Boolean)
+  const focusedMethodSignature = focusedMethodParams.join('\u0000')
   const focusedPatternNode = useMemo(
     () => skillMap.find((node) => patternToSlug(node.pattern) === focusedPatternSlug) ?? null,
     [focusedPatternSlug]
@@ -766,11 +799,16 @@ function App() {
   }, [focusedModeParam])
   const requestedSkillMap = useMemo<SkillMapNode[]>(() => {
     if (!focusedPatternNode) return skillMap
-    return focusedPatternNode.methods.map((method) => ({
+    const focusedMethodSet = new Set(focusedMethodParams)
+    const focusedMethods = focusedMethodSet.size > 0
+      ? focusedPatternNode.methods.filter((method) => focusedMethodSet.has(method))
+      : focusedPatternNode.methods
+    const requestedMethods = focusedMethods.length > 0 ? focusedMethods : focusedPatternNode.methods
+    return requestedMethods.map((method) => ({
       pattern: focusedPatternNode.pattern,
       methods: [method],
     }))
-  }, [focusedPatternNode])
+  }, [focusedPatternNode, focusedMethodSignature])
   const requestedSkillMapSignature = useMemo(
     () => JSON.stringify(requestedSkillMap),
     [requestedSkillMap]
@@ -789,8 +827,9 @@ function App() {
     return targets
   }, [requestedSkillMap])
   const requestedQuestionType = focusedPatternNode ? 'skill-map-targeted' : questionType
+  const targetedMethodCount = requestedSkillMap.length
   const targetedDeckLabel = focusedPatternNode
-    ? `${focusedPatternNode.pattern} • ${focusedTemplateMode ? TEMPLATE_MODE_LABELS[focusedTemplateMode] : 'Focused'}`
+    ? `${focusedPatternNode.pattern} • ${focusedTemplateMode ? TEMPLATE_MODE_LABELS[focusedTemplateMode] : 'Focused'} • ${targetedMethodCount} method${targetedMethodCount === 1 ? '' : 's'}`
     : ''
 
   const filteredDeck = useMemo(() => skillMapDeck, [skillMapDeck])
@@ -813,20 +852,14 @@ function App() {
     setSkillMapDeck([])
 
     try {
-      const response = await fetch(apiUrl('/api/coach/skill-map-drills'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          questionType: requestedQuestionType,
-          count: requestedSkillMap.length,
-          skillMap: requestedSkillMap,
-          templateMode: requestedTemplateMode,
-          templateTargets: requestedTemplateTargets,
-          llmProvider,
-        }),
+      const payload = await requestSkillMapDrills({
+        questionType: requestedQuestionType,
+        count: requestedSkillMap.length,
+        skillMap: requestedSkillMap,
+        templateMode: requestedTemplateMode,
+        templateTargets: requestedTemplateTargets,
+        llmProvider,
       })
-      if (!response.ok) throw new Error('Unable to generate skill map drills')
-      const payload = (await response.json()) as SkillMapDrillsResponse
       if (skillMapDeckRequestVersionRef.current !== requestVersion) return
       setSkillMapDeck(payload.drills)
       setSkillMapSessionVersion((prev) => prev + 1)
@@ -843,10 +876,7 @@ function App() {
   }
 
   const startSession = () => {
-    const baseOrder = Array.from({ length: filteredDeck.length }, (_, idx) => idx)
-    const nextOrder = sessionOrderType === 'shuffled' ? shuffle(baseOrder) : baseOrder
-
-    setSessionOrder(nextOrder)
+    setSessionOrder(Array.from({ length: filteredDeck.length }, (_, idx) => idx))
     setSessionPosition(0)
     setSessionFinished(false)
     setCurrentTemplateModeIndex(0)
@@ -892,7 +922,7 @@ function App() {
     if (skillMapLoading) return
     startSession()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [skillMapSessionVersion, sessionOrderType, skillMapLoading])
+  }, [skillMapSessionVersion, skillMapLoading])
 
   useEffect(() => {
     if (!llmProviderMenuOpen) return
@@ -950,6 +980,7 @@ function App() {
   currentCardIdRef.current = card.id
 
   const hasDeck = filteredDeck.length > 0
+  const isGhostRepsEnabled = supportLayer === 'ghost-reps'
   const hasAnsweredCurrent = Object.prototype.hasOwnProperty.call(sessionResults, card.id)
   const sessionCounterText =
     sessionOrder.length === 0
@@ -985,16 +1016,25 @@ function App() {
     skeleton: 'Write the skeleton from memory',
     full: 'Type the full answer from memory',
   }[currentTemplateMode]
+  const supportedPracticeInputLabel = isGhostRepsEnabled
+    ? `${practiceInputLabel} with Ghost Reps`
+    : practiceInputLabel
   const practicePlaceholder = {
     pseudo: 'Write the algorithm in plain text or mixed Python and prose...',
     skeleton: 'Write the skeleton and invariant comments from memory...',
     full: 'Type the full solution from memory...',
   }[currentTemplateMode]
+  const supportedPracticePlaceholder = isGhostRepsEnabled
+    ? `Trace the faint ${currentTemplateLabel.toLowerCase()} target here...`
+    : practicePlaceholder
   const startRecallLabel = {
     pseudo: 'Hide pseudocode and start recall',
     skeleton: 'Hide skeleton and start recall',
     full: 'Hide answer and start recall',
   }[currentTemplateMode]
+  const supportedStartRecallLabel = isGhostRepsEnabled
+    ? `Start Ghost Reps for ${currentTemplateLabel}`
+    : startRecallLabel
   const templateProgressText = `Practice order: ${activeTemplateModes.map((mode) => TEMPLATE_MODE_LABELS[mode]).join(' -> ')} · Current: ${currentTemplateLabel} ${currentTemplateModeIndex + 1}/${activeTemplateModes.length}`
 
   const completeCardInSession = (isCorrect: boolean, accuracy: number, elapsedMs?: number) => {
@@ -1033,6 +1073,7 @@ function App() {
           generatedCardId: card.id,
           generatedCard: { ...card, prompt: practicePrompt },
           templateMode: payload.templateMode,
+          supportLayer: payload.supportLayer,
           liveCoachUsed: payload.liveCoachUsed,
           coachFeedback: payload.coachFeedback ?? null,
           submissionRubric: payload.submissionRubric ?? null,
@@ -1141,6 +1182,10 @@ function App() {
     setLiveCoachLoading(false)
     setLiveCoachError('')
     setLiveCoachUsedThisAttempt(false)
+    setCoachFeedback(null)
+    setCoachLoading(false)
+    setCoachError('')
+    setSubmissionFailureModal(null)
     setAdaptiveVariationLoading(false)
     setAdaptiveVariationError('')
     setAdaptiveVariationNote('')
@@ -1212,6 +1257,10 @@ function App() {
     if (mainHighlightRef.current) {
       mainHighlightRef.current.scrollTop = e.currentTarget.scrollTop
       mainHighlightRef.current.scrollLeft = e.currentTarget.scrollLeft
+    }
+    if (mainGhostRef.current) {
+      mainGhostRef.current.scrollTop = e.currentTarget.scrollTop
+      mainGhostRef.current.scrollLeft = e.currentTarget.scrollLeft
     }
     if (mainGutterRef.current) {
       mainGutterRef.current.scrollTop = e.currentTarget.scrollTop
@@ -1502,7 +1551,6 @@ function App() {
         body: JSON.stringify({
           mode: 'main-recall',
           questionType: requestedQuestionType,
-          orderType: sessionOrderType,
           attempts,
           correctCount,
           avgAccuracy,
@@ -1541,7 +1589,8 @@ function App() {
     const evaluation = await evaluateSubmittedRecall(normalizedTarget, normalizedInput)
     const accuracy = Math.round(evaluation.accuracy)
     const sound = evaluation.sound
-    const closeEnough = sound
+    const isGhostRep = supportLayer === 'ghost-reps'
+    const closeEnough = !isGhostRep && sound
     const historyKey = `${card.id}:${currentTemplateMode}`
     const currentHistory = mainRecallHistoryByCard[historyKey] ?? []
     const attemptSnapshot = summarizeRecallAttempt(
@@ -1550,7 +1599,8 @@ function App() {
       sound,
       elapsedMs,
       currentHistory.length + 1,
-      currentTemplateMode
+      currentTemplateMode,
+      supportLayer
     )
     const nextTemplateResults = closeEnough
       ? {
@@ -1569,15 +1619,17 @@ function App() {
       setCurrentCardTemplateResults(nextTemplateResults)
     }
 
-    const feedback = await fetchCoachAttemptFeedback({
-      interactionId,
-      expectedAnswer: normalizedTarget,
-      userAnswer: normalizedInput,
-      elapsedMs,
-      accuracy,
-      exact: sound,
-      previousAttempts: currentHistory,
-    })
+    const feedback = isGhostRep
+      ? null
+      : await fetchCoachAttemptFeedback({
+          interactionId,
+          expectedAnswer: normalizedTarget,
+          userAnswer: normalizedInput,
+          elapsedMs,
+          accuracy,
+          exact: sound,
+          previousAttempts: currentHistory,
+        })
 
     await submitAttemptToServer({
       mode: 'main-recall',
@@ -1589,12 +1641,13 @@ function App() {
       elapsedMs,
       interactionId,
       templateMode: currentTemplateMode,
+      supportLayer,
       liveCoachUsed: liveCoachUsedThisAttempt,
       coachFeedback: feedback,
       submissionRubric: feedback?.submissionRubric ?? null,
     })
 
-    if (!sound && feedback?.submissionRubric) {
+    if (!isGhostRep && !sound && feedback?.submissionRubric) {
       void requestAdaptiveVariation({
         interactionId,
         expectedAnswer: normalizedTarget,
@@ -1603,7 +1656,7 @@ function App() {
       })
     }
 
-    if (closeEnough && currentTemplateModeIndex >= activeTemplateModes.length - 1) {
+    if (!isGhostRep && closeEnough && currentTemplateModeIndex >= activeTemplateModes.length - 1) {
       const completedModes = activeTemplateModes
         .map((mode) => nextTemplateResults[mode])
         .filter((item): item is TemplateModeResult => Boolean(item))
@@ -1621,6 +1674,20 @@ function App() {
     setMainPhase('typing')
     setMainStartedAt(Date.now())
     setCurrentInteractionId(createInteractionId())
+    lastMainInputEditAtRef.current = Date.now()
+    lastIdleLiveCoachRefreshAtRef.current = 0
+  }
+
+  const repeatGhostRep = () => {
+    if (!hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'submitted') return
+    setMainPhase('typing')
+    setMainInput('')
+    setMainStartedAt(Date.now())
+    setMainCloseEnough(false)
+    setCurrentInteractionId(createInteractionId())
+    setCoachFeedback(null)
+    setCoachError('')
+    setSubmissionFailureModal(null)
     lastMainInputEditAtRef.current = Date.now()
     lastIdleLiveCoachRefreshAtRef.current = 0
   }
@@ -1672,7 +1739,7 @@ function App() {
   const displayLines = useMemo(() => {
     const source = mainPhase === 'submitted'
       ? (mainInput || '')
-      : (mainInput || `# ${practicePlaceholder}`)
+      : (mainInput || (isGhostRepsEnabled ? '' : `# ${practicePlaceholder}`))
 
     return source
       .split('\n')
@@ -1682,7 +1749,7 @@ function App() {
           sourceLineNumber: source.length > 0 ? index + 1 : null,
         })
       )
-  }, [mainInput, mainPhase, practicePlaceholder])
+  }, [isGhostRepsEnabled, mainInput, mainPhase, practicePlaceholder])
   const displayCode = useMemo(
     () => displayLines.map((line) => line.text).join('\n'),
     [displayLines]
@@ -1720,6 +1787,7 @@ function App() {
   })
   const latestSubmittedAttempt =
     mainPhase === 'submitted' ? currentCardRecallHistory[currentCardRecallHistory.length - 1] ?? null : null
+  const latestSubmittedWasGhostRep = latestSubmittedAttempt?.supportLayer === 'ghost-reps'
   const submissionFeedbackNextStep =
     coachFeedback?.immediateCorrection || coachFeedback?.primaryFocus || `Review the drifted step, then rewrite the ${currentTemplateMode} template once more.`
   const showGeneratingSubmissionFeedback = coachLoading && !coachFeedback
@@ -1729,10 +1797,14 @@ function App() {
     .map((paragraph) => paragraph.trim())
     .filter(Boolean)
   const submissionCorrectedVersion = (coachFeedback?.correctedVersion || '').trim()
-  const submissionResultLabel = latestSubmittedAttempt?.exact ? 'Sound' : 'Needs work'
+  const submissionResultLabel = latestSubmittedWasGhostRep
+    ? 'Ghost Rep'
+    : latestSubmittedAttempt?.exact
+      ? 'Sound'
+      : 'Needs work'
   const submissionResultTone = latestSubmittedAttempt?.exact
     ? 'success'
-    : mainCloseEnough
+    : latestSubmittedWasGhostRep || mainCloseEnough
       ? 'warning'
       : 'error'
   const submissionCoachLabel = !coachFeedback
@@ -1750,6 +1822,8 @@ function App() {
     ? hasNextTemplateMode && nextTemplateMode
       ? `${currentTemplateLabel} template recorded. Continue to ${TEMPLATE_MODE_LABELS[nextTemplateMode]}.`
       : `${currentTemplateLabel} template recorded.`
+    : latestSubmittedWasGhostRep
+      ? `Ghost rep logged for ${currentTemplateLabel}. Repeat it until the shape starts to stick.`
     : `This ${currentTemplateMode} attempt is not sound yet. Revise the logic and submit again.`
   const showSubmittedLineReview = mainPhase === 'submitted' && !mainCloseEnough && currentTemplateMode !== 'pseudo'
 
@@ -1856,9 +1930,6 @@ function App() {
       )}
 
       <TopNav
-        activeLabel="Skill Map"
-        sessionOrderType={sessionOrderType}
-        onSessionOrderTypeChange={setSessionOrderType}
         llmProviderLabel={LLM_PROVIDER_OPTIONS.find((option) => option.value === llmProvider)?.label ?? 'ChatGPT'}
         llmProviderMenuOpen={llmProviderMenuOpen}
         onToggleLlmProviderMenu={() => setLlmProviderMenuOpen((open) => !open)}
@@ -1885,8 +1956,6 @@ function App() {
             </div>
           ) : undefined
         }
-        liveEnabled={liveCoachTuning.enabled}
-        onToggleLive={toggleLiveFeedback}
         sessionCounterText={sessionCounterText}
         practiceHistoryHref={practiceHistoryHref}
       />
@@ -1899,7 +1968,7 @@ function App() {
             <p className="card-template-summary">{templateProgressText}</p>
             {focusedPatternNode && (
               <p className="card-template-summary">
-                Focused deck: {targetedDeckLabel} core methods
+                Focused deck: {targetedDeckLabel}
               </p>
             )}
           </div>
@@ -1921,6 +1990,32 @@ function App() {
                   </button>
                 )
               })}
+            </div>
+            <div className="support-layer-control" aria-label="Practice support controls">
+              <button
+                type="button"
+                className={isGhostRepsEnabled ? 'navbar-toggle active' : 'navbar-toggle'}
+                onClick={() => setSupportLayer(isGhostRepsEnabled ? 'none' : 'ghost-reps')}
+                aria-pressed={isGhostRepsEnabled}
+                aria-label={isGhostRepsEnabled ? 'Turn Ghost Reps off' : 'Turn Ghost Reps on'}
+              >
+                <span className="navbar-toggle-label">Ghost Reps</span>
+                <span className={isGhostRepsEnabled ? 'navbar-toggle-state on' : 'navbar-toggle-state off'}>
+                  {isGhostRepsEnabled ? 'On' : 'Off'}
+                </span>
+              </button>
+              <button
+                type="button"
+                className={liveCoachTuning.enabled ? 'navbar-toggle active' : 'navbar-toggle'}
+                onClick={toggleLiveFeedback}
+                aria-pressed={liveCoachTuning.enabled}
+                aria-label={liveCoachTuning.enabled ? 'Turn live feedback off' : 'Turn live feedback on'}
+              >
+                <span className="navbar-toggle-label">Live</span>
+                <span className={liveCoachTuning.enabled ? 'navbar-toggle-state on' : 'navbar-toggle-state off'}>
+                  {liveCoachTuning.enabled ? 'On' : 'Off'}
+                </span>
+              </button>
             </div>
             <div className="tags">
               {card.tags.map((tag) => (
@@ -1992,14 +2087,28 @@ function App() {
                   <SyntaxHighlighter
                     language={practiceLanguage}
                     style={syntaxTheme}
-                    customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
-                    codeTagProps={{ style: { background: 'transparent' } }}
+                    customStyle={{
+                      margin: 0,
+                      padding: 0,
+                      background: 'transparent',
+                      fontFamily: 'inherit',
+                      fontSize: 'inherit',
+                      lineHeight: 'inherit',
+                    }}
+                    codeTagProps={{
+                      style: {
+                        background: 'transparent',
+                        fontFamily: 'inherit',
+                        fontSize: 'inherit',
+                        lineHeight: 'inherit',
+                      },
+                    }}
                   >
                     {practiceTarget}
                   </SyntaxHighlighter>
                 </div>
                 <div className="actions">
-                  <button onClick={startMainRecall} disabled={!hasDeck || hasAnsweredCurrent || sessionFinished}>{startRecallLabel}</button>
+                  <button onClick={startMainRecall} disabled={!hasDeck || hasAnsweredCurrent || sessionFinished}>{supportedStartRecallLabel}</button>
                 </div>
               </>
             )}
@@ -2007,7 +2116,7 @@ function App() {
             {hasDeck && mainPhase !== 'preview' && (
               <>
                 <label className="answer-label" htmlFor="main-recall-input">
-                  {practiceInputLabel}
+                  {supportedPracticeInputLabel}
                 </label>
                 <div className="vscode-editor-container">
                   <div className="vscode-tabs">
@@ -2032,6 +2141,34 @@ function App() {
                         })}
                       </div>
                       <div className="typing-code-area">
+                        {mainPhase === 'typing' && isGhostRepsEnabled && (
+                          <div className="typing-ghost-target" aria-hidden="true" ref={mainGhostRef}>
+                            <SyntaxHighlighter
+                              language={practiceLanguage}
+                              style={syntaxTheme}
+                              customStyle={{
+                                margin: 0,
+                                padding: 0,
+                                background: 'transparent',
+                                fontFamily: 'inherit',
+                                fontSize: 'inherit',
+                                lineHeight: 'inherit',
+                                whiteSpace: 'pre',
+                              }}
+                              codeTagProps={{
+                                style: {
+                                  background: 'transparent',
+                                  fontFamily: 'inherit',
+                                  fontSize: 'inherit',
+                                  lineHeight: 'inherit',
+                                  whiteSpace: 'pre',
+                                },
+                              }}
+                            >
+                              {practiceTarget}
+                            </SyntaxHighlighter>
+                          </div>
+                        )}
                         <div className="typing-highlight" aria-hidden="true" ref={mainHighlightRef}>
                           <SyntaxHighlighter
                             language={practiceLanguage}
@@ -2055,17 +2192,17 @@ function App() {
                               margin: 0,
                               padding: 0,
                               background: 'transparent',
-                              fontFamily: "'Menlo', 'Monaco', 'Courier New', monospace",
-                              fontSize: '0.95rem',
-                              lineHeight: '1.6',
+                              fontFamily: 'inherit',
+                              fontSize: 'inherit',
+                              lineHeight: 'inherit',
                               whiteSpace: 'pre',
                             }}
                             codeTagProps={{
                               style: {
                                 background: 'transparent',
-                                fontFamily: "'Menlo', 'Monaco', 'Courier New', monospace",
-                                fontSize: '0.95rem',
-                                lineHeight: '1.6',
+                                fontFamily: 'inherit',
+                                fontSize: 'inherit',
+                                lineHeight: 'inherit',
                                 whiteSpace: 'pre',
                               },
                             }}
@@ -2088,7 +2225,7 @@ function App() {
                             autoCapitalize="off"
                             autoCorrect="off"
                             autoComplete="off"
-                            placeholder={practicePlaceholder}
+                            placeholder={supportedPracticePlaceholder}
                           />
                         )}
                       </div>
@@ -2153,21 +2290,31 @@ function App() {
                                 <div className="coach-metric-row">
                                   <span className="coach-metric-chip">Accuracy {latestSubmittedAttempt.accuracy}%</span>
                                   <span className="coach-metric-chip">Time {(latestSubmittedAttempt.elapsedMs / 1000).toFixed(1)}s</span>
-                                  <span className="coach-metric-chip">
-                                    Coach {submissionCoachLabel}
-                                  </span>
+                                  {latestSubmittedWasGhostRep ? (
+                                    <span className="coach-metric-chip">Support Ghost Reps</span>
+                                  ) : (
+                                    <span className="coach-metric-chip">
+                                      Coach {submissionCoachLabel}
+                                    </span>
+                                  )}
                                 </div>
                               )}
-                              <p className={mainCloseEnough ? 'status success' : 'status error'}>
+                              <p className={mainCloseEnough || latestSubmittedWasGhostRep ? 'status success' : 'status error'}>
                                 {submissionAttemptStatusText}
                               </p>
                               {coachLoading && coachFeedback && <p className="coach-muted">Refining submission feedback...</p>}
                               {coachError && <p className="coach-error">{coachError}</p>}
-                              {submissionFeedbackParagraphs.map((paragraph, index) => (
-                                <p key={index} className="coach-panel-copy">
-                                  {paragraph}
+                              {latestSubmittedWasGhostRep ? (
+                                <p className="coach-panel-copy">
+                                  This counts as supported work. It is saved separately from unsupported recall so you can build fluency without pretending it was cold recall.
                                 </p>
-                              ))}
+                              ) : (
+                                submissionFeedbackParagraphs.map((paragraph, index) => (
+                                  <p key={index} className="coach-panel-copy">
+                                    {paragraph}
+                                  </p>
+                                ))
+                              )}
                               {submissionCorrectedVersion && (
                                 <div className="coach-code-review">
                                   <p className="coach-code-label">Corrected version</p>
@@ -2183,9 +2330,11 @@ function App() {
                                   </div>
                                 </div>
                               )}
-                              <p className="coach-muted">
-                                <strong>Next step:</strong> {submissionFeedbackNextStep}
-                              </p>
+                              {!latestSubmittedWasGhostRep && (
+                                <p className="coach-muted">
+                                  <strong>Next step:</strong> {submissionFeedbackNextStep}
+                                </p>
+                              )}
                               {adaptiveVariationLoading && (
                                 <p className="coach-muted">Building a targeted repair variation...</p>
                               )}
@@ -2203,16 +2352,25 @@ function App() {
                   </div>
                 </div>
                 <p className="typing-help">
-                  {currentTemplateMode === 'pseudo'
-                    ? <>Plain text or Python-like notes both work here · <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter</kbd> to submit</>
-                    : <>Tab inserts 4 spaces · Shift+Tab outdents · Enter auto-indents · <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter</kbd> to submit</>}
+                  {isGhostRepsEnabled
+                    ? <>Ghost Reps are saved as supported work · trace the faint target as many times as needed · <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter</kbd> to log</>
+                    : currentTemplateMode === 'pseudo'
+                      ? <>Plain text or Python-like notes both work here · <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter</kbd> to submit</>
+                      : <>Tab inserts 4 spaces · Shift+Tab outdents · Enter auto-indents · <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter</kbd> to submit</>}
                 </p>
                 {mainPhase === 'typing' && (
                   <div className="actions">
-                    <button onClick={submitMainRecall} disabled={mainInput.trim().length === 0}>Submit {currentTemplateLabel.toLowerCase()}</button>
+                    <button onClick={submitMainRecall} disabled={mainInput.trim().length === 0}>
+                      {isGhostRepsEnabled ? 'Log ghost rep' : `Submit ${currentTemplateLabel.toLowerCase()}`}
+                    </button>
                   </div>
                 )}
-                {mainPhase === 'submitted' && !mainCloseEnough && (
+                {mainPhase === 'submitted' && latestSubmittedWasGhostRep && (
+                  <div className="actions">
+                    <button onClick={repeatGhostRep} disabled={sessionFinished}>Log another ghost rep</button>
+                  </div>
+                )}
+                {mainPhase === 'submitted' && !mainCloseEnough && !latestSubmittedWasGhostRep && (
                   <div className="actions">
                     <button onClick={reviseMainRecall} disabled={sessionFinished}>Revise and resubmit</button>
                   </div>
