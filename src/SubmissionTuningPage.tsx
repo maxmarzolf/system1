@@ -51,7 +51,7 @@ export default function SubmissionTuningPage() {
             <h2>Submission Tuning</h2>
             <p className="difficulty">Persistent settings</p>
             <p className="hint coach-tuning-page-intro">
-              Pseudocode and skeleton grading is rules-based here, not just prompt wording. These controls decide how
+              Pseudocode and invariant grading is rules-based here, not just prompt wording. These controls decide how
               much we prioritize preserved logic over literal phrasing.
             </p>
           </div>
@@ -129,7 +129,7 @@ export default function SubmissionTuningPage() {
             <div>
               <h3>Tracked Dimensions</h3>
               <p className="hint" style={{ marginTop: '0.35rem' }}>
-                These are the signals the Signal Assessor now checks for pseudocode and skeleton attempts.
+                These are the signals the Signal Assessor now checks for pseudocode and invariant attempts.
               </p>
             </div>
           </div>

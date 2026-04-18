@@ -79,7 +79,7 @@ type SkillMapPatternReadiness = {
   untouchedCards: number
   staleCards: number
   dimensionSummary: DimensionSummary
-  modes: Record<'pseudo' | 'skeleton' | 'full', SkillMapModeReadiness>
+  modes: Record<'pseudo' | 'invariant' | 'algorithm', SkillMapModeReadiness>
 }
 
 type SkillMapOverviewResponse = {
@@ -106,11 +106,11 @@ const ACTIVITY_WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 const shortDateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
 const longDateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 
-const formatTemplateModeLabel = (templateMode: 'pseudo' | 'skeleton' | 'full') =>
+const formatTemplateModeLabel = (templateMode: 'pseudo' | 'invariant' | 'algorithm') =>
   ({
     pseudo: 'Pseudo',
-    skeleton: 'Skeleton',
-    full: 'Full',
+    invariant: 'Invariant',
+    algorithm: 'Algorithm',
   })[templateMode] ?? templateMode
 
 const readinessTone = (readiness: number) => {
@@ -163,61 +163,6 @@ const formatLastSubmitSummary = (modeSummary: SkillMapModeReadiness) => {
   if (modeSummary.daysSinceLastSubmit === 0) return 'Last submit was today.'
   if (modeSummary.daysSinceLastSubmit === 1) return 'Last submit was 1 day ago.'
   return `Last submit was ${modeSummary.daysSinceLastSubmit} days ago.`
-}
-
-function DashboardModeActivityTracker({
-  modeLabel,
-  modeSummary,
-  onOpenCalendar,
-}: {
-  modeLabel: string
-  modeSummary: SkillMapModeReadiness
-  onOpenCalendar: (modeLabel: string, modeSummary: SkillMapModeReadiness) => void
-}) {
-  const activity = modeSummary.activity
-  const recentDays = activity.days.filter((day) => !day.inFuture).slice(-14)
-  const stripDays = recentDays.length > 0 ? recentDays : activity.days.slice(-14)
-
-  return (
-    <div
-      className="dashboard-mode-frequency"
-      onClick={(event) => event.stopPropagation()}
-      onMouseDown={(event) => event.stopPropagation()}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.stopPropagation()
-        }
-      }}
-    >
-      <div className="dashboard-mode-frequency-header">
-        <span className="dashboard-mode-frequency-label">Frequency</span>
-      </div>
-
-      <div className="dashboard-activity-strip" aria-hidden="true">
-        {stripDays.map((day) => (
-          <span
-            key={day.date}
-            className={[
-              'dashboard-activity-cell',
-              `dashboard-activity-cell-${activityIntensity(day.count, activity.peakDailyCount)}`,
-              day.inFuture ? 'dashboard-activity-cell-future' : '',
-            ].filter(Boolean).join(' ')}
-          />
-        ))}
-      </div>
-
-      <button
-        type="button"
-        className="dashboard-mode-frequency-trigger"
-        onClick={(event) => {
-          event.stopPropagation()
-          onOpenCalendar(modeLabel, modeSummary)
-        }}
-      >
-        View submission calendar
-      </button>
-    </div>
-  )
 }
 
 function DashboardActivityModal({
@@ -360,6 +305,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedMethodsByPattern, setSelectedMethodsByPattern] = useState<Record<string, string[]>>({})
+  const [expandedStats, setExpandedStats] = useState<Record<string, boolean>>({})
   const [activeCalendar, setActiveCalendar] = useState<{ modeLabel: string; modeSummary: SkillMapModeReadiness } | null>(null)
 
   useEffect(() => {
@@ -400,7 +346,7 @@ export default function DashboardPage() {
       }
     })
   }
-  const launchFocusedPractice = (patternSlug: string, mode: 'pseudo' | 'skeleton' | 'full', selectedMethods: string[]) => {
+  const launchFocusedPractice = (patternSlug: string, mode: 'pseudo' | 'invariant' | 'algorithm', selectedMethods: string[]) => {
     const nextParams = new URLSearchParams({
       focusPattern: patternSlug,
       focusMode: mode,
@@ -439,7 +385,6 @@ export default function DashboardPage() {
                 <div
                   className={patternSelected ? 'skill-method-panel skill-method-panel-selected' : 'skill-method-panel'}
                 >
-                  <p className="skill-map-subtitle">Level 2: Core methods</p>
                   <div className="skill-method-list">
                     {node.methods.map((method) => {
                       const methodSelected = selectedMethods.includes(method)
@@ -457,94 +402,130 @@ export default function DashboardPage() {
                     })}
                   </div>
                 </div>
-                <p className="skill-map-target-note">
-                  {patternSelected
-                    ? `${selectedMethods.length} core method${selectedMethods.length === 1 ? '' : 's'} selected. Click a mode card to generate a focused set.`
-                    : 'Select one or more core methods, then pick a mode to practice this pattern on purpose.'}
-                </p>
-                <div className="dashboard-mode-grid">
-                  {(['pseudo', 'skeleton', 'full'] as const).map((mode) => {
-                    const modeSummary = node.modes[mode]
-                    const modeLabel = formatTemplateModeLabel(mode)
-                    return (
-                      <div
-                        key={mode}
-                        className={[
-                          'dashboard-mode-card',
-                          patternSelected ? 'dashboard-mode-card-actionable' : 'dashboard-mode-card-disabled',
-                        ].join(' ')}
-                        role="button"
-                        tabIndex={patternSelected ? 0 : -1}
-                        aria-disabled={!patternSelected}
-                        onClick={() => {
-                          if (!patternSelected) return
-                          launchFocusedPractice(node.slug, mode, selectedMethods)
-                        }}
-                        onKeyDown={(event) => {
-                          if (!patternSelected) return
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault()
-                            launchFocusedPractice(node.slug, mode, selectedMethods)
-                          }
-                        }}
-                      >
-                        <div className="dashboard-mode-header">
-                          <span>{modeLabel}</span>
+                {patternSelected && (
+                  <p className="skill-map-target-note">
+                    {`${selectedMethods.length} core method${selectedMethods.length === 1 ? '' : 's'} selected. Pick a mode to generate a focused set.`}
+                  </p>
+                )}
+                <div className="dashboard-mode-unified">
+                  <div className="dashboard-mode-unified-header">
+                    <button
+                      type="button"
+                      className="dashboard-stats-toggle"
+                      onClick={() => setExpandedStats((prev) => ({ ...prev, [node.slug]: !prev[node.slug] }))}
+                      aria-expanded={!!expandedStats[node.slug]}
+                    >
+                      {expandedStats[node.slug] ? '▾ Stats' : '▸ Stats'}
+                    </button>
+                  </div>
+                  <div className="dashboard-mode-tabs">
+                    {(['pseudo', 'invariant', 'algorithm'] as const).map((mode) => {
+                      const modeSummary = node.modes[mode]
+                      const modeLabel = formatTemplateModeLabel(mode)
+                      return (
+                        <button
+                          key={mode}
+                          className={patternSelected ? 'dashboard-mode-tab dashboard-mode-tab-actionable' : 'dashboard-mode-tab'}
+                          disabled={!patternSelected}
+                          onClick={() => {
+                            if (patternSelected) launchFocusedPractice(node.slug, mode, selectedMethods)
+                          }}
+                        >
+                          <span className="dashboard-mode-tab-label">{modeLabel}</span>
                           <span className={`coach-status-value coach-status-value-${readinessTone(modeSummary.readiness)}`}>
                             {modeSummary.readiness}%
                           </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {expandedStats[node.slug] && (
+                    <div className="dashboard-mode-table-wrap">
+                      <table className="dashboard-mode-table">
+                        <thead>
+                          <tr>
+                            <th></th>
+                            <th>Cards</th>
+                            <th>Reps</th>
+                            <th>Ghost</th>
+                            <th>Acc</th>
+                            <th>Status</th>
+                            <th>Last</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(['pseudo', 'invariant', 'algorithm'] as const).map((mode) => {
+                            const s = node.modes[mode]
+                            const daysAgo = s.daysSinceLastSubmit
+                            return (
+                              <tr key={mode}>
+                                <td className="dashboard-mode-table-mode">{formatTemplateModeLabel(mode)}</td>
+                                <td>{s.practicedCards}/{s.totalCards}</td>
+                                <td>{s.workCount}</td>
+                                <td>{s.ghostRepCount}</td>
+                                <td>{s.avgAccuracy}%</td>
+                                <td>{s.stale ? 'Stale' : 'Fresh'}</td>
+                                <td className="dashboard-mode-table-last">
+                                  {daysAgo === null ? '—' : daysAgo === 0 ? 'Today' : `${daysAgo}d`}
+                                </td>
+                                <td>
+                                  <button
+                                    type="button"
+                                    className="dashboard-mode-table-cal"
+                                    title={`View ${formatTemplateModeLabel(mode)} calendar`}
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      setActiveCalendar({ modeLabel: formatTemplateModeLabel(mode), modeSummary: s })
+                                    }}
+                                  >
+                                    ▦
+                                  </button>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                      {(['pseudo', 'invariant', 'algorithm'] as const).some((mode) => {
+                        const s = node.modes[mode]
+                        return s.dimensionSummary?.rubricAttemptCount && (formatWeakDimension(s.dimensionSummary) || formatPrimaryFailure(s.dimensionSummary))
+                      }) && (
+                        <div className="dashboard-mode-dimensions">
+                          {(['pseudo', 'invariant', 'algorithm'] as const).map((mode) => {
+                            const s = node.modes[mode]
+                            if (!s.dimensionSummary?.rubricAttemptCount) return null
+                            const weak = formatWeakDimension(s.dimensionSummary)
+                            const miss = formatPrimaryFailure(s.dimensionSummary)
+                            if (!weak && !miss) return null
+                            return (
+                              <p key={mode} className="dashboard-mode-meta">
+                                <strong>{formatTemplateModeLabel(mode)}</strong>
+                                {weak ? ` · Weak: ${weak}` : ''}
+                                {miss ? ` · Miss: ${miss}` : ''}
+                              </p>
+                            )
+                          })}
                         </div>
-                        {patternSelected && (
-                          <>
-                            <p className="dashboard-mode-meta">
-                              {modeSummary.practicedCards}/{modeSummary.totalCards} cards · {modeSummary.workCount} reps logged
-                            </p>
-                            <p className="dashboard-mode-meta">
-                              {modeSummary.ghostRepCount} Ghost Reps · {modeSummary.unsupportedAttemptCount} recall attempts
-                            </p>
-                            <p className="dashboard-mode-meta">
-                              Avg {modeSummary.avgAccuracy}% · {modeSummary.stale ? 'Review due' : 'Fresh enough'}
-                            </p>
-                            {modeSummary.dimensionSummary?.rubricAttemptCount ? (
-                              <>
-                                <p className="dashboard-mode-meta">
-                                  Weak spot: {formatWeakDimension(modeSummary.dimensionSummary)}
-                                </p>
-                                {formatPrimaryFailure(modeSummary.dimensionSummary) && (
-                                  <p className="dashboard-mode-meta">
-                                    Primary miss: {formatPrimaryFailure(modeSummary.dimensionSummary)}
-                                  </p>
-                                )}
-                              </>
-                            ) : (
-                              <p className="dashboard-mode-meta">Rubric history starts on the next submit.</p>
-                            )}
-                          </>
-                        )}
-                        <DashboardModeActivityTracker
-                          modeLabel={modeLabel}
-                          modeSummary={modeSummary}
-                          onOpenCalendar={(nextModeLabel, nextModeSummary) =>
-                            setActiveCalendar({ modeLabel: nextModeLabel, modeSummary: nextModeSummary })}
-                        />
-                        {patternSelected && (
-                          <p className="dashboard-mode-launch-hint">
-                            Generate focused {modeLabel.toLowerCase()} set
-                          </p>
-                        )}
-                        {patternSelected && (modeSummary.untouchedCards > 0 || modeSummary.staleCards > 0) && (
-                          <div className="dashboard-summary">
-                            {modeSummary.untouchedCards > 0 && (
-                              <span className="coach-metric-chip">{modeSummary.untouchedCards} untouched</span>
-                            )}
-                            {modeSummary.staleCards > 0 && (
-                              <span className="coach-metric-chip">{modeSummary.staleCards} stale</span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
+                      )}
+                      {(['pseudo', 'invariant', 'algorithm'] as const).some((mode) => {
+                        const s = node.modes[mode]
+                        return s.staleCards > 0
+                      }) && (
+                        <div className="dashboard-summary">
+                          {(['pseudo', 'invariant', 'algorithm'] as const).map((mode) => {
+                            const s = node.modes[mode]
+                            if (s.staleCards === 0) return null
+                            return (
+                              <span key={mode} className="coach-metric-chip">
+                                {formatTemplateModeLabel(mode)}: {s.staleCards} stale
+                              </span>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </article>
             )

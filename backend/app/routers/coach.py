@@ -7,15 +7,18 @@ import difflib
 import json
 import keyword
 import logging
+import queue as thread_queue
 import random
 import re
 import urllib.error
 import urllib.request
 from collections import Counter
+from collections.abc import Generator
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 
 from app.config import settings
 from app.database import get_pool
@@ -42,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 LIVE_STAGE_ORDER = {"early": 0, "mid": 1, "late": 2, "very-late": 3}
 LIVE_FEEDBACK_FREQUENCIES = {"more-often", "balanced", "less-often"}
-TEMPLATE_MODE_ORDER = ("pseudo", "skeleton", "full")
+TEMPLATE_MODE_ORDER = ("pseudo", "invariant", "algorithm")
 PYTHON_BUILTIN_NAMES = set(dir(builtins))
 PYTHON_KEYWORDS = set(keyword.kwlist)
 LIVE_TUNING_DEFAULTS: dict[str, Any] = {
@@ -476,7 +479,7 @@ def _evaluate_attempt_by_template_mode(
     template_mode: str,
     submission_tuning: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    if template_mode == TemplateMode.full.value:
+    if template_mode == TemplateMode.algorithm.value:
         return _evaluate_attempt_soundness(expected_answer, user_answer)
     return _analyze_template_attempt(user_answer, skill_tags, template_mode, submission_tuning, expected_answer)
 
@@ -511,7 +514,7 @@ def _template_mode_value(value: TemplateMode | str | None) -> str:
     if isinstance(value, TemplateMode):
         return value.value
     normalized = str(value or "").strip().lower()
-    return normalized if normalized in TEMPLATE_MODE_ORDER else TemplateMode.full.value
+    return normalized if normalized in TEMPLATE_MODE_ORDER else TemplateMode.algorithm.value
 
 
 def _normalized_template_text(text: str) -> str:
@@ -814,7 +817,7 @@ def _template_step_order_score(steps: list[dict[str, Any]], matched_positions: d
 def _template_grading_threshold(tuning: dict[str, Any], template_mode: str) -> float:
     grading_mode = str(tuning.get("gradingMode", "core-logic"))
     base = {"core-logic": 68.0, "balanced": 76.0, "strict": 86.0}.get(grading_mode, 68.0)
-    if template_mode == TemplateMode.skeleton.value:
+    if template_mode == TemplateMode.invariant.value:
         base += 4.0
     return base
 
@@ -908,7 +911,7 @@ def _analyze_template_attempt(
     if tuning.get("requireAnswerStep", True):
         sound = sound and answer_step_met
     syntax_valid = bool(user_answer.strip())
-    if template_mode == TemplateMode.skeleton.value and re.search(r"^\s*def\b", user_answer, re.MULTILINE):
+    if template_mode == TemplateMode.invariant.value and re.search(r"^\s*def\b", user_answer, re.MULTILINE):
         syntax_valid = not _has_syntax_error(user_answer)
 
     return {
@@ -1159,7 +1162,7 @@ async def _load_practice_history(
             "accuracy": float(row["accuracy"] or 0),
             "exact": bool(row["exact"]),
             "elapsedMs": int(row["elapsedMs"] or 0),
-            "templateMode": str(row["templateMode"] or TemplateMode.full.value),
+            "templateMode": str(row["templateMode"] or TemplateMode.algorithm.value),
             "supportLayer": str(row["supportLayer"] or "none"),
             "liveCoachUsed": bool(row["liveCoachUsed"]),
             "categoryTags": list(row["categoryTags"] or []),
@@ -1412,13 +1415,13 @@ def _algorithmic_template_label(skill_tags: list[str], template_mode: str) -> st
     if pattern_name == "algorithm":
         return {
             TemplateMode.pseudo.value: "algorithm pseudocode",
-            TemplateMode.skeleton.value: "algorithm skeleton",
-            TemplateMode.full.value: "algorithm template",
+            TemplateMode.invariant.value: "algorithm invariant",
+            TemplateMode.algorithm.value: "algorithm template",
         }.get(template_mode, "algorithm template")
     return {
         TemplateMode.pseudo.value: f"{pattern_name} pseudocode",
-        TemplateMode.skeleton.value: f"{pattern_name} skeleton",
-        TemplateMode.full.value: f"{pattern_name} template",
+        TemplateMode.invariant.value: f"{pattern_name} invariant",
+        TemplateMode.algorithm.value: f"{pattern_name} template",
     }.get(template_mode, f"{pattern_name} template")
 
 
@@ -1457,8 +1460,8 @@ def _entry_point_from_template_target(template_mode: str, target: str) -> str:
 def _template_prompt_from_target(pattern: str, template_mode: str, target: str) -> str:
     mode_label = {
         TemplateMode.pseudo.value: "Pseudo",
-        TemplateMode.skeleton.value: "Skeleton",
-        TemplateMode.full.value: "Full",
+        TemplateMode.invariant.value: "Invariant",
+        TemplateMode.algorithm.value: "Algorithm",
     }.get(template_mode, "Recall")
     entry_point = _entry_point_from_template_target(template_mode, target)
     if entry_point:
@@ -1483,9 +1486,9 @@ def _template_targets_for_drill(
         for mode, target in raw_template_targets.items():
             if mode in TEMPLATE_MODE_ORDER and str(target).strip():
                 targets[mode] = str(target).replace("\r\n", "\n").strip()
-    full_target = str(solution or "").replace("{{missing}}", str(missing or "")).strip()
-    if full_target:
-        targets[TemplateMode.full.value] = full_target
+    algorithm_target = str(solution or "").replace("{{missing}}", str(missing or "")).strip()
+    if algorithm_target:
+        targets[TemplateMode.algorithm.value] = algorithm_target
     return targets
 
 
@@ -1669,7 +1672,7 @@ async def _adaptive_variation_with_llm(body: AdaptiveVariationRequest) -> dict[s
         "Return strict JSON with keys prompt, specimen, hint, title, variationReason. "
         "The specimen is the exact next target the user should recall. "
         "Keep the same algorithm family, but vary the specimen to pressure the targetDimension. "
-        "For pseudo mode, specimen must be concise pseudocode. For skeleton or full mode, specimen must be Python. "
+        "For pseudo mode, specimen must be concise pseudocode. For invariant or full mode, specimen must be Python. "
         "Prompt must be 12 words or fewer. Do not include markdown. Do not include '{{missing}}'."
     )
     llm_payload = {
@@ -1725,7 +1728,7 @@ async def _adaptive_variation_with_llm(body: AdaptiveVariationRequest) -> dict[s
         "difficulty": "Med.",
         "prompt": prompt,
         "templatePrompts": {template_mode: prompt},
-        "templateTargets": {template_mode: specimen, TemplateMode.full.value: specimen},
+        "templateTargets": {template_mode: specimen, TemplateMode.algorithm.value: specimen},
         "solution": f"{specimen}\n{{{{missing}}}}",
         "missing": "# repair complete",
         "hint": hint,
@@ -1992,6 +1995,165 @@ def _call_llm_json(
 
 
 # ---------------------------------------------------------------------------
+# Streaming helpers for SSE drill generation
+# ---------------------------------------------------------------------------
+
+
+class _DrillStreamParser:
+    """Incrementally extract complete JSON objects from a streaming ``{"drills": [...]}`` response."""
+
+    __slots__ = ("_buf", "_in_str", "_esc", "_top", "_arr", "_obj", "_obj_start", "drills")
+
+    def __init__(self) -> None:
+        self._buf: list[str] = []
+        self._in_str = False
+        self._esc = False
+        self._top = 0
+        self._arr = False
+        self._obj = 0
+        self._obj_start = -1
+        self.drills: list[dict[str, Any]] = []
+
+    def feed(self, chunk: str) -> list[dict[str, Any]]:
+        """Feed a chunk of streaming text. Returns newly completed drill dicts."""
+        new: list[dict[str, Any]] = []
+        for ch in chunk:
+            self._buf.append(ch)
+            pos = len(self._buf) - 1
+            if self._esc:
+                self._esc = False
+                continue
+            if self._in_str:
+                if ch == "\\":
+                    self._esc = True
+                elif ch == '"':
+                    self._in_str = False
+                continue
+            if ch == '"':
+                self._in_str = True
+                continue
+            if self._arr:
+                if ch == "{":
+                    if self._obj == 0:
+                        self._obj_start = pos
+                    self._obj += 1
+                elif ch == "}":
+                    self._obj -= 1
+                    if self._obj == 0 and self._obj_start >= 0:
+                        item_str = "".join(self._buf[self._obj_start : pos + 1])
+                        self._obj_start = -1
+                        try:
+                            obj = json.loads(item_str)
+                            if isinstance(obj, dict):
+                                new.append(obj)
+                                self.drills.append(obj)
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+                elif ch == "]" and self._obj == 0:
+                    self._arr = False
+            else:
+                if ch == "{":
+                    self._top += 1
+                elif ch == "}":
+                    self._top = max(0, self._top - 1)
+                elif ch == "[" and self._top == 1:
+                    self._arr = True
+        return new
+
+
+def _call_openai_streaming(
+    system_prompt: str,
+    user_payload: dict[str, Any],
+    max_tokens: int = 1800,
+    timeout_seconds: int = 90,
+    temperature: float = 0.7,
+) -> Generator[str, None, None]:
+    """Yield content-delta strings from the OpenAI streaming API."""
+    if not settings.coach_openai_api_key:
+        return
+    url = f"{settings.coach_openai_base_url.rstrip('/')}/chat/completions"
+    body: dict[str, Any] = {
+        "model": settings.coach_openai_model,
+        "temperature": temperature,
+        "max_completion_tokens": max_tokens,
+        "response_format": {"type": "json_object"},
+        "stream": True,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": json.dumps(user_payload)},
+        ],
+    }
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {settings.coach_openai_api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+        for raw_line in resp:
+            line = raw_line.decode("utf-8").strip()
+            if not line or not line.startswith("data:"):
+                continue
+            payload = line[5:].strip()
+            if payload == "[DONE]":
+                break
+            try:
+                chunk = json.loads(payload)
+                delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                if delta:
+                    yield delta
+            except (json.JSONDecodeError, KeyError, IndexError):
+                continue
+
+
+def _process_raw_drill(
+    raw: Any,
+    index: int,
+    body: SkillMapDrillsRequest,
+    generation_skill_map: list[Any],
+) -> dict[str, Any] | None:
+    """Validate and process a single raw drill from LLM output. Returns None if invalid."""
+    if not isinstance(raw, dict):
+        return None
+    solution = str(raw.get("solution", "")).strip()
+    missing = str(raw.get("missing", "")).strip()
+    if "{{missing}}" not in solution or not missing:
+        return None
+    tags_raw = raw.get("tags", [])
+    tags = [str(tag).strip() for tag in tags_raw if str(tag).strip()] if isinstance(tags_raw, list) else []
+    if "skill-map" not in tags:
+        tags = ["skill-map", *tags]
+    source_node = generation_skill_map[index] if index < len(generation_skill_map) else None
+    pattern = source_node.pattern if source_node else str(raw.get("title", "algorithm"))
+    pattern_slug = _pattern_slug(pattern)
+    if pattern_slug and pattern_slug not in tags:
+        tags.append(pattern_slug)
+    template_targets = _template_targets_for_drill(body, pattern_slug, solution, missing, raw.get("templateTargets", {}))
+    template_prompts = _template_prompt_map(body, pattern, pattern_slug, solution, missing, raw.get("templatePrompts", {}), template_targets)
+    selected_prompt = (
+        template_prompts.get(_template_mode_value(body.templateMode))
+        or _clean_concise_prompt(str(raw.get("prompt", "")).strip())
+        or _template_prompt_from_target(pattern, _template_mode_value(body.templateMode), solution.replace("{{missing}}", missing))
+    )
+    return {
+        "id": str(raw.get("id", f"skill-map-{index + 1}")),
+        "title": str(raw.get("title", f"Skill Map Drill {index + 1}")),
+        "difficulty": _normalize_drill_difficulty(raw.get("difficulty", "Med.")),
+        "prompt": selected_prompt,
+        "templatePrompts": template_prompts,
+        "templateTargets": template_targets,
+        "solution": solution,
+        "missing": missing,
+        "hint": str(raw.get("hint", "")).strip(),
+        "tags": tags,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Signal Assessor — Role 1
 # Lightweight structural analysis call using the request-selected provider.
 # Used as the ONLY LLM call for live feedback, and as Stage 1 for submission
@@ -2166,7 +2328,7 @@ def _build_narrator_payload(
             {
                 "accuracy":     item.get("accuracy", 0),
                 "exact":        item.get("exact", False),
-                "templateMode": item.get("templateMode", TemplateMode.full.value),
+                "templateMode": item.get("templateMode", TemplateMode.algorithm.value),
                 "errorTags":    item.get("submissionFeedback", {}).get("errorTags", []) if isinstance(item.get("submissionFeedback"), dict) else [],
                 "primaryFocus": item.get("submissionFeedback", {}).get("primaryFocus", "") if isinstance(item.get("submissionFeedback"), dict) else "",
                 "createdAt":    item.get("createdAt", ""),
@@ -2357,9 +2519,9 @@ async def _skill_map_drills_with_llm(
         "then fill remaining slots across remaining patterns. "
         "The solution must include exactly one '{{missing}}' placeholder, and missing must be the exact code that replaces it. "
         "The prompt must be very short: 12 words or fewer. "
-        "templateTargets may include pseudo and skeleton. Pseudo must be concise pseudocode. Skeleton must be a Python scaffold. "
+        "templateTargets may include pseudo and invariant. Pseudo must be concise pseudocode. Invariant must be a Python scaffold. "
         "When you return templateTargets, make them specific to the drill's pattern and method instead of generic pattern text. "
-        "templatePrompts must be an object keyed by pseudo, skeleton, and full when those targets are provided. "
+        "templatePrompts must be an object keyed by pseudo, invariant, and full when those targets are provided. "
         "Each templatePrompts value must be 12 words or fewer and must describe the exact provided template target, not a legacy or story prompt. "
         "Keep snippets short enough to memorize, but realistic enough to reuse in senior-level interviews. "
         "Tags must include 'skill-map' and a slug for the pattern."
@@ -2636,6 +2798,162 @@ async def coach_skill_map_drills(body: SkillMapDrillsRequest):
     stamped = _stamp_skill_map_drills(drills["drills"])
     await _persist_skill_map_drills(stamped, bool(drills.get("llmUsed")), progress_summary)
     return {"drills": stamped, "llmUsed": bool(drills.get("llmUsed"))}
+
+
+@router.post("/skill-map-drills-stream")
+async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
+    progress_summary = await _load_skill_map_generation_summary(body)
+    provider = _resolve_available_llm_provider(body.llmProvider)
+    if not _llm_provider_available(provider):
+        raise _coach_llm_http_exception(SubmissionFeedbackUnavailableError(
+            code="coach_llm_missing_api_key",
+            message="Update backend .env with at least one coach LLM API key.",
+            provider=provider,
+            api_error_code="provider_auth_error",
+        ))
+
+    system_prompt = (
+        "You generate atomic Python recall drills for coding interview preparation. "
+        "Return only a top-level JSON object shaped exactly like {\"drills\": [...]}. "
+        "The drills array must contain exactly the requested count of objects with keys "
+        "id, title, difficulty, prompt, templatePrompts, templateTargets, solution, missing, hint, tags. "
+        "Do not return a single drill object without the drills wrapper. "
+        "Generate exactly one drill for each skillMap entry, in the same order as the skillMap array. "
+        "Do not generate a second drill for any pattern until every provided skillMap entry has one drill. "
+        "Each drill must teach one reusable LeetCode move from the provided skill map, not a story problem. "
+        "Use the generationSeed and shuffled method order to vary titles, snippets, missing lines, and selected methods across calls. "
+        "Make them concise and pattern-first. Prioritize patterns with low readiness or high error rates, "
+        "then fill remaining slots across remaining patterns. "
+        "The solution must include exactly one '{{missing}}' placeholder, and missing must be the exact code that replaces it. "
+        "The prompt must be very short: 12 words or fewer. "
+        "templateTargets may include pseudo and invariant. Pseudo must be concise pseudocode. Invariant must be a Python scaffold. "
+        "When you return templateTargets, make them specific to the drill's pattern and method instead of generic pattern text. "
+        "templatePrompts must be an object keyed by pseudo, invariant, and full when those targets are provided. "
+        "Each templatePrompts value must be 12 words or fewer and must describe the exact provided template target, not a legacy or story prompt. "
+        "Keep snippets short enough to memorize, but realistic enough to reuse in senior-level interviews. "
+        "Tags must include 'skill-map' and a slug for the pattern."
+    )
+
+    rng = random.SystemRandom()
+    generation_seed = f"{datetime.now(tz=timezone.utc).strftime('%Y%m%d%H%M%S%f')}-{rng.randrange(1_000_000)}"
+    generation_skill_map = list(body.skillMap[: body.count])
+    rng.shuffle(generation_skill_map)
+    trimmed_skill_map = [
+        {"pattern": node.pattern, "methods": rng.sample(list(node.methods), len(node.methods)) if node.methods else []}
+        for node in generation_skill_map
+    ]
+    pattern_progress = {
+        slug: data
+        for slug, data in progress_summary.get("patterns", {}).items()
+        if data.get("attemptCount", 0) > 0 or data.get("readiness", 100) < 90
+    }
+    llm_payload = {
+        "questionType": body.questionType,
+        "count": body.count,
+        "generationSeed": generation_seed,
+        "templateMode": _template_mode_value(body.templateMode),
+        "templateTargets": body.templateTargets,
+        "skillMap": trimmed_skill_map,
+        "practiceHistory": {
+            "overall": progress_summary.get("overall", {}),
+            "patterns": pattern_progress,
+        },
+        "schema": {
+            "fields": ["id", "title", "difficulty", "prompt", "templatePrompts", "templateTargets", "solution", "missing", "hint", "tags"],
+            "constraint": "solution must contain exactly one {{missing}} placeholder",
+            "coverage": "drills[i] must correspond to skillMap[i]",
+            "variation": "avoid reusing the same title, prompt, missing line, or exact snippet shape from a previous generation",
+        },
+    }
+    total_drills = min(body.count, len(generation_skill_map))
+    stamp_prefix = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S%f")
+
+    async def generate():
+        q: thread_queue.Queue[tuple[str, Any]] = thread_queue.Queue()
+
+        def _blocking():
+            try:
+                parser = _DrillStreamParser()
+                drill_index = 0
+                use_streaming = provider == "openai" and settings.coach_openai_api_key
+
+                if use_streaming:
+                    try:
+                        for token in _call_openai_streaming(
+                            system_prompt, llm_payload, DRILL_GEN_MAX_TOKENS,
+                            DRILL_GEN_OPENAI_TIMEOUT_SECONDS, DRILL_GEN_TEMPERATURE,
+                        ):
+                            new_drills = parser.feed(token)
+                            for raw_drill in new_drills:
+                                processed = _process_raw_drill(raw_drill, drill_index, body, generation_skill_map)
+                                if processed:
+                                    tags = [str(t) for t in processed.get("tags", [])]
+                                    if "skill-map" not in tags:
+                                        tags = ["skill-map", *tags]
+                                    stamped = {**processed, "id": f"skill-map-{stamp_prefix}-{drill_index + 1}", "tags": tags}
+                                    q.put(("drill", {"index": drill_index, "drill": stamped, "total": total_drills}))
+                                    drill_index += 1
+                    except Exception as stream_err:
+                        logger.warning("OpenAI streaming failed, falling back: %s", stream_err)
+                        drill_index = 0
+                        use_streaming = False
+
+                if not use_streaming:
+                    result = _call_llm_json(
+                        system_prompt, llm_payload, provider,
+                        DRILL_GEN_MAX_TOKENS, DRILL_GEN_OPENAI_TIMEOUT_SECONDS, DRILL_GEN_TEMPERATURE,
+                    )
+                    if result and isinstance(result.get("drills"), list):
+                        for raw_drill in result["drills"][:body.count]:
+                            processed = _process_raw_drill(raw_drill, drill_index, body, generation_skill_map)
+                            if processed:
+                                tags = [str(t) for t in processed.get("tags", [])]
+                                if "skill-map" not in tags:
+                                    tags = ["skill-map", *tags]
+                                stamped = {**processed, "id": f"skill-map-{stamp_prefix}-{drill_index + 1}", "tags": tags}
+                                q.put(("drill", {"index": drill_index, "drill": stamped, "total": total_drills}))
+                                drill_index += 1
+
+                q.put(("done", drill_index))
+            except Exception as exc:
+                logger.exception("Drill stream generation failed")
+                q.put(("error", str(exc)))
+
+        loop = asyncio.get_event_loop()
+        future = loop.run_in_executor(None, _blocking)
+        all_drills: list[dict[str, Any]] = []
+
+        while True:
+            while q.empty():
+                if future.done():
+                    break
+                await asyncio.sleep(0.05)
+
+            if q.empty() and future.done():
+                exc = future.exception()
+                if exc:
+                    yield f"event: error\ndata: {json.dumps({'message': str(exc)})}\n\n"
+                break
+
+            try:
+                event_type, data = q.get_nowait()
+            except thread_queue.Empty:
+                continue
+
+            if event_type == "drill":
+                all_drills.append(data["drill"])
+                yield f"event: drill\ndata: {json.dumps(data)}\n\n"
+            elif event_type == "done":
+                await _persist_skill_map_drills(all_drills, True, progress_summary)
+                yield f"event: done\ndata: {json.dumps({'count': len(all_drills), 'llmUsed': True})}\n\n"
+                break
+            elif event_type == "error":
+                yield f"event: error\ndata: {json.dumps({'message': data})}\n\n"
+                break
+
+        await future
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @router.post("/adaptive-variation", response_model=AdaptiveVariationResponse)

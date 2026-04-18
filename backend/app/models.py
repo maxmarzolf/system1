@@ -15,8 +15,8 @@ class GameMode(str, Enum):
 
 class TemplateMode(str, Enum):
     pseudo = "pseudo"
-    skeleton = "skeleton"
-    full = "full"
+    invariant = "invariant"
+    algorithm = "algorithm"
 
 
 class SupportLayer(str, Enum):
@@ -43,7 +43,7 @@ class AttemptCreate(BaseModel):
     interactionId: str | None = None
     generatedCardId: str | None = None
     generatedCard: dict[str, Any] | None = None
-    templateMode: TemplateMode = TemplateMode.full
+    templateMode: TemplateMode = TemplateMode.algorithm
     supportLayer: SupportLayer = SupportLayer.none
     liveCoachUsed: bool = False
     coachFeedback: dict[str, Any] | None = None
@@ -66,8 +66,8 @@ class CoachAttemptFeedbackRequest(BaseModel):
     questionType: str = ""
     skillTags: list[str] = []
     mode: GameMode = GameMode.main_recall
-    templateMode: TemplateMode = TemplateMode.full
-    enabledTemplateModes: list[TemplateMode] = [TemplateMode.full]
+    templateMode: TemplateMode = TemplateMode.algorithm
+    enabledTemplateModes: list[TemplateMode] = [TemplateMode.algorithm]
     previousAttempts: list[dict] = []
     liveMode: bool = False
     liveMilestones: dict[str, Any] = {}
@@ -99,7 +99,7 @@ class CoachAttemptEvaluationRequest(BaseModel):
     expectedAnswer: str = ""
     userAnswer: str = ""
     skillTags: list[str] = []
-    templateMode: TemplateMode = TemplateMode.full
+    templateMode: TemplateMode = TemplateMode.algorithm
     submissionTuning: dict[str, Any] = {}
 
 
@@ -160,7 +160,7 @@ class SkillMapDrillsRequest(BaseModel):
     questionType: str = "skill-map"
     count: int = Field(default=12, ge=1, le=20)
     skillMap: list[SkillMapNode] = []
-    templateMode: TemplateMode = TemplateMode.full
+    templateMode: TemplateMode = TemplateMode.algorithm
     templateTargets: dict[str, dict[str, str]] = Field(default_factory=dict)
     llmProvider: str = "openai"
 
@@ -176,7 +176,7 @@ class AdaptiveVariationRequest(BaseModel):
     prompt: str = ""
     expectedAnswer: str = Field(min_length=1)
     userAnswer: str = ""
-    templateMode: TemplateMode = TemplateMode.full
+    templateMode: TemplateMode = TemplateMode.algorithm
     skillTags: list[str] = []
     submissionRubric: dict[str, Any] = Field(default_factory=dict)
     llmProvider: str = "openai"
@@ -207,7 +207,7 @@ class CoachPracticeHistoryEntry(BaseModel):
     accuracy: float = Field(default=0, ge=0, le=100)
     exact: bool = False
     elapsedMs: int = Field(default=0, ge=0)
-    templateMode: str = TemplateMode.full.value
+    templateMode: str = TemplateMode.algorithm.value
     supportLayer: str = SupportLayer.none.value
     liveCoachUsed: bool = False
     categoryTags: list[str] = []
@@ -283,7 +283,7 @@ class SkillMapCardReadiness(BaseModel):
     cardId: str = Field(min_length=1)
     title: str = ""
     pattern: str = ""
-    templateMode: str = TemplateMode.full.value
+    templateMode: str = TemplateMode.algorithm.value
     readiness: float = Field(default=0, ge=0, le=100)
     attemptCount: int = Field(default=0, ge=0)
     ghostRepCount: int = Field(default=0, ge=0)

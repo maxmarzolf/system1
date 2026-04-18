@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS score_attempts (
     interaction_id VARCHAR(80),
     generated_card_id VARCHAR(80),
     generated_card JSONB,
-    template_mode VARCHAR(20) NOT NULL DEFAULT 'full' CHECK (template_mode IN ('pseudo', 'skeleton', 'full')),
+    template_mode VARCHAR(20) NOT NULL DEFAULT 'algorithm' CHECK (template_mode IN ('pseudo', 'invariant', 'algorithm')),
     support_layer VARCHAR(30) NOT NULL DEFAULT 'none' CHECK (support_layer IN ('none', 'ghost-reps')),
     hint_used BOOLEAN NOT NULL DEFAULT FALSE,
     live_coach_used BOOLEAN NOT NULL DEFAULT FALSE,

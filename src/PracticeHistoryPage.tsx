@@ -11,7 +11,7 @@ type PracticeHistoryEntry = {
   accuracy: number
   exact: boolean
   elapsedMs: number
-  templateMode: 'pseudo' | 'skeleton' | 'full'
+  templateMode: 'pseudo' | 'invariant' | 'algorithm'
   supportLayer: 'none' | 'ghost-reps'
   liveCoachUsed: boolean
   categoryTags: string[]
@@ -100,8 +100,8 @@ const apiUrl = (path: string) => `${API_BASE_URL}${path}`
 const formatTemplateModeLabel = (templateMode: PracticeHistoryEntry['templateMode']) =>
   ({
     pseudo: 'Pseudo',
-    skeleton: 'Skeleton',
-    full: 'Full',
+    invariant: 'Invariant',
+    algorithm: 'Algorithm',
   })[templateMode] ?? templateMode
 
 const formatSupportLayerLabel = (supportLayer: PracticeHistoryEntry['supportLayer']) =>
@@ -266,7 +266,7 @@ export default function PracticeHistoryPage() {
 
             {practiceHistorySummary && (
               <div className="practice-history-focuses">
-                {(['pseudo', 'skeleton', 'full'] as const).map((mode) => (
+                {(['pseudo', 'invariant', 'algorithm'] as const).map((mode) => (
                   <span key={mode} className="coach-metric-chip">
                     {formatTemplateModeLabel(mode)} {practiceHistorySummary.templateModes?.[mode]?.readiness ?? 0}%
                   </span>

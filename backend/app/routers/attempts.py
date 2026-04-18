@@ -290,7 +290,7 @@ async def get_skill_map_overview():
         card_id = str(row["tracked_card_id"] or "").strip()
         if not card_id:
             continue
-        template_mode = str(row["template_mode"] or "full").strip() or "full"
+        template_mode = str(row["template_mode"] or "algorithm").strip() or "algorithm"
         support_layer = str(row["support_layer"] or "none")
         if support_layer == "ghost-reps":
             total_ghost_rep_count += 1

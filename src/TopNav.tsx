@@ -31,7 +31,7 @@ export default function TopNav({
   return (
     <nav className="navbar">
       <div className="navbar-left">
-        <Link to="/" className="navbar-brand">System 1 Trainer</Link>
+        <Link to="/" className="navbar-brand">System 1</Link>
         <span className="navbar-divider" />
         <div className="navbar-group llm-provider-group" ref={llmProviderMenuRef}>
           <button

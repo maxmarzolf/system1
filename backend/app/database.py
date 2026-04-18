@@ -101,7 +101,7 @@ async def _ensure_recall_history_schema(db_pool: asyncpg.Pool) -> None:
             ADD COLUMN IF NOT EXISTS submission_rubric JSONB;
 
             ALTER TABLE score_attempts
-            ADD COLUMN IF NOT EXISTS template_mode VARCHAR(20) NOT NULL DEFAULT 'full';
+            ADD COLUMN IF NOT EXISTS template_mode VARCHAR(20) NOT NULL DEFAULT 'algorithm';
 
             ALTER TABLE score_attempts
             ADD COLUMN IF NOT EXISTS support_layer VARCHAR(30) NOT NULL DEFAULT 'none';
@@ -117,7 +117,7 @@ async def _ensure_recall_history_schema(db_pool: asyncpg.Pool) -> None:
 
             ALTER TABLE score_attempts
             ADD CONSTRAINT score_attempts_template_mode_check
-            CHECK (template_mode IN ('pseudo', 'skeleton', 'full'));
+            CHECK (template_mode IN ('pseudo', 'invariant', 'algorithm'));
 
             ALTER TABLE score_attempts
             DROP CONSTRAINT IF EXISTS score_attempts_support_layer_check;

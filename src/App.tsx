@@ -13,8 +13,8 @@ type Flashcard = {
   title: string
   difficulty: 'Easy' | 'Med.' | 'Hard'
   prompt: string
-  templatePrompts?: Partial<Record<'pseudo' | 'skeleton' | 'full', string>>
-  templateTargets?: Partial<Record<'pseudo' | 'skeleton' | 'full', string>>
+  templatePrompts?: Partial<Record<'pseudo' | 'invariant' | 'algorithm', string>>
+  templateTargets?: Partial<Record<'pseudo' | 'invariant' | 'algorithm', string>>
   solution: string
   missing: string
   hint: string
@@ -32,7 +32,7 @@ const emptySkillMapCard: Flashcard = {
   tags: ['skill-map'],
 }
 
-type TemplateMode = 'pseudo' | 'skeleton' | 'full'
+type TemplateMode = 'pseudo' | 'invariant' | 'algorithm'
 type SupportLayer = 'none' | 'ghost-reps'
 type TemplateModeResult = {
   accuracy: number
@@ -191,17 +191,64 @@ const requestSkillMapDrills = (body: SkillMapDrillsRequest) => {
   return request
 }
 
-const TEMPLATE_MODE_ORDER: TemplateMode[] = ['pseudo', 'skeleton', 'full']
-const DEFAULT_TEMPLATE_MODES: TemplateMode[] = ['full']
+const requestSkillMapDrillsStream = async (
+  body: SkillMapDrillsRequest,
+  onDrill: (drill: Flashcard, index: number, total: number) => void,
+): Promise<SkillMapDrillsResponse> => {
+  const response = await fetch(apiUrl('/api/coach/skill-map-drills-stream'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok || !response.body) throw new Error('Streaming unavailable')
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  const drills: Flashcard[] = []
+
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+
+    let eventType = ''
+    let eventData = ''
+    for (const line of lines) {
+      if (line.startsWith('event: ')) {
+        eventType = line.slice(7).trim()
+      } else if (line.startsWith('data: ')) {
+        eventData = line.slice(6)
+      } else if (line === '' && eventType && eventData) {
+        const parsed = JSON.parse(eventData)
+        if (eventType === 'drill') {
+          drills.push(parsed.drill as Flashcard)
+          onDrill(parsed.drill as Flashcard, parsed.index as number, parsed.total as number)
+        } else if (eventType === 'error') {
+          throw new Error(parsed.message || 'Stream error')
+        }
+        eventType = ''
+        eventData = ''
+      }
+    }
+  }
+  if (drills.length === 0) throw new Error('No drills received')
+  return { drills, llmUsed: true }
+}
+
+const TEMPLATE_MODE_ORDER: TemplateMode[] = ['pseudo', 'invariant', 'algorithm']
+const DEFAULT_TEMPLATE_MODES: TemplateMode[] = ['algorithm']
 const TEMPLATE_MODE_LABELS: Record<TemplateMode, string> = {
   pseudo: 'Pseudo',
-  skeleton: 'Skeleton',
-  full: 'Full',
+  invariant: 'Invariant',
+  algorithm: 'Algorithm',
 }
 const TEMPLATE_MODE_FILE_LABELS: Record<TemplateMode, string> = {
   pseudo: 'recall.txt',
-  skeleton: 'skeleton.py',
-  full: 'recall.py',
+  invariant: 'invariant.py',
+  algorithm: 'recall.py',
 }
 
 const patternToSlug = (pattern: string) =>
@@ -267,7 +314,7 @@ const tokenizeTemplateText = (value: string) =>
   )
 
 const estimateTemplateAccuracy = (templateMode: TemplateMode, expectedAnswer: string, userAnswer: string) => {
-  if (templateMode === 'full') {
+  if (templateMode === 'algorithm') {
     const compareLength = Math.max(userAnswer.length, expectedAnswer.length, 1)
     let exactMatches = 0
     for (let i = 0; i < compareLength; i += 1) {
@@ -411,7 +458,7 @@ const buildPseudoTemplate = (patternTag: string) => {
   }
 }
 
-const buildSkeletonTemplate = (patternTag: string) => {
+const buildInvariantTemplate = (patternTag: string) => {
   switch (patternTag) {
     case 'sliding-window':
       return [
@@ -772,6 +819,8 @@ function App() {
   const mainInputRef = useRef<HTMLTextAreaElement | null>(null)
   const mainHighlightRef = useRef<HTMLDivElement | null>(null)
   const mainGhostRef = useRef<HTMLDivElement | null>(null)
+  const previewCodeContainerRef = useRef<HTMLDivElement | null>(null)
+  const [recallMinHeight, setRecallMinHeight] = useState<number | undefined>(undefined)
   const mainGutterRef = useRef<HTMLDivElement | null>(null)
   const llmProviderMenuRef = useRef<HTMLDivElement | null>(null)
   const currentCardIdRef = useRef('')
@@ -792,7 +841,7 @@ function App() {
     [focusedPatternSlug]
   )
   const focusedTemplateMode = useMemo<TemplateMode | null>(() => {
-    if (focusedModeParam === 'pseudo' || focusedModeParam === 'skeleton' || focusedModeParam === 'full') {
+    if (focusedModeParam === 'pseudo' || focusedModeParam === 'invariant' || focusedModeParam === 'algorithm') {
       return focusedModeParam
     }
     return null
@@ -821,7 +870,7 @@ function App() {
       const patternTag = getTemplatePatternTag(node.pattern)
       targets[patternSlug] = {
         pseudo: normalizeTyping(buildPseudoTemplate(patternTag)),
-        skeleton: normalizeTyping(buildSkeletonTemplate(patternTag)),
+        invariant: normalizeTyping(buildInvariantTemplate(patternTag)),
       }
     })
     return targets
@@ -834,7 +883,7 @@ function App() {
 
   const filteredDeck = useMemo(() => skillMapDeck, [skillMapDeck])
   const activeTemplateModes = useMemo(() => ensureTemplateModes(enabledTemplateModes), [enabledTemplateModes])
-  const currentTemplateMode = activeTemplateModes[Math.min(currentTemplateModeIndex, activeTemplateModes.length - 1)] ?? 'full'
+  const currentTemplateMode = activeTemplateModes[Math.min(currentTemplateModeIndex, activeTemplateModes.length - 1)] ?? 'algorithm'
 
   useEffect(() => {
     if (focusedTemplateMode) {
@@ -851,23 +900,39 @@ function App() {
     setSkillMapError('')
     setSkillMapDeck([])
 
+    const requestBody = {
+      questionType: requestedQuestionType,
+      count: requestedSkillMap.length,
+      skillMap: requestedSkillMap,
+      templateMode: requestedTemplateMode,
+      templateTargets: requestedTemplateTargets,
+      llmProvider,
+    }
+
     try {
-      const payload = await requestSkillMapDrills({
-        questionType: requestedQuestionType,
-        count: requestedSkillMap.length,
-        skillMap: requestedSkillMap,
-        templateMode: requestedTemplateMode,
-        templateTargets: requestedTemplateTargets,
-        llmProvider,
-      })
+      const result = await requestSkillMapDrillsStream(
+        requestBody,
+        (drill) => {
+          if (skillMapDeckRequestVersionRef.current !== requestVersion) return
+          setSkillMapDeck((prev) => [...prev, drill])
+        },
+      )
       if (skillMapDeckRequestVersionRef.current !== requestVersion) return
-      setSkillMapDeck(payload.drills)
+      setSkillMapDeck(result.drills)
       setSkillMapSessionVersion((prev) => prev + 1)
     } catch {
-      if (skillMapDeckRequestVersionRef.current !== requestVersion) return
-      setSkillMapDeck([])
-      setSkillMapSessionVersion((prev) => prev + 1)
-      setSkillMapError('Skill map drill generation is unavailable right now.')
+      // Fallback to non-streaming endpoint
+      try {
+        const payload = await requestSkillMapDrills(requestBody)
+        if (skillMapDeckRequestVersionRef.current !== requestVersion) return
+        setSkillMapDeck(payload.drills)
+        setSkillMapSessionVersion((prev) => prev + 1)
+      } catch {
+        if (skillMapDeckRequestVersionRef.current !== requestVersion) return
+        setSkillMapDeck([])
+        setSkillMapSessionVersion((prev) => prev + 1)
+        setSkillMapError('Skill map drill generation is unavailable right now.')
+      }
     } finally {
       if (skillMapDeckRequestVersionRef.current === requestVersion) {
         setSkillMapLoading(false)
@@ -887,6 +952,7 @@ function App() {
     setSessionPlanRequested(false)
 
     setMainPhase('preview')
+    setRecallMinHeight(undefined)
     setMainInput('')
     setMainStartedAt(null)
     setMainCloseEnough(false)
@@ -952,8 +1018,8 @@ function App() {
     () => normalizeTyping(card.solution.replace('{{missing}}', card.missing)),
     [card.missing, card.solution]
   )
-  const skeletonTarget = useMemo(
-    () => buildSkeletonTemplate(primaryPatternTag),
+  const invariantTarget = useMemo(
+    () => buildInvariantTemplate(primaryPatternTag),
     [primaryPatternTag]
   )
   const pseudoTarget = useMemo(
@@ -964,9 +1030,9 @@ function App() {
     const generatedTarget = card.templateTargets?.[currentTemplateMode]?.trim()
     if (generatedTarget) return normalizeTyping(generatedTarget)
     if (currentTemplateMode === 'pseudo') return normalizeTyping(pseudoTarget)
-    if (currentTemplateMode === 'skeleton') return normalizeTyping(skeletonTarget)
+    if (currentTemplateMode === 'invariant') return normalizeTyping(invariantTarget)
     return fullSolutionTarget
-  }, [card.templateTargets, currentTemplateMode, fullSolutionTarget, pseudoTarget, skeletonTarget])
+  }, [card.templateTargets, currentTemplateMode, fullSolutionTarget, pseudoTarget, invariantTarget])
   const generatedPracticePrompt = card.templatePrompts?.[currentTemplateMode]?.trim() || card.prompt.trim()
   const practicePrompt = useMemo(
     () => generatedPracticePrompt || buildPracticePrompt(currentTemplateMode, practiceTarget),
@@ -1008,29 +1074,29 @@ function App() {
   const practiceTabLabel = TEMPLATE_MODE_FILE_LABELS[currentTemplateMode]
   const practiceIntroText = {
     pseudo: 'Study the pseudocode outline, then hide it and describe the algorithm from memory.',
-    skeleton: 'Study the skeleton, then hide it and rebuild the invariant scaffold from memory.',
-    full: 'Study the full answer, then hide it and recall from memory.',
+    invariant: 'Study the invariant scaffold, then hide it and rebuild it from memory.',
+    algorithm: 'Study the full algorithm, then hide it and recall from memory.',
   }[currentTemplateMode]
   const practiceInputLabel = {
     pseudo: 'Write the pseudocode from memory',
-    skeleton: 'Write the skeleton from memory',
-    full: 'Type the full answer from memory',
+    invariant: 'Write the invariant scaffold from memory',
+    algorithm: 'Type the full algorithm from memory',
   }[currentTemplateMode]
   const supportedPracticeInputLabel = isGhostRepsEnabled
     ? `${practiceInputLabel} with Ghost Reps`
     : practiceInputLabel
   const practicePlaceholder = {
     pseudo: 'Write the algorithm in plain text or mixed Python and prose...',
-    skeleton: 'Write the skeleton and invariant comments from memory...',
-    full: 'Type the full solution from memory...',
+    invariant: 'Write the invariant scaffold and comments from memory...',
+    algorithm: 'Type the full algorithm from memory...',
   }[currentTemplateMode]
   const supportedPracticePlaceholder = isGhostRepsEnabled
     ? `Trace the faint ${currentTemplateLabel.toLowerCase()} target here...`
     : practicePlaceholder
   const startRecallLabel = {
     pseudo: 'Hide pseudocode and start recall',
-    skeleton: 'Hide skeleton and start recall',
-    full: 'Hide answer and start recall',
+    invariant: 'Hide invariant scaffold and start recall',
+    algorithm: 'Hide algorithm and start recall',
   }[currentTemplateMode]
   const supportedStartRecallLabel = isGhostRepsEnabled
     ? `Start Ghost Reps for ${currentTemplateLabel}`
@@ -1102,7 +1168,7 @@ function App() {
     } catch {
       return {
         accuracy: estimateTemplateAccuracy(currentTemplateMode, expectedAnswer, userAnswer),
-        sound: currentTemplateMode === 'full' ? userAnswer === expectedAnswer : false,
+        sound: currentTemplateMode === 'algorithm' ? userAnswer === expectedAnswer : false,
         syntaxValid: userAnswer.trim().length > 0,
       }
     }
@@ -1174,6 +1240,7 @@ function App() {
     setCurrentCardTemplateResults({})
 
     setMainPhase('preview')
+    setRecallMinHeight(undefined)
     setMainInput('')
     setMainStartedAt(null)
     setMainCloseEnough(false)
@@ -1199,6 +1266,7 @@ function App() {
 
   const resetCurrentTemplateInteraction = () => {
     setMainPhase('preview')
+    setRecallMinHeight(undefined)
     setMainInput('')
     setMainStartedAt(null)
     setMainCloseEnough(false)
@@ -1245,6 +1313,9 @@ function App() {
 
   const startMainRecall = () => {
     if (!hasDeck || hasAnsweredCurrent || sessionFinished) return
+    if (previewCodeContainerRef.current) {
+      setRecallMinHeight(previewCodeContainerRef.current.offsetHeight)
+    }
     setMainPhase('typing')
     setMainStartedAt(Date.now())
     setMainInput('')
@@ -1284,13 +1355,17 @@ function App() {
   }
 
   const handleMainKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (mainPhase !== 'typing') return
-
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
       event.preventDefault()
-      if (mainInput.trim().length > 0) submitMainRecall()
+      if (mainPhase === 'submitted' && latestSubmittedWasGhostRep) {
+        repeatGhostRep()
+        return
+      }
+      if (mainPhase === 'typing' && mainInput.trim().length > 0) submitMainRecall()
       return
     }
+
+    if (mainPhase !== 'typing') return
 
     const inputElement = event.currentTarget
     const start = inputElement.selectionStart
@@ -1780,7 +1855,7 @@ function App() {
       userAnswer: trimmedInput,
       elapsedMs: Math.max((mainStartedAt ? Date.now() - mainStartedAt : 0), 0),
       accuracy,
-      exact: currentTemplateMode === 'full' ? trimmedInput === target : false,
+      exact: currentTemplateMode === 'algorithm' ? trimmedInput === target : false,
       previousAttempts: currentCardRecallHistory,
       liveStructure: liveStructure,
     })
@@ -1788,6 +1863,34 @@ function App() {
   const latestSubmittedAttempt =
     mainPhase === 'submitted' ? currentCardRecallHistory[currentCardRecallHistory.length - 1] ?? null : null
   const latestSubmittedWasGhostRep = latestSubmittedAttempt?.supportLayer === 'ghost-reps'
+
+  useEffect(() => {
+    if (mainPhase !== 'submitted' || !latestSubmittedWasGhostRep) return
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault()
+        repeatGhostRep()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [mainPhase, latestSubmittedWasGhostRep])
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === 'g' && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault()
+        setSupportLayer((prev) => (prev === 'ghost-reps' ? 'none' : 'ghost-reps'))
+      }
+      if (event.key === 'l' && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault()
+        setLiveCoachTuning((prev) => ({ ...prev, enabled: !prev.enabled }))
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   const submissionFeedbackNextStep =
     coachFeedback?.immediateCorrection || coachFeedback?.primaryFocus || `Review the drifted step, then rewrite the ${currentTemplateMode} template once more.`
   const showGeneratingSubmissionFeedback = coachLoading && !coachFeedback
@@ -2053,37 +2156,46 @@ function App() {
           <div className="panel">
             <h3>Prompt</h3>
             {!hasDeck ? (
-              <>
-                <p className="prompt">
-                  {skillMapLoading
-                    ? 'Generating atomic recall drills from the layered skill map.'
-                    : 'The skill-map deck is unavailable right now.'}
-                </p>
-                <p className="hint">
-                  {skillMapLoading
-                    ? 'Each generated drill is meant to isolate one reusable LeetCode move so you can memorize the technique itself, not a story problem.'
-                    : skillMapError || 'Try restarting the session to request another generated deck.'}
-                </p>
-              </>
+              skillMapLoading ? (
+                <div className="skeleton-group">
+                  <div className="skeleton-line w95 tall" />
+                  <div className="skeleton-line w80" />
+                  <div className="skeleton-line w60" />
+                </div>
+              ) : (
+                <>
+                  <p className="prompt">The skill-map deck is unavailable right now.</p>
+                  <p className="hint">{skillMapError || 'Try restarting the session to request another generated deck.'}</p>
+                </>
+              )
             ) : (
-              <>
+              <div className="drill-fade-in">
                 <p className="prompt">{practicePrompt}</p>
-              </>
+              </div>
             )}
           </div>
 
           <div className="panel">
             <h3>Main Recall Flow</h3>
             {!hasDeck ? (
-              <div className="hint" style={{ marginTop: 0 }}>
-                {skillMapLoading
-                  ? 'The LLM is building a fresh set of skill-map snippets now.'
-                  : skillMapError || 'No drills are available yet.'}
-              </div>
+              skillMapLoading ? (
+                <div className="skeleton-group">
+                  <div className="skeleton-line w60" />
+                  <div className="skeleton-line w95 tall" />
+                  <div className="skeleton-line w95 tall" />
+                  <div className="skeleton-line w80 tall" />
+                  <div className="skeleton-line w95 tall" />
+                  <div className="skeleton-line w45" />
+                </div>
+              ) : (
+                <div className="hint" style={{ marginTop: 0 }}>
+                  {skillMapError || 'No drills are available yet.'}
+                </div>
+              )
             ) : mainPhase === 'preview' && (
-              <>
+              <div className="drill-fade-in">
                 <p className="answer-label">{practiceIntroText}</p>
-                <div className="code-container">
+                <div className="code-container" ref={previewCodeContainerRef}>
                   <SyntaxHighlighter
                     language={practiceLanguage}
                     style={syntaxTheme}
@@ -2091,6 +2203,7 @@ function App() {
                       margin: 0,
                       padding: 0,
                       background: 'transparent',
+                      border: 'none',
                       fontFamily: 'inherit',
                       fontSize: 'inherit',
                       lineHeight: 'inherit',
@@ -2110,7 +2223,7 @@ function App() {
                 <div className="actions">
                   <button onClick={startMainRecall} disabled={!hasDeck || hasAnsweredCurrent || sessionFinished}>{supportedStartRecallLabel}</button>
                 </div>
-              </>
+              </div>
             )}
 
             {hasDeck && mainPhase !== 'preview' && (
@@ -2118,28 +2231,9 @@ function App() {
                 <label className="answer-label" htmlFor="main-recall-input">
                   {supportedPracticeInputLabel}
                 </label>
-                <div className="vscode-editor-container">
-                  <div className="vscode-tabs">
-                    <div className="vscode-tab active">{practiceTabLabel}</div>
-                  </div>
+                <div className="code-container recall-editor-container" style={recallMinHeight ? { minHeight: recallMinHeight } : undefined}>
                   <div className="typing-editor-shell">
-                    <div className="typing-editor">
-                      <div className="typing-gutter" aria-hidden="true" ref={mainGutterRef}>
-                        {displayLines.map((line, i) => {
-                          const status =
-                            showSubmittedLineReview && line.sourceLineNumber
-                              ? lineReview.actualStatuses[line.sourceLineNumber - 1] ?? 'match'
-                              : null
-                          return (
-                            <div
-                              key={i}
-                              className={`typing-line-number${status ? ` line-${status}` : ''}`}
-                            >
-                              {i + 1}
-                            </div>
-                          )
-                        })}
-                      </div>
+                    <div className="typing-editor no-gutter">
                       <div className="typing-code-area">
                         {mainPhase === 'typing' && isGhostRepsEnabled && (
                           <div className="typing-ghost-target" aria-hidden="true" ref={mainGhostRef}>
@@ -2150,6 +2244,7 @@ function App() {
                                 margin: 0,
                                 padding: 0,
                                 background: 'transparent',
+                                border: 'none',
                                 fontFamily: 'inherit',
                                 fontSize: 'inherit',
                                 lineHeight: 'inherit',
@@ -2192,6 +2287,7 @@ function App() {
                               margin: 0,
                               padding: 0,
                               background: 'transparent',
+                              border: 'none',
                               fontFamily: 'inherit',
                               fontSize: 'inherit',
                               lineHeight: 'inherit',
@@ -2230,7 +2326,7 @@ function App() {
                         )}
                       </div>
                     </div>
-                    {mainPhase === 'typing' && (
+                    {mainPhase === 'typing' && liveCoachTuning.enabled && (
                       <div className="coach-docked-panel coach-docked-panel-idle">
                         <div className="coach-docked-card">
                           <div className="coach-card-header">
@@ -2322,7 +2418,7 @@ function App() {
                                     <SyntaxHighlighter
                                       language={practiceLanguage}
                                       style={syntaxTheme}
-                                      customStyle={{ margin: 0, padding: 0, background: 'transparent' }}
+                                      customStyle={{ margin: 0, padding: 0, background: 'transparent', border: 'none' }}
                                       codeTagProps={{ style: { background: 'transparent' } }}
                                     >
                                       {submissionCorrectedVersion}
