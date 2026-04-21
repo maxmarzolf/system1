@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Assessor Narrator Generator Flow</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      body {
+        margin: 0;
+        background: #f7f8fb;
+        color: #17202a;
+      }
+
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 14px 18px;
+        background: rgba(255, 255, 255, 0.94);
+        border-bottom: 1px solid #d9dde5;
+        backdrop-filter: blur(10px);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 720;
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      button {
+        border: 1px solid #b8c0cc;
+        border-radius: 6px;
+        background: #fff;
+        padding: 8px 10px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: #eef2f7;
+      }
+
+      main {
+        padding: 24px;
+        overflow: auto;
+      }
+
+      .canvas {
+        width: max-content;
+        min-width: 100%;
+        transform-origin: top left;
+      }
+
+      .mermaid {
+        padding: 24px;
+        background: #fff;
+        border: 1px solid #d9dde5;
+        border-radius: 6px;
+        box-shadow: 0 8px 30px rgba(31, 45, 61, 0.08);
+      }
+
+      .hint {
+        margin: 12px 0 0;
+        color: #5d6877;
+        font-size: 13px;
+      }
+
+      @media print {
+        header {
+          display: none;
+        }
+
+        body {
+          background: #fff;
+        }
+
+        main {
+          padding: 0;
+          overflow: visible;
+        }
+
+        .canvas {
+          transform: none !important;
+        }
+
+        .mermaid {
+          border: 0;
+          box-shadow: none;
+        }
+
+        @page {
+          size: landscape;
+          margin: 0.35in;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Assessor Narrator Generator Flow</h1>
+        <p class="hint">Use browser zoom, the buttons, Fit width, or Print / Save as PDF.</p>
+      </div>
+      <div class="actions">
+        <button type="button" id="zoomOut">Zoom out</button>
+        <button type="button" id="zoomIn">Zoom in</button>
+        <button type="button" id="fit">Fit width</button>
+        <button type="button" id="reset">Reset</button>
+        <button type="button" id="print">Print / Save PDF</button>
+      </div>
+    </header>
+    <main id="viewport">
+      <div class="canvas" id="canvas">
+        <pre class="mermaid">
+flowchart TD
+  subgraph INPUT["Input from practice UI"]
+    A["User attempt"]
+    A1["expectedAnswer"]
+    A2["userAnswer"]
+    A3["templateMode"]
+    A4["skillTags"]
+    A5["elapsedMs + accuracy"]
+    A6["liveMode"]
+  end
+
+  subgraph ASSESSOR["1. Signal Assessor"]
+    B["LLM structural assessment"]
+    S["signals"]
+    M["assessment metadata"]
+
+    S1["structure score + note"]
+    S2["correctness score + note"]
+    S3["completeness score + note"]
+    S4["patternFidelity score + note"]
+    S5["syntax valid + error"]
+    S6["completionTime score + note"]
+
+    M1["patternIdentified"]
+    M2["primaryBlocker"]
+    M3["blockerKey"]
+    M4["verdict"]
+    M5["errorTags"]
+    M6["strengths"]
+  end
+
+  subgraph LIVE["Live feedback path"]
+    L0["liveMode = true"]
+    L1["Assessor only"]
+    L2["nextMove"]
+    L3["why"]
+    L4["affirmation"]
+    L5["microDrill + nextRepTarget"]
+  end
+
+  subgraph NARRATOR["2. Feedback Narrator"]
+    N0["liveMode = false"]
+    N1["LLM coaching narration"]
+    N2["diagnosis"]
+    N3["primaryFocus"]
+    N4["immediateCorrection"]
+    N5["fullFeedback"]
+    N6["correctedVersion"]
+    N7["microDrill + nextRepTarget"]
+  end
+
+  subgraph RUBRIC["Signal-derived rubric"]
+    R1["score signals"]
+    R2["pass / partial / fail statuses"]
+    R3["primaryFailure"]
+    R4["recommendedAction"]
+    R5["submissionRubric"]
+  end
+
+  subgraph MEMORY["Stored training memory"]
+    P1["coach_feedback_events"]
+    P2["score_attempts"]
+    P3["practice history"]
+    P4["readiness summary"]
+    P5["repeated errorTags"]
+    P6["dimension summaries"]
+  end
+
+  subgraph GENERATOR["3. Drill Generator"]
+    G1["Skill-map Drill Generator"]
+    G2["Adaptive Variation Generator"]
+    G3["atomic recall drills"]
+    G4["targeted repair rep"]
+  end
+
+  subgraph NEXT["Next practice loop"]
+    Q1["practice queue"]
+    Q2["next user attempt"]
+  end
+
+  subgraph FAILURE["Failure behavior"]
+    F1["missing provider"]
+    F2["invalid JSON"]
+    F3["empty response"]
+    F4["structured HTTP error"]
+  end
+
+  A --> B
+  A1 --> B
+  A2 --> B
+  A3 --> B
+  A4 --> B
+  A5 --> B
+  A6 --> B
+
+  B --> S
+  B --> M
+
+  S --> S1
+  S --> S2
+  S --> S3
+  S --> S4
+  S --> S5
+  S --> S6
+
+  M --> M1
+  M --> M2
+  M --> M3
+  M --> M4
+  M --> M5
+  M --> M6
+
+  S --> L0
+  M --> L0
+  L0 --> L1
+  L1 --> L2
+  L1 --> L3
+  L1 --> L4
+  L1 --> L5
+
+  S --> N0
+  M --> N0
+  A --> N0
+  N0 --> N1
+  N1 --> N2
+  N1 --> N3
+  N1 --> N4
+  N1 --> N5
+  N1 --> N6
+  N1 --> N7
+
+  S --> R1
+  M --> R3
+  R1 --> R2
+  R2 --> R5
+  R3 --> R5
+  R4 --> R5
+  M2 --> R4
+
+  L1 --> P1
+  N1 --> P1
+  R5 --> P2
+  P1 --> P3
+  P2 --> P3
+  P3 --> P4
+  P3 --> P5
+  P3 --> P6
+
+  P4 --> G1
+  P5 --> G1
+  P6 --> G1
+  R5 --> G2
+  M3 --> G2
+  A --> G2
+
+  G1 --> G3
+  G2 --> G4
+  G3 --> Q1
+  G4 --> Q1
+  Q1 --> Q2
+  Q2 --> A
+
+  B -. can fail .-> F1
+  B -. can fail .-> F2
+  B -. can fail .-> F3
+  N1 -. can fail .-> F1
+  N1 -. can fail .-> F2
+  N1 -. can fail .-> F3
+  G1 -. can fail .-> F1
+  G1 -. can fail .-> F2
+  G1 -. can fail .-> F3
+  G2 -. can fail .-> F1
+  G2 -. can fail .-> F2
+  G2 -. can fail .-> F3
+  F1 --> F4
+  F2 --> F4
+  F3 --> F4
+        </pre>
+      </div>
+    </main>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+      mermaid.initialize({
+        startOnLoad: true,
+        securityLevel: "loose",
+        theme: "base",
+        flowchart: {
+          curve: "basis",
+          htmlLabels: true,
+          nodeSpacing: 55,
+          rankSpacing: 70
+        },
+        themeVariables: {
+          primaryColor: "#f5f8ff",
+          primaryBorderColor: "#5472a4",
+          primaryTextColor: "#17202a",
+          lineColor: "#667085",
+          secondaryColor: "#fff8e8",
+          tertiaryColor: "#edf7ef",
+          fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+        }
+      });
+
+      const viewport = document.getElementById("viewport");
+      const canvas = document.getElementById("canvas");
+      let scale = 1;
+
+      const applyScale = () => {
+        canvas.style.transform = `scale(${scale})`;
+      };
+
+      const fitWidth = () => {
+        const diagram = canvas.querySelector("svg");
+        const width = diagram ? diagram.getBoundingClientRect().width / scale : canvas.scrollWidth;
+        const available = Math.max(viewport.clientWidth - 48, 320);
+        scale = Math.max(0.25, Math.min(2.5, available / width));
+        applyScale();
+      };
+
+      document.getElementById("zoomIn").addEventListener("click", () => {
+        scale = Math.min(2.5, scale + 0.15);
+        applyScale();
+      });
+
+      document.getElementById("zoomOut").addEventListener("click", () => {
+        scale = Math.max(0.25, scale - 0.15);
+        applyScale();
+      });
+
+      document.getElementById("fit").addEventListener("click", fitWidth);
+
+      document.getElementById("reset").addEventListener("click", () => {
+        scale = 1;
+        applyScale();
+      });
+
+      document.getElementById("print").addEventListener("click", () => {
+        window.print();
+      });
+
+      window.addEventListener("load", () => {
+        window.setTimeout(fitWidth, 250);
+      });
+    </script>
+  </body>
+</html>

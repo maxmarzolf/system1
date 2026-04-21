@@ -1,0 +1,177 @@
+flowchart TD
+  subgraph INPUT["Input from practice UI"]
+    A["User attempt"]
+    A1["expectedAnswer"]
+    A2["userAnswer"]
+    A3["templateMode"]
+    A4["skillTags"]
+    A5["elapsedMs + accuracy"]
+    A6["liveMode"]
+  end
+
+  subgraph ASSESSOR["1. Signal Assessor"]
+    B["LLM structural assessment"]
+    S["signals"]
+    M["assessment metadata"]
+
+    S1["structure score + note"]
+    S2["correctness score + note"]
+    S3["completeness score + note"]
+    S4["patternFidelity score + note"]
+    S5["syntax valid + error"]
+    S6["completionTime score + note"]
+
+    M1["patternIdentified"]
+    M2["primaryBlocker"]
+    M3["blockerKey"]
+    M4["verdict"]
+    M5["errorTags"]
+    M6["strengths"]
+  end
+
+  subgraph LIVE["Live feedback path"]
+    L0["liveMode = true"]
+    L1["Assessor only"]
+    L2["nextMove"]
+    L3["why"]
+    L4["affirmation"]
+    L5["microDrill + nextRepTarget"]
+  end
+
+  subgraph NARRATOR["2. Feedback Narrator"]
+    N0["liveMode = false"]
+    N1["LLM coaching narration"]
+    N2["diagnosis"]
+    N3["primaryFocus"]
+    N4["immediateCorrection"]
+    N5["fullFeedback"]
+    N6["correctedVersion"]
+    N7["microDrill + nextRepTarget"]
+  end
+
+  subgraph RUBRIC["Signal-derived rubric"]
+    R1["score signals"]
+    R2["pass / partial / fail statuses"]
+    R3["primaryFailure"]
+    R4["recommendedAction"]
+    R5["submissionRubric"]
+  end
+
+  subgraph MEMORY["Stored training memory"]
+    P1["coach_feedback_events"]
+    P2["score_attempts"]
+    P3["practice history"]
+    P4["readiness summary"]
+    P5["repeated errorTags"]
+    P6["dimension summaries"]
+  end
+
+  subgraph GENERATOR["3. Drill Generator"]
+    G1["Skill-map Drill Generator"]
+    G2["Adaptive Variation Generator"]
+    G3["atomic recall drills"]
+    G4["targeted repair rep"]
+  end
+
+  subgraph NEXT["Next practice loop"]
+    Q1["practice queue"]
+    Q2["next user attempt"]
+  end
+
+  subgraph FAILURE["Failure behavior"]
+    F1["missing provider"]
+    F2["invalid JSON"]
+    F3["empty response"]
+    F4["structured HTTP error"]
+  end
+
+  A --> B
+  A1 --> B
+  A2 --> B
+  A3 --> B
+  A4 --> B
+  A5 --> B
+  A6 --> B
+
+  B --> S
+  B --> M
+
+  S --> S1
+  S --> S2
+  S --> S3
+  S --> S4
+  S --> S5
+  S --> S6
+
+  M --> M1
+  M --> M2
+  M --> M3
+  M --> M4
+  M --> M5
+  M --> M6
+
+  S --> L0
+  M --> L0
+  L0 --> L1
+  L1 --> L2
+  L1 --> L3
+  L1 --> L4
+  L1 --> L5
+
+  S --> N0
+  M --> N0
+  A --> N0
+  N0 --> N1
+  N1 --> N2
+  N1 --> N3
+  N1 --> N4
+  N1 --> N5
+  N1 --> N6
+  N1 --> N7
+
+  S --> R1
+  M --> R3
+  R1 --> R2
+  R2 --> R5
+  R3 --> R5
+  R4 --> R5
+  M2 --> R4
+
+  L1 --> P1
+  N1 --> P1
+  R5 --> P2
+  P1 --> P3
+  P2 --> P3
+  P3 --> P4
+  P3 --> P5
+  P3 --> P6
+
+  P4 --> G1
+  P5 --> G1
+  P6 --> G1
+  R5 --> G2
+  M3 --> G2
+  A --> G2
+
+  G1 --> G3
+  G2 --> G4
+  G3 --> Q1
+  G4 --> Q1
+  Q1 --> Q2
+  Q2 --> A
+
+  B -. can fail .-> F1
+  B -. can fail .-> F2
+  B -. can fail .-> F3
+  N1 -. can fail .-> F1
+  N1 -. can fail .-> F2
+  N1 -. can fail .-> F3
+  G1 -. can fail .-> F1
+  G1 -. can fail .-> F2
+  G1 -. can fail .-> F3
+  G2 -. can fail .-> F1
+  G2 -. can fail .-> F2
+  G2 -. can fail .-> F3
+  F1 --> F4
+  F2 --> F4
+  F3 --> F4
