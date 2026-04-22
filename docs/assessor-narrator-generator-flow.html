@@ -195,10 +195,9 @@ flowchart TD
     P6["dimension summaries"]
   end
 
-  subgraph GENERATOR["3. Drill Generator"]
-    G1["Skill-map Drill Generator"]
+  subgraph GENERATOR["3. Practice Generator"]
+    G1["Skill-map Seed Deck"]
     G2["Adaptive Variation Generator"]
-    G3["atomic recall drills"]
     G4["targeted repair rep"]
   end
 
@@ -282,9 +281,8 @@ flowchart TD
   M3 --> G2
   A --> G2
 
-  G1 --> G3
+  G1 --> Q1
   G2 --> G4
-  G3 --> Q1
   G4 --> Q1
   Q1 --> Q2
   Q2 --> A

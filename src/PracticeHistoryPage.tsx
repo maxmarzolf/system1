@@ -143,7 +143,6 @@ const formatWeakDimension = (summary?: DimensionSummary) => {
 export default function PracticeHistoryPage() {
   const [searchParams] = useSearchParams()
   const cardId = searchParams.get('cardId')?.trim() || ''
-  const cardTitle = searchParams.get('cardTitle')?.trim() || ''
   const questionType = searchParams.get('questionType')?.trim() || 'skill-map'
   const skillTags = useMemo(
     () => searchParams.getAll('tag').map((tag) => tag.trim()).filter(Boolean),
@@ -200,7 +199,6 @@ export default function PracticeHistoryPage() {
   const recentPrimaryFocuses =
     practiceHistorySummary?.recentPrimaryFocuses.map((focus) => focus.trim()).filter(Boolean) ?? []
   const repeatedWeakDimensions = practiceHistorySummary?.dimensionSummary?.weakDimensions ?? []
-  const pageTitle = cardTitle || cardId || 'Practice History'
   const hasContext = Boolean(cardId || skillTags.length > 0)
 
   return (
