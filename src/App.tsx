@@ -23,9 +23,9 @@ type Flashcard = {
 
 const emptySkillMapCard: Flashcard = {
   id: 'skill-map-loading',
-  title: 'Skill Map Drill',
+  title: 'Skill Map Card',
   difficulty: 'Easy',
-  prompt: 'Generate a fresh set of atomic recall drills from the layered skill map.',
+  prompt: 'Generate a fresh skill-map practice deck from the layered map.',
   solution: 'def solve():\n    {{missing}}',
   missing: 'pass',
   hint: '',
@@ -245,12 +245,6 @@ const TEMPLATE_MODE_LABELS: Record<TemplateMode, string> = {
   invariant: 'Invariant',
   algorithm: 'Algorithm',
 }
-const TEMPLATE_MODE_FILE_LABELS: Record<TemplateMode, string> = {
-  pseudo: 'recall.txt',
-  invariant: 'invariant.py',
-  algorithm: 'recall.py',
-}
-
 const patternToSlug = (pattern: string) =>
   pattern
     .toLowerCase()
@@ -1071,7 +1065,6 @@ function App() {
   const nextTemplateMode = activeTemplateModes[currentTemplateModeIndex + 1] ?? null
   const hasNextTemplateMode = Boolean(nextTemplateMode)
   const practiceLanguage = currentTemplateMode === 'pseudo' ? 'text' : 'python'
-  const practiceTabLabel = TEMPLATE_MODE_FILE_LABELS[currentTemplateMode]
   const practiceIntroText = {
     pseudo: 'Study the pseudocode outline, then hide it and describe the algorithm from memory.',
     invariant: 'Study the invariant scaffold, then hide it and rebuild it from memory.',

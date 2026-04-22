@@ -62,7 +62,7 @@ PostgreSQL is available to the backend at `postgresql://flashcard_user:flashcard
 - `POST /api/coach/attempt-feedback` - Generate live or final coach feedback
 - `POST /api/coach/history` - Load related practice history
 - `POST /api/coach/session-plan` - Generate an end-of-session plan
-- `POST /api/coach/skill-map-drills` - Generate and store focused drills
+- `POST /api/coach/skill-map-drills` - Generate and store skill-map practice cards
 
 The backend uses FastAPI with `asyncpg` to connect to PostgreSQL.
 
@@ -102,7 +102,7 @@ The coach pipeline uses three distinct LLM roles, each with its own provider sel
 |------|---------|-------------------|------------|
 | **Signal Assessor** | Structural assessment of each attempt (replaces ~1500 lines of rule-based signals) | Fastest available: Gemma → Claude → OpenAI | 600 |
 | **Feedback Narrator** | Narrative coaching text for submission feedback | User-selected available provider | 1800 |
-| **Drill Generator** | Generates focused practice drills from skill-map history | User-selected available provider | 2000 |
+| **Practice Generator** | Seeds skill-map practice decks and creates adaptive repair variations | User-selected available provider | 2000 |
 
 Live feedback (`liveMode=true`) uses only the Signal Assessor — no Narrator call.
 Submission feedback (`liveMode=false`) runs Assessor → Narrator in sequence.

@@ -2141,7 +2141,7 @@ def _process_raw_drill(
     )
     return {
         "id": str(raw.get("id", f"skill-map-{index + 1}")),
-        "title": str(raw.get("title", f"Skill Map Drill {index + 1}")),
+        "title": str(raw.get("title", f"Skill Map Card {index + 1}")),
         "difficulty": _normalize_drill_difficulty(raw.get("difficulty", "Med.")),
         "prompt": selected_prompt,
         "templatePrompts": template_prompts,
@@ -2506,7 +2506,7 @@ async def _skill_map_drills_with_llm(
         )
 
     system_prompt = (
-        "You generate atomic Python recall drills for coding interview preparation. "
+        "You generate focused Python practice cards for coding interview preparation. "
         "Return only a top-level JSON object shaped exactly like {\"drills\": [...]}. "
         "The drills array must contain exactly the requested count of objects with keys "
         "id, title, difficulty, prompt, templatePrompts, templateTargets, solution, missing, hint, tags. "
@@ -2587,7 +2587,7 @@ async def _skill_map_drills_with_llm(
     if not llm_response or not isinstance(llm_response.get("drills"), list):
         raise SubmissionFeedbackUnavailableError(
             code="coach_llm_no_response",
-            message=f"Skill-map drills cannot be generated at this time. No response from {_llm_provider_label(provider)}.",
+            message=f"Skill-map practice cards cannot be generated at this time. No response from {_llm_provider_label(provider)}.",
             provider=provider,
             api_error_code="provider_empty_response",
         )
@@ -2597,7 +2597,7 @@ async def _skill_map_drills_with_llm(
         if not isinstance(raw, dict):
             raise SubmissionFeedbackUnavailableError(
                 code="coach_llm_invalid_response",
-                message=f"Skill-map drills cannot be generated at this time. Invalid response from {_llm_provider_label(provider)}.",
+                message=f"Skill-map practice cards cannot be generated at this time. Invalid response from {_llm_provider_label(provider)}.",
                 provider=provider,
                 api_error_code="provider_invalid_json",
             )
@@ -2606,7 +2606,7 @@ async def _skill_map_drills_with_llm(
         if "{{missing}}" not in solution or not missing:
             raise SubmissionFeedbackUnavailableError(
                 code="coach_llm_invalid_response",
-                message=f"Skill-map drills cannot be generated at this time. Invalid response from {_llm_provider_label(provider)}.",
+                message=f"Skill-map practice cards cannot be generated at this time. Invalid response from {_llm_provider_label(provider)}.",
                 provider=provider,
                 api_error_code="provider_invalid_json",
             )
@@ -2636,7 +2636,7 @@ async def _skill_map_drills_with_llm(
         )
         drills.append({
             "id": str(raw.get("id", f"skill-map-{index + 1}")),
-            "title": str(raw.get("title", f"Skill Map Drill {index + 1}")),
+            "title": str(raw.get("title", f"Skill Map Card {index + 1}")),
             "difficulty": _normalize_drill_difficulty(raw.get("difficulty", "Med.")),
             "prompt": selected_prompt,
             "templatePrompts": template_prompts,
@@ -2650,7 +2650,7 @@ async def _skill_map_drills_with_llm(
     if len(drills) != min(body.count, len(generation_skill_map)):
         raise SubmissionFeedbackUnavailableError(
             code="coach_llm_invalid_response",
-            message=f"Skill-map drills cannot be generated at this time. Invalid response from {_llm_provider_label(provider)}.",
+            message=f"Skill-map practice cards cannot be generated at this time. Invalid response from {_llm_provider_label(provider)}.",
             provider=provider,
             api_error_code="provider_invalid_json",
         )
@@ -2813,7 +2813,7 @@ async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
         ))
 
     system_prompt = (
-        "You generate atomic Python recall drills for coding interview preparation. "
+        "You generate focused Python practice cards for coding interview preparation. "
         "Return only a top-level JSON object shaped exactly like {\"drills\": [...]}. "
         "The drills array must contain exactly the requested count of objects with keys "
         "id, title, difficulty, prompt, templatePrompts, templateTargets, solution, missing, hint, tags. "
