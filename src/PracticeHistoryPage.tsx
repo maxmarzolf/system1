@@ -207,26 +207,6 @@ export default function PracticeHistoryPage() {
     <div className="app">
       <TopNav />
 
-      <section className="card">
-        <div className="card-header practice-history-page-header">
-          <div>
-            <h2>{pageTitle}</h2>
-            <p className="difficulty">
-              {cardId ? `Card ${cardId}` : 'Skill-tag history'} · {questionType}
-            </p>
-            <p className="hint practice-history-page-intro">
-              Stored final attempts, live coach snapshots, and final feedback for the current practice context.
-            </p>
-          </div>
-          {skillTags.length > 0 && (
-            <div className="tags">
-              {skillTags.map((tag) => (
-                <span key={tag} className="tag">{tag}</span>
-              ))}
-            </div>
-          )}
-        </div>
-
         {!hasContext && (
           <p className="coach-muted">
             Open this page from a practice card to load related submission history.
@@ -238,9 +218,6 @@ export default function PracticeHistoryPage() {
             <div className="practice-history-header">
               <div>
                 <h3>Recent Submission History</h3>
-                <p className="hint" style={{ marginTop: '0.35rem' }}>
-                  The backend keeps generated drills, live coach snapshots, and final feedback together so future prompts can adapt.
-                </p>
               </div>
               {practiceHistorySummary && (
                 <div className="practice-history-summary">
@@ -373,7 +350,6 @@ export default function PracticeHistoryPage() {
             )}
           </div>
         )}
-      </section>
     </div>
   )
 }
