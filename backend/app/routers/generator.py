@@ -291,7 +291,7 @@ def _process_raw_drill(
     )
     return {
         "id": str(raw.get("id", f"skill-map-{index + 1}")),
-        "title": str(raw.get("title", f"Skill Map Drill {index + 1}")),
+        "title": str(raw.get("title", f"Skill Map Card {index + 1}")),
         "difficulty": _normalize_drill_difficulty(raw.get("difficulty", "Med.")),
         "prompt": selected_prompt,
         "templatePrompts": template_prompts,
@@ -310,7 +310,7 @@ def build_generator_context(
     provider_label: str,
 ) -> GeneratorContext:
     system_prompt = (
-        "You generate atomic Python recall drills for coding interview preparation. "
+        "You generate focused Python practice cards for coding interview preparation. "
         "Return only a top-level JSON object shaped exactly like {\"drills\": [...]}. "
         "The drills array must contain exactly the requested count of objects with keys "
         "id, title, difficulty, prompt, templatePrompts, templateTargets, solution, missing, hint, tags. "
@@ -378,7 +378,7 @@ def build_generator_context(
 def _invalid_response_error(context: GeneratorContext) -> GeneratorUnavailableError:
     return GeneratorUnavailableError(
         code="coach_llm_invalid_response",
-        message=f"Skill-map drills cannot be generated at this time. Invalid response from {context.provider_label}.",
+            message=f"Skill-map practice cards cannot be generated at this time. Invalid response from {context.provider_label}.",
         provider=context.provider,
         api_error_code="provider_invalid_json",
     )
@@ -469,7 +469,7 @@ async def generate_skill_map_drills(context: GeneratorContext, runtime: Generato
     if not llm_response or not isinstance(llm_response.get("drills"), list):
         raise GeneratorUnavailableError(
             code="coach_llm_no_response",
-            message=f"Skill-map drills cannot be generated at this time. No response from {context.provider_label}.",
+            message=f"Skill-map practice cards cannot be generated at this time. No response from {context.provider_label}.",
             provider=context.provider,
             api_error_code="provider_empty_response",
         )
