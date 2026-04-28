@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Assessor Narrator Generator Flow</title>
+    <title>Prompt Generation Flow</title>
     <style>
       :root {
         color-scheme: light;
@@ -113,8 +113,8 @@
   <body>
     <header>
       <div>
-        <h1>Assessor Narrator Generator Flow</h1>
-        <p class="hint">Use browser zoom, the buttons, Fit width, or Print / Save as PDF. Skill-map drill generation is LLM-only.</p>
+        <h1>Prompt Generation Flow</h1>
+        <p class="hint">Tracks the Prompt panel from request body to rendered UI. Skill-map drills are LLM-only; endpoint fallback here means transport fallback, not synthetic drill creation.</p>
       </div>
       <div class="actions">
         <button type="button" id="zoomOut">Zoom out</button>
@@ -128,191 +128,132 @@
       <div class="canvas" id="canvas">
         <pre class="mermaid">
 flowchart TD
-  subgraph INPUT["Input from practice UI"]
-    A["User attempt"]
-    A1["expectedAnswer"]
-    A2["userAnswer"]
-    A3["templateMode"]
-    A4["skillTags"]
-    A5["elapsedMs + accuracy"]
-    A6["liveMode"]
+  subgraph REQUEST["A. Frontend deck request"]
+    A1["requestedSkillMap"]
+    A2["requestedTemplateMode"]
+    A3["requestedTemplateTargets per patternSlug<br/>pseudo + invariant scaffolds"]
+    A4["fetchSkillMapDeck()"]
+    A5["POST /api/coach/skill-map-drills-stream<br/>fallback transport only: /api/coach/skill-map-drills"]
   end
 
-  subgraph ASSESSOR["1. Signal Assessor"]
-    B["LLM structural assessment"]
-    S["signals"]
-    M["assessment metadata"]
-
-    S1["structure score + note"]
-    S2["correctness score + note"]
-    S3["completeness score + note"]
-    S4["patternFidelity score + note"]
-    S5["syntax valid + error"]
-    S6["completionTime score + note"]
-
-    M1["patternIdentified"]
-    M2["primaryBlocker"]
-    M3["blockerKey"]
-    M4["verdict"]
-    M5["errorTags"]
-    M6["strengths"]
+  subgraph CONTEXT["B. Generator request context"]
+    B1["build_generator_context()"]
+    B2["system prompt requires each drill to include<br/>prompt + templatePrompts + templateTargets"]
+    B3["llm_payload carries<br/>templateMode + templateTargets + skillMap + practiceHistory"]
   end
 
-  subgraph LIVE["Live feedback path"]
-    L0["liveMode = true"]
-    L1["Assessor only"]
-    L2["nextMove"]
-    L3["why"]
-    L4["affirmation"]
-    L5["microDrill + nextRepTarget"]
+  subgraph ASSEMBLY["C. Drill assembly in generator.py"]
+    C1["LLM drills only"]
+    C2["_process_raw_drill(raw, index, body, generation_skill_map)"]
+
+    C3["_template_targets_for_drill()"]
+    C31["Start with body.templateTargets[patternSlug]<br/>from frontend request"]
+    C32["Overlay raw.templateTargets from the LLM if present"]
+    C33["Always set algorithm target =<br/>solution.replace('{{missing}}', missing)"]
+
+    C4["_template_prompt_map()"]
+    C41["If raw.templatePrompts[mode] exists:<br/>use _clean_concise_prompt(...)"]
+    C42["Else if target exists:<br/>use _template_prompt_from_target(...)"]
+    C43["Entry point comes from first non-empty line:<br/>def solve(nums): / define bfs(...):"]
+
+    C5["selected_prompt becomes card.prompt"]
+    C51["templatePrompts[requestedTemplateMode]"]
+    C52["or cleaned raw.prompt"]
+    C53["or generated fallback prompt from full algorithm target"]
   end
 
-  subgraph NARRATOR["2. Feedback Narrator"]
-    N0["liveMode = false"]
-    N1["LLM coaching narration"]
-    N2["diagnosis"]
-    N3["primaryFocus"]
-    N4["immediateCorrection"]
-    N5["fullFeedback"]
-    N6["correctedVersion"]
-    N7["microDrill + nextRepTarget"]
+  subgraph DELIVERY["D. Delivery back to App.tsx"]
+    D1["stream 'drill' events or JSON response"]
+    D2["setSkillMapDeck(drills)"]
+    D3["card carries<br/>prompt + templatePrompts + templateTargets"]
   end
 
-  subgraph RUBRIC["Signal-derived rubric"]
-    R1["score signals"]
-    R2["pass / partial / fail statuses"]
-    R3["primaryFailure"]
-    R4["recommendedAction"]
-    R5["submissionRubric"]
+  subgraph UI["E. Prompt selection in App.tsx"]
+    E1["currentTemplateMode<br/>pseudo | invariant | algorithm"]
+
+    E2["practiceTarget"]
+    E21["card.templateTargets[currentTemplateMode]"]
+    E22["Else client fallback target:<br/>buildPseudoTemplate() / buildInvariantTemplate() / full solution"]
+
+    E3["generatedPracticePrompt"]
+    E31["card.templatePrompts[currentTemplateMode]"]
+    E32["or card.prompt"]
+
+    E4["practicePrompt"]
+    E41["generatedPracticePrompt"]
+    E42["or buildPracticePrompt(currentTemplateMode, practiceTarget)"]
+
+    E5["Rendered UI<br/><h3>Prompt</h3><br/><p>{practicePrompt}</p>"]
   end
 
-  subgraph MEMORY["Stored training memory"]
-    P1["coach_feedback_events"]
-    P2["score_attempts"]
-    P3["practice history"]
-    P4["readiness summary"]
-    P5["repeated errorTags"]
-    P6["dimension summaries"]
+  subgraph ADAPTIVE["F. Adaptive variation side path"]
+    F1["/api/coach/adaptive-variation"]
+    F2["returns templatePrompts = {templateMode: prompt}<br/>templateTargets = {templateMode: specimen, algorithm: specimen}"]
+    F3["feeds the same App.tsx prompt-selection path"]
   end
 
-  subgraph GENERATOR["3. Practice Generator"]
-    G0["LLM-only drill generation"]
-    G1["/skill-map-drills-stream"]
-    G1A["OpenAI streaming path"]
-    G1B["transport fallback:<br/>/skill-map-drills JSON"]
-    G2["/adaptive-variation"]
-    G4["targeted repair rep"]
+  subgraph FAILURE["G. Failure path"]
+    G1["No provider or invalid/empty LLM output"]
+    G2["Structured 503 error"]
+    G3["Frontend shows generation unavailable state"]
   end
 
-  subgraph NEXT["Next practice loop"]
-    Q1["practice queue"]
-    Q2["next user attempt"]
-  end
+  A1 --> A4
+  A2 --> A4
+  A3 --> A4
+  A4 --> A5
+  A5 --> B1
+  B1 --> B2
+  B1 --> B3
+  B2 --> C1
+  B3 --> C1
+  C1 --> C2
 
-  subgraph FAILURE["Failure behavior"]
-    F1["missing provider"]
-    F2["invalid JSON"]
-    F3["empty response"]
-    F4["structured HTTP / SSE error"]
-    F5["frontend unavailable state"]
-  end
+  C2 --> C3
+  C3 --> C31
+  C3 --> C32
+  C3 --> C33
 
-  A --> B
-  A1 --> B
-  A2 --> B
-  A3 --> B
-  A4 --> B
-  A5 --> B
-  A6 --> B
+  C2 --> C4
+  C4 --> C41
+  C4 --> C42
+  C42 --> C43
 
-  B --> S
-  B --> M
+  C3 --> C4
+  C4 --> C5
+  C5 --> C51
+  C5 --> C52
+  C5 --> C53
 
-  S --> S1
-  S --> S2
-  S --> S3
-  S --> S4
-  S --> S5
-  S --> S6
+  C5 --> D1
+  C4 --> D3
+  C3 --> D3
+  D1 --> D2
+  D2 --> D3
 
-  M --> M1
-  M --> M2
-  M --> M3
-  M --> M4
-  M --> M5
-  M --> M6
+  D3 --> E1
+  D3 --> E2
+  D3 --> E3
+  E1 --> E2
+  E2 --> E21
+  E2 --> E22
+  E1 --> E3
+  E3 --> E31
+  E3 --> E32
+  E2 --> E4
+  E3 --> E4
+  E4 --> E41
+  E4 --> E42
+  E4 --> E5
 
-  S --> L0
-  M --> L0
-  L0 --> L1
-  L1 --> L2
-  L1 --> L3
-  L1 --> L4
-  L1 --> L5
+  F1 --> F2
+  F2 --> F3
+  F3 --> E3
+  F3 --> E2
 
-  S --> N0
-  M --> N0
-  A --> N0
-  N0 --> N1
-  N1 --> N2
-  N1 --> N3
-  N1 --> N4
-  N1 --> N5
-  N1 --> N6
-  N1 --> N7
-
-  S --> R1
-  M --> R3
-  R1 --> R2
-  R2 --> R5
-  R3 --> R5
-  R4 --> R5
-  M2 --> R4
-
-  L1 --> P1
-  N1 --> P1
-  R5 --> P2
-  P1 --> P3
-  P2 --> P3
-  P3 --> P4
-  P3 --> P5
-  P3 --> P6
-
-  P4 --> G1
-  P5 --> G1
-  P6 --> G1
-  G0 --> G1
-  G1 --> G1A
-  G1 --> G1B
-  R5 --> G2
-  M3 --> G2
-  A --> G2
-
-  G1A --> Q1
-  G1B --> Q1
-  G2 --> G4
-  G4 --> Q1
-  Q1 --> Q2
-  Q2 --> A
-
-  B -. can fail .-> F1
-  B -. can fail .-> F2
-  B -. can fail .-> F3
-  N1 -. can fail .-> F1
-  N1 -. can fail .-> F2
-  N1 -. can fail .-> F3
-  G1 -. can fail .-> F1
-  G1 -. can fail .-> F2
-  G1 -. can fail .-> F3
-  G1A -. can fail .-> F4
-  G1B -. can fail .-> F4
-  G2 -. can fail .-> F1
-  G2 -. can fail .-> F2
-  G2 -. can fail .-> F3
-  F1 --> F4
-  F2 --> F4
-  F3 --> F4
-  F4 --> F5
+  C1 -. failure .-> G1
+  G1 --> G2
+  G2 --> G3
         </pre>
       </div>
     </main>

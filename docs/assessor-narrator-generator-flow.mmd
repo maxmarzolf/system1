@@ -67,8 +67,11 @@ flowchart TD
   end
 
   subgraph GENERATOR["3. Practice Generator"]
-    G1["Skill-map Seed Deck"]
-    G2["Adaptive Variation Generator"]
+    G0["LLM-only drill generation"]
+    G1["/skill-map-drills-stream"]
+    G1A["OpenAI streaming path"]
+    G1B["transport fallback:<br/>/skill-map-drills JSON"]
+    G2["/adaptive-variation"]
     G4["targeted repair rep"]
   end
 
@@ -81,7 +84,8 @@ flowchart TD
     F1["missing provider"]
     F2["invalid JSON"]
     F3["empty response"]
-    F4["structured HTTP error"]
+    F4["structured HTTP / SSE error"]
+    F5["frontend unavailable state"]
   end
 
   A --> B
@@ -148,11 +152,15 @@ flowchart TD
   P4 --> G1
   P5 --> G1
   P6 --> G1
+  G0 --> G1
+  G1 --> G1A
+  G1 --> G1B
   R5 --> G2
   M3 --> G2
   A --> G2
 
-  G1 --> Q1
+  G1A --> Q1
+  G1B --> Q1
   G2 --> G4
   G4 --> Q1
   Q1 --> Q2
@@ -167,9 +175,12 @@ flowchart TD
   G1 -. can fail .-> F1
   G1 -. can fail .-> F2
   G1 -. can fail .-> F3
+  G1A -. can fail .-> F4
+  G1B -. can fail .-> F4
   G2 -. can fail .-> F1
   G2 -. can fail .-> F2
   G2 -. can fail .-> F3
   F1 --> F4
   F2 --> F4
   F3 --> F4
+  F4 --> F5

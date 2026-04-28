@@ -42,12 +42,10 @@ from app.routers.assessor import (
     run_signal_assessor,
 )
 from app.routers.generator import (
-    fallback_skill_map_drills,
     GeneratorRuntime,
     GeneratorUnavailableError,
     build_generator_context,
     generate_skill_map_drills,
-    skill_map_drills_fallback_stream_response,
     skill_map_drills_stream_response,
     stamp_skill_map_drills,
 )
@@ -154,6 +152,18 @@ def _submission_feedback_error_detail(
 
 
 def _coach_llm_http_exception(error: SubmissionFeedbackUnavailableError) -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail=_submission_feedback_error_detail(
+            error.code,
+            error.message,
+            error.provider,
+            error.api_error_code,
+        ),
+    )
+
+
+def _generator_http_exception(error: GeneratorUnavailableError) -> HTTPException:
     return HTTPException(
         status_code=503,
         detail=_submission_feedback_error_detail(
@@ -1620,7 +1630,8 @@ async def _adaptive_variation_with_llm(body: AdaptiveVariationRequest) -> dict[s
         "The specimen is the exact next target the user should recall. "
         "Keep the same algorithm family, but vary the specimen to pressure the targetDimension. "
         "For pseudo mode, specimen must be concise pseudocode. For invariant or full mode, specimen must be Python. "
-        "Prompt must be 12 words or fewer. Do not include markdown. Do not include '{{missing}}'."
+        "Prompt must stay concise, usually 8 to 16 words, and should name the pattern move instead of generic filler. "
+        "Do not include markdown. Do not include '{{missing}}'."
     )
     llm_payload = {
         "pattern": pattern_name,
@@ -2185,14 +2196,20 @@ async def coach_practice_history(body: CoachPracticeHistoryRequest):
 async def coach_skill_map_drills(body: SkillMapDrillsRequest):
     progress_summary = await _load_skill_map_generation_summary(body)
     provider = _resolve_available_llm_provider(body.llmProvider)
+    if not _llm_provider_available(provider):
+        raise _generator_http_exception(
+            GeneratorUnavailableError(
+                code="coach_llm_missing_api_key",
+                message="Update backend .env with at least one coach LLM API key.",
+                provider=provider,
+                api_error_code="provider_auth_error",
+            )
+        )
     context = build_generator_context(body, progress_summary, provider, _llm_provider_label(provider))
-    if _llm_provider_available(provider):
-        try:
-            drills = await generate_skill_map_drills(context, GENERATOR_RUNTIME)
-        except GeneratorUnavailableError:
-            drills = fallback_skill_map_drills(context)
-    else:
-        drills = fallback_skill_map_drills(context)
+    try:
+        drills = await generate_skill_map_drills(context, GENERATOR_RUNTIME)
+    except GeneratorUnavailableError as error:
+        raise _generator_http_exception(error) from error
 
     stamped = stamp_skill_map_drills(drills["drills"])
     await _persist_skill_map_drills(stamped, bool(drills.get("llmUsed")), progress_summary)
@@ -2203,9 +2220,16 @@ async def coach_skill_map_drills(body: SkillMapDrillsRequest):
 async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
     progress_summary = await _load_skill_map_generation_summary(body)
     provider = _resolve_available_llm_provider(body.llmProvider)
-    context = build_generator_context(body, progress_summary, provider, _llm_provider_label(provider))
     if not _llm_provider_available(provider):
-        return skill_map_drills_fallback_stream_response(context, GENERATOR_RUNTIME)
+        raise _generator_http_exception(
+            GeneratorUnavailableError(
+                code="coach_llm_missing_api_key",
+                message="Update backend .env with at least one coach LLM API key.",
+                provider=provider,
+                api_error_code="provider_auth_error",
+            )
+        )
+    context = build_generator_context(body, progress_summary, provider, _llm_provider_label(provider))
     return skill_map_drills_stream_response(context, GENERATOR_RUNTIME)
 
 

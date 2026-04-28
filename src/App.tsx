@@ -95,6 +95,14 @@ type SkillMapDrillsResponse = {
   llmUsed: boolean
 }
 
+type ApiErrorDetail = {
+  code?: string
+  message?: string
+  provider?: string
+  providerLabel?: string
+  apiErrorCode?: string
+}
+
 type SkillMapDrillsRequest = {
   questionType: string
   count: number
@@ -178,7 +186,28 @@ const requestSkillMapDrills = (body: SkillMapDrillsRequest) => {
     body: requestKey,
   })
     .then(async (response) => {
-      if (!response.ok) throw new Error('Unable to generate skill map drills')
+      if (!response.ok) {
+        let parsedError: unknown = null
+        try {
+          parsedError = await response.json()
+        } catch {
+          parsedError = null
+        }
+
+        const detail =
+          parsedError &&
+          typeof parsedError === 'object' &&
+          parsedError !== null &&
+          'detail' in parsedError &&
+          typeof (parsedError as { detail?: unknown }).detail === 'object' &&
+          (parsedError as { detail?: unknown }).detail !== null
+            ? ((parsedError as { detail: ApiErrorDetail }).detail)
+            : null
+
+        throw new Error(
+          detail?.message?.trim() || 'Unable to generate skill map drills'
+        )
+      }
       return (await response.json()) as SkillMapDrillsResponse
     })
     .finally(() => {
@@ -651,10 +680,96 @@ const extractPracticeEntryPoint = (templateMode: TemplateMode, target: string) =
   return ''
 }
 
-const buildPracticePrompt = (templateMode: TemplateMode, target: string) => {
+const buildPracticePrompt = (templateMode: TemplateMode, target: string, patternTag: string) => {
   const entryPoint = extractPracticeEntryPoint(templateMode, target)
-  const modeLabel = TEMPLATE_MODE_LABELS[templateMode]
-  return entryPoint ? `${modeLabel}: recall ${entryPoint}.` : `${modeLabel}: recall this template.`
+  const patternLabel = patternTag
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(' ') || 'Algorithm'
+
+  const focusByPattern: Record<string, Partial<Record<TemplateMode, string>>> = {
+    'sliding-window': {
+      pseudo: 'sketch expand, shrink, update-best rhythm',
+      invariant: 'keep the window valid while counts change',
+      algorithm: 'code the expand/shrink/update-best loop',
+    },
+    'two-pointers': {
+      pseudo: 'sketch how each comparison moves a pointer',
+      invariant: 'preserve the left/right decision rule',
+      algorithm: 'code the inward pointer scan',
+    },
+    'binary-search': {
+      pseudo: 'sketch midpoint compare-and-discard steps',
+      invariant: 'preserve the search interval invariant',
+      algorithm: 'code the midpoint discard loop',
+    },
+    'dynamic-programming': {
+      pseudo: 'state the base case and transition',
+      invariant: 'preserve what each dp state means',
+      algorithm: 'code the state-transition loop',
+    },
+    dp: {
+      pseudo: 'state the base case and transition',
+      invariant: 'preserve what each dp state means',
+      algorithm: 'code the state-transition loop',
+    },
+    'graph-traversal': {
+      pseudo: 'sketch frontier growth and visit-once logic',
+      invariant: 'preserve frontier and visited invariants',
+      algorithm: 'code the frontier plus visited loop',
+    },
+    'dfs-bfs': {
+      pseudo: 'sketch frontier growth and visit-once logic',
+      invariant: 'preserve frontier and visited invariants',
+      algorithm: 'code the frontier plus visited loop',
+    },
+    backtracking: {
+      pseudo: 'sketch choose, recurse, undo steps',
+      invariant: 'preserve path state across undo',
+      algorithm: 'code the choose/recurse/undo loop',
+    },
+    heap: {
+      pseudo: 'sketch push, prune, keep-top logic',
+      invariant: 'preserve heap size and order invariants',
+      algorithm: 'code the push/prune heap loop',
+    },
+    'union-find': {
+      pseudo: 'sketch find-root and union decisions',
+      invariant: 'preserve parent roots and rank logic',
+      algorithm: 'code the find/union component loop',
+    },
+    intervals: {
+      pseudo: 'sketch overlap merge or flush decisions',
+      invariant: 'preserve the ordered merge invariant',
+      algorithm: 'code the sort-and-merge sweep',
+    },
+    'prefix-sums': {
+      pseudo: 'sketch prefix update, query, record steps',
+      invariant: 'preserve prefix lookup state',
+      algorithm: 'code the prefix query loop',
+    },
+    'monotonic-stack': {
+      pseudo: 'sketch pop violators, then push current',
+      invariant: 'preserve the monotonic stack invariant',
+      algorithm: 'code the pop-then-push stack loop',
+    },
+    stack: {
+      pseudo: 'sketch pop violators, then push current',
+      invariant: 'preserve the monotonic stack invariant',
+      algorithm: 'code the pop-then-push stack loop',
+    },
+  }
+
+  const defaultFocus: Record<TemplateMode, string> = {
+    pseudo: 'sketch the reusable move sequence',
+    invariant: 'preserve the key invariant while state updates',
+    algorithm: 'code the reusable pattern loop',
+  }
+  const focus = focusByPattern[patternTag]?.[templateMode] || defaultFocus[templateMode]
+  return templateMode === 'algorithm' && entryPoint
+    ? `${patternLabel}: ${focus} in ${entryPoint}.`
+    : `${patternLabel}: ${focus}.`
 }
 
 const isPlaceholderLine = (line: string) => /\b(pass|something|todo|tbd)\b/i.test(line.trim())
@@ -921,11 +1036,15 @@ function App() {
         if (skillMapDeckRequestVersionRef.current !== requestVersion) return
         setSkillMapDeck(payload.drills)
         setSkillMapSessionVersion((prev) => prev + 1)
-      } catch {
+      } catch (error) {
         if (skillMapDeckRequestVersionRef.current !== requestVersion) return
         setSkillMapDeck([])
         setSkillMapSessionVersion((prev) => prev + 1)
-        setSkillMapError('Skill map drill generation is unavailable right now.')
+        setSkillMapError(
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : 'Skill map drill generation is unavailable right now.'
+        )
       }
     } finally {
       if (skillMapDeckRequestVersionRef.current === requestVersion) {
@@ -1029,8 +1148,8 @@ function App() {
   }, [card.templateTargets, currentTemplateMode, fullSolutionTarget, pseudoTarget, invariantTarget])
   const generatedPracticePrompt = card.templatePrompts?.[currentTemplateMode]?.trim() || card.prompt.trim()
   const practicePrompt = useMemo(
-    () => generatedPracticePrompt || buildPracticePrompt(currentTemplateMode, practiceTarget),
-    [currentTemplateMode, generatedPracticePrompt, practiceTarget]
+    () => generatedPracticePrompt || buildPracticePrompt(currentTemplateMode, practiceTarget, primaryPatternTag),
+    [currentTemplateMode, generatedPracticePrompt, practiceTarget, primaryPatternTag]
   )
   const currentQuestionType = `${requestedQuestionType}:${currentTemplateMode}`
   const currentSkillTags = useMemo(

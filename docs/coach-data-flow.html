@@ -114,7 +114,7 @@
     <header>
       <div>
         <h1>Coach Data Flow</h1>
-        <p class="hint">Use browser zoom, the buttons, or Print / Save as PDF.</p>
+        <p class="hint">Use browser zoom, the buttons, or Print / Save as PDF. Skill-map drill generation is LLM-only.</p>
       </div>
       <div class="actions">
         <button type="button" id="zoomOut">Zoom out</button>
@@ -181,8 +181,8 @@ flowchart LR
   end
 
   subgraph GENERATOR["3. Practice Generator"]
-    G1["LLM call required"]
-    G2["Skill-map seed deck"]
+    G1["LLM-only generation"]
+    G2["Skill-map drill deck<br/>stream endpoint, then non-stream retry"]
     G3["Adaptive repair variation"]
   end
 
@@ -193,9 +193,9 @@ flowchart LR
 
   subgraph ERROR["Failure Rule"]
     E1["No LLM provider"]
-    E2["Invalid LLM response"]
-    E3["Structured error"]
-    E4["Coach flow stops"]
+    E2["Invalid or empty LLM response"]
+    E3["Structured HTTP / SSE error"]
+    E4["Frontend shows unavailable state"]
   end
 
   A --> B

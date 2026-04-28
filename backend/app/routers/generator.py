@@ -85,16 +85,141 @@ def _entry_point_from_template_target(template_mode: str, target: str) -> str:
     return f"{match.group(1)}({match.group(2)})" if match else ""
 
 
-def _template_prompt_from_target(pattern: str, template_mode: str, target: str) -> str:
-    mode_label = {
-        TemplateMode.pseudo.value: "Pseudo",
-        TemplateMode.invariant.value: "Invariant",
-        TemplateMode.algorithm.value: "Algorithm",
-    }.get(template_mode, "Recall")
+def _pattern_prompt_focus(pattern_slug: str, template_mode: str) -> str:
+    focus_by_pattern = {
+        "sliding-window": {
+            TemplateMode.pseudo.value: "sketch expand, shrink, update-best rhythm",
+            TemplateMode.invariant.value: "keep the window valid while counts change",
+            TemplateMode.algorithm.value: "code the expand/shrink/update-best loop",
+        },
+        "two-pointers": {
+            TemplateMode.pseudo.value: "sketch how each comparison moves a pointer",
+            TemplateMode.invariant.value: "preserve the left/right decision rule",
+            TemplateMode.algorithm.value: "code the inward pointer scan",
+        },
+        "binary-search": {
+            TemplateMode.pseudo.value: "sketch midpoint compare-and-discard steps",
+            TemplateMode.invariant.value: "preserve the search interval invariant",
+            TemplateMode.algorithm.value: "code the midpoint discard loop",
+        },
+        "dynamic-programming": {
+            TemplateMode.pseudo.value: "state the base case and transition",
+            TemplateMode.invariant.value: "preserve what each dp state means",
+            TemplateMode.algorithm.value: "code the state-transition loop",
+        },
+        "dp": {
+            TemplateMode.pseudo.value: "state the base case and transition",
+            TemplateMode.invariant.value: "preserve what each dp state means",
+            TemplateMode.algorithm.value: "code the state-transition loop",
+        },
+        "graph-traversal": {
+            TemplateMode.pseudo.value: "sketch frontier growth and visit-once logic",
+            TemplateMode.invariant.value: "preserve frontier and visited invariants",
+            TemplateMode.algorithm.value: "code the frontier plus visited loop",
+        },
+        "dfs-bfs": {
+            TemplateMode.pseudo.value: "sketch frontier growth and visit-once logic",
+            TemplateMode.invariant.value: "preserve frontier and visited invariants",
+            TemplateMode.algorithm.value: "code the frontier plus visited loop",
+        },
+        "backtracking": {
+            TemplateMode.pseudo.value: "sketch choose, recurse, undo steps",
+            TemplateMode.invariant.value: "preserve path state across undo",
+            TemplateMode.algorithm.value: "code the choose/recurse/undo loop",
+        },
+        "heap": {
+            TemplateMode.pseudo.value: "sketch push, prune, keep-top logic",
+            TemplateMode.invariant.value: "preserve heap size and order invariants",
+            TemplateMode.algorithm.value: "code the push/prune heap loop",
+        },
+        "union-find": {
+            TemplateMode.pseudo.value: "sketch find-root and union decisions",
+            TemplateMode.invariant.value: "preserve parent roots and rank logic",
+            TemplateMode.algorithm.value: "code the find/union component loop",
+        },
+        "intervals": {
+            TemplateMode.pseudo.value: "sketch overlap merge or flush decisions",
+            TemplateMode.invariant.value: "preserve the ordered merge invariant",
+            TemplateMode.algorithm.value: "code the sort-and-merge sweep",
+        },
+        "prefix-sums": {
+            TemplateMode.pseudo.value: "sketch prefix update, query, record steps",
+            TemplateMode.invariant.value: "preserve prefix lookup state",
+            TemplateMode.algorithm.value: "code the prefix query loop",
+        },
+        "monotonic-stack": {
+            TemplateMode.pseudo.value: "sketch pop violators, then push current",
+            TemplateMode.invariant.value: "preserve the monotonic stack invariant",
+            TemplateMode.algorithm.value: "code the pop-then-push stack loop",
+        },
+        "stack": {
+            TemplateMode.pseudo.value: "sketch pop violators, then push current",
+            TemplateMode.invariant.value: "preserve the monotonic stack invariant",
+            TemplateMode.algorithm.value: "code the pop-then-push stack loop",
+        },
+    }
+    default_focus = {
+        TemplateMode.pseudo.value: "sketch the reusable move sequence",
+        TemplateMode.invariant.value: "preserve the key invariant while state updates",
+        TemplateMode.algorithm.value: "code the reusable pattern loop",
+    }
+    return focus_by_pattern.get(pattern_slug, default_focus).get(template_mode, default_focus[TemplateMode.algorithm.value])
+
+
+def _template_prompt_from_target(pattern: str, pattern_slug: str, template_mode: str, target: str) -> str:
+    pattern_label = re.sub(r"\s+", " ", str(pattern or "").strip()) or "Algorithm"
+    pattern_label = pattern_label[0].upper() + pattern_label[1:] if pattern_label else "Algorithm"
     entry_point = _entry_point_from_template_target(template_mode, target)
+    focus = _pattern_prompt_focus(pattern_slug, template_mode)
+    if template_mode == TemplateMode.pseudo.value:
+        return f"{pattern_label}: {focus}."
+    if template_mode == TemplateMode.invariant.value:
+        return f"{pattern_label}: {focus}."
     if entry_point:
-        return f"{mode_label}: recall {entry_point}."
-    return f"{mode_label}: recall {pattern.lower()}."
+        return f"{pattern_label}: {focus} in {entry_point}."
+    return f"{pattern_label}: {focus}."
+
+
+def _prompt_mentions_pattern_or_move(prompt: str, pattern_slug: str, target: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9_+\-\s]", " ", prompt.lower())
+    tokens = {token for token in normalized.split() if len(token) >= 3}
+    pattern_tokens = {token for token in pattern_slug.replace("-", " ").split() if len(token) >= 3}
+    entry_tokens = {
+        token
+        for token in re.sub(r"[^a-z0-9_+\-\s]", " ", _entry_point_from_template_target(TemplateMode.algorithm.value, target).lower()).split()
+        if len(token) >= 3
+    }
+    move_tokens = {
+        "window", "shrink", "expand", "pointer", "midpoint", "interval", "frontier", "visited",
+        "recurse", "undo", "heap", "prefix", "stack", "merge", "union", "state", "transition",
+    }
+    return bool(tokens & (pattern_tokens | entry_tokens | move_tokens))
+
+
+def _prompt_is_generic(raw_prompt: str, pattern_slug: str, template_mode: str, target: str) -> bool:
+    normalized = re.sub(r"\s+", " ", raw_prompt.lower()).strip()
+    if not normalized:
+        return True
+    generic_phrases = (
+        "fill ",
+        "complete ",
+        "write ",
+        "type ",
+        "recall ",
+        "rebuild ",
+        "remember ",
+    )
+    generic_nouns = ("template", "scaffold", "outline", "algorithm", "code", "prompt")
+    if (
+        len(normalized.split()) <= 7
+        and any(normalized.startswith(phrase) for phrase in generic_phrases)
+        and any(noun in normalized for noun in generic_nouns)
+        and not _prompt_mentions_pattern_or_move(normalized, pattern_slug, target)
+    ):
+        return True
+    if template_mode == TemplateMode.invariant.value and "invariant-based" in normalized and "scaffold" in normalized:
+        return True
+    return False
 
 
 def _template_targets_for_drill(
@@ -135,12 +260,12 @@ def _template_prompt_map(
 
     for mode in TEMPLATE_MODE_ORDER:
         raw_prompt = _clean_concise_prompt(str(raw_prompts.get(mode, "")).strip())
-        if raw_prompt:
+        target = targets.get(mode, "")
+        if raw_prompt and not _prompt_is_generic(raw_prompt, pattern_slug, mode, target):
             prompts[mode] = raw_prompt
             continue
-        target = targets.get(mode, "")
         if target:
-            prompts[mode] = _template_prompt_from_target(pattern, mode, target)
+            prompts[mode] = _template_prompt_from_target(pattern, pattern_slug, mode, target)
 
     return prompts
 
@@ -287,7 +412,12 @@ def _process_raw_drill(
     selected_prompt = (
         template_prompts.get(_template_mode_value(body.templateMode))
         or _clean_concise_prompt(str(raw.get("prompt", "")).strip())
-        or _template_prompt_from_target(pattern, _template_mode_value(body.templateMode), solution.replace("{{missing}}", missing))
+        or _template_prompt_from_target(
+            pattern,
+            pattern_slug,
+            _template_mode_value(body.templateMode),
+            solution.replace("{{missing}}", missing),
+        )
     )
     return {
         "id": str(raw.get("id", f"skill-map-{index + 1}")),
@@ -322,11 +452,12 @@ def build_generator_context(
         "Make them concise and pattern-first. Prioritize patterns with low readiness or high error rates, "
         "then fill remaining slots across remaining patterns. "
         "The solution must include exactly one '{{missing}}' placeholder, and missing must be the exact code that replaces it. "
-        "The prompt must be very short: 12 words or fewer. "
+        "The prompt must stay concise, usually 8 to 16 words. "
         "templateTargets may include pseudo and invariant. Pseudo must be concise pseudocode. Invariant must be a Python scaffold. "
         "When you return templateTargets, make them specific to the drill's pattern and method instead of generic pattern text. "
         "templatePrompts must be an object keyed by pseudo, invariant, and full when those targets are provided. "
-        "Each templatePrompts value must be 12 words or fewer and must describe the exact provided template target, not a legacy or story prompt. "
+        "Each templatePrompts value should name the pattern and key move, not generic filler like 'fill scaffold'. "
+        "Keep each templatePrompts value concise, usually 8 to 16 words, and make it describe the exact provided template target, not a legacy or story prompt. "
         "Keep snippets short enough to memorize, but realistic enough to reuse in senior-level interviews. "
         "Tags must include 'skill-map' and a slug for the pattern."
     )
@@ -384,88 +515,10 @@ def _invalid_response_error(context: GeneratorContext) -> GeneratorUnavailableEr
     )
 
 
-def _fallback_template_for_pattern(pattern: str, method_hint: str) -> dict[str, Any]:
-    slug = _pattern_slug(pattern) or "pattern"
-    func = slug.replace("-", "_")
-    method_text = method_hint.strip() if method_hint else "core method"
-    solution = (
-        f"def {func}_template(nums):\n"
-        "    result = []\n"
-        "    for value in nums:\n"
-        "        {{missing}}\n"
-        "    return result"
-    )
-    return {
-        "title": f"Skill Map - {pattern.title()}: {method_text.title()}",
-        "difficulty": "Med.",
-        "prompt": _clean_concise_prompt(f"Algorithm: recall {func}_template(nums)."),
-        "solution": solution,
-        "missing": "result.append(value)",
-        "hint": f"Focus on reproducing the reusable {pattern.lower()} scaffold from memory.",
-        "tags": ["skill-map", slug],
-    }
-
-
-def fallback_skill_map_drills(context: GeneratorContext) -> dict[str, Any]:
-    drills: list[dict[str, Any]] = []
-    nodes = context.body.skillMap[: context.body.count]
-    if not nodes:
-        nodes = [type("Node", (), {"pattern": "algorithm", "methods": []})()]
-
-    progress_by_pattern = context.progress_summary.get("patterns", {}) if isinstance(context.progress_summary, dict) else {}
-    for index, node in enumerate(nodes):
-        pattern = str(getattr(node, "pattern", "algorithm") or "algorithm")
-        methods = list(getattr(node, "methods", []) or [])
-        method_hint = str(methods[0]).strip() if methods else "core method"
-        base = _fallback_template_for_pattern(pattern, method_hint)
-        slug = _pattern_slug(pattern)
-        progress = progress_by_pattern.get(slug, {}) if slug else {}
-        difficulty = "Easy" if float(progress.get("avgAccuracy", 100) or 100) < 80 else base["difficulty"]
-
-        template_targets = _template_targets_for_drill(
-            context.body,
-            slug,
-            base["solution"],
-            base["missing"],
-        )
-        template_prompts = _template_prompt_map(
-            context.body,
-            pattern,
-            slug,
-            base["solution"],
-            base["missing"],
-            template_targets=template_targets,
-        )
-        selected_prompt = template_prompts.get(_template_mode_value(context.body.templateMode)) or base["prompt"]
-
-        drills.append(
-            {
-                "id": f"skill-map-fallback-{index + 1}",
-                "title": base["title"],
-                "difficulty": difficulty,
-                "prompt": selected_prompt,
-                "templatePrompts": template_prompts,
-                "templateTargets": template_targets,
-                "solution": base["solution"],
-                "missing": base["missing"],
-                "hint": base["hint"],
-                "tags": base["tags"],
-            }
-        )
-
-    return {"drills": drills, "llmUsed": False}
-
-
-async def generate_skill_map_drills(context: GeneratorContext, runtime: GeneratorRuntime) -> dict[str, Any]:
-    llm_response = await asyncio.to_thread(
-        runtime.call_llm_json,
-        context.system_prompt,
-        context.llm_payload,
-        context.provider,
-        runtime.drill_gen_max_tokens,
-        runtime.drill_gen_openai_timeout_seconds,
-        runtime.drill_gen_temperature,
-    )
+def _processed_llm_drills(
+    llm_response: dict[str, Any] | None,
+    context: GeneratorContext,
+) -> list[dict[str, Any]]:
     if not llm_response or not isinstance(llm_response.get("drills"), list):
         raise GeneratorUnavailableError(
             code="coach_llm_no_response",
@@ -485,6 +538,20 @@ async def generate_skill_map_drills(context: GeneratorContext, runtime: Generato
     if len(drills) != expected:
         raise _invalid_response_error(context)
 
+    return drills
+
+
+async def generate_skill_map_drills(context: GeneratorContext, runtime: GeneratorRuntime) -> dict[str, Any]:
+    llm_response = await asyncio.to_thread(
+        runtime.call_llm_json,
+        context.system_prompt,
+        context.llm_payload,
+        context.provider,
+        runtime.drill_gen_max_tokens,
+        runtime.drill_gen_openai_timeout_seconds,
+        runtime.drill_gen_temperature,
+    )
+    drills = _processed_llm_drills(llm_response, context)
     return {"drills": drills, "llmUsed": True}
 
 
@@ -513,78 +580,67 @@ def skill_map_drills_stream_response(context: GeneratorContext, runtime: Generat
             try:
                 parser = _DrillStreamParser()
                 drill_index = 0
-                llm_used = True
                 use_streaming = context.provider == "openai" and bool(settings.coach_openai_api_key)
 
                 if use_streaming:
-                    try:
-                        for token in _call_openai_streaming(
-                            context.system_prompt,
-                            context.llm_payload,
-                            runtime.drill_gen_max_tokens,
-                            runtime.drill_gen_openai_timeout_seconds,
-                            runtime.drill_gen_temperature,
-                        ):
-                            new_drills = parser.feed(token)
-                            for raw_drill in new_drills:
-                                processed = _process_raw_drill(raw_drill, drill_index, context.body, context.generation_skill_map)
-                                if processed:
-                                    tags = [str(t) for t in processed.get("tags", [])]
-                                    if "skill-map" not in tags:
-                                        tags = ["skill-map", *tags]
-                                    stamped = {
-                                        **processed,
-                                        "id": f"skill-map-{context.stamp_prefix}-{drill_index + 1}",
-                                        "tags": tags,
-                                    }
-                                    q.put(("drill", {"index": drill_index, "drill": stamped, "total": total_drills}))
-                                    drill_index += 1
-                    except Exception as stream_err:
-                        if runtime.logger:
-                            runtime.logger.warning("OpenAI streaming failed, falling back: %s", stream_err)
-                        drill_index = 0
-                        use_streaming = False
-
-                if not use_streaming:
-                    result = runtime.call_llm_json(
+                    for token in _call_openai_streaming(
+                        context.system_prompt,
+                        context.llm_payload,
+                        runtime.drill_gen_max_tokens,
+                        runtime.drill_gen_openai_timeout_seconds,
+                        runtime.drill_gen_temperature,
+                    ):
+                        new_drills = parser.feed(token)
+                        for raw_drill in new_drills:
+                            processed = _process_raw_drill(raw_drill, drill_index, context.body, context.generation_skill_map)
+                            if not processed:
+                                raise _invalid_response_error(context)
+                            tags = [str(t) for t in processed.get("tags", [])]
+                            if "skill-map" not in tags:
+                                tags = ["skill-map", *tags]
+                            stamped = {
+                                **processed,
+                                "id": f"skill-map-{context.stamp_prefix}-{drill_index + 1}",
+                                "tags": tags,
+                            }
+                            q.put(("drill", {"index": drill_index, "drill": stamped, "total": total_drills}))
+                            drill_index += 1
+                    if drill_index != total_drills:
+                        raise (
+                            GeneratorUnavailableError(
+                                code="coach_llm_no_response",
+                                message=f"Skill-map practice cards cannot be generated at this time. No response from {context.provider_label}.",
+                                provider=context.provider,
+                                api_error_code="provider_empty_response",
+                            )
+                            if drill_index == 0
+                            else _invalid_response_error(context)
+                        )
+                else:
+                    result = _processed_llm_drills(
+                        runtime.call_llm_json(
                         context.system_prompt,
                         context.llm_payload,
                         context.provider,
                         runtime.drill_gen_max_tokens,
                         runtime.drill_gen_openai_timeout_seconds,
                         runtime.drill_gen_temperature,
+                        ),
+                        context,
                     )
-                    if result and isinstance(result.get("drills"), list):
-                        for raw_drill in result["drills"][: context.body.count]:
-                            processed = _process_raw_drill(raw_drill, drill_index, context.body, context.generation_skill_map)
-                            if processed:
-                                tags = [str(t) for t in processed.get("tags", [])]
-                                if "skill-map" not in tags:
-                                    tags = ["skill-map", *tags]
-                                stamped = {
-                                    **processed,
-                                    "id": f"skill-map-{context.stamp_prefix}-{drill_index + 1}",
-                                    "tags": tags,
-                                }
-                                q.put(("drill", {"index": drill_index, "drill": stamped, "total": total_drills}))
-                                drill_index += 1
-
-                if drill_index == 0:
-                    llm_used = False
-                    fallback = fallback_skill_map_drills(context)
-                    for raw_drill in fallback["drills"][: context.body.count]:
-                        tags = [str(t) for t in raw_drill.get("tags", [])]
+                    for processed in result:
+                        tags = [str(t) for t in processed.get("tags", [])]
                         if "skill-map" not in tags:
                             tags = ["skill-map", *tags]
                         stamped = {
-                            **raw_drill,
+                            **processed,
                             "id": f"skill-map-{context.stamp_prefix}-{drill_index + 1}",
                             "tags": tags,
                         }
                         q.put(("drill", {"index": drill_index, "drill": stamped, "total": total_drills}))
                         drill_index += 1
 
-                q.put(("done", {"count": drill_index, "llmUsed": llm_used}))
+                q.put(("done", {"count": drill_index, "llmUsed": True}))
             except Exception as exc:
                 if runtime.logger:
                     runtime.logger.exception("Drill stream generation failed")
@@ -624,29 +680,5 @@ def skill_map_drills_stream_response(context: GeneratorContext, runtime: Generat
                 break
 
         await future
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
-
-
-def skill_map_drills_fallback_stream_response(context: GeneratorContext, runtime: GeneratorRuntime) -> StreamingResponse:
-    total_drills = min(context.body.count, max(1, len(context.body.skillMap[: context.body.count])))
-
-    async def generate():
-        fallback = fallback_skill_map_drills(context)
-        stamped: list[dict[str, Any]] = []
-        for index, raw_drill in enumerate(fallback["drills"][: context.body.count]):
-            tags = [str(t) for t in raw_drill.get("tags", [])]
-            if "skill-map" not in tags:
-                tags = ["skill-map", *tags]
-            drill = {
-                **raw_drill,
-                "id": f"skill-map-{context.stamp_prefix}-{index + 1}",
-                "tags": tags,
-            }
-            stamped.append(drill)
-            yield f"event: drill\ndata: {json.dumps({'index': index, 'drill': drill, 'total': total_drills})}\n\n"
-
-        await runtime.persist_skill_map_drills(stamped, False, context.progress_summary)
-        yield f"event: done\ndata: {json.dumps({'count': len(stamped), 'llmUsed': False})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
