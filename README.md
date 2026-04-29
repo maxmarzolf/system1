@@ -18,6 +18,19 @@
 
 Backend API runs on `http://localhost:3001` and persists data in PostgreSQL.
 
+### Backend Unit Tests
+
+The backend now has a focused pytest suite for generator-related behavior and incremental refactors.
+
+- Install backend dependencies: `pip install -r backend/requirements.txt`
+- Run all backend tests: `cd backend && pytest -v`
+- Run generator-focused tests with coverage: `cd backend && pytest tests/test_generator_*.py -v --cov=app.routers.generator --cov-report=term-missing`
+
+Test scope in this pass:
+- generator utility normalization and edge cases
+- core `SkillMapDrillGenerator` success + fallback paths
+- extraction parity checks that `coach.py` uses generator-owned helpers
+
 ### Docker Deployment
 
 The application can be deployed using Docker and Docker Compose with separate containers for the frontend, backend, and database.
@@ -96,7 +109,8 @@ The Postgres image loads scripts in this order:
 
 ### LLM Coach Feedback
 
-The coach pipeline uses three distinct LLM roles, each with its own provider selection and token budget:
+The coach pipeline uses three distinct LLM roles, each with its own provider selection and token budget.
+Generator behavior is now centered in `backend/app/routers/generator.py` through a core `SkillMapDrillGenerator` service, while `coach.py` acts as the API orchestration facade.
 
 | Role | Purpose | Provider selection | Max tokens |
 |------|---------|-------------------|------------|
@@ -146,6 +160,15 @@ Claude variables:
 Gemma (local) variables:
 - `COACH_GEMMA_BASE_URL` (default: `http://localhost:11434/v1`)
 - `COACH_GEMMA_MODEL` (default: `gemma3:1b`)
+
+Generator tuning variables (environment-backed):
+- `COACH_GENERATOR_MAX_TOKENS` (default: `8000`)
+- `COACH_GENERATOR_TIMEOUT_SECONDS` (default: `90`)
+- `COACH_GENERATOR_TEMPERATURE` (default: `0.7`)
+- `COACH_GENERATOR_READINESS_THRESHOLD` (default: `90`)
+- `COACH_GENERATOR_PROMPT_WORDS` (default: `12`)
+- `COACH_GENERATOR_PROMPT_MAX_CHARS` (default: `80`)
+- `COACH_GENERATOR_PATTERN_HISTORY_LIMIT` (default: `0`, meaning unlimited)
 
 Local dev example (OpenAI):
 ```bash

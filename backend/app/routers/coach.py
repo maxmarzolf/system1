@@ -42,12 +42,12 @@ from app.routers.assessor import (
     run_signal_assessor,
 )
 from app.routers.generator import (
+    _clean_concise_prompt,
+    _pattern_slug,
+    _template_mode_value,
     GeneratorRuntime,
-    GeneratorUnavailableError,
-    build_generator_context,
-    generate_skill_map_drills,
-    skill_map_drills_stream_response,
-    stamp_skill_map_drills,
+    GeneratorTuning,
+    SkillMapDrillGenerator,
 )
 from app.routers.narrator import (
     NarratorContext,
@@ -62,7 +62,6 @@ logger = logging.getLogger(__name__)
 
 LIVE_STAGE_ORDER = {"early": 0, "mid": 1, "late": 2, "very-late": 3}
 LIVE_FEEDBACK_FREQUENCIES = {"more-often", "balanced", "less-often"}
-TEMPLATE_MODE_ORDER = ("pseudo", "invariant", "algorithm")
 PYTHON_BUILTIN_NAMES = set(dir(builtins))
 PYTHON_KEYWORDS = set(keyword.kwlist)
 LIVE_TUNING_DEFAULTS: dict[str, Any] = {
@@ -152,18 +151,6 @@ def _submission_feedback_error_detail(
 
 
 def _coach_llm_http_exception(error: SubmissionFeedbackUnavailableError) -> HTTPException:
-    return HTTPException(
-        status_code=503,
-        detail=_submission_feedback_error_detail(
-            error.code,
-            error.message,
-            error.provider,
-            error.api_error_code,
-        ),
-    )
-
-
-def _generator_http_exception(error: GeneratorUnavailableError) -> HTTPException:
     return HTTPException(
         status_code=503,
         detail=_submission_feedback_error_detail(
@@ -536,13 +523,6 @@ def _has_syntax_error(code: str) -> bool:
         return False
     except SyntaxError:
         return True
-
-
-def _template_mode_value(value: TemplateMode | str | None) -> str:
-    if isinstance(value, TemplateMode):
-        return value.value
-    normalized = str(value or "").strip().lower()
-    return normalized if normalized in TEMPLATE_MODE_ORDER else TemplateMode.algorithm.value
 
 
 def _normalized_template_text(text: str) -> str:
@@ -1453,27 +1433,6 @@ def _algorithmic_template_label(skill_tags: list[str], template_mode: str) -> st
     }.get(template_mode, f"{pattern_name} template")
 
 
-def _pattern_slug(pattern: str) -> str:
-    import re
-    return re.sub(
-        r"\s+",
-        "-",
-        pattern.lower()
-        .replace("/", " ")
-        .replace("&", " ")
-        .replace("-", " ")
-        .strip(),
-    )
-
-
-def _clean_concise_prompt(value: str, max_chars: int = 80) -> str:
-    prompt = re.sub(r"\s+", " ", str(value or "").strip())
-    if len(prompt) <= max_chars:
-        return prompt
-    shortened = prompt[:max_chars].rsplit(" ", 1)[0].strip()
-    return f"{shortened}..."
-
-
 ADAPTIVE_VARIATION_STRATEGIES = {
     "contract": "preserve the function signature and named inputs before changing logic",
     "pattern": "make the reusable algorithm shape unmistakable",
@@ -1630,8 +1589,7 @@ async def _adaptive_variation_with_llm(body: AdaptiveVariationRequest) -> dict[s
         "The specimen is the exact next target the user should recall. "
         "Keep the same algorithm family, but vary the specimen to pressure the targetDimension. "
         "For pseudo mode, specimen must be concise pseudocode. For invariant or full mode, specimen must be Python. "
-        "Prompt must stay concise, usually 8 to 16 words, and should name the pattern move instead of generic filler. "
-        "Do not include markdown. Do not include '{{missing}}'."
+        "Prompt must be 12 words or fewer. Do not include markdown. Do not include '{{missing}}'."
     )
     llm_payload = {
         "pattern": pattern_name,
@@ -1968,6 +1926,10 @@ GENERATOR_RUNTIME = GeneratorRuntime(
     drill_gen_temperature=DRILL_GEN_TEMPERATURE,
     logger=logger,
 )
+SKILL_MAP_DRILL_GENERATOR = SkillMapDrillGenerator(
+    runtime=GENERATOR_RUNTIME,
+    tuning=GeneratorTuning.from_settings(),
+)
 
 
 # ---------------------------------------------------------------------------
@@ -2196,41 +2158,26 @@ async def coach_practice_history(body: CoachPracticeHistoryRequest):
 async def coach_skill_map_drills(body: SkillMapDrillsRequest):
     progress_summary = await _load_skill_map_generation_summary(body)
     provider = _resolve_available_llm_provider(body.llmProvider)
-    if not _llm_provider_available(provider):
-        raise _generator_http_exception(
-            GeneratorUnavailableError(
-                code="coach_llm_missing_api_key",
-                message="Update backend .env with at least one coach LLM API key.",
-                provider=provider,
-                api_error_code="provider_auth_error",
-            )
-        )
-    context = build_generator_context(body, progress_summary, provider, _llm_provider_label(provider))
-    try:
-        drills = await generate_skill_map_drills(context, GENERATOR_RUNTIME)
-    except GeneratorUnavailableError as error:
-        raise _generator_http_exception(error) from error
-
-    stamped = stamp_skill_map_drills(drills["drills"])
-    await _persist_skill_map_drills(stamped, bool(drills.get("llmUsed")), progress_summary)
-    return {"drills": stamped, "llmUsed": bool(drills.get("llmUsed"))}
+    return await SKILL_MAP_DRILL_GENERATOR.generate_response(
+        body=body,
+        progress_summary=progress_summary,
+        provider=provider,
+        provider_label=_llm_provider_label(provider),
+        provider_available=_llm_provider_available(provider),
+    )
 
 
 @router.post("/skill-map-drills-stream")
 async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
     progress_summary = await _load_skill_map_generation_summary(body)
     provider = _resolve_available_llm_provider(body.llmProvider)
-    if not _llm_provider_available(provider):
-        raise _generator_http_exception(
-            GeneratorUnavailableError(
-                code="coach_llm_missing_api_key",
-                message="Update backend .env with at least one coach LLM API key.",
-                provider=provider,
-                api_error_code="provider_auth_error",
-            )
-        )
-    context = build_generator_context(body, progress_summary, provider, _llm_provider_label(provider))
-    return skill_map_drills_stream_response(context, GENERATOR_RUNTIME)
+    return SKILL_MAP_DRILL_GENERATOR.stream_response(
+        body=body,
+        progress_summary=progress_summary,
+        provider=provider,
+        provider_label=_llm_provider_label(provider),
+        provider_available=_llm_provider_available(provider),
+    )
 
 
 @router.post("/adaptive-variation", response_model=AdaptiveVariationResponse)

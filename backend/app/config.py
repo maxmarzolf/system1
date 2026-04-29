@@ -49,10 +49,39 @@ class Settings(BaseSettings):
         default="https://generativelanguage.googleapis.com/v1beta",
         validation_alias=AliasChoices("COACH_GEMMA_BASE_URL"),
     )
+    coach_generator_max_tokens: int = Field(
+        default=8000,
+        validation_alias=AliasChoices("COACH_GENERATOR_MAX_TOKENS"),
+    )
+    coach_generator_timeout_seconds: int = Field(
+        default=90,
+        validation_alias=AliasChoices("COACH_GENERATOR_TIMEOUT_SECONDS"),
+    )
+    coach_generator_temperature: float = Field(
+        default=0.7,
+        validation_alias=AliasChoices("COACH_GENERATOR_TEMPERATURE"),
+    )
+    coach_generator_readiness_threshold: float = Field(
+        default=90.0,
+        validation_alias=AliasChoices("COACH_GENERATOR_READINESS_THRESHOLD"),
+    )
+    coach_generator_prompt_words: int = Field(
+        default=12,
+        validation_alias=AliasChoices("COACH_GENERATOR_PROMPT_WORDS"),
+    )
+    coach_generator_prompt_max_chars: int = Field(
+        default=80,
+        validation_alias=AliasChoices("COACH_GENERATOR_PROMPT_MAX_CHARS"),
+    )
+    coach_generator_pattern_history_limit: int = Field(
+        default=0,
+        validation_alias=AliasChoices("COACH_GENERATOR_PATTERN_HISTORY_LIMIT"),
+    )
 
     model_config = SettingsConfigDict(
         env_prefix="",
         env_file=("backend/.env", ".env"),
+        extra="ignore",
     )
 
 
