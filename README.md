@@ -1,5 +1,74 @@
 # System1 Recall Trainer
 
+## Agent Guide
+
+Quick reference for AI agents working in this codebase.
+
+### Stack at a Glance
+
+| Layer | Technology | Port |
+|-------|-----------|------|
+| Frontend | React + Vite + TypeScript | 5173 |
+| Backend API | Python 3.12 + FastAPI + asyncpg | 3001 |
+| Database | PostgreSQL 16 | 5432 |
+| Container runtime | Docker Compose | — |
+
+Container names: `flashcard-postgres`, `flashcard-backend`, `flashcard-frontend`
+
+### Layering Rules (non-negotiable)
+
+- **SQL lives only in `backend/app/repositories/`** — never write raw SQL in a router or service.
+- **Services are pure Python** — `backend/app/services/` has no FastAPI, no asyncpg, no HTTP types.
+- **Routers are thin** — endpoint handlers call a repository or service function and return the result. No business logic, no data shaping.
+- **TypedDict contracts** — all DB row shapes are defined in `backend/app/repositories/types.py`. Add new row types there; don't use plain dicts.
+- **Frontend data contracts** — `src/data/skill-map.ts` holds the client-side skill-map type definitions. Keep them in sync with the API response shapes.
+
+### Where to Add Things
+
+| Task | Files to touch |
+|------|---------------|
+| New API endpoint | `backend/app/routers/<domain>.py` (handler), `backend/app/repositories/<domain>_repository.py` (SQL), `backend/app/repositories/types.py` (new row types if needed) |
+| New business logic | `backend/app/services/<domain>_service.py` |
+| New DB table | `backend/init-scripts/01-init.sql` (schema), seed data in `05-data-patterns.sql` / `06-data-methods.sql` |
+| New frontend page | `src/<PageName>Page.tsx`, register route in `src/App.tsx`, add nav link in `src/TopNav.tsx` |
+| New environment variable | `backend/app/config.py` (read + default), `backend/.env` (local value), README LLM/env section |
+
+### Verify Changes
+
+```bash
+# Backend unit tests
+cd backend && pytest -v
+
+# Container health (all 3 should show healthy/running)
+docker compose ps
+
+# Full rebuild and restart
+docker compose up -d --build
+```
+
+The editor may show `Import "fastapi" could not be resolved` in backend files — this is a virtualenv path issue only, not a real error. `get_errors` on modified files should be clean otherwise.
+
+### Common Operations
+
+```bash
+# Start all services (detached, rebuild images)
+docker compose up -d --build
+
+# Stop all services
+docker compose down
+
+# Reset practice history only (keeps seeded data)
+npm run reset:practice-history
+
+# Wipe DB and reinitialize from seed scripts
+docker compose down -v && docker compose up -d --build
+
+# Run backend tests with coverage
+cd backend && pytest tests/test_generator_*.py -v --cov=app.routers.generator --cov-report=term-missing
+```
+
+---
+
 ## Features
 
 - Main recall practice for pseudocode, skeleton, and full-answer templates
@@ -30,6 +99,38 @@ Test scope in this pass:
 - generator utility normalization and edge cases
 - core `SkillMapDrillGenerator` success + fallback paths
 - extraction parity checks that `coach.py` uses generator-owned helpers
+
+### Backend Architecture
+
+The backend follows a layered architecture: routers → services → repositories → database.
+
+```
+backend/app/
+├── routers/         # FastAPI endpoint handlers — thin orchestration only
+│   ├── attempts.py
+│   ├── coach.py
+│   ├── admin.py
+│   ├── generator.py
+│   ├── assessor.py
+│   └── narrator.py
+├── services/        # Pure business logic — no FastAPI or DB dependencies
+│   └── attempts_service.py   # build_skill_map_overview, build_skill_map_nodes
+├── repositories/    # All SQL — one module per domain
+│   ├── base.py                # acquire_connection() shared context manager
+│   ├── types.py               # TypedDict row/result contracts
+│   ├── attempts_repository.py # insert_score_attempt_row, fetch_skill_map_* rows
+│   ├── coach_repository.py    # fetch_practice_history_entries, insert_feedback_event_row
+│   └── admin_repository.py    # count/truncate practice history tables
+├── models.py        # Pydantic request/response models
+├── readiness.py     # Readiness score calculation
+└── submission_rubric.py  # Rubric compaction helpers
+```
+
+**Repositories** own all SQL constants and row-shaping logic. They return typed `TypedDict` results defined in `repositories/types.py`.
+
+**Services** receive typed rows from repositories and perform all aggregation, window math, and data transformation — no raw SQL, no FastAPI types.
+
+**Routers** call one or more repository/service functions and map results to HTTP responses. They retain only LLM calling logic and endpoint orchestration.
 
 ### Docker Deployment
 
