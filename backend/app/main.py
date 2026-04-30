@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import connect, disconnect
-from app.routers import admin, attempts, coach
+from app.endpoints import ALL_ROUTERS
 
 
 @asynccontextmanager
@@ -26,13 +26,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.include_router(attempts.router)
-    app.include_router(coach.router)
-    app.include_router(admin.router)
-
-    @app.get("/api/health", tags=["health"])
-    async def health():
-        return {"ok": True}
+    for router in ALL_ROUTERS:
+        app.include_router(router)
 
     return app
 

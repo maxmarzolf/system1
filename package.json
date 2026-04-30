@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently \"npm:dev:client\" \"npm:dev:server\"",
     "dev:client": "vite",
-    "dev:server": "cd backend && venv/bin/python main.py",
+    "dev:server": "cd backend && DATABASE_URL=postgresql://flashcard_user:flashcard_password@localhost:5432/flashcard_db venv/bin/python main.py",
     "reset:practice-history": "cd backend && venv/bin/python reset_practice_history.py",
     "start": "npm run dev",
     "build": "tsc -b && vite build",

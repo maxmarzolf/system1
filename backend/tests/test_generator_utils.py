@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.models import TemplateMode
-from app.routers.generator import (
+from app.core.generator import (
     TEMPLATE_MODE_ORDER,
     _clean_concise_prompt,
     _normalize_drill_difficulty,

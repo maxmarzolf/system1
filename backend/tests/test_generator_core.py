@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.routers.generator import (
+from app.core.generator import (
     GeneratorCostTuning,
     GeneratorOutputTuning,
     GeneratorRuntime,

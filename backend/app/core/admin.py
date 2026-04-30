@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import HTTPException, status
 
 from app.config import settings
 from app.database import get_pool
@@ -8,8 +8,6 @@ from app.models import (
     AdminResetPracticeHistoryRequest,
     AdminResetPracticeHistoryResponse,
 )
-
-router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 _PRACTICE_HISTORY_TABLES = [
     "coach_feedback_events",
@@ -28,7 +26,6 @@ async def _count_rows() -> dict[str, int]:
     return counts
 
 
-@router.post("/reset-practice-history", response_model=AdminResetPracticeHistoryResponse)
 async def reset_practice_history(body: AdminResetPracticeHistoryRequest):
     if body.confirm != settings.admin_reset_token:
         raise HTTPException(

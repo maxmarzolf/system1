@@ -5,17 +5,11 @@ from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter
-
 from app.database import get_pool
 from app.models import AttemptCreate, SkillMapNode, SkillMapOverviewResponse
 from app.readiness import READINESS_MODE_ORDER, summarize_readiness
 from app.submission_rubric import compact_submission_rubric, summarize_submission_rubrics
 
-router = APIRouter(prefix="/api", tags=["attempts"])
-
-
-@router.post("/attempts", status_code=201)
 async def create_attempt(body: AttemptCreate):
     pool = get_pool()
     now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
@@ -62,7 +56,6 @@ async def create_attempt(body: AttemptCreate):
     return {"saved": True, "attemptId": row["id"] if row else None}
 
 
-@router.get("/skill-map", response_model=list[SkillMapNode])
 async def get_skill_map():
     pool = get_pool()
 
@@ -207,7 +200,6 @@ def _build_support_counts(attempts: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
-@router.get("/skill-map-overview", response_model=SkillMapOverviewResponse)
 async def get_skill_map_overview():
     pool = get_pool()
 

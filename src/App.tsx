@@ -663,25 +663,7 @@ const buildInvariantTemplate = (patternTag: string) => {
   }
 }
 
-const extractPracticeEntryPoint = (templateMode: TemplateMode, target: string) => {
-  const lines = target.replace(/\r\n/g, '\n').split('\n')
-  const firstContentLine = lines.map((line) => line.trim()).find(Boolean) ?? ''
-
-  if (templateMode === 'pseudo') {
-    const pseudoMatch = firstContentLine.match(/^define\s+(.+)$/i)
-    return pseudoMatch?.[1]?.replace(/:\s*$/, '').trim() || ''
-  }
-
-  const functionMatch = firstContentLine.match(/^def\s+([A-Za-z_]\w*)\s*\(([^)]*)\):/)
-  if (functionMatch) {
-    return `${functionMatch[1]}(${functionMatch[2]})`
-  }
-
-  return ''
-}
-
-const buildPracticePrompt = (templateMode: TemplateMode, target: string, patternTag: string) => {
-  const entryPoint = extractPracticeEntryPoint(templateMode, target)
+const buildPracticePrompt = (templateMode: TemplateMode, patternTag: string) => {
   const patternLabel = patternTag
     .split('-')
     .filter(Boolean)
@@ -766,10 +748,25 @@ const buildPracticePrompt = (templateMode: TemplateMode, target: string, pattern
     invariant: 'preserve the key invariant while state updates',
     algorithm: 'code the reusable pattern loop',
   }
+  const spiritByPattern: Record<string, string> = {
+    'sliding-window': 'turn one pass into a valid-range search',
+    'two-pointers': 'use order to eliminate the losing side',
+    'binary-search': 'exploit sorted data by discarding half',
+    'dynamic-programming': 'reuse solved state instead of recomputing',
+    dp: 'reuse solved state instead of recomputing',
+    'graph-traversal': 'expand the frontier and visit each state once',
+    'dfs-bfs': 'expand the frontier and visit each state once',
+    backtracking: 'explore choices cleanly and undo without drift',
+    heap: 'keep the best candidates at the top',
+    'union-find': 'treat components as roots and merge fast',
+    intervals: 'sort boundaries so overlap becomes local',
+    'prefix-sums': 'turn range sums into constant-time lookups',
+    'monotonic-stack': 'keep only candidates that still matter',
+    stack: 'keep only candidates that still matter',
+  }
   const focus = focusByPattern[patternTag]?.[templateMode] || defaultFocus[templateMode]
-  return templateMode === 'algorithm' && entryPoint
-    ? `${patternLabel}: ${focus} in ${entryPoint}.`
-    : `${patternLabel}: ${focus}.`
+  const spirit = spiritByPattern[patternTag] || 'lean on the reusable pattern instead of brute force'
+  return `${patternLabel}: ${spirit}; ${focus}.`
 }
 
 const isPlaceholderLine = (line: string) => /\b(pass|something|todo|tbd)\b/i.test(line.trim())
@@ -1148,8 +1145,8 @@ function App() {
   }, [card.templateTargets, currentTemplateMode, fullSolutionTarget, pseudoTarget, invariantTarget])
   const generatedPracticePrompt = card.templatePrompts?.[currentTemplateMode]?.trim() || card.prompt.trim()
   const practicePrompt = useMemo(
-    () => generatedPracticePrompt || buildPracticePrompt(currentTemplateMode, practiceTarget, primaryPatternTag),
-    [currentTemplateMode, generatedPracticePrompt, practiceTarget, primaryPatternTag]
+    () => generatedPracticePrompt || buildPracticePrompt(currentTemplateMode, primaryPatternTag),
+    [currentTemplateMode, generatedPracticePrompt, primaryPatternTag]
   )
   const currentQuestionType = `${requestedQuestionType}:${currentTemplateMode}`
   const currentSkillTags = useMemo(

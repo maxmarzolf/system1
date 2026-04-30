@@ -123,16 +123,155 @@ def _entry_point_from_template_target(template_mode: str, target: str) -> str:
     return f"{match.group(1)}({match.group(2)})" if match else ""
 
 
-def _template_prompt_from_target(pattern: str, template_mode: str, target: str) -> str:
-    mode_label = {
-        TemplateMode.pseudo.value: "Pseudo",
-        TemplateMode.invariant.value: "Invariant",
-        TemplateMode.algorithm.value: "Algorithm",
-    }.get(template_mode, "Recall")
-    entry_point = _entry_point_from_template_target(template_mode, target)
-    if entry_point:
-        return f"{mode_label}: recall {entry_point}."
-    return f"{mode_label}: recall {pattern.lower()}."
+def _pattern_prompt_focus(pattern_slug: str, template_mode: str) -> str:
+    focus_by_pattern = {
+        "sliding-window": {
+            TemplateMode.pseudo.value: "sketch expand, shrink, update-best rhythm",
+            TemplateMode.invariant.value: "keep the window valid while counts change",
+            TemplateMode.algorithm.value: "code the expand/shrink/update-best loop",
+        },
+        "two-pointers": {
+            TemplateMode.pseudo.value: "sketch how each comparison moves a pointer",
+            TemplateMode.invariant.value: "preserve the left/right decision rule",
+            TemplateMode.algorithm.value: "code the inward pointer scan",
+        },
+        "binary-search": {
+            TemplateMode.pseudo.value: "sketch midpoint compare-and-discard steps",
+            TemplateMode.invariant.value: "preserve the search interval invariant",
+            TemplateMode.algorithm.value: "code the midpoint discard loop",
+        },
+        "dynamic-programming": {
+            TemplateMode.pseudo.value: "state the base case and transition",
+            TemplateMode.invariant.value: "preserve what each dp state means",
+            TemplateMode.algorithm.value: "code the state-transition loop",
+        },
+        "dp": {
+            TemplateMode.pseudo.value: "state the base case and transition",
+            TemplateMode.invariant.value: "preserve what each dp state means",
+            TemplateMode.algorithm.value: "code the state-transition loop",
+        },
+        "graph-traversal": {
+            TemplateMode.pseudo.value: "sketch frontier growth and visit-once logic",
+            TemplateMode.invariant.value: "preserve frontier and visited invariants",
+            TemplateMode.algorithm.value: "code the frontier plus visited loop",
+        },
+        "dfs-bfs": {
+            TemplateMode.pseudo.value: "sketch frontier growth and visit-once logic",
+            TemplateMode.invariant.value: "preserve frontier and visited invariants",
+            TemplateMode.algorithm.value: "code the frontier plus visited loop",
+        },
+        "backtracking": {
+            TemplateMode.pseudo.value: "sketch choose, recurse, undo steps",
+            TemplateMode.invariant.value: "preserve path state across undo",
+            TemplateMode.algorithm.value: "code the choose/recurse/undo loop",
+        },
+        "heap": {
+            TemplateMode.pseudo.value: "sketch push, prune, keep-top logic",
+            TemplateMode.invariant.value: "preserve heap size and order invariants",
+            TemplateMode.algorithm.value: "code the push/prune heap loop",
+        },
+        "union-find": {
+            TemplateMode.pseudo.value: "sketch find-root and union decisions",
+            TemplateMode.invariant.value: "preserve parent roots and rank logic",
+            TemplateMode.algorithm.value: "code the find/union component loop",
+        },
+        "intervals": {
+            TemplateMode.pseudo.value: "sketch overlap merge or flush decisions",
+            TemplateMode.invariant.value: "preserve the ordered merge invariant",
+            TemplateMode.algorithm.value: "code the sort-and-merge sweep",
+        },
+        "prefix-sums": {
+            TemplateMode.pseudo.value: "sketch prefix update, query, record steps",
+            TemplateMode.invariant.value: "preserve prefix lookup state",
+            TemplateMode.algorithm.value: "code the prefix query loop",
+        },
+        "monotonic-stack": {
+            TemplateMode.pseudo.value: "sketch pop violators, then push current",
+            TemplateMode.invariant.value: "preserve the monotonic stack invariant",
+            TemplateMode.algorithm.value: "code the pop-then-push stack loop",
+        },
+        "stack": {
+            TemplateMode.pseudo.value: "sketch pop violators, then push current",
+            TemplateMode.invariant.value: "preserve the monotonic stack invariant",
+            TemplateMode.algorithm.value: "code the pop-then-push stack loop",
+        },
+    }
+    default_focus = {
+        TemplateMode.pseudo.value: "sketch the reusable move sequence",
+        TemplateMode.invariant.value: "preserve the key invariant while state updates",
+        TemplateMode.algorithm.value: "code the reusable pattern loop",
+    }
+    return focus_by_pattern.get(pattern_slug, default_focus).get(template_mode, default_focus[TemplateMode.algorithm.value])
+
+
+def _pattern_prompt_spirit(pattern_slug: str) -> str:
+    spirit_by_pattern = {
+        "sliding-window": "turn one pass into a valid-range search",
+        "two-pointers": "use order to eliminate the losing side",
+        "binary-search": "exploit sorted data by discarding half",
+        "dynamic-programming": "reuse solved state instead of recomputing",
+        "dp": "reuse solved state instead of recomputing",
+        "graph-traversal": "expand the frontier and visit each state once",
+        "dfs-bfs": "expand the frontier and visit each state once",
+        "backtracking": "explore choices cleanly and undo without drift",
+        "heap": "keep the best candidates at the top",
+        "union-find": "treat components as roots and merge fast",
+        "intervals": "sort boundaries so overlap becomes local",
+        "prefix-sums": "turn range sums into constant-time lookups",
+        "monotonic-stack": "keep only candidates that still matter",
+        "stack": "keep only candidates that still matter",
+    }
+    return spirit_by_pattern.get(pattern_slug, "lean on the reusable pattern instead of brute force")
+
+
+def _template_prompt_from_target(pattern: str, pattern_slug: str, template_mode: str, target: str) -> str:
+    pattern_label = re.sub(r"\s+", " ", str(pattern or "").strip()) or "Algorithm"
+    pattern_label = pattern_label[0].upper() + pattern_label[1:] if pattern_label else "Algorithm"
+    spirit = _pattern_prompt_spirit(pattern_slug)
+    focus = _pattern_prompt_focus(pattern_slug, template_mode)
+    return f"{pattern_label}: {spirit}; {focus}."
+
+
+def _prompt_mentions_pattern_or_move(prompt: str, pattern_slug: str, target: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9_+\-\s]", " ", prompt.lower())
+    tokens = {token for token in normalized.split() if len(token) >= 3}
+    pattern_tokens = {token for token in pattern_slug.replace("-", " ").split() if len(token) >= 3}
+    entry_tokens = {
+        token
+        for token in re.sub(r"[^a-z0-9_+\-\s]", " ", _entry_point_from_template_target(TemplateMode.algorithm.value, target).lower()).split()
+        if len(token) >= 3
+    }
+    move_tokens = {
+        "window", "shrink", "expand", "pointer", "midpoint", "interval", "frontier", "visited",
+        "recurse", "undo", "heap", "prefix", "stack", "merge", "union", "state", "transition",
+    }
+    return bool(tokens & (pattern_tokens | entry_tokens | move_tokens))
+
+
+def _prompt_is_generic(raw_prompt: str, pattern_slug: str, template_mode: str, target: str) -> bool:
+    normalized = re.sub(r"\s+", " ", raw_prompt.lower()).strip()
+    if not normalized:
+        return True
+    generic_phrases = (
+        "fill ",
+        "complete ",
+        "write ",
+        "type ",
+        "recall ",
+        "rebuild ",
+        "remember ",
+    )
+    generic_nouns = ("template", "scaffold", "outline", "algorithm", "code", "prompt")
+    if (
+        len(normalized.split()) <= 7
+        and any(normalized.startswith(phrase) for phrase in generic_phrases)
+        and any(noun in normalized for noun in generic_nouns)
+        and not _prompt_mentions_pattern_or_move(normalized, pattern_slug, target)
+    ):
+        return True
+    if template_mode == TemplateMode.invariant.value and "invariant-based" in normalized and "scaffold" in normalized:
+        return True
+    return False
 
 
 def _template_targets_for_drill(
@@ -174,12 +313,15 @@ def _template_prompt_map(
 
     for mode in TEMPLATE_MODE_ORDER:
         raw_prompt = _clean_concise_prompt(str(raw_prompts.get(mode, "")).strip(), prompt_max_chars)
-        if raw_prompt:
+        target = targets.get(mode, "")
+        if raw_prompt and not _prompt_is_generic(raw_prompt, pattern_slug, mode, target):
             prompts[mode] = raw_prompt
             continue
-        target = targets.get(mode, "")
         if target:
-            prompts[mode] = _template_prompt_from_target(pattern, mode, target)
+            prompts[mode] = _template_prompt_from_target(pattern, pattern_slug, mode, target)
+            continue
+        if raw_prompt:
+            prompts[mode] = raw_prompt
 
     return prompts
 
@@ -336,7 +478,12 @@ def _process_raw_drill(
     selected_prompt = (
         template_prompts.get(_template_mode_value(body.templateMode))
         or _clean_concise_prompt(str(raw.get("prompt", "")).strip(), prompt_max_chars)
-        or _template_prompt_from_target(pattern, _template_mode_value(body.templateMode), solution.replace("{{missing}}", missing))
+        or _template_prompt_from_target(
+            pattern,
+            pattern_slug,
+            _template_mode_value(body.templateMode),
+            solution.replace("{{missing}}", missing),
+        )
     )
     return {
         "id": str(raw.get("id", f"skill-map-{index + 1}")),
@@ -377,7 +524,10 @@ def build_generator_context(
         "templateTargets may include pseudo and invariant. Pseudo must be concise pseudocode. Invariant must be a Python scaffold. "
         "When you return templateTargets, make them specific to the drill's pattern and method instead of generic pattern text. "
         "templatePrompts must be an object keyed by pseudo, invariant, and full when those targets are provided. "
-        "Each templatePrompts value must be 12 words or fewer and must describe the exact provided template target, not a legacy or story prompt. "
+        "Each templatePrompts value should briefly say why the pattern helps and then name the key move. "
+        "For example, a binary search prompt should feel like 'exploit sorted data; discard half each step.' "
+        f"Keep each templatePrompts value concise, ideally {max(8, active_tuning.output.concise_prompt_words - 4)} to {active_tuning.output.concise_prompt_words} words, "
+        "and make it describe the exact provided template target, not a legacy or story prompt. "
         "Keep snippets short enough to memorize, but realistic enough to reuse in senior-level interviews. "
         "Tags must include 'skill-map' and a slug for the pattern."
     )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.routers import coach, generator
+from app.core import coach, generator
 
 
 def test_coach_uses_generator_pattern_slug() -> None:

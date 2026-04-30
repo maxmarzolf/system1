@@ -14,7 +14,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import HTTPException
 
 from app.config import settings
 from app.database import get_pool
@@ -34,14 +34,14 @@ from app.models import (
     TemplateMode,
 )
 from app.readiness import READINESS_MODE_ORDER, summarize_readiness
-from app.routers.assessor import (
+from app.core.assessor import (
     AssessorContext,
     AssessorRuntime,
     AssessorUnavailableError,
     assessment_to_live_response,
     run_signal_assessor,
 )
-from app.routers.generator import (
+from app.core.generator import (
     _clean_concise_prompt,
     _pattern_slug,
     _template_mode_value,
@@ -49,7 +49,7 @@ from app.routers.generator import (
     GeneratorTuning,
     SkillMapDrillGenerator,
 )
-from app.routers.narrator import (
+from app.core.narrator import (
     NarratorContext,
     NarratorFeedbackUnavailableError,
     NarratorRuntime,
@@ -57,7 +57,6 @@ from app.routers.narrator import (
 )
 from app.submission_rubric import compact_submission_rubric, summarize_submission_rubrics
 
-router = APIRouter(prefix="/api/coach", tags=["coach"])
 logger = logging.getLogger(__name__)
 
 LIVE_STAGE_ORDER = {"early": 0, "mid": 1, "late": 2, "very-late": 3}
@@ -1589,7 +1588,8 @@ async def _adaptive_variation_with_llm(body: AdaptiveVariationRequest) -> dict[s
         "The specimen is the exact next target the user should recall. "
         "Keep the same algorithm family, but vary the specimen to pressure the targetDimension. "
         "For pseudo mode, specimen must be concise pseudocode. For invariant or full mode, specimen must be Python. "
-        "Prompt must be 12 words or fewer. Do not include markdown. Do not include '{{missing}}'."
+        "Prompt must stay concise, usually 8 to 12 words, and should briefly say why the pattern helps before the move. "
+        "Do not include markdown. Do not include '{{missing}}'."
     )
     llm_payload = {
         "pattern": pattern_name,
@@ -2043,7 +2043,6 @@ async def _persist_skill_map_drills(
             )
 
 
-@router.post("/evaluate-attempt", response_model=CoachAttemptEvaluationResponse)
 async def coach_attempt_evaluation(body: CoachAttemptEvaluationRequest):
     return _evaluate_attempt_by_template_mode(
         body.expectedAnswer,
@@ -2054,7 +2053,6 @@ async def coach_attempt_evaluation(body: CoachAttemptEvaluationRequest):
     )
 
 
-@router.post("/attempt-feedback", response_model=CoachAttemptFeedbackResponse)
 async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
     provider = _resolve_available_llm_provider(body.llmProvider)
     if not _llm_provider_available(provider):
@@ -2137,7 +2135,6 @@ async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
     return feedback
 
 
-@router.post("/session-plan", response_model=CoachSessionPlanResponse)
 async def coach_session_plan(body: CoachSessionPlanRequest):
     try:
         return await _session_plan_with_llm(body)
@@ -2145,7 +2142,6 @@ async def coach_session_plan(body: CoachSessionPlanRequest):
         raise _coach_llm_http_exception(error) from error
 
 
-@router.post("/history", response_model=CoachPracticeHistoryResponse)
 async def coach_practice_history(body: CoachPracticeHistoryRequest):
     history = await _load_practice_history(body.cardId, body.questionType, body.skillTags, limit=body.limit)
     return {
@@ -2154,7 +2150,6 @@ async def coach_practice_history(body: CoachPracticeHistoryRequest):
     }
 
 
-@router.post("/skill-map-drills", response_model=SkillMapDrillsResponse)
 async def coach_skill_map_drills(body: SkillMapDrillsRequest):
     progress_summary = await _load_skill_map_generation_summary(body)
     provider = _resolve_available_llm_provider(body.llmProvider)
@@ -2167,7 +2162,6 @@ async def coach_skill_map_drills(body: SkillMapDrillsRequest):
     )
 
 
-@router.post("/skill-map-drills-stream")
 async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
     progress_summary = await _load_skill_map_generation_summary(body)
     provider = _resolve_available_llm_provider(body.llmProvider)
@@ -2180,7 +2174,6 @@ async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
     )
 
 
-@router.post("/adaptive-variation", response_model=AdaptiveVariationResponse)
 async def coach_adaptive_variation(body: AdaptiveVariationRequest):
     try:
         return await _adaptive_variation_with_llm(body)
