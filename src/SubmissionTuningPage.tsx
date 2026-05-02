@@ -21,12 +21,12 @@ const trackedDimensions = [
     copy: 'Whether the main loop or branching structure stays intact.',
   },
   {
-    title: 'Invariant logic',
+    title: 'Decision logic',
     copy: 'Whether the rule that makes the algorithm valid is preserved.',
   },
   {
     title: 'Answer update',
-    copy: 'Whether the pseudocode still says when the answer gets recorded.',
+    copy: 'Whether the submission still says when the answer gets recorded.',
   },
 ]
 
@@ -51,8 +51,8 @@ export default function SubmissionTuningPage() {
             <h2>Submission Tuning</h2>
             <p className="difficulty">Persistent settings</p>
             <p className="hint coach-tuning-page-intro">
-              Pseudocode and invariant grading is rules-based here, not just prompt wording. These controls decide how
-              much we prioritize preserved logic over literal phrasing.
+              Submission grading is rules-based here, not just prompt wording. These controls decide how much we
+              prioritize preserved logic over literal phrasing.
             </p>
           </div>
         </div>
@@ -111,7 +111,7 @@ export default function SubmissionTuningPage() {
                 checked={submissionTuning.requireAnswerStep}
                 onChange={(event) => updateSubmissionTuning('requireAnswerStep', event.target.checked)}
               />
-              <span>Require the answer-recording step for a sound pseudocode grade</span>
+              <span>Require the answer-recording step for a sound grade</span>
             </label>
             <label className="coach-tuning-toggle">
               <input
@@ -129,7 +129,7 @@ export default function SubmissionTuningPage() {
             <div>
               <h3>Tracked Dimensions</h3>
               <p className="hint" style={{ marginTop: '0.35rem' }}>
-                These are the signals the Signal Assessor now checks for pseudocode and invariant attempts.
+                These are the signals the Signal Assessor checks for submitted attempts.
               </p>
             </div>
           </div>

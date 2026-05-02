@@ -92,7 +92,7 @@ SUBMISSION_DIMENSION_LABELS = {
     "pattern": "Core pattern",
     "state": "State representation",
     "control_flow": "Control flow shape",
-    "invariant": "Invariant or decision rule",
+    "invariant": "Decision rule",
     "state_updates": "State update correctness",
     "ordering": "Step ordering",
     "answer_path": "Answer recording or return path",
@@ -690,7 +690,7 @@ def _template_progress_profile(skill_tags: list[str]) -> tuple[list[dict[str, An
                 {"key": "entry", "label": "entry point", "patterns": [r"\bdef\b", r"\bfunction\b", r"\bdefine\b"]},
                 {"key": "stack", "label": "stack setup", "patterns": [r"\bstack\b", r"\bmonotonic\b"]},
                 {"key": "loop", "label": "item traversal", "patterns": [r"\bfor\b", r"\biterate\b", r"\bscan\b"]},
-                {"key": "resolve", "label": "resolve while invariant breaks", "patterns": [r"\bwhile\b.+\bstack\b", r"\bpop\b", r"\bbreaks the invariant\b"]},
+                {"key": "resolve", "label": "resolve while decision rule breaks", "patterns": [r"\bwhile\b.+\bstack\b", r"\bpop\b", r"\bdecision rule breaks\b"]},
                 {"key": "push", "label": "push current item", "patterns": [r"\bappend\b", r"\bpush\b", r"\bstack\.append\b"]},
                 {"key": "return", "label": "return path", "patterns": [r"\breturn\b", r"\banswer\b", r"\bresult\b"]},
             ],
@@ -717,35 +717,35 @@ def _template_dimension_groups(skill_tags: list[str]) -> list[dict[str, Any]]:
             {"key": "input_output", "label": "Inputs and outputs", "steps": ["entry", "return"], "weight": 0.12},
             {"key": "state_management", "label": "State management", "steps": ["state"], "weight": 0.18},
             {"key": "control_flow", "label": "Control flow", "steps": ["expand", "repair", "shrink"], "weight": 0.30},
-            {"key": "invariant_logic", "label": "Invariant logic", "steps": ["repair", "shrink"], "weight": 0.24},
+            {"key": "invariant_logic", "label": "Decision logic", "steps": ["repair", "shrink"], "weight": 0.24},
             {"key": "answer_update", "label": "Answer update", "steps": ["score"], "weight": 0.16},
         ],
         "two-pointers": [
             {"key": "input_output", "label": "Inputs and outputs", "steps": ["entry", "return"], "weight": 0.12},
             {"key": "state_management", "label": "State management", "steps": ["pointers"], "weight": 0.2},
             {"key": "control_flow", "label": "Control flow", "steps": ["loop", "move"], "weight": 0.26},
-            {"key": "invariant_logic", "label": "Invariant logic", "steps": ["compare", "move"], "weight": 0.26},
+            {"key": "invariant_logic", "label": "Decision logic", "steps": ["compare", "move"], "weight": 0.26},
             {"key": "answer_update", "label": "Answer update", "steps": ["return"], "weight": 0.16},
         ],
         "binary-search": [
             {"key": "input_output", "label": "Inputs and outputs", "steps": ["entry", "return"], "weight": 0.12},
             {"key": "state_management", "label": "State management", "steps": ["bounds", "mid"], "weight": 0.2},
             {"key": "control_flow", "label": "Control flow", "steps": ["loop", "update"], "weight": 0.24},
-            {"key": "invariant_logic", "label": "Invariant logic", "steps": ["compare", "update"], "weight": 0.28},
+            {"key": "invariant_logic", "label": "Decision logic", "steps": ["compare", "update"], "weight": 0.28},
             {"key": "answer_update", "label": "Answer update", "steps": ["return"], "weight": 0.16},
         ],
         "dynamic-programming": [
             {"key": "input_output", "label": "Inputs and outputs", "steps": ["entry", "return"], "weight": 0.12},
             {"key": "state_management", "label": "State management", "steps": ["state", "base"], "weight": 0.26},
             {"key": "control_flow", "label": "Control flow", "steps": ["loop"], "weight": 0.18},
-            {"key": "invariant_logic", "label": "Invariant logic", "steps": ["transition"], "weight": 0.28},
+            {"key": "invariant_logic", "label": "Decision logic", "steps": ["transition"], "weight": 0.28},
             {"key": "answer_update", "label": "Answer update", "steps": ["return"], "weight": 0.16},
         ],
         "dp": [
             {"key": "input_output", "label": "Inputs and outputs", "steps": ["entry", "return"], "weight": 0.12},
             {"key": "state_management", "label": "State management", "steps": ["state", "base"], "weight": 0.26},
             {"key": "control_flow", "label": "Control flow", "steps": ["loop"], "weight": 0.18},
-            {"key": "invariant_logic", "label": "Invariant logic", "steps": ["transition"], "weight": 0.28},
+            {"key": "invariant_logic", "label": "Decision logic", "steps": ["transition"], "weight": 0.28},
             {"key": "answer_update", "label": "Answer update", "steps": ["return"], "weight": 0.16},
         ],
     }
@@ -755,7 +755,7 @@ def _template_dimension_groups(skill_tags: list[str]) -> list[dict[str, Any]]:
             {"key": "input_output", "label": "Inputs and outputs", "steps": ["entry", "return"], "weight": 0.16},
             {"key": "state_management", "label": "State management", "steps": ["state"], "weight": 0.22},
             {"key": "control_flow", "label": "Control flow", "steps": ["flow"], "weight": 0.24},
-            {"key": "invariant_logic", "label": "Invariant logic", "steps": ["update"], "weight": 0.22},
+            {"key": "invariant_logic", "label": "Decision logic", "steps": ["update"], "weight": 0.22},
             {"key": "answer_update", "label": "Answer update", "steps": ["return"], "weight": 0.16},
         ],
     )
@@ -827,10 +827,7 @@ def _template_step_order_score(steps: list[dict[str, Any]], matched_positions: d
 
 def _template_grading_threshold(tuning: dict[str, Any], template_mode: str) -> float:
     grading_mode = str(tuning.get("gradingMode", "core-logic"))
-    base = {"core-logic": 68.0, "balanced": 76.0, "strict": 86.0}.get(grading_mode, 68.0)
-    if template_mode == TemplateMode.invariant.value:
-        base += 4.0
-    return base
+    return {"core-logic": 68.0, "balanced": 76.0, "strict": 86.0}.get(grading_mode, 68.0)
 
 
 def _analyze_template_attempt(
@@ -922,7 +919,7 @@ def _analyze_template_attempt(
     if tuning.get("requireAnswerStep", True):
         sound = sound and answer_step_met
     syntax_valid = bool(user_answer.strip())
-    if template_mode == TemplateMode.invariant.value and re.search(r"^\s*def\b", user_answer, re.MULTILINE):
+    if re.search(r"^\s*def\b", user_answer, re.MULTILINE):
         syntax_valid = not _has_syntax_error(user_answer)
 
     return {
@@ -1188,13 +1185,9 @@ def _algorithmic_template_label(skill_tags: list[str], template_mode: str) -> st
     pattern_name = _pattern_display_name(skill_tags)
     if pattern_name == "algorithm":
         return {
-            TemplateMode.pseudo.value: "algorithm pseudocode",
-            TemplateMode.invariant.value: "algorithm invariant",
             TemplateMode.algorithm.value: "algorithm template",
         }.get(template_mode, "algorithm template")
     return {
-        TemplateMode.pseudo.value: f"{pattern_name} pseudocode",
-        TemplateMode.invariant.value: f"{pattern_name} invariant",
         TemplateMode.algorithm.value: f"{pattern_name} template",
     }.get(template_mode, f"{pattern_name} template")
 
@@ -1204,7 +1197,7 @@ ADAPTIVE_VARIATION_STRATEGIES = {
     "pattern": "make the reusable algorithm shape unmistakable",
     "state": "force the state variables to be named and initialized",
     "control_flow": "make the loop and branch structure carry the algorithm",
-    "invariant": "state the decision rule that keeps the answer inside the search space",
+    "invariant": "keep the answer inside the active decision space",
     "state_updates": "pressure the exact movement/update that changes state",
     "ordering": "keep setup, decision, update, and return in cause-and-effect order",
     "answer_path": "force explicit answer recording and return behavior",
@@ -1354,7 +1347,7 @@ async def _adaptive_variation_with_llm(body: AdaptiveVariationRequest) -> dict[s
         "Return strict JSON with keys prompt, specimen, hint, title, variationReason. "
         "The specimen is the exact next target the user should recall. "
         "Keep the same algorithm family, but vary the specimen to pressure the targetDimension. "
-        "For pseudo mode, specimen must be concise pseudocode. For invariant or full mode, specimen must be Python. "
+        "For algorithm mode, specimen must be Python. "
         "Prompt must stay concise, usually 8 to 12 words, and should briefly say why the pattern helps before the move. "
         "Do not include markdown. Do not include '{{missing}}'."
     )

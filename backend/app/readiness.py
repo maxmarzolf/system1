@@ -5,7 +5,7 @@ from typing import Any
 
 READINESS_SUCCESS_THRESHOLD = 90.0
 READINESS_STALE_DAYS = 7
-READINESS_MODE_ORDER = ("pseudo", "invariant", "algorithm")
+READINESS_MODE_ORDER = ("algorithm",)
 
 
 def _coerce_datetime(value: Any) -> datetime | None:

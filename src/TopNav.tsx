@@ -1,6 +1,17 @@
 import { Link } from 'react-router-dom'
-import { type ReactNode, type RefObject } from 'react'
+import { type ReactNode, type RefObject, useEffect, useState } from 'react'
 import { useTheme } from './theme'
+
+const NAVBAR_COUNTER_SCRAMBLE_GLYPHS = ['ア', 'イ', 'ウ', 'エ', 'オ', 'カ', 'キ', 'ク', 'ケ', 'コ', 'サ', 'シ', 'ス', 'セ', 'ソ']
+
+const scrambleCounterText = (text: string, frame: number) =>
+  text
+    .split('')
+    .map((char, index) => {
+      if (!/\d/.test(char)) return char
+      return NAVBAR_COUNTER_SCRAMBLE_GLYPHS[(frame + index * 3) % NAVBAR_COUNTER_SCRAMBLE_GLYPHS.length]
+    })
+    .join('')
 
 type TopNavProps = {
   llmProviderLabel?: string
@@ -9,8 +20,45 @@ type TopNavProps = {
   onToggleLlmProviderMenu?: () => void
   llmProviderMenuRef?: RefObject<HTMLDivElement | null>
   sessionCounterText?: string
+  sessionCounterLoading?: boolean
   practiceHistoryHref?: string
   rightExtras?: ReactNode
+}
+
+function NavbarCounter({
+  text,
+  loading,
+}: {
+  text: string
+  loading: boolean
+}) {
+  const [frame, setFrame] = useState(0)
+
+  useEffect(() => {
+    if (!loading) {
+      setFrame(0)
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      setFrame((current) => current + 1)
+    }, 90)
+
+    return () => window.clearInterval(intervalId)
+  }, [loading])
+
+  const displayText = loading ? scrambleCounterText(text, frame) : text
+
+  return (
+    <span
+      className={loading ? 'navbar-counter navbar-counter-loading' : 'navbar-counter'}
+      aria-live="polite"
+      aria-busy={loading}
+    >
+      <span className="navbar-counter-text" aria-hidden={loading}>{displayText}</span>
+      {loading && <span className="sr-only">Loading session counter</span>}
+    </span>
+  )
 }
 
 export default function TopNav({
@@ -20,6 +68,7 @@ export default function TopNav({
   onToggleLlmProviderMenu,
   llmProviderMenuRef,
   sessionCounterText,
+  sessionCounterLoading = false,
   practiceHistoryHref = '/practice-history',
   rightExtras,
 }: TopNavProps) {
@@ -49,7 +98,7 @@ export default function TopNav({
         </div>
       </div>
       <div className="navbar-right">
-        {sessionCounterText && <span className="navbar-counter">{sessionCounterText}</span>}
+        {sessionCounterText && <NavbarCounter text={sessionCounterText} loading={sessionCounterLoading} />}
         <div className="navbar-theme">
           <button
             type="button"

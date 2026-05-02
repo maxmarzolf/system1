@@ -79,7 +79,7 @@ type SkillMapPatternReadiness = {
   untouchedCards: number
   staleCards: number
   dimensionSummary: DimensionSummary
-  modes: Record<'pseudo' | 'invariant' | 'algorithm', SkillMapModeReadiness>
+  modes: Record<TemplateMode, SkillMapModeReadiness>
 }
 
 type SkillMapOverviewResponse = {
@@ -102,14 +102,14 @@ type SkillMapOverviewResponse = {
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 const apiUrl = (path: string) => `${API_BASE_URL}${path}`
+type TemplateMode = 'algorithm'
+const TEMPLATE_MODE_ORDER: TemplateMode[] = ['algorithm']
 const ACTIVITY_WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 const shortDateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
 const longDateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 
-const formatTemplateModeLabel = (templateMode: 'pseudo' | 'invariant' | 'algorithm') =>
+const formatTemplateModeLabel = (templateMode: TemplateMode) =>
   ({
-    pseudo: 'Pseudo',
-    invariant: 'Invariant',
     algorithm: 'Algorithm',
   })[templateMode] ?? templateMode
 
@@ -346,10 +346,9 @@ export default function DashboardPage() {
       }
     })
   }
-  const launchFocusedPractice = (patternSlug: string, mode: 'pseudo' | 'invariant' | 'algorithm', selectedMethods: string[]) => {
+  const launchFocusedPractice = (patternSlug: string, selectedMethods: string[]) => {
     const nextParams = new URLSearchParams({
       focusPattern: patternSlug,
-      focusMode: mode,
     })
     selectedMethods.forEach((method) => nextParams.append('focusMethod', method))
     navigate(`/?${nextParams.toString()}`)
@@ -404,7 +403,7 @@ export default function DashboardPage() {
                 </div>
                 {patternSelected && (
                   <p className="skill-map-target-note">
-                    {`${selectedMethods.length} core method${selectedMethods.length === 1 ? '' : 's'} selected. Pick a mode to generate a focused set.`}
+                    {`${selectedMethods.length} core method${selectedMethods.length === 1 ? '' : 's'} selected. Start a focused set when ready.`}
                   </p>
                 )}
                 <div className="dashboard-mode-unified">
@@ -419,25 +418,18 @@ export default function DashboardPage() {
                     </button>
                   </div>
                   <div className="dashboard-mode-tabs">
-                    {(['pseudo', 'invariant', 'algorithm'] as const).map((mode) => {
-                      const modeSummary = node.modes[mode]
-                      const modeLabel = formatTemplateModeLabel(mode)
-                      return (
-                        <button
-                          key={mode}
-                          className={patternSelected ? 'dashboard-mode-tab dashboard-mode-tab-actionable' : 'dashboard-mode-tab'}
-                          disabled={!patternSelected}
-                          onClick={() => {
-                            if (patternSelected) launchFocusedPractice(node.slug, mode, selectedMethods)
-                          }}
-                        >
-                          <span className="dashboard-mode-tab-label">{modeLabel}</span>
-                          <span className={`coach-status-value coach-status-value-${readinessTone(modeSummary.readiness)}`}>
-                            {modeSummary.readiness}%
-                          </span>
-                        </button>
-                      )
-                    })}
+                    <button
+                      className={patternSelected ? 'dashboard-mode-tab dashboard-mode-tab-actionable' : 'dashboard-mode-tab'}
+                      disabled={!patternSelected}
+                      onClick={() => {
+                        if (patternSelected) launchFocusedPractice(node.slug, selectedMethods)
+                      }}
+                    >
+                      <span className="dashboard-mode-tab-label">Start practice</span>
+                      <span className={`coach-status-value coach-status-value-${readinessTone(node.modes.algorithm.readiness)}`}>
+                        {node.modes.algorithm.readiness}%
+                      </span>
+                    </button>
                   </div>
                   {expandedStats[node.slug] && (
                     <div className="dashboard-mode-table-wrap">
@@ -455,7 +447,7 @@ export default function DashboardPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {(['pseudo', 'invariant', 'algorithm'] as const).map((mode) => {
+                          {TEMPLATE_MODE_ORDER.map((mode) => {
                             const s = node.modes[mode]
                             const daysAgo = s.daysSinceLastSubmit
                             return (
@@ -487,12 +479,12 @@ export default function DashboardPage() {
                           })}
                         </tbody>
                       </table>
-                      {(['pseudo', 'invariant', 'algorithm'] as const).some((mode) => {
+                      {TEMPLATE_MODE_ORDER.some((mode) => {
                         const s = node.modes[mode]
                         return s.dimensionSummary?.rubricAttemptCount && (formatWeakDimension(s.dimensionSummary) || formatPrimaryFailure(s.dimensionSummary))
                       }) && (
                         <div className="dashboard-mode-dimensions">
-                          {(['pseudo', 'invariant', 'algorithm'] as const).map((mode) => {
+                          {TEMPLATE_MODE_ORDER.map((mode) => {
                             const s = node.modes[mode]
                             if (!s.dimensionSummary?.rubricAttemptCount) return null
                             const weak = formatWeakDimension(s.dimensionSummary)
@@ -508,12 +500,12 @@ export default function DashboardPage() {
                           })}
                         </div>
                       )}
-                      {(['pseudo', 'invariant', 'algorithm'] as const).some((mode) => {
+                      {TEMPLATE_MODE_ORDER.some((mode) => {
                         const s = node.modes[mode]
                         return s.staleCards > 0
                       }) && (
                         <div className="dashboard-summary">
-                          {(['pseudo', 'invariant', 'algorithm'] as const).map((mode) => {
+                          {TEMPLATE_MODE_ORDER.map((mode) => {
                             const s = node.modes[mode]
                             if (s.staleCards === 0) return null
                             return (

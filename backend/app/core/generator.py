@@ -17,7 +17,13 @@ from fastapi.responses import StreamingResponse
 from app.config import settings
 from app.models import SkillMapDrillsRequest, TemplateMode
 
-TEMPLATE_MODE_ORDER = (TemplateMode.pseudo.value, TemplateMode.invariant.value, TemplateMode.algorithm.value)
+INLINE_NOTE_COLUMN = 48
+
+TEMPLATE_MODE_ORDER = (
+    TemplateMode.algorithm.value,
+)
+INLINE_TEMPLATE_KEY = "inline"
+TEMPLATE_TARGET_ORDER = (TemplateMode.algorithm.value, INLINE_TEMPLATE_KEY)
 
 
 class GeneratorUnavailableError(RuntimeError):
@@ -115,91 +121,278 @@ def _clean_concise_prompt(value: str, max_chars: int = 80) -> str:
 def _entry_point_from_template_target(template_mode: str, target: str) -> str:
     lines = str(target or "").replace("\r\n", "\n").split("\n")
     first_line = next((line.strip() for line in lines if line.strip()), "")
-    if template_mode == TemplateMode.pseudo.value:
-        match = re.match(r"define\s+(.+)$", first_line, flags=re.IGNORECASE)
-        return re.sub(r":\s*$", "", match.group(1)).strip() if match else ""
-
     match = re.match(r"def\s+([A-Za-z_]\w*)\s*\(([^)]*)\):", first_line)
     return f"{match.group(1)}({match.group(2)})" if match else ""
+
+
+def _shorten_annotation_note(value: str, max_words: int = 8) -> str:
+    cleaned = re.sub(r"#\s*", "", str(value or ""))
+    cleaned = re.sub(r"\bINVARIANT\s*:\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"[.]+$", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return " ".join(cleaned.split()[:max_words]) if cleaned else ""
+
+
+def _inline_decision_note_for_pattern(pattern_slug: str) -> str:
+    return {
+        "sliding-window": "window valid before scoring",
+        "two-pointers": "answer stays inside pointers",
+        "binary-search": "answer stays inside bounds",
+        "dynamic-programming": "take skip summarize processed prefix",
+        "dp": "take skip summarize processed prefix",
+        "graph-traversal": "frontier holds unvisited work",
+        "dfs-bfs": "frontier holds unvisited work",
+        "backtracking": "path matches current branch",
+        "heap": "heap holds current top-k",
+        "union-find": "roots name connected groups",
+        "intervals": "merged tail alone can overlap",
+        "prefix-sums": "seen holds previous prefixes",
+        "monotonic-stack": "stack keeps unresolved decreasing values",
+        "stack": "stack keeps unresolved decreasing values",
+    }.get(pattern_slug, "state preserves valid updates")
+
+
+def _inline_note_for_line(trimmed_line: str, pattern_slug: str) -> str:
+    if re.match(r"^return\b", trimmed_line):
+        if re.search(r"max\(take,\s*skip\)", trimmed_line):
+            return "best of final choices"
+        if re.search(r"return\s+0\b", trimmed_line):
+            return "nothing to choose"
+        return "return final answer"
+    if re.match(r"^while\b", trimmed_line):
+        return "restore rule before continuing"
+    if re.match(r"^(def|for|if|elif|else)\b", trimmed_line):
+        return ""
+    if pattern_slug in {"dynamic-programming", "dp"}:
+        if re.match(r"^take\s*=\s*0\b", trimmed_line):
+            return "best if previous was taken"
+        if re.match(r"^skip\s*=\s*0\b", trimmed_line):
+            return "best if previous was skipped"
+        if re.search(r"take\s*,\s*skip\s*=", trimmed_line):
+            return "take x or skip x"
+        if re.search(r"dp\[|transition", trimmed_line):
+            return "build from solved states"
+    if pattern_slug == "heap" and re.search(r"heappush", trimmed_line):
+        return "include new candidate"
+    if pattern_slug == "heap" and re.search(r"heappop", trimmed_line):
+        return "drop smallest kept item"
+    if pattern_slug == "binary-search" and re.search(r"mid\s*=", trimmed_line):
+        return "probe middle boundary"
+    if pattern_slug == "binary-search" and re.search(r"left\s*=\s*mid", trimmed_line):
+        return "discard lower half"
+    if pattern_slug == "binary-search" and re.search(r"right\s*=\s*mid", trimmed_line):
+        return "keep possible boundary"
+    if re.search(r"\+=|-=|\*=|/=|=", trimmed_line):
+        return "update state for next decision"
+    if re.search(r"\b(append|push|pop|add|remove|union|find)\b", trimmed_line):
+        return "move through core step"
+    if pattern_slug == "union-find" and re.match(r"^(parent|rank)\b", trimmed_line):
+        return "self-label before merging"
+    return ""
+
+
+def _append_aligned_note(line: str, note: str) -> str:
+    compact_note = _shorten_annotation_note(note)
+    if not compact_note:
+        return line
+    trimmed_right = line.rstrip()
+    if not trimmed_right:
+        return f"{' ' * INLINE_NOTE_COLUMN}{compact_note}"
+    padding = " " * max(2, INLINE_NOTE_COLUMN - len(trimmed_right))
+    return f"{trimmed_right}{padding}{compact_note}"
+
+
+INLINE_GENERIC_NOTES = (
+    "update state for next decision",
+    "return final answer",
+    "restore rule before continuing",
+    "move through core step",
+    "choose rule-preserving branch",
+    "repeat until state settles",
+    "state depends on solved states",
+)
+
+
+def _remove_duplicate_inline_notes(note: str) -> str:
+    cleaned = str(note or "").strip()
+    for generic_note in INLINE_GENERIC_NOTES:
+        escaped = re.escape(generic_note)
+        cleaned = re.sub(rf"\b{escaped}\s+{escaped}\b", generic_note, cleaned, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _strip_known_inline_note(line: str) -> str:
+    lower = line.lower()
+    indexes = [lower.find(note.lower()) for note in INLINE_GENERIC_NOTES if lower.find(note.lower()) >= 0]
+    return line[: min(indexes)].rstrip() if indexes else line
+
+
+def _has_aligned_inline_note(line: str) -> bool:
+    return bool(re.search(r".*\S\s{6,}\S", line) or re.match(rf"^\s{{{INLINE_NOTE_COLUMN},}}\S", line))
+
+
+def _append_inline_note(line: str, pattern_slug: str) -> str:
+    if _has_aligned_inline_note(line):
+        note_only = re.match(rf"^(\s{{{INLINE_NOTE_COLUMN},}})(\S.*)$", line)
+        if note_only:
+            cleaned_note = _remove_duplicate_inline_notes(note_only.group(2))
+            if any(note.lower() == cleaned_note.lower() for note in INLINE_GENERIC_NOTES):
+                return _append_aligned_note("", _inline_decision_note_for_pattern(pattern_slug))
+            return _append_aligned_note("", cleaned_note)
+        match = re.match(r"^(.*?\S)(\s{6,})(\S.*)$", line)
+        if not match:
+            return line.rstrip()
+        code = match.group(1)
+        cleaned_note = _remove_duplicate_inline_notes(match.group(3))
+        if any(note.lower() == cleaned_note.lower() for note in INLINE_GENERIC_NOTES):
+            comment = _inline_note_for_line(code.strip(), pattern_slug)
+            return _append_aligned_note(code, comment)
+        return _append_aligned_note(code, cleaned_note)
+    if "#" in line:
+        before_comment, existing_note = line.split("#", 1)
+        return _append_aligned_note(before_comment, existing_note)
+    cleaned_line = _strip_known_inline_note(line)
+    trimmed_line = cleaned_line.strip()
+    if not trimmed_line:
+        return line
+    comment = _inline_note_for_line(trimmed_line, pattern_slug)
+    return _append_aligned_note(cleaned_line, comment)
+
+
+def _is_inline_decision_line(line: str) -> bool:
+    match = re.match(rf"^\s{{{INLINE_NOTE_COLUMN},}}(\S.*)$", line)
+    if not match:
+        return False
+    return bool(re.search(r"\b(window|answer|state|frontier|path|heap|roots|merged|seen|stack|take|skip)\b", match.group(1), re.IGNORECASE))
+
+
+def _should_place_inline_decision_note_after(line: str, inside_loop: bool) -> bool:
+    if not inside_loop:
+        return False
+    code_part = line.split("#", 1)[0].strip()
+    if not code_part:
+        return False
+    if re.match(r"^(def|for|while|if|elif|else|return)\b", code_part):
+        return False
+    return bool(
+        re.search(r"\b(heappush|append|add|push|union|find|pop|popleft|transition)\b", code_part)
+        or re.search(r"[+\-*/]?=", code_part)
+    )
+
+
+def _inline_template_target(pattern_slug: str, algorithm_target: str) -> str:
+    lines = str(algorithm_target or "").replace("\r\n", "\n").strip().split("\n")
+    output: list[str] = []
+    inline_decision_inserted = False
+    inside_loop = False
+    for line in lines:
+        if re.match(r"^\s*(for|while)\b", line):
+            inside_loop = True
+        next_line = _append_inline_note(line, pattern_slug)
+        output.append(next_line)
+        if _is_inline_decision_line(next_line):
+            inline_decision_inserted = True
+        if not inline_decision_inserted and _should_place_inline_decision_note_after(line, inside_loop):
+            output.append(_append_aligned_note("", _inline_decision_note_for_pattern(pattern_slug)))
+            inline_decision_inserted = True
+    if not inline_decision_inserted:
+        def_index = next((index for index, line in enumerate(lines) if re.match(r"^\s*def\s+", line)), -1)
+        if def_index >= 0:
+            output.insert(def_index + 1, _append_aligned_note("", _inline_decision_note_for_pattern(pattern_slug)))
+        else:
+            output.insert(0, _append_aligned_note("", _inline_decision_note_for_pattern(pattern_slug)))
+    return "\n".join(output).strip()
+
+
+def _normalize_inline_template_target(pattern_slug: str, raw_target: str) -> str:
+    lines = str(raw_target or "").replace("\r\n", "\n").strip().split("\n")
+    output = [_append_inline_note(line, pattern_slug) for line in lines]
+    if any(_is_inline_decision_line(line) for line in output):
+        return "\n".join(output).strip()
+
+    inside_loop = False
+    inline_decision_index = -1
+    for index, line in enumerate(lines):
+        if re.match(r"^\s*(for|while)\b", line):
+            inside_loop = True
+            continue
+        if _should_place_inline_decision_note_after(line, inside_loop):
+            inline_decision_index = index
+            break
+
+    if inline_decision_index >= 0:
+        output.insert(inline_decision_index + 1, _append_aligned_note("", _inline_decision_note_for_pattern(pattern_slug)))
+    else:
+        def_index = next((index for index, line in enumerate(lines) if re.match(r"^\s*def\s+", line)), -1)
+        if def_index >= 0:
+            output.insert(def_index + 1, _append_aligned_note("", _inline_decision_note_for_pattern(pattern_slug)))
+        else:
+            output.insert(0, _append_aligned_note("", _inline_decision_note_for_pattern(pattern_slug)))
+    return "\n".join(output).strip()
 
 
 def _pattern_prompt_focus(pattern_slug: str, template_mode: str) -> str:
     focus_by_pattern = {
         "sliding-window": {
-            TemplateMode.pseudo.value: "sketch expand, shrink, update-best rhythm",
-            TemplateMode.invariant.value: "keep the window valid while counts change",
             TemplateMode.algorithm.value: "code the expand/shrink/update-best loop",
+            INLINE_TEMPLATE_KEY: "code the loop with decision and memory notes",
         },
         "two-pointers": {
-            TemplateMode.pseudo.value: "sketch how each comparison moves a pointer",
-            TemplateMode.invariant.value: "preserve the left/right decision rule",
             TemplateMode.algorithm.value: "code the inward pointer scan",
+            INLINE_TEMPLATE_KEY: "code pointer movement with decision notes",
         },
         "binary-search": {
-            TemplateMode.pseudo.value: "sketch midpoint compare-and-discard steps",
-            TemplateMode.invariant.value: "preserve the search interval invariant",
             TemplateMode.algorithm.value: "code the midpoint discard loop",
+            INLINE_TEMPLATE_KEY: "code search with boundary and discard notes",
         },
         "dynamic-programming": {
-            TemplateMode.pseudo.value: "state the base case and transition",
-            TemplateMode.invariant.value: "preserve what each dp state means",
             TemplateMode.algorithm.value: "code the state-transition loop",
+            INLINE_TEMPLATE_KEY: "code transitions with state-meaning comments",
         },
         "dp": {
-            TemplateMode.pseudo.value: "state the base case and transition",
-            TemplateMode.invariant.value: "preserve what each dp state means",
             TemplateMode.algorithm.value: "code the state-transition loop",
+            INLINE_TEMPLATE_KEY: "code transitions with state-meaning comments",
         },
         "graph-traversal": {
-            TemplateMode.pseudo.value: "sketch frontier growth and visit-once logic",
-            TemplateMode.invariant.value: "preserve frontier and visited invariants",
             TemplateMode.algorithm.value: "code the frontier plus visited loop",
+            INLINE_TEMPLATE_KEY: "code traversal with frontier notes",
         },
         "dfs-bfs": {
-            TemplateMode.pseudo.value: "sketch frontier growth and visit-once logic",
-            TemplateMode.invariant.value: "preserve frontier and visited invariants",
             TemplateMode.algorithm.value: "code the frontier plus visited loop",
+            INLINE_TEMPLATE_KEY: "code traversal with frontier notes",
         },
         "backtracking": {
-            TemplateMode.pseudo.value: "sketch choose, recurse, undo steps",
-            TemplateMode.invariant.value: "preserve path state across undo",
             TemplateMode.algorithm.value: "code the choose/recurse/undo loop",
+            INLINE_TEMPLATE_KEY: "code backtracking with path notes",
         },
         "heap": {
-            TemplateMode.pseudo.value: "sketch push, prune, keep-top logic",
-            TemplateMode.invariant.value: "preserve heap size and order invariants",
             TemplateMode.algorithm.value: "code the push/prune heap loop",
+            INLINE_TEMPLATE_KEY: "code heap updates with decision notes",
         },
         "union-find": {
-            TemplateMode.pseudo.value: "sketch find-root and union decisions",
-            TemplateMode.invariant.value: "preserve parent roots and rank logic",
             TemplateMode.algorithm.value: "code the find/union component loop",
+            INLINE_TEMPLATE_KEY: "code union-find with component comments",
         },
         "intervals": {
-            TemplateMode.pseudo.value: "sketch overlap merge or flush decisions",
-            TemplateMode.invariant.value: "preserve the ordered merge invariant",
             TemplateMode.algorithm.value: "code the sort-and-merge sweep",
+            INLINE_TEMPLATE_KEY: "code merging with ordering notes",
         },
         "prefix-sums": {
-            TemplateMode.pseudo.value: "sketch prefix update, query, record steps",
-            TemplateMode.invariant.value: "preserve prefix lookup state",
             TemplateMode.algorithm.value: "code the prefix query loop",
+            INLINE_TEMPLATE_KEY: "code prefix lookup with state notes",
         },
         "monotonic-stack": {
-            TemplateMode.pseudo.value: "sketch pop violators, then push current",
-            TemplateMode.invariant.value: "preserve the monotonic stack invariant",
             TemplateMode.algorithm.value: "code the pop-then-push stack loop",
+            INLINE_TEMPLATE_KEY: "code stack updates with decision notes",
         },
         "stack": {
-            TemplateMode.pseudo.value: "sketch pop violators, then push current",
-            TemplateMode.invariant.value: "preserve the monotonic stack invariant",
             TemplateMode.algorithm.value: "code the pop-then-push stack loop",
+            INLINE_TEMPLATE_KEY: "code stack updates with decision notes",
         },
     }
     default_focus = {
-        TemplateMode.pseudo.value: "sketch the reusable move sequence",
-        TemplateMode.invariant.value: "preserve the key invariant while state updates",
         TemplateMode.algorithm.value: "code the reusable pattern loop",
+        INLINE_TEMPLATE_KEY: "code the pattern with decision and memory notes",
     }
     return focus_by_pattern.get(pattern_slug, default_focus).get(template_mode, default_focus[TemplateMode.algorithm.value])
 
@@ -269,8 +462,6 @@ def _prompt_is_generic(raw_prompt: str, pattern_slug: str, template_mode: str, t
         and not _prompt_mentions_pattern_or_move(normalized, pattern_slug, target)
     ):
         return True
-    if template_mode == TemplateMode.invariant.value and "invariant-based" in normalized and "scaffold" in normalized:
-        return True
     return False
 
 
@@ -285,15 +476,18 @@ def _template_targets_for_drill(
     targets = {
         mode: str(target)
         for mode, target in request_targets.items()
-        if mode in TEMPLATE_MODE_ORDER and str(target).strip()
+        if mode in TEMPLATE_TARGET_ORDER and str(target).strip()
     }
     if isinstance(raw_template_targets, dict):
         for mode, target in raw_template_targets.items():
-            if mode in TEMPLATE_MODE_ORDER and str(target).strip():
-                targets[mode] = str(target).replace("\r\n", "\n").strip()
+            if mode in TEMPLATE_TARGET_ORDER and str(target).strip():
+                targets[mode] = str(target).replace("\r\n", "\n").replace("{{missing}}", str(missing or "")).strip()
     algorithm_target = str(solution or "").replace("{{missing}}", str(missing or "")).strip()
     if algorithm_target:
         targets[TemplateMode.algorithm.value] = algorithm_target
+        targets.setdefault(INLINE_TEMPLATE_KEY, _inline_template_target(pattern_slug, algorithm_target))
+    if targets.get(INLINE_TEMPLATE_KEY):
+        targets[INLINE_TEMPLATE_KEY] = _normalize_inline_template_target(pattern_slug, targets[INLINE_TEMPLATE_KEY])
     return targets
 
 
@@ -311,7 +505,7 @@ def _template_prompt_map(
     raw_prompts = raw_template_prompts if isinstance(raw_template_prompts, dict) else {}
     prompts: dict[str, str] = {}
 
-    for mode in TEMPLATE_MODE_ORDER:
+    for mode in TEMPLATE_TARGET_ORDER:
         raw_prompt = _clean_concise_prompt(str(raw_prompts.get(mode, "")).strip(), prompt_max_chars)
         target = targets.get(mode, "")
         if raw_prompt and not _prompt_is_generic(raw_prompt, pattern_slug, mode, target):
@@ -521,9 +715,11 @@ def build_generator_context(
         "then fill remaining slots across remaining patterns. "
         "The solution must include exactly one '{{missing}}' placeholder, and missing must be the exact code that replaces it. "
         f"The prompt must be very short: {active_tuning.output.concise_prompt_words} words or fewer. "
-        "templateTargets may include pseudo and invariant. Pseudo must be concise pseudocode. Invariant must be a Python scaffold. "
+        "templateTargets may include algorithm and inline. "
+        "Inline must be Python based on the full algorithm, with aligned subtle side-notes instead of '#' comments. "
+        "Inline notes must be 8 words or fewer, and decision notes must avoid legacy mode labels. "
         "When you return templateTargets, make them specific to the drill's pattern and method instead of generic pattern text. "
-        "templatePrompts must be an object keyed by pseudo, invariant, and full when those targets are provided. "
+        "templatePrompts must be an object keyed by algorithm and inline when those targets are provided. "
         "Each templatePrompts value should briefly say why the pattern helps and then name the key move. "
         "For example, a binary search prompt should feel like 'exploit sorted data; discard half each step.' "
         f"Keep each templatePrompts value concise, ideally {max(8, active_tuning.output.concise_prompt_words - 4)} to {active_tuning.output.concise_prompt_words} words, "

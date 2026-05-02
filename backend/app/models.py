@@ -14,8 +14,6 @@ class GameMode(str, Enum):
 
 
 class TemplateMode(str, Enum):
-    pseudo = "pseudo"
-    invariant = "invariant"
     algorithm = "algorithm"
 
 

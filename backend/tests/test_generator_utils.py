@@ -7,6 +7,7 @@ from app.core.generator import (
     _normalize_drill_difficulty,
     _pattern_slug,
     _template_mode_value,
+    _normalize_inline_template_target,
 )
 
 
@@ -38,15 +39,63 @@ def test_template_mode_value_defaults_to_algorithm() -> None:
 
 
 def test_template_mode_value_accepts_enum_and_casefolds_strings() -> None:
-    assert _template_mode_value(TemplateMode.pseudo) == TemplateMode.pseudo.value
-    assert _template_mode_value("INVARIANT") == TemplateMode.invariant.value
+    assert _template_mode_value(TemplateMode.algorithm) == TemplateMode.algorithm.value
+    assert _template_mode_value("PSEUDO") == TemplateMode.algorithm.value
+    assert _template_mode_value("INVARIANT") == TemplateMode.algorithm.value
+    assert _template_mode_value("TOTAL") == TemplateMode.algorithm.value
+    assert _template_mode_value("INLINE") == TemplateMode.algorithm.value
 
 
 def test_template_mode_order_contains_expected_values() -> None:
-    assert TEMPLATE_MODE_ORDER == ("pseudo", "invariant", "algorithm")
+    assert TEMPLATE_MODE_ORDER == ("algorithm",)
 
 
 def test_normalize_drill_difficulty_handles_aliases_and_unknowns() -> None:
     assert _normalize_drill_difficulty("easy") == "Easy"
     assert _normalize_drill_difficulty("advanced") == "Hard"
     assert _normalize_drill_difficulty("?") == "Med."
+
+
+def test_inline_template_normalization_does_not_duplicate_existing_notes() -> None:
+    target = (
+        "def lower_bound(nums, target):\n"
+        "    left, right = 0, len(nums)                  update state for next decision\n"
+        "    while left < right:                         restore rule before continuing\n"
+        "        mid = left + (right - left) // 2        update state for next decision\n"
+        "                                                answer stays inside bounds\n"
+        "        if nums[mid] < target:\n"
+        "            left = mid + 1                      update state for next decision\n"
+        "        else:\n"
+        "            right = mid\n"
+        "    return left                                 return final answer"
+    )
+
+    normalized = _normalize_inline_template_target("binary-search", target)
+
+    assert "update state for next decision  update state for next decision" not in normalized
+    assert "restore rule before continuing  restore rule before continuing" not in normalized
+    assert "return final answer  return final answer" not in normalized
+
+
+def test_inline_template_normalization_refines_dynamic_programming_notes() -> None:
+    target = (
+        "def max_non_adjacent_sum(nums):\n"
+        "    if not nums:\n"
+        "        return 0                                return final answer\n"
+        "    take = 0                                    update state for next decision\n"
+        "    skip = 0                                    update state for next decision\n"
+        "    for x in nums:\n"
+        "        take, skip = skip + x, max(skip, take)  update state for next decision  update state for next decision\n"
+        "                                                state depends on solved states\n"
+        "    return max(take, skip)                      return final answer"
+    )
+
+    normalized = _normalize_inline_template_target("dynamic-programming", target)
+
+    assert "best if previous was taken" in normalized
+    assert "best if previous was skipped" in normalized
+    assert "take x or skip x" in normalized
+    assert "take skip summarize processed prefix" in normalized
+    assert "best of final choices" in normalized
+    assert "update state for next decision" not in normalized
+    assert "state depends on solved states" not in normalized

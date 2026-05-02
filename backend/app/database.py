@@ -115,9 +115,13 @@ async def _ensure_recall_history_schema(db_pool: asyncpg.Pool) -> None:
             ALTER TABLE score_attempts
             DROP CONSTRAINT IF EXISTS score_attempts_template_mode_check;
 
+            UPDATE score_attempts
+            SET template_mode = 'algorithm'
+            WHERE template_mode IN ('pseudo', 'invariant', 'total');
+
             ALTER TABLE score_attempts
             ADD CONSTRAINT score_attempts_template_mode_check
-            CHECK (template_mode IN ('pseudo', 'invariant', 'algorithm'));
+            CHECK (template_mode IN ('algorithm'));
 
             ALTER TABLE score_attempts
             DROP CONSTRAINT IF EXISTS score_attempts_support_layer_check;

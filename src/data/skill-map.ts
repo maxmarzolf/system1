@@ -6,15 +6,15 @@ export type SkillMapNode = {
 export const skillMap: SkillMapNode[] = [
   {
     pattern: 'Sliding Window',
-    methods: ['fixed vs variable window', 'expand / shrink rhythm', 'frequency maps', 'valid window invariant', 'window score updates'],
+    methods: ['fixed vs variable window', 'expand / shrink rhythm', 'frequency maps', 'valid window rule', 'window score updates'],
   },
   {
     pattern: 'Two Pointers',
-    methods: ['same-direction scan', 'opposing pointers', 'sorted-array leverage', 'dedupe rules', 'pointer move invariant'],
+    methods: ['same-direction scan', 'opposing pointers', 'sorted-array leverage', 'dedupe rules', 'pointer move rule'],
   },
   {
     pattern: 'Binary Search',
-    methods: ['left / right bounds', 'mid calculation', 'search on answer', 'first / last occurrence', 'invariant handling'],
+    methods: ['left / right bounds', 'mid calculation', 'search on answer', 'first / last occurrence', 'boundary rule handling'],
   },
   {
     pattern: 'DFS / BFS',
@@ -50,6 +50,6 @@ export const skillMap: SkillMapNode[] = [
   },
   {
     pattern: 'Monotonic Stack',
-    methods: ['increasing vs decreasing stack', 'next greater / smaller', 'pop trigger invariant', 'index storage', 'span / area computation'],
+    methods: ['increasing vs decreasing stack', 'next greater / smaller', 'pop trigger rule', 'index storage', 'span / area computation'],
   },
 ]

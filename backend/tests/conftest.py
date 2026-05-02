@@ -52,7 +52,7 @@ def llm_drills_payload() -> dict:
                 "prompt": "Algorithm: recall pointer movement rule.",
                 "solution": "def solve(nums):\n    left, right = 0, len(nums)-1\n    while left < right:\n        {{missing}}\n    return left",
                 "missing": "left += 1",
-                "hint": "Move one side based on invariant.",
+                "hint": "Move one side based on the decision rule.",
                 "tags": ["skill-map", "two-pointers"],
             },
         ]
