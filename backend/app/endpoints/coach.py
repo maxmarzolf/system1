@@ -11,6 +11,8 @@ from app.models import (
     CoachPracticeHistoryResponse,
     CoachSessionPlanRequest,
     CoachSessionPlanResponse,
+    SequentialVariationRequest,
+    SequentialVariationResponse,
     SkillMapDrillsRequest,
     SkillMapDrillsResponse,
 )
@@ -52,3 +54,8 @@ async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
 @router.post("/adaptive-variation", response_model=AdaptiveVariationResponse)
 async def coach_adaptive_variation(body: AdaptiveVariationRequest):
     return await coach_service.coach_adaptive_variation(body)
+
+
+@router.post("/sequential-variation", response_model=SequentialVariationResponse)
+async def coach_sequential_variation(body: SequentialVariationRequest):
+    return await coach_service.coach_sequential_variation(body)

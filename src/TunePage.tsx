@@ -1,17 +1,55 @@
 import { useEffect, useState } from 'react'
 import { defaultLiveCoachTuning, loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoachTuning'
 import type { LiveCoachTuning } from './liveCoachTuning'
+import {
+  defaultSubmissionTuning,
+  loadStoredSubmissionTuning,
+  saveStoredSubmissionTuning,
+} from './submissionTuning'
+import type { SubmissionTuning } from './submissionTuning'
 import TopNav from './TopNav'
 
-export default function CoachTuningPage() {
+const trackedDimensions = [
+  {
+    title: 'Inputs and outputs',
+    copy: 'Whether the submission keeps the same overall function purpose and return path.',
+  },
+  {
+    title: 'State management',
+    copy: 'Whether the important tracked state is still named or clearly implied.',
+  },
+  {
+    title: 'Control flow',
+    copy: 'Whether the main loop or branching structure stays intact.',
+  },
+  {
+    title: 'Decision logic',
+    copy: 'Whether the rule that makes the algorithm valid is preserved.',
+  },
+  {
+    title: 'Answer update',
+    copy: 'Whether the submission still says when the answer gets recorded.',
+  },
+]
+
+export default function TunePage() {
   const [liveCoachTuning, setLiveCoachTuning] = useState<LiveCoachTuning>(() => loadStoredLiveCoachTuning())
+  const [submissionTuning, setSubmissionTuning] = useState<SubmissionTuning>(() => loadStoredSubmissionTuning())
 
   useEffect(() => {
     saveStoredLiveCoachTuning(liveCoachTuning)
   }, [liveCoachTuning])
 
+  useEffect(() => {
+    saveStoredSubmissionTuning(submissionTuning)
+  }, [submissionTuning])
+
   const updateLiveCoachTuning = <K extends keyof LiveCoachTuning>(key: K, value: LiveCoachTuning[K]) => {
     setLiveCoachTuning((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const updateSubmissionTuning = <K extends keyof SubmissionTuning>(key: K, value: SubmissionTuning[K]) => {
+    setSubmissionTuning((prev) => ({ ...prev, [key]: value }))
   }
 
   return (
@@ -21,10 +59,10 @@ export default function CoachTuningPage() {
       <section className="card">
         <div className="card-header coach-tuning-page-header">
           <div>
-            <h2>Live Coach Tuning</h2>
+            <h2>Tune</h2>
             <p className="difficulty">Persistent settings</p>
             <p className="hint coach-tuning-page-intro">
-              These controls tune live feedback only. Changes save immediately and apply to the next live snapshot.
+              Live coach and submission grading settings save immediately and apply to the next relevant interaction.
             </p>
           </div>
         </div>
@@ -32,9 +70,9 @@ export default function CoachTuningPage() {
         <div className="panel coach-tuning-panel">
           <div className="coach-tuning-header">
             <div>
-              <h3>Coach Controls</h3>
+              <h3>Live Coach Controls</h3>
               <p className="hint" style={{ marginTop: '0.35rem' }}>
-                Use this page to change how aggressively the live coach intervenes while you type.
+                Use these controls to change how aggressively the live coach intervenes while you type.
               </p>
             </div>
             <button className="secondary" type="button" onClick={() => setLiveCoachTuning(defaultLiveCoachTuning)}>
@@ -166,6 +204,96 @@ export default function CoachTuningPage() {
               <span>Show affirmation only when something stable is present</span>
             </label>
           </div>
+        </div>
+
+        <div className="panel coach-tuning-panel">
+          <div className="coach-tuning-header">
+            <div>
+              <h3>Submission Controls</h3>
+              <p className="hint" style={{ marginTop: '0.35rem' }}>
+                The current default is logic-first grading: preserve the algorithm, then tighten contract drift and
+                wording only as secondary signals.
+              </p>
+            </div>
+            <button className="secondary" type="button" onClick={() => setSubmissionTuning(defaultSubmissionTuning)}>
+              Reset submission tuning
+            </button>
+          </div>
+          <div className="coach-tuning-grid">
+            <label className="coach-tuning-field">
+              <span>Grading mode</span>
+              <select
+                value={submissionTuning.gradingMode}
+                onChange={(event) =>
+                  updateSubmissionTuning('gradingMode', event.target.value as SubmissionTuning['gradingMode'])
+                }
+              >
+                <option value="core-logic">Core logic first</option>
+                <option value="balanced">Balanced</option>
+                <option value="strict">Strict template match</option>
+              </select>
+            </label>
+            <label className="coach-tuning-field">
+              <span>Contract strictness</span>
+              <select
+                value={submissionTuning.contractStrictness}
+                onChange={(event) =>
+                  updateSubmissionTuning('contractStrictness', event.target.value as SubmissionTuning['contractStrictness'])
+                }
+              >
+                <option value="light">Light</option>
+                <option value="balanced">Balanced</option>
+                <option value="strict">Strict</option>
+              </select>
+            </label>
+            <label className="coach-tuning-toggle">
+              <input
+                type="checkbox"
+                checked={submissionTuning.rewardEquivalentPhrasing}
+                onChange={(event) => updateSubmissionTuning('rewardEquivalentPhrasing', event.target.checked)}
+              />
+              <span>Reward equivalent phrasing like “re-calculate” vs “update”</span>
+            </label>
+            <label className="coach-tuning-toggle">
+              <input
+                type="checkbox"
+                checked={submissionTuning.requireAnswerStep}
+                onChange={(event) => updateSubmissionTuning('requireAnswerStep', event.target.checked)}
+              />
+              <span>Require the answer-recording step for a sound grade</span>
+            </label>
+            <label className="coach-tuning-toggle">
+              <input
+                type="checkbox"
+                checked={submissionTuning.allowExtraParameters}
+                onChange={(event) => updateSubmissionTuning('allowExtraParameters', event.target.checked)}
+              />
+              <span>Treat added parameters as a minor deviation instead of a major miss</span>
+            </label>
+          </div>
+        </div>
+
+        <div className="panel coach-tuning-panel">
+          <div className="coach-tuning-header">
+            <div>
+              <h3>Tracked Dimensions</h3>
+              <p className="hint" style={{ marginTop: '0.35rem' }}>
+                These are the signals the Signal Assessor checks for submitted attempts.
+              </p>
+            </div>
+          </div>
+          <div className="coach-tuning-grid">
+            {trackedDimensions.map((dimension) => (
+              <div key={dimension.title} className="coach-tuning-field">
+                <span>{dimension.title}</span>
+                <p className="hint" style={{ margin: 0 }}>{dimension.copy}</p>
+              </div>
+            ))}
+          </div>
+          <p className="hint" style={{ marginTop: '1rem' }}>
+            Full-template grading still tracks code-specific signals like syntax validity, indentation drift, early line
+            drift, and omitted versus extra lines.
+          </p>
         </div>
       </section>
     </div>

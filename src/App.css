@@ -1410,6 +1410,45 @@ button.link:hover {
   background: var(--hc-picker-active-bg);
 }
 
+.flow-mode-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.flow-mode-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: auto;
+  gap: 0;
+  padding: 0.25rem 0.3rem;
+  border: 1px solid var(--hc-border-dim);
+  background: transparent;
+  color: var(--hc-toggle-off-fg);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.flow-mode-button:hover {
+  border-color: var(--hc-accent);
+  color: var(--hc-fg);
+  background: var(--hc-option-hover-bg);
+}
+
+.flow-mode-button.active {
+  color: var(--hc-accent);
+  border-color: var(--hc-accent);
+  background: var(--hc-picker-active-bg);
+}
+
+.flow-mode-button svg {
+  flex: 0 0 auto;
+}
+
 .tags {
   display: flex;
   gap: 0.35rem;
@@ -1424,7 +1463,6 @@ button.link:hover {
   font-size: 0.65rem;
   border-radius: 0;
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-  border: 1px solid var(--hc-border-dim);
 }
 
 @media (max-width: 720px) {
@@ -1438,9 +1476,11 @@ button.link:hover {
   }
 
   .support-layer-control,
+  .flow-mode-control,
   .tags {
     justify-content: flex-start;
   }
+
 }
 
 /* ─── Skeleton Shimmer ─── */

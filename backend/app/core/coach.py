@@ -28,6 +28,8 @@ from app.models import (
     CoachPracticeHistoryResponse,
     CoachSessionPlanRequest,
     CoachSessionPlanResponse,
+    SequentialVariationRequest,
+    SequentialVariationResponse,
     SkillMapDrillsRequest,
     SkillMapDrillsResponse,
     TemplateMode,
@@ -1418,6 +1420,93 @@ async def _adaptive_variation_with_llm(body: AdaptiveVariationRequest) -> dict[s
     }
 
 
+async def _sequential_variation_with_llm(body: SequentialVariationRequest) -> dict[str, Any]:
+    provider = _resolve_available_llm_provider(body.llmProvider)
+    if not _llm_provider_available(provider):
+        raise SubmissionFeedbackUnavailableError(
+            code="coach_llm_missing_api_key",
+            message="Update backend .env with at least one coach LLM API key.",
+            provider=provider,
+            api_error_code="provider_auth_error",
+        )
+
+    template_mode = _template_mode_value(body.templateMode)
+    pattern_name = _pattern_display_name(body.skillTags) or "algorithm"
+    system_prompt = (
+        "Generate one sequential recall variation for a coding interview trainer. "
+        "Return strict JSON with keys prompt, specimen, hint, title, progressionReason. "
+        "The specimen is the exact next target the user should recall. "
+        "Keep the same algorithm family and preserve most of the current code. "
+        "Make the smallest logical code change that produces a different useful behavior, boundary, or capability. "
+        "The next step should feel like an easy sequential follow-up to the current specimen, not a repair and not a rewrite. "
+        "For algorithm mode, specimen must be Python. "
+        "Prompt must stay concise, usually 8 to 12 words, and should briefly name the new step. "
+        "Do not include markdown. Do not include '{{missing}}'."
+    )
+    llm_payload = {
+        "pattern": pattern_name,
+        "templateMode": template_mode,
+        "progressionGoal": "make the smallest next code change that creates a different useful behavior",
+        "cardTitle": body.cardTitle,
+        "previousPrompt": body.prompt,
+        "currentTarget": body.expectedAnswer,
+        "skillTags": body.skillTags,
+    }
+    llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)
+    if not isinstance(llm_response, dict):
+        raise SubmissionFeedbackUnavailableError(
+            code="coach_llm_no_response",
+            message=f"Sequential variation cannot be generated at this time. No response from {_llm_provider_label(provider)}.",
+            provider=provider,
+            api_error_code="provider_empty_response",
+        )
+
+    specimen = str(llm_response.get("specimen", "")).replace("\r\n", "\n").replace("{{missing}}", "").strip()
+    if not specimen:
+        raise SubmissionFeedbackUnavailableError(
+            code="coach_llm_invalid_response",
+            message=f"Sequential variation cannot be generated at this time. Invalid response from {_llm_provider_label(provider)}.",
+            provider=provider,
+            api_error_code="provider_invalid_json",
+        )
+
+    prompt = _clean_concise_prompt(str(llm_response.get("prompt", "")).strip())
+    title = str(llm_response.get("title", "")).strip()
+    hint = str(llm_response.get("hint", "")).strip()
+    progression_reason = str(llm_response.get("progressionReason", "")).strip()
+    if not all([prompt, title, hint, progression_reason]):
+        raise SubmissionFeedbackUnavailableError(
+            code="coach_llm_invalid_response",
+            message=f"Sequential variation cannot be generated at this time. Invalid response from {_llm_provider_label(provider)}.",
+            provider=provider,
+            api_error_code="provider_invalid_json",
+        )
+
+    stamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S%f")
+    tags = [str(tag) for tag in body.skillTags if str(tag).strip()]
+    for tag in ("skill-map", "sequential-flow", "sequential-next-step"):
+        if tag not in tags:
+            tags.append(tag)
+
+    drill = {
+        "id": f"sequential-{_pattern_slug(pattern_name)}-{stamp}",
+        "title": title,
+        "difficulty": "Easy",
+        "prompt": prompt,
+        "templatePrompts": {template_mode: prompt, TemplateMode.algorithm.value: prompt},
+        "templateTargets": {template_mode: specimen, TemplateMode.algorithm.value: specimen},
+        "solution": f"{specimen}\n{{{{missing}}}}",
+        "missing": "# next step complete",
+        "hint": hint,
+        "tags": tags,
+    }
+    return {
+        "drill": drill,
+        "progressionReason": progression_reason,
+        "llmUsed": True,
+    }
+
+
 def _normalize_llm_provider(value: str) -> str:
     normalized = value.strip().lower()
     if not normalized:
@@ -1928,5 +2017,12 @@ async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
 async def coach_adaptive_variation(body: AdaptiveVariationRequest):
     try:
         return await _adaptive_variation_with_llm(body)
+    except SubmissionFeedbackUnavailableError as error:
+        raise _coach_llm_http_exception(error) from error
+
+
+async def coach_sequential_variation(body: SequentialVariationRequest):
+    try:
+        return await _sequential_variation_with_llm(body)
     except SubmissionFeedbackUnavailableError as error:
         raise _coach_llm_http_exception(error) from error

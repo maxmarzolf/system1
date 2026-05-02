@@ -117,6 +117,12 @@ type AdaptiveVariationResponse = {
   llmUsed: boolean
 }
 
+type SequentialVariationResponse = {
+  drill: Flashcard
+  progressionReason: string
+  llmUsed: boolean
+}
+
 type AttemptEvaluationResponse = {
   accuracy: number
   sound: boolean
@@ -202,6 +208,8 @@ type LiveCoachTimingDecision = {
   reason: 'milestone' | 'stall' | 'churn' | 'drift'
   delayMs: number
 }
+
+type FlowMode = 'sequential' | 'adaptive'
 
 type LlmProvider = 'openai' | 'claude' | 'gemma'
 
@@ -1125,9 +1133,13 @@ function App() {
   const [skillMapError, setSkillMapError] = useState('')
   const [skillMapRefreshToken, setSkillMapRefreshToken] = useState(0)
   const [skillMapSessionVersion, setSkillMapSessionVersion] = useState(0)
+  const [flowMode, setFlowMode] = useState<FlowMode>('sequential')
   const [adaptiveVariationLoading, setAdaptiveVariationLoading] = useState(false)
   const [adaptiveVariationError, setAdaptiveVariationError] = useState('')
   const [adaptiveVariationNote, setAdaptiveVariationNote] = useState('')
+  const [sequentialVariationLoading, setSequentialVariationLoading] = useState(false)
+  const [sequentialVariationError, setSequentialVariationError] = useState('')
+  const [sequentialVariationNote, setSequentialVariationNote] = useState('')
   const [inlineEnabled, setInlineEnabled] = useState(false)
   const [relatedDrawerOpen, setRelatedDrawerOpen] = useState(false)
 
@@ -1181,6 +1193,7 @@ function App() {
   const coachRequestVersionRef = useRef(0)
   const skillMapDeckRequestVersionRef = useRef(0)
   const adaptiveVariationRequestKeyRef = useRef('')
+  const sequentialVariationRequestKeyRef = useRef('')
   const focusedPatternSlug = searchParams.get('focusPattern')?.trim() || ''
   const focusedModeParam = searchParams.get('focusMode')?.trim() || ''
   const focusedMethodParams = searchParams.getAll('focusMethod').map((method) => method.trim()).filter(Boolean)
@@ -1319,6 +1332,7 @@ function App() {
     setSessionPlan(null)
     setSessionPlanLoading(false)
     setSessionPlanError('')
+    clearQueuedFlowState()
   }
 
   useEffect(() => {
@@ -1429,11 +1443,18 @@ function App() {
   const supportedPracticePlaceholder = isGhostRepsEnabled
     ? `Trace the faint ${inlineEnabled ? 'inline' : currentTemplateLabel.toLowerCase()} target here...`
     : practicePlaceholder
-  const startRecallLabel = inlineEnabled ? 'Hide inline solution and start recall' : 'Hide algorithm and start recall'
+  const startRecallLabel = inlineEnabled ? 'Hide inline solution and start recall' : 'Start'
   const supportedStartRecallLabel = isGhostRepsEnabled
     ? `Start Ghost Reps for ${inlineEnabled ? 'Inline' : currentTemplateLabel}`
     : startRecallLabel
   const templateProgressText = `Mode: ${currentTemplateLabel}${inlineEnabled ? ' · Inline helper on' : ''}`
+  const queuedFlowLoading = flowMode === 'adaptive' ? adaptiveVariationLoading : sequentialVariationLoading
+  const queuedFlowNote = flowMode === 'adaptive' ? adaptiveVariationNote : sequentialVariationNote
+  const queuedFlowError = flowMode === 'adaptive' ? adaptiveVariationError : sequentialVariationError
+  const queuedFlowLoadingMessage =
+    flowMode === 'adaptive'
+      ? 'Building a targeted repair variation...'
+      : 'Building the next sequential step...'
   const relatedLeetCodeSet = useMemo(
     () => resolveRelatedLeetCodeSet({
       patternTag: primaryPatternTag,
@@ -1521,7 +1542,7 @@ function App() {
     }
   }
 
-  const enqueueAdaptiveVariation = (drill: Flashcard, variationReason: string) => {
+  const enqueueGeneratedFollowup = (drill: Flashcard) => {
     if (skillMapDeck.some((item) => item.id === drill.id)) return
     const nextDeckIndex = skillMapDeck.length
     setSkillMapDeck((prevDeck) => {
@@ -1536,7 +1557,6 @@ function App() {
         ...prevOrder.slice(sessionPosition + 1),
       ]
     })
-    setAdaptiveVariationNote(variationReason || 'Targeted repair variation queued next.')
   }
 
   const requestAdaptiveVariation = async (payload: {
@@ -1571,7 +1591,8 @@ function App() {
       if (!response.ok) throw new Error('Unable to generate adaptive variation')
       const variation = (await response.json()) as AdaptiveVariationResponse
       if (adaptiveVariationRequestKeyRef.current !== requestKey || currentCardIdRef.current !== card.id) return
-      enqueueAdaptiveVariation(variation.drill, variation.variationReason)
+      enqueueGeneratedFollowup(variation.drill)
+      setAdaptiveVariationNote(variation.variationReason || 'Targeted repair variation queued next.')
     } catch {
       if (adaptiveVariationRequestKeyRef.current !== requestKey || currentCardIdRef.current !== card.id) return
       setAdaptiveVariationError('Targeted variation unavailable right now.')
@@ -1580,6 +1601,63 @@ function App() {
         setAdaptiveVariationLoading(false)
       }
     }
+  }
+
+  const requestSequentialVariation = async (payload: {
+    interactionId: string
+    expectedAnswer: string
+  }) => {
+    const requestKey = `${card.id}:${currentTemplateMode}:${payload.interactionId}`
+    if (sequentialVariationRequestKeyRef.current === requestKey) return
+    sequentialVariationRequestKeyRef.current = requestKey
+    setSequentialVariationLoading(true)
+    setSequentialVariationError('')
+    setSequentialVariationNote('')
+
+    try {
+      const response = await fetch(apiUrl('/api/coach/sequential-variation'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cardId: card.id,
+          cardTitle: card.title,
+          prompt: practicePrompt,
+          expectedAnswer: payload.expectedAnswer,
+          templateMode: currentTemplateMode,
+          skillTags: currentSkillTags,
+          llmProvider,
+        }),
+      })
+      if (!response.ok) throw new Error('Unable to generate sequential variation')
+      const variation = (await response.json()) as SequentialVariationResponse
+      if (sequentialVariationRequestKeyRef.current !== requestKey || currentCardIdRef.current !== card.id) return
+      enqueueGeneratedFollowup(variation.drill)
+      setSequentialVariationNote(variation.progressionReason || 'Smallest next-step variation queued next.')
+    } catch {
+      if (sequentialVariationRequestKeyRef.current !== requestKey || currentCardIdRef.current !== card.id) return
+      setSequentialVariationError('Sequential next step unavailable right now.')
+    } finally {
+      if (sequentialVariationRequestKeyRef.current === requestKey && currentCardIdRef.current === card.id) {
+        setSequentialVariationLoading(false)
+      }
+    }
+  }
+
+  const clearQueuedFlowState = () => {
+    setAdaptiveVariationLoading(false)
+    setAdaptiveVariationError('')
+    setAdaptiveVariationNote('')
+    setSequentialVariationLoading(false)
+    setSequentialVariationError('')
+    setSequentialVariationNote('')
+    adaptiveVariationRequestKeyRef.current = ''
+    sequentialVariationRequestKeyRef.current = ''
+  }
+
+  const handleFlowModeChange = (nextFlowMode: FlowMode) => {
+    if (flowMode === nextFlowMode) return
+    clearQueuedFlowState()
+    setFlowMode(nextFlowMode)
   }
 
   const resetPerCardInteraction = () => {
@@ -1597,14 +1675,11 @@ function App() {
     setCoachLoading(false)
     setCoachError('')
     setSubmissionFailureModal(null)
-    setAdaptiveVariationLoading(false)
-    setAdaptiveVariationError('')
-    setAdaptiveVariationNote('')
     liveCoachRequestVersionRef.current = 0
-    adaptiveVariationRequestKeyRef.current = ''
     liveCoachSnapshotRef.current = null
     lastLiveCoachDecisionKeyRef.current = ''
     lastMainInputEditAtRef.current = 0
+    clearQueuedFlowState()
   }
 
   const toggleInlineHelper = () => {
@@ -2019,7 +2094,7 @@ function App() {
       submissionRubric: feedback?.submissionRubric ?? null,
     })
 
-    if (!isGhostRep && !sound && feedback?.submissionRubric) {
+    if (!isGhostRep && flowMode === 'adaptive' && !sound && feedback?.submissionRubric) {
       void requestAdaptiveVariation({
         interactionId,
         expectedAnswer: normalizedTarget,
@@ -2030,6 +2105,12 @@ function App() {
 
     if (!isGhostRep && closeEnough) {
       completeCardInSession(sound, accuracy, elapsedMs)
+      if (flowMode === 'sequential') {
+        void requestSequentialVariation({
+          interactionId,
+          expectedAnswer: normalizedTarget,
+        })
+      }
     }
   }
 
@@ -2581,6 +2662,30 @@ function App() {
                 </svg>
               </button>
             </div>
+            <div className="flow-mode-control" role="group" aria-label="Next question flow mode">
+              <button
+                type="button"
+                className={flowMode === 'sequential' ? 'flow-mode-button active' : 'flow-mode-button'}
+                onClick={() => handleFlowModeChange('sequential')}
+                aria-pressed={flowMode === 'sequential'}
+                title="Sequential flow"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M17.25 8.25 21 12m0 0-3.75 3.75M21 12H3" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className={flowMode === 'adaptive' ? 'flow-mode-button active' : 'flow-mode-button'}
+                onClick={() => handleFlowModeChange('adaptive')}
+                aria-pressed={flowMode === 'adaptive'}
+                title="Adaptive flow"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" />
+                </svg>
+              </button>
+            </div>
             <div className="tags">
               {card.tags.map((tag) => (
                 <span key={tag} className="tag">{tag}</span>
@@ -2878,15 +2983,15 @@ function App() {
                                   <strong>Next step:</strong> {submissionFeedbackNextStep}
                                 </p>
                               )}
-                              {adaptiveVariationLoading && (
-                                <p className="coach-muted">Building a targeted repair variation...</p>
+                              {queuedFlowLoading && (
+                                <p className="coach-muted">{queuedFlowLoadingMessage}</p>
                               )}
-                              {adaptiveVariationNote && (
+                              {queuedFlowNote && (
                                 <p className="coach-muted">
-                                  <strong>Queued next:</strong> {adaptiveVariationNote}
+                                  <strong>Queued next:</strong> {queuedFlowNote}
                                 </p>
                               )}
-                              {adaptiveVariationError && <p className="coach-error">{adaptiveVariationError}</p>}
+                              {queuedFlowError && <p className="coach-error">{queuedFlowError}</p>}
                             </>
                           )}
                         </div>

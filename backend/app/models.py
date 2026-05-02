@@ -187,6 +187,22 @@ class AdaptiveVariationResponse(BaseModel):
     llmUsed: bool = False
 
 
+class SequentialVariationRequest(BaseModel):
+    cardId: str = Field(min_length=1)
+    cardTitle: str = ""
+    prompt: str = ""
+    expectedAnswer: str = Field(min_length=1)
+    templateMode: TemplateMode = TemplateMode.algorithm
+    skillTags: list[str] = []
+    llmProvider: str = "openai"
+
+
+class SequentialVariationResponse(BaseModel):
+    drill: SkillMapDrillCard
+    progressionReason: str = ""
+    llmUsed: bool = False
+
+
 class CoachPracticeHistoryRequest(BaseModel):
     cardId: str = ""
     questionType: str = ""

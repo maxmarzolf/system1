@@ -123,8 +123,7 @@ export default function TopNav({
             </svg>
           </button>
         </div>
-        <Link to="/coach-tuning" className="navbar-dashboard">Tune Coach</Link>
-        <Link to="/submission-tuning" className="navbar-dashboard">Tune Submission</Link>
+        <Link to="/tune" className="navbar-dashboard">Tune</Link>
         <Link to={practiceHistoryHref} className="navbar-dashboard">History</Link>
         <Link to="/dashboard" className="navbar-dashboard">Dashboard</Link>
         {rightExtras}
