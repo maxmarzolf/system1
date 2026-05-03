@@ -35,10 +35,7 @@ function NavbarCounter({
   const [frame, setFrame] = useState(0)
 
   useEffect(() => {
-    if (!loading) {
-      setFrame(0)
-      return
-    }
+    if (!loading) return
 
     const intervalId = window.setInterval(() => {
       setFrame((current) => current + 1)

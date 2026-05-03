@@ -120,6 +120,83 @@ def _build_support_counts(attempts: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
+def _build_ghost_rep_activity(
+    attempt_rows: list[SkillMapOverviewAttemptRow],
+    slug_to_pattern: dict[str, str],
+    window_days: int = 10,
+) -> dict[str, Any]:
+    today = datetime.now(timezone.utc).date()
+    window_start = today - timedelta(days=max(window_days - 1, 0))
+    known_pattern_slugs = set(slug_to_pattern)
+    counts_by_day_pattern: dict[str, Counter[str]] = {}
+    pattern_totals: Counter[str] = Counter()
+    last_seen_by_pattern: dict[str, date] = {}
+
+    for row in attempt_rows:
+        if str(row["support_layer"] or "none") != "ghost-reps":
+            continue
+        created_at = _coerce_utc_datetime(row["created_at"])
+        if created_at is None:
+            continue
+        category_tags = [str(tag) for tag in (row["category_tags"] or [])]
+        matched_pattern_slugs = [tag for tag in category_tags if tag in known_pattern_slugs]
+        if not matched_pattern_slugs:
+            continue
+        attempt_date = created_at.date()
+        iso_date = attempt_date.isoformat()
+        for slug in matched_pattern_slugs:
+            pattern_totals[slug] += 1
+            if attempt_date >= window_start:
+                counts_by_day_pattern.setdefault(iso_date, Counter())[slug] += 1
+            if slug not in last_seen_by_pattern or attempt_date > last_seen_by_pattern[slug]:
+                last_seen_by_pattern[slug] = attempt_date
+
+    days: list[dict[str, Any]] = []
+    active_days = 0
+    peak_daily_count = 0
+    cursor = window_start
+    while cursor <= today:
+        iso_date = cursor.isoformat()
+        day_counts = counts_by_day_pattern.get(iso_date, Counter())
+        total = sum(day_counts.values())
+        if total > 0:
+            active_days += 1
+        peak_daily_count = max(peak_daily_count, total)
+        days.append({
+            "date": iso_date,
+            "total": total,
+            "segments": [
+                {
+                    "pattern": slug_to_pattern[slug],
+                    "slug": slug,
+                    "count": count,
+                }
+                for slug, count in day_counts.most_common()
+            ],
+        })
+        cursor += timedelta(days=1)
+
+    patterns = [
+        {
+            "pattern": pattern,
+            "slug": slug,
+            "totalGhostReps": int(pattern_totals.get(slug, 0)),
+            "daysSinceLastGhostRep": (today - last_seen_by_pattern[slug]).days if slug in last_seen_by_pattern else None,
+        }
+        for slug, pattern in slug_to_pattern.items()
+    ]
+
+    return {
+        "windowStart": window_start.isoformat(),
+        "windowEnd": today.isoformat(),
+        "totalGhostReps": sum(day["total"] for day in days),
+        "activeDays": active_days,
+        "peakDailyCount": peak_daily_count,
+        "days": days,
+        "patterns": patterns,
+    }
+
+
 def build_skill_map_overview(
     pattern_rows: list[SkillMapOverviewPatternRow],
     generated_rows: list[SkillMapOverviewGeneratedRow],
@@ -314,6 +391,7 @@ def build_skill_map_overview(
         },
         "patterns": pattern_summaries,
         "reviewQueue": review_queue,
+        "ghostRepActivity": _build_ghost_rep_activity(attempt_rows, slug_to_pattern),
     }
 
 

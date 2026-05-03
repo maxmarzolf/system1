@@ -17,6 +17,17 @@ from typing import Any
 from fastapi.responses import StreamingResponse
 
 from app.config import settings
+from app.core.focused_static_cards import (
+    focused_hint as _focused_hint,
+    focused_profile as _focused_profile,
+    focused_prompt as _focused_prompt,
+    focused_skeleton_for_method as _focused_skeleton_for_method,
+    focused_target_terms as _focused_target_terms,
+    focused_title as _focused_title,
+    method_slug as _method_slug,
+    pattern_examples as _pattern_examples,
+    pattern_family_slug as _pattern_family_slug,
+)
 from app.models import SkillMapDrillsRequest, TemplateMode
 
 INLINE_NOTE_COLUMN = 48
@@ -25,7 +36,8 @@ TEMPLATE_MODE_ORDER = (
     TemplateMode.algorithm.value,
 )
 INLINE_TEMPLATE_KEY = "inline"
-TEMPLATE_TARGET_ORDER = (TemplateMode.algorithm.value, INLINE_TEMPLATE_KEY)
+CORE_SHAPE_TEMPLATE_KEY = "coreShape"
+TEMPLATE_TARGET_ORDER = (TemplateMode.algorithm.value, CORE_SHAPE_TEMPLATE_KEY, INLINE_TEMPLATE_KEY)
 
 
 class GeneratorUnavailableError(RuntimeError):
@@ -101,8 +113,20 @@ def _pattern_slug(pattern: str) -> str:
     return re.sub(
         r"\s+",
         "-",
-        pattern.lower().replace("/", " ").replace("&", " ").replace("-", " ").strip(),
+        re.sub(r"[^a-z0-9\s-]", " ", pattern.lower().replace("/", " ").replace("&", " ").replace("-", " ")).strip(),
     )
+
+
+def _question_slug(title: str) -> str:
+    return _pattern_slug(title)[:72] or "question"
+
+
+def _is_playlist_request(body: SkillMapDrillsRequest) -> bool:
+    return str(body.questionType or "").startswith("playlist:")
+
+
+def _is_focused_request(body: SkillMapDrillsRequest) -> bool:
+    return str(body.questionType or "").strip() == "skill-map-targeted"
 
 
 def _template_mode_value(value: TemplateMode | str | None) -> str:
@@ -118,6 +142,67 @@ def _clean_concise_prompt(value: str, max_chars: int = 80) -> str:
         return prompt
     shortened = prompt[:max_chars].rsplit(" ", 1)[0].strip()
     return f"{shortened}..."
+
+
+def _display_label(value: str) -> str:
+    cleaned = re.sub(r"\s+", " ", str(value or "").replace("-", " ").replace("_", " ")).strip()
+    return cleaned[:1].upper() + cleaned[1:] if cleaned else ""
+
+
+def _word_count(value: str) -> int:
+    return len(re.findall(r"[A-Za-z0-9]+(?:[-/][A-Za-z0-9]+)?", str(value or "")))
+
+
+def _limit_words(value: str, max_words: int) -> str:
+    words = re.findall(r"[A-Za-z0-9]+(?:[-/][A-Za-z0-9]+)?", str(value or ""))
+    if len(words) <= max_words:
+        return re.sub(r"\s+", " ", str(value or "").strip())
+    return " ".join(words[:max_words])
+
+
+def _method_tokens(method: str) -> set[str]:
+    return {
+        token
+        for token in re.sub(r"[^a-z0-9+\-\s]", " ", str(method or "").lower().replace("/", " ")).split()
+        if len(token) >= 3
+    }
+
+
+def _text_anchors_method(value: str, pattern: str, method: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9+\-\s]", " ", str(value or "").lower().replace("/", " "))
+    tokens = {token for token in normalized.split() if len(token) >= 3}
+    method_tokens = _method_tokens(method)
+    pattern_tokens = _method_tokens(pattern)
+    if method_tokens and tokens & method_tokens:
+        return True
+    return bool(pattern_tokens and tokens & pattern_tokens and not method_tokens)
+
+
+def _target_line_count(target: str) -> int:
+    return len([line for line in str(target or "").splitlines() if line.strip()])
+
+
+def _target_looks_story_like(target: str) -> bool:
+    lowered = str(target or "").lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "given ",
+            "return the",
+            "you are",
+            "story",
+            "leetcode",
+            "example:",
+        )
+    )
+
+
+def _target_matches_focused_method(target: str, pattern: str, method: str) -> bool:
+    expected_terms = _focused_target_terms(pattern, method)
+    if not expected_terms:
+        return True
+    lowered = str(target or "").lower()
+    return any(term.lower() in lowered for term in expected_terms)
 
 
 SPECIMEN_TUNING_DEFAULTS: dict[str, str] = {
@@ -216,7 +301,7 @@ def _strip_function_signature_hints(line: str) -> str:
     if not match:
         return line
     params = ",".join(_strip_param_annotation(part) for part in _split_top_level_commas(match.group(2)))
-    return f"{match.group(1)}{params}{match.group(3)}{match.group(4)}"
+    return f"{match.group(1)}{params}{match.group(3).strip()}{match.group(4)}"
 
 
 def _strip_variable_annotation(line: str) -> str:
@@ -421,6 +506,16 @@ def _inline_note_for_line(trimmed_line: str, pattern_slug: str) -> str:
             return "take x or skip x"
         if re.search(r"dp\[|transition", trimmed_line):
             return "build from solved states"
+    if pattern_slug == "backtracking":
+        if re.search(r"\b(record|res|result|out)\.(append|add)\(", trimmed_line):
+            return "record completed path"
+        if re.search(r"\bpath\.(append|add)\(", trimmed_line):
+            return "choose current item"
+        if re.search(r"\bpath\.pop\(", trimmed_line):
+            return "undo current choice"
+        if re.search(r"\b(dfs|backtrack|search)\(", trimmed_line):
+            return "explore this branch"
+        return ""
     if pattern_slug == "heap" and re.search(r"heappush", trimmed_line):
         return "include new candidate"
     if pattern_slug == "heap" and re.search(r"heappop", trimmed_line):
@@ -592,68 +687,125 @@ def _normalize_inline_template_target(pattern_slug: str, raw_target: str) -> str
     return "\n".join(output).strip()
 
 
+def _strip_inline_annotation_notes(code: str) -> str:
+    lines = []
+    for line in str(code or "").replace("\r\n", "\n").split("\n"):
+        if re.match(rf"^\s{{{INLINE_NOTE_COLUMN},}}\S", line):
+            continue
+        match = re.match(r"^(.*?\S)(\s{6,})(\S.*)$", line)
+        if match:
+            lines.append(match.group(1).rstrip())
+        else:
+            lines.append(line.rstrip())
+    return "\n".join(lines).strip()
+
+
+def _apply_core_shape_tuning_to_target(target: str, raw_tuning: Any) -> str:
+    tuning = _normalize_specimen_tuning(raw_tuning)
+    styled = str(target or "").replace("\r\n", "\n").strip()
+    if tuning["typeHints"] == "omit":
+        styled = _strip_python_type_hints(styled)
+    styled = _apply_variable_name_style(styled, tuning["variableNames"])
+    return styled.strip()
+
+
+def _extract_nested_helper_target(algorithm_target: str) -> str:
+    lines = str(algorithm_target or "").replace("\r\n", "\n").strip().split("\n")
+    for start, line in enumerate(lines):
+        match = re.match(r"^(\s*)def\s+(dfs|backtrack|search|helper)\s*\(", line)
+        if not match or not match.group(1):
+            continue
+        base_indent = len(match.group(1))
+        block = [line]
+        for next_line in lines[start + 1 :]:
+            stripped = next_line.strip()
+            indent = len(next_line) - len(next_line.lstrip())
+            if stripped and indent <= base_indent:
+                break
+            block.append(next_line)
+        dedented = [
+            block_line[base_indent:] if len(block_line) >= base_indent else block_line.lstrip()
+            for block_line in block
+        ]
+        helper = "\n".join(dedented).strip()
+        helper = re.sub(r"\blen\((items|nums|arr|values|candidates|choices|s)\)", "n", helper)
+        return helper
+    return ""
+
+
+def _core_shape_template_target(pattern_slug: str, algorithm_target: str) -> str:
+    if pattern_slug == "backtracking":
+        nested_helper = _extract_nested_helper_target(algorithm_target)
+        if nested_helper:
+            return _strip_inline_annotation_notes(nested_helper)
+    return _strip_inline_annotation_notes(algorithm_target)
+
+
 def _pattern_prompt_focus(pattern_slug: str, template_mode: str) -> str:
+    if template_mode == INLINE_TEMPLATE_KEY:
+        return "add sparse inline notes to the recall target"
+
     focus_by_pattern = {
         "sliding-window": {
             TemplateMode.algorithm.value: "code the expand/shrink/update-best loop",
-            INLINE_TEMPLATE_KEY: "code the loop with decision and memory notes",
+            CORE_SHAPE_TEMPLATE_KEY: "recall the reusable core loop shape",
         },
         "two-pointers": {
             TemplateMode.algorithm.value: "code the inward pointer scan",
-            INLINE_TEMPLATE_KEY: "code pointer movement with decision notes",
+            CORE_SHAPE_TEMPLATE_KEY: "recall the pointer movement skeleton",
         },
         "binary-search": {
             TemplateMode.algorithm.value: "code the midpoint discard loop",
-            INLINE_TEMPLATE_KEY: "code search with boundary and discard notes",
+            CORE_SHAPE_TEMPLATE_KEY: "recall the boundary discard skeleton",
         },
         "dynamic-programming": {
             TemplateMode.algorithm.value: "code the state-transition loop",
-            INLINE_TEMPLATE_KEY: "code transitions with state-meaning comments",
+            CORE_SHAPE_TEMPLATE_KEY: "recall the state transition skeleton",
         },
         "dp": {
             TemplateMode.algorithm.value: "code the state-transition loop",
-            INLINE_TEMPLATE_KEY: "code transitions with state-meaning comments",
+            CORE_SHAPE_TEMPLATE_KEY: "recall the state transition skeleton",
         },
         "graph-traversal": {
             TemplateMode.algorithm.value: "code the frontier plus visited loop",
-            INLINE_TEMPLATE_KEY: "code traversal with frontier notes",
+            CORE_SHAPE_TEMPLATE_KEY: "recall the frontier traversal skeleton",
         },
         "dfs-bfs": {
             TemplateMode.algorithm.value: "code the frontier plus visited loop",
-            INLINE_TEMPLATE_KEY: "code traversal with frontier notes",
+            CORE_SHAPE_TEMPLATE_KEY: "recall the frontier traversal skeleton",
         },
         "backtracking": {
             TemplateMode.algorithm.value: "code the choose/recurse/undo loop",
-            INLINE_TEMPLATE_KEY: "code backtracking with path notes",
+            CORE_SHAPE_TEMPLATE_KEY: "recall the choose/recurse/undo skeleton",
         },
         "heap": {
             TemplateMode.algorithm.value: "code the push/prune heap loop",
-            INLINE_TEMPLATE_KEY: "code heap updates with decision notes",
+            CORE_SHAPE_TEMPLATE_KEY: "recall the push/prune heap skeleton",
         },
         "union-find": {
             TemplateMode.algorithm.value: "code the find/union component loop",
-            INLINE_TEMPLATE_KEY: "code union-find with component comments",
+            CORE_SHAPE_TEMPLATE_KEY: "recall the find/union skeleton",
         },
         "intervals": {
             TemplateMode.algorithm.value: "code the sort-and-merge sweep",
-            INLINE_TEMPLATE_KEY: "code merging with ordering notes",
+            CORE_SHAPE_TEMPLATE_KEY: "recall the sort-and-merge skeleton",
         },
         "prefix-sums": {
             TemplateMode.algorithm.value: "code the prefix query loop",
-            INLINE_TEMPLATE_KEY: "code prefix lookup with state notes",
+            CORE_SHAPE_TEMPLATE_KEY: "recall the prefix lookup skeleton",
         },
         "monotonic-stack": {
             TemplateMode.algorithm.value: "code the pop-then-push stack loop",
-            INLINE_TEMPLATE_KEY: "code stack updates with decision notes",
+            CORE_SHAPE_TEMPLATE_KEY: "recall the pop-then-push skeleton",
         },
         "stack": {
             TemplateMode.algorithm.value: "code the pop-then-push stack loop",
-            INLINE_TEMPLATE_KEY: "code stack updates with decision notes",
+            CORE_SHAPE_TEMPLATE_KEY: "recall the pop-then-push skeleton",
         },
     }
     default_focus = {
         TemplateMode.algorithm.value: "code the reusable pattern loop",
-        INLINE_TEMPLATE_KEY: "code the pattern with decision and memory notes",
+        CORE_SHAPE_TEMPLATE_KEY: "recall the reusable core shape",
     }
     return focus_by_pattern.get(pattern_slug, default_focus).get(template_mode, default_focus[TemplateMode.algorithm.value])
 
@@ -678,11 +830,93 @@ def _pattern_prompt_spirit(pattern_slug: str) -> str:
     return spirit_by_pattern.get(pattern_slug, "lean on the reusable pattern instead of brute force")
 
 
+def _extract_function_signature(target: str) -> tuple[str, str, str]:
+    first_line = next((line.strip() for line in str(target or "").splitlines() if line.strip()), "")
+    match = re.match(r"def\s+([A-Za-z_]\w*)\s*\(([^)]*)\):", first_line)
+    if not match:
+        return "solve", "", "solve()"
+    name = match.group(1)
+    params = match.group(2).strip()
+    return name, params, f"{name}({params})"
+
+
+def _sample_value_for_param(param: str) -> str:
+    name = param.split("=", 1)[0].replace("*", "").strip().lower()
+    if not name:
+        return "value"
+    if name in {"s", "text", "expr", "expression"} or "string" in name:
+        return '"abc"'
+    if "graph" in name or name in {"adj"}:
+        return '{"A": ["B"], "B": []}'
+    if "interval" in name:
+        return "[[1, 3], [2, 6]]"
+    if name in {"target", "limit"}:
+        return "5"
+    if name == "k":
+        return "2"
+    if name == "n":
+        return "3"
+    if any(token in name for token in ("num", "arr", "item", "value")):
+        return "[1, 2, 3]"
+    return "..."
+
+
+def _input_example_from_signature(target: str) -> str:
+    name, params, _signature = _extract_function_signature(target)
+    param_names = [
+        param.split(":", 1)[0].split("=", 1)[0].strip()
+        for param in params.split(",")
+        if param.strip()
+    ]
+    if not param_names:
+        return f"{name}()"
+    assignments = [f"{param} = {_sample_value_for_param(param)}" for param in param_names]
+    return f"{chr(10).join(assignments)}\n\n{name}({', '.join(param_names)})"
+
+
+def build_plain_english_prompt_detail(
+    *,
+    pattern: str,
+    pattern_slug: str,
+    method: str,
+    title: str,
+    prompt: str,
+    target: str,
+    hint: str = "",
+) -> dict[str, Any]:
+    profile = _focused_profile(pattern or pattern_slug, method)
+    if profile:
+        return {
+            "plainEnglish": str(profile.get("plainEnglish", "")),
+            "interviewQuestion": str(profile.get("interviewQuestion", "")),
+            "inputExample": str(profile.get("inputExample", "")),
+            "outputExample": str(profile.get("outputExample", "")),
+            "explanation": str(profile.get("explanation", "")),
+            "brassTacks": str(profile.get("brassTacks", "")),
+            "leetcodeExamples": [str(example) for example in profile.get("leetcodeExamples", [])],
+        }
+    pattern_label = _display_label(pattern or pattern_slug or "pattern")
+    family_slug = _pattern_family_slug(pattern_slug)
+    method_label = _display_label(method or "core move").lower()
+    _name, _params, signature = _extract_function_signature(target)
+    brass_tacks = hint or f"Recall the {method_label} shape without changing the pattern."
+    return {
+        "plainEnglish": f"What is the {method_label} move?",
+        "interviewQuestion": f"Recall {signature}: use {pattern_label} for {method_label}.",
+        "inputExample": _input_example_from_signature(target),
+        "outputExample": "returns the value produced by the skeleton",
+        "explanation": f"{title} practices one reusable move: {prompt.rstrip('.')}.",
+        "brassTacks": _limit_words(brass_tacks, 14),
+        "leetcodeExamples": _pattern_examples(family_slug)[:3],
+    }
+
+
 def _template_prompt_from_target(pattern: str, pattern_slug: str, template_mode: str, target: str) -> str:
     pattern_label = re.sub(r"\s+", " ", str(pattern or "").strip()) or "Algorithm"
     pattern_label = pattern_label[0].upper() + pattern_label[1:] if pattern_label else "Algorithm"
-    spirit = _pattern_prompt_spirit(pattern_slug)
-    focus = _pattern_prompt_focus(pattern_slug, template_mode)
+    family_slug = _pattern_family_slug(pattern_slug)
+    spirit = _pattern_prompt_spirit(family_slug)
+    focus = _pattern_prompt_focus(family_slug, template_mode)
     return f"{pattern_label}: {spirit}; {focus}."
 
 
@@ -734,6 +968,7 @@ def _template_targets_for_drill(
     raw_template_targets: Any = None,
 ) -> dict[str, str]:
     request_targets = body.templateTargets.get(pattern_slug, {})
+    family_slug = _pattern_family_slug(pattern_slug)
     targets = {
         mode: str(target)
         for mode, target in request_targets.items()
@@ -746,11 +981,15 @@ def _template_targets_for_drill(
     algorithm_target = str(solution or "").replace("{{missing}}", str(missing or "")).strip()
     if algorithm_target:
         targets[TemplateMode.algorithm.value] = algorithm_target
-        targets.setdefault(INLINE_TEMPLATE_KEY, _inline_template_target(pattern_slug, algorithm_target))
+        targets.setdefault(CORE_SHAPE_TEMPLATE_KEY, _core_shape_template_target(family_slug, algorithm_target))
+        targets.setdefault(INLINE_TEMPLATE_KEY, _inline_template_target(family_slug, algorithm_target))
     for mode, target in list(targets.items()):
-        targets[mode] = apply_specimen_tuning_to_target(target, body.specimenTuning)
+        if mode == CORE_SHAPE_TEMPLATE_KEY:
+            targets[mode] = _apply_core_shape_tuning_to_target(target, body.specimenTuning)
+        else:
+            targets[mode] = apply_specimen_tuning_to_target(target, body.specimenTuning)
     if targets.get(INLINE_TEMPLATE_KEY):
-        targets[INLINE_TEMPLATE_KEY] = _normalize_inline_template_target(pattern_slug, targets[INLINE_TEMPLATE_KEY])
+        targets[INLINE_TEMPLATE_KEY] = _normalize_inline_template_target(family_slug, targets[INLINE_TEMPLATE_KEY])
     return targets
 
 
@@ -790,6 +1029,111 @@ def _normalize_drill_difficulty(value: Any) -> str:
     if difficulty in {"hard", "h", "advanced", "difficult"}:
         return "Hard"
     return "Med."
+
+
+def attach_plain_english_prompt_detail(
+    drill: dict[str, Any],
+    *,
+    pattern: str = "",
+    method: str = "",
+) -> dict[str, Any]:
+    tags = [str(tag) for tag in drill.get("tags", []) if str(tag).strip()]
+    pattern_slug = _pattern_slug(pattern) or next((tag for tag in tags if tag != "skill-map"), "")
+    template_targets = drill.get("templateTargets", {}) if isinstance(drill.get("templateTargets"), dict) else {}
+    target = str(
+        template_targets.get(TemplateMode.algorithm.value)
+        or str(drill.get("solution", "")).replace("{{missing}}", str(drill.get("missing", "")))
+    )
+    prompt = str(drill.get("prompt", "")).strip()
+    title = str(drill.get("title", "")).strip()
+    detail = drill.get("plainEnglishPromptDetail")
+    if isinstance(detail, dict) and all(str(detail.get(key, "")).strip() for key in ("plainEnglish", "interviewQuestion")):
+        return drill
+    return {
+        **drill,
+        "plainEnglishPromptDetail": build_plain_english_prompt_detail(
+            pattern=pattern or pattern_slug,
+            pattern_slug=pattern_slug,
+            method=method,
+            title=title,
+            prompt=prompt,
+            target=target,
+            hint=str(drill.get("hint", "")),
+        ),
+    }
+
+
+def _focused_source_method(source_node: Any) -> str:
+    methods = list(getattr(source_node, "methods", []) or []) if source_node else []
+    return str(methods[0]).strip() if methods else "core method"
+
+
+def _should_rewrite_focused_drill(raw: dict[str, Any], pattern: str, method: str, target: str) -> bool:
+    title = str(raw.get("title", ""))
+    prompt = str(raw.get("prompt", ""))
+    hint = str(raw.get("hint", ""))
+    combined = " ".join([title, prompt, hint])
+    if not _text_anchors_method(combined, pattern, method):
+        return True
+    if _word_count(prompt) > 8:
+        return True
+    if _word_count(hint) > 12:
+        return True
+    if not target.strip() or _target_looks_story_like(target):
+        return True
+    if not _target_matches_focused_method(target, pattern, method):
+        return True
+    return _target_line_count(target) > 8
+
+
+def _focused_drill_from_source(
+    *,
+    raw: dict[str, Any] | None,
+    index: int,
+    body: SkillMapDrillsRequest,
+    source_node: Any,
+    pattern: str,
+    pattern_slug: str,
+    method: str,
+) -> dict[str, Any]:
+    target = _focused_skeleton_for_method(pattern, method)
+    target = apply_specimen_tuning_to_target(target, body.specimenTuning)
+    prompt = _focused_prompt(pattern, method)
+    title = _focused_title(pattern, method)
+    hint = _focused_hint(pattern, method)
+    method_slug = _method_slug(method)
+    tags = ["skill-map", pattern_slug]
+    family_slug = _pattern_family_slug(pattern_slug)
+    if family_slug and family_slug not in tags:
+        tags.append(family_slug)
+    if method_slug and method_slug not in tags:
+        tags.append(method_slug)
+    return {
+        "id": str((raw or {}).get("id", f"focused-{pattern_slug}-{index + 1}")),
+        "title": title,
+        "difficulty": "Easy",
+        "prompt": prompt,
+        "templatePrompts": {
+            TemplateMode.algorithm.value: prompt,
+            CORE_SHAPE_TEMPLATE_KEY: prompt,
+            INLINE_TEMPLATE_KEY: _limit_words(f"{pattern}: add notes", 8),
+        },
+        "templateTargets": {
+            TemplateMode.algorithm.value: target,
+            CORE_SHAPE_TEMPLATE_KEY: _apply_core_shape_tuning_to_target(
+                _core_shape_template_target(_pattern_family_slug(pattern_slug), target),
+                body.specimenTuning,
+            ),
+            INLINE_TEMPLATE_KEY: _normalize_inline_template_target(
+                _pattern_family_slug(pattern_slug),
+                _inline_template_target(_pattern_family_slug(pattern_slug), target),
+            ),
+        },
+        "solution": f"{target}\n{{{{missing}}}}",
+        "missing": "# skeleton complete",
+        "hint": hint,
+        "tags": tags,
+    }
 
 
 class _DrillStreamParser:
@@ -919,8 +1263,24 @@ def _process_raw_drill(
     source_node = generation_skill_map[index] if index < len(generation_skill_map) else None
     pattern = source_node.pattern if source_node else str(raw.get("title", "algorithm"))
     pattern_slug = _pattern_slug(pattern)
+    method = _focused_source_method(source_node)
+    question_title = str(getattr(source_node, "questionTitle", "") or "").strip() if source_node else ""
+    playlist_slug = str(getattr(source_node, "playlistSlug", "") or "").strip() if source_node else ""
     if pattern_slug and pattern_slug not in tags:
         tags.append(pattern_slug)
+    if _is_focused_request(body):
+        method_slug = _method_slug(method)
+        family_slug = _pattern_family_slug(pattern_slug)
+        if family_slug and family_slug not in tags:
+            tags.append(family_slug)
+        if method_slug and method_slug not in tags:
+            tags.append(method_slug)
+    if playlist_slug and playlist_slug not in tags:
+        tags.append(playlist_slug)
+    if question_title:
+        title_slug = _question_slug(question_title)
+        if title_slug not in tags:
+            tags.append(title_slug)
     template_targets = _template_targets_for_drill(body, pattern_slug, solution, missing, raw.get("templateTargets", {}))
     template_prompts = _template_prompt_map(
         body,
@@ -932,6 +1292,47 @@ def _process_raw_drill(
         template_targets,
         prompt_max_chars,
     )
+    if _is_focused_request(body):
+        focused_target = template_targets.get(TemplateMode.algorithm.value, "")
+        if _should_rewrite_focused_drill(raw, pattern, method, focused_target):
+            return attach_plain_english_prompt_detail(
+                _focused_drill_from_source(
+                    raw=raw,
+                    index=index,
+                    body=body,
+                    source_node=source_node,
+                    pattern=pattern,
+                    pattern_slug=pattern_slug,
+                    method=method,
+                ),
+                pattern=pattern,
+                method=method,
+            )
+
+        prompt = _focused_prompt(pattern, method)
+        hint = _focused_hint(pattern, method)
+        title = _focused_title(pattern, method)
+        return attach_plain_english_prompt_detail(
+            {
+                "id": str(raw.get("id", f"focused-{pattern_slug}-{index + 1}")),
+                "title": title,
+                "difficulty": "Easy",
+                "prompt": prompt,
+                "templatePrompts": {
+                    TemplateMode.algorithm.value: prompt,
+                    CORE_SHAPE_TEMPLATE_KEY: prompt,
+                    INLINE_TEMPLATE_KEY: _limit_words(f"{pattern}: add notes", 8),
+                },
+                "templateTargets": template_targets,
+                "solution": solution,
+                "missing": missing,
+                "hint": hint,
+                "tags": tags,
+            },
+            pattern=pattern,
+            method=method,
+        )
+
     selected_prompt = (
         template_prompts.get(_template_mode_value(body.templateMode))
         or _clean_concise_prompt(str(raw.get("prompt", "")).strip(), prompt_max_chars)
@@ -942,18 +1343,22 @@ def _process_raw_drill(
             solution.replace("{{missing}}", missing),
         )
     )
-    return {
-        "id": str(raw.get("id", f"skill-map-{index + 1}")),
-        "title": str(raw.get("title", f"Skill Map Card {index + 1}")),
-        "difficulty": _normalize_drill_difficulty(raw.get("difficulty", "Med.")),
-        "prompt": selected_prompt,
-        "templatePrompts": template_prompts,
-        "templateTargets": template_targets,
-        "solution": solution,
-        "missing": missing,
-        "hint": str(raw.get("hint", "")).strip(),
-        "tags": tags,
-    }
+    return attach_plain_english_prompt_detail(
+        {
+            "id": str(raw.get("id", f"skill-map-{index + 1}")),
+            "title": question_title or str(raw.get("title", f"Skill Map Card {index + 1}")),
+            "difficulty": _normalize_drill_difficulty(raw.get("difficulty", "Med.")),
+            "prompt": selected_prompt,
+            "templatePrompts": template_prompts,
+            "templateTargets": template_targets,
+            "solution": solution,
+            "missing": missing,
+            "hint": str(raw.get("hint", "")).strip(),
+            "tags": tags,
+        },
+        pattern=pattern,
+        method=method,
+    )
 
 
 def build_generator_context(
@@ -964,6 +1369,15 @@ def build_generator_context(
     tuning: GeneratorTuning | None = None,
 ) -> GeneratorContext:
     active_tuning = tuning or GeneratorTuning()
+    playlist_request = _is_playlist_request(body)
+    focused_request = _is_focused_request(body)
+    focused_rule = (
+        "For questionType skill-map-targeted, treat each skillMap entry as target-locked: "
+        "preserve order, use exactly the provided pattern and first method, keep prompt <= 8 words, "
+        "hint <= 12 words, and make the target a reusable 4-8 line skeleton rather than a story problem. "
+        if focused_request
+        else ""
+    )
     system_prompt = (
         "You generate focused Python practice cards for coding interview preparation. "
         "Return only a top-level JSON object shaped exactly like {\"drills\": [...]}. "
@@ -972,35 +1386,55 @@ def build_generator_context(
         "Do not return a single drill object without the drills wrapper. "
         "Generate exactly one drill for each skillMap entry, in the same order as the skillMap array. "
         "Do not generate a second drill for any pattern until every provided skillMap entry has one drill. "
+        f"{focused_rule}"
         "Each drill must teach one reusable LeetCode move from the provided skill map, not a story problem. "
+        "If a skillMap entry has questionTitle, generate for that exact question title and keep the returned title exactly equal to questionTitle. "
+        "For those playlist entries, treat pattern as the core algorithm shape and methods as implementation hints. "
         "Use the generationSeed and shuffled method order to vary titles, snippets, missing lines, and selected methods across calls. "
         "Make them concise and pattern-first. Prioritize patterns with low readiness or high error rates, "
         "then fill remaining slots across remaining patterns. "
         "The solution must include exactly one '{{missing}}' placeholder, and missing must be the exact code that replaces it. "
         f"The prompt must be very short: {active_tuning.output.concise_prompt_words} words or fewer. "
-        "templateTargets may include algorithm and inline. "
-        "Inline must be Python based on the full algorithm, with sparse aligned side-notes instead of '#' comments. "
-        "Inline notes must be 8 words or fewer, specific to the line's role, and only on key invariant, mutation, frontier, boundary, or result-recording lines. "
+        "templateTargets may include algorithm, coreShape, and inline. "
+        "The coreShape target is a question-specific reusable skeleton worth memorizing beneath the full solution. "
+        "coreShape must remove story glue, setup clutter, and one-off wrapper code when those are not part of the reusable algorithm. "
+        "For nested DFS/backtracking, prefer the helper skeleton itself, such as def dfs(i): with base case, skip/take branches, recurse, and undo. "
+        "For other patterns, keep the minimal loop/recurrence/frontier/boundary skeleton that transfers to nearby LeetCode problems. "
+        "coreShape must still be Python-like and executable when practical, but it may use generic names like n, path, state, left, right, or record(path). "
+        "Inline is a separate helper layer. If you include templateTargets.inline, it should be the algorithm target with sparse aligned side-notes. "
+        "Any comments or explanatory notes in generated targets should be short '#' comments or aligned side-notes so the UI can render them only in Inline mode. "
+        "Inline notes must be 8 words or fewer, specific to the line's role, and only on key invariant, choice, mutation, frontier, boundary, or result-recording lines. "
         "Do not annotate routine temporaries, guards, every assignment, every return, or loop headers. "
         "Never use generic notes like 'update state for next decision', 'move through core step', or 'return final answer'. "
         "Decision notes must avoid legacy mode labels. "
         f"{specimen_style_prompt(body.specimenTuning)} "
-        "When you return templateTargets, make them specific to the drill's pattern and method instead of generic pattern text. "
-        "templatePrompts must be an object keyed by algorithm and inline when those targets are provided. "
+        "When you return templateTargets, make algorithm the full specimen, coreShape the memorized skeleton, and inline the annotated full specimen. "
+        "templatePrompts must be an object keyed by algorithm, coreShape, and inline when those targets are provided. "
         "Each templatePrompts value should briefly say why the pattern helps and then name the key move. "
         "For example, a binary search prompt should feel like 'exploit sorted data; discard half each step.' "
         f"Keep each templatePrompts value concise, ideally {max(8, active_tuning.output.concise_prompt_words - 4)} to {active_tuning.output.concise_prompt_words} words, "
         "and make it describe the exact provided template target, not a legacy or story prompt. "
         "Keep snippets short enough to memorize, but realistic enough to reuse in senior-level interviews. "
-        "Tags must include 'skill-map' and a slug for the pattern."
+        "Tags must include 'skill-map' and a slug for the pattern. "
+        "For playlist entries, also include the playlistSlug and a slug for the questionTitle."
     )
 
     rng = random.SystemRandom()
     generation_seed = f"{datetime.now(tz=timezone.utc).strftime('%Y%m%d%H%M%S%f')}-{rng.randrange(1_000_000)}"
     generation_skill_map = list(body.skillMap[: body.count])
-    rng.shuffle(generation_skill_map)
+    if not playlist_request and not focused_request:
+        rng.shuffle(generation_skill_map)
     trimmed_skill_map = [
-        {"pattern": node.pattern, "methods": rng.sample(list(node.methods), len(node.methods)) if node.methods else []}
+        {
+            "pattern": node.pattern,
+            "methods": (
+                list(node.methods)
+                if playlist_request or focused_request
+                else rng.sample(list(node.methods), len(node.methods)) if node.methods else []
+            ),
+            "questionTitle": node.questionTitle,
+            "playlistSlug": node.playlistSlug,
+        }
         for node in generation_skill_map
     ]
     pattern_progress = {
@@ -1028,10 +1462,14 @@ def build_generator_context(
             "patterns": pattern_progress,
         },
         "schema": {
-            "fields": ["id", "title", "difficulty", "prompt", "templatePrompts", "templateTargets", "solution", "missing", "hint", "tags"],
+            "fields": ["id", "title", "difficulty", "prompt", "templatePrompts", "templateTargets", "solution", "missing", "hint", "tags", "plainEnglishPromptDetail"],
             "constraint": "solution must contain exactly one {{missing}} placeholder",
             "coverage": "drills[i] must correspond to skillMap[i]",
-            "variation": "avoid reusing the same title, prompt, missing line, or exact snippet shape from a previous generation",
+            "variation": (
+                "for focused decks, vary only the skeleton code while staying anchored to the selected method"
+                if focused_request
+                else "avoid reusing the same title, prompt, missing line, or exact snippet shape from a previous generation"
+            ),
         },
     }
 
@@ -1089,7 +1527,26 @@ def fallback_skill_map_drills(context: GeneratorContext) -> dict[str, Any]:
     for index, node in enumerate(nodes):
         pattern = str(getattr(node, "pattern", "algorithm") or "algorithm")
         methods = list(getattr(node, "methods", []) or [])
+        question_title = str(getattr(node, "questionTitle", "") or "").strip()
+        playlist_slug = str(getattr(node, "playlistSlug", "") or "").strip()
         method_hint = str(methods[0]).strip() if methods else "core method"
+        if _is_focused_request(context.body):
+            drills.append(
+                attach_plain_english_prompt_detail(
+                    _focused_drill_from_source(
+                        raw=None,
+                        index=index,
+                        body=context.body,
+                        source_node=node,
+                        pattern=pattern,
+                        pattern_slug=_pattern_slug(pattern),
+                        method=method_hint,
+                    ),
+                    pattern=pattern,
+                    method=method_hint,
+                )
+            )
+            continue
         base = _fallback_template_for_pattern(pattern, method_hint, context.output_tuning.prompt_max_chars)
         slug = _pattern_slug(pattern)
         progress = progress_by_pattern.get(slug, {}) if slug else {}
@@ -1113,9 +1570,10 @@ def fallback_skill_map_drills(context: GeneratorContext) -> dict[str, Any]:
         selected_prompt = template_prompts.get(_template_mode_value(context.body.templateMode)) or base["prompt"]
 
         drills.append(
-            {
+            attach_plain_english_prompt_detail(
+                {
                 "id": f"skill-map-fallback-{index + 1}",
-                "title": base["title"],
+                "title": question_title or base["title"],
                 "difficulty": difficulty,
                 "prompt": selected_prompt,
                 "templatePrompts": template_prompts,
@@ -1123,8 +1581,15 @@ def fallback_skill_map_drills(context: GeneratorContext) -> dict[str, Any]:
                 "solution": base["solution"],
                 "missing": base["missing"],
                 "hint": base["hint"],
-                "tags": base["tags"],
-            }
+                "tags": [
+                    *base["tags"],
+                    *([playlist_slug] if playlist_slug else []),
+                    *([_question_slug(question_title)] if question_title else []),
+                ],
+                },
+                pattern=pattern,
+                method=method_hint,
+            )
         )
 
     return {"drills": drills, "llmUsed": False}
@@ -1183,6 +1648,18 @@ def stamp_skill_map_drills(drills: list[dict[str, Any]]) -> list[dict[str, Any]]
     return stamped
 
 
+def _stamped_stream_drill(context: GeneratorContext, drill: dict[str, Any], index: int) -> dict[str, Any]:
+    tags = [str(t) for t in drill.get("tags", [])]
+    if "skill-map" not in tags:
+        tags = ["skill-map", *tags]
+    return {
+        **drill,
+        "id": f"skill-map-{context.stamp_prefix}-{index + 1}",
+        "tags": tags,
+        "questionType": context.body.questionType,
+    }
+
+
 def runtime_with_tuning(runtime: GeneratorRuntime, tuning: GeneratorTuning | None = None) -> GeneratorRuntime:
     active = tuning or GeneratorTuning()
     return replace(
@@ -1217,6 +1694,7 @@ class SkillMapDrillGenerator:
             drills = fallback_skill_map_drills(context)
 
         stamped = stamp_skill_map_drills(drills["drills"])
+        stamped = [{**drill, "questionType": body.questionType} for drill in stamped]
         await runtime.persist_skill_map_drills(stamped, bool(drills.get("llmUsed")), progress_summary)
         return {"drills": stamped, "llmUsed": bool(drills.get("llmUsed"))}
 
@@ -1267,14 +1745,7 @@ def skill_map_drills_stream_response(context: GeneratorContext, runtime: Generat
                                     context.output_tuning.prompt_max_chars,
                                 )
                                 if processed:
-                                    tags = [str(t) for t in processed.get("tags", [])]
-                                    if "skill-map" not in tags:
-                                        tags = ["skill-map", *tags]
-                                    stamped = {
-                                        **processed,
-                                        "id": f"skill-map-{context.stamp_prefix}-{drill_index + 1}",
-                                        "tags": tags,
-                                    }
+                                    stamped = _stamped_stream_drill(context, processed, drill_index)
                                     q.put(("drill", {"index": drill_index, "drill": stamped, "total": total_drills}))
                                     drill_index += 1
                     except Exception as stream_err:
@@ -1302,29 +1773,16 @@ def skill_map_drills_stream_response(context: GeneratorContext, runtime: Generat
                                 context.output_tuning.prompt_max_chars,
                             )
                             if processed:
-                                tags = [str(t) for t in processed.get("tags", [])]
-                                if "skill-map" not in tags:
-                                    tags = ["skill-map", *tags]
-                                stamped = {
-                                    **processed,
-                                    "id": f"skill-map-{context.stamp_prefix}-{drill_index + 1}",
-                                    "tags": tags,
-                                }
+                                stamped = _stamped_stream_drill(context, processed, drill_index)
                                 q.put(("drill", {"index": drill_index, "drill": stamped, "total": total_drills}))
                                 drill_index += 1
 
-                if drill_index == 0:
-                    llm_used = False
+                if drill_index < total_drills:
+                    if drill_index == 0:
+                        llm_used = False
                     fallback = fallback_skill_map_drills(context)
-                    for raw_drill in fallback["drills"][: context.body.count]:
-                        tags = [str(t) for t in raw_drill.get("tags", [])]
-                        if "skill-map" not in tags:
-                            tags = ["skill-map", *tags]
-                        stamped = {
-                            **raw_drill,
-                            "id": f"skill-map-{context.stamp_prefix}-{drill_index + 1}",
-                            "tags": tags,
-                        }
+                    for raw_drill in fallback["drills"][drill_index:total_drills]:
+                        stamped = _stamped_stream_drill(context, raw_drill, drill_index)
                         q.put(("drill", {"index": drill_index, "drill": stamped, "total": total_drills}))
                         drill_index += 1
 
@@ -1386,6 +1844,7 @@ def skill_map_drills_fallback_stream_response(context: GeneratorContext, runtime
                 **raw_drill,
                 "id": f"skill-map-{context.stamp_prefix}-{index + 1}",
                 "tags": tags,
+                "questionType": context.body.questionType,
             }
             stamped.append(drill)
             yield f"event: drill\ndata: {json.dumps({'index': index, 'drill': drill, 'total': total_drills})}\n\n"

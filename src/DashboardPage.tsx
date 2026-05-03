@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { practicePlaylists } from './data/playlists'
 import TopNav from './TopNav'
 
 type SkillMapActivityDay = {
@@ -353,6 +354,10 @@ export default function DashboardPage() {
     selectedMethods.forEach((method) => nextParams.append('focusMethod', method))
     navigate(`/?${nextParams.toString()}`)
   }
+  const launchPlaylist = (playlistSlug: string) => {
+    const nextParams = new URLSearchParams({ playlist: playlistSlug })
+    navigate(`/?${nextParams.toString()}`)
+  }
 
   return (
     <div className="app app-dashboard">
@@ -360,6 +365,53 @@ export default function DashboardPage() {
 
       <section className="dashboard">
         {error && <p className="skill-map-intro">{error}</p>}
+
+        <section className="dashboard-playlists" aria-label="Playlists">
+          <div className="dashboard-playlists-header">
+            <div>
+              <p className="dashboard-activity-eyebrow">Playlists</p>
+              <h2>Question sets</h2>
+            </div>
+          </div>
+          <div className="dashboard-playlist-grid">
+            {practicePlaylists.map((playlist) => {
+              const coreShapes = Array.from(new Set(playlist.questions.map((question) => question.coreShape)))
+              return (
+                <article key={playlist.slug} className="dashboard-playlist-card">
+                  <div className="dashboard-playlist-main">
+                    <div>
+                      <h3>{playlist.title}</h3>
+                      <p className="dashboard-mode-meta">{playlist.description}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="dashboard-playlist-start"
+                      onClick={() => launchPlaylist(playlist.slug)}
+                    >
+                      Start playlist
+                    </button>
+                  </div>
+                  <div className="dashboard-summary">
+                    <span className="coach-metric-chip">{playlist.questions.length} questions</span>
+                    <span className="coach-metric-chip">{coreShapes.length} core shapes</span>
+                    <span className="coach-metric-chip">Inline</span>
+                    <span className="coach-metric-chip">Ghost Reps</span>
+                    <span className="coach-metric-chip">Plain English</span>
+                  </div>
+                  <div className="dashboard-playlist-questions">
+                    {playlist.questions.map((question) => (
+                      <div key={question.title} className="dashboard-playlist-question">
+                        <span>{question.title}</span>
+                        <strong>{question.coreShape}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        </section>
+
         <div className="skill-map-grid">
           {loading && !error && <p className="skill-map-intro">Loading readiness overview...</p>}
           {patterns.map((node) => {

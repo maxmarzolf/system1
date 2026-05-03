@@ -4,6 +4,7 @@ import { vs, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useSearchParams } from 'react-router-dom'
 import RelatedLeetCodeDrawer from './RelatedLeetCodeDrawer'
 import { skillMap, type SkillMapNode } from './data/skill-map'
+import { playlistQuestionsToSkillMap, practicePlaylists } from './data/playlists'
 import { resolveRelatedLeetCodeSet } from './data/related-leetcode'
 import { getLiveCoachFrequencyProfile, loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoachTuning'
 import { loadStoredSubmissionTuning } from './submissionTuning'
@@ -17,12 +18,13 @@ type Flashcard = {
   title: string
   difficulty: 'Easy' | 'Med.' | 'Hard'
   prompt: string
-  templatePrompts?: Partial<Record<TemplateMode | 'inline', string>>
-  templateTargets?: Partial<Record<TemplateMode | 'inline', string>>
+  templatePrompts?: Partial<Record<TemplateMode | HelperLayer | CoreShapeLayer, string>>
+  templateTargets?: Partial<Record<TemplateMode | HelperLayer | CoreShapeLayer, string>>
   solution: string
   missing: string
   hint: string
   tags: string[]
+  plainEnglishPromptDetail?: PlainEnglishPromptDetail
 }
 
 const emptySkillMapCard: Flashcard = {
@@ -38,6 +40,8 @@ const emptySkillMapCard: Flashcard = {
 
 type TemplateMode = 'algorithm'
 type HelperLayer = 'inline'
+type CoreShapeLayer = 'coreShape'
+type RecallTargetMode = TemplateMode | CoreShapeLayer
 type SupportLayer = 'none' | 'ghost-reps'
 
 type AttemptPayload = {
@@ -108,7 +112,7 @@ type SkillMapDrillsRequest = {
   count: number
   skillMap: SkillMapNode[]
   templateMode: TemplateMode
-  templateTargets: Record<string, Partial<Record<TemplateMode | HelperLayer, string>>>
+  templateTargets: Record<string, Partial<Record<TemplateMode | HelperLayer | CoreShapeLayer, string>>>
   specimenTuning: SpecimenTuning
   llmProvider: LlmProvider
 }
@@ -611,52 +615,191 @@ bfs("A", graph)`,
   },
 }
 
-const getFallbackPlainEnglishPromptDetail = (tags: string[]) => {
-  const primaryPattern = getPrimaryPatternTag(tags)
-  return fallbackPlainEnglishPromptDetails[primaryPattern] ?? fallbackPlainEnglishPromptDetails.generic
-}
+const patternDisplayLabel = (patternTag: string) =>
+  patternTag
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(' ') || 'Algorithm'
 
-const getPlainEnglishPromptDetail = (prompt: string, tags: string[]): PlainEnglishPromptDetail => {
-  const normalizedPrompt = normalizePromptLookup(prompt)
-  const soundsLikeBfsRepeatPrompt =
-    /(avoid|prevent|skip|ignore).*(repeat|revisit|cycle|duplicate)/.test(normalizedPrompt) &&
-    normalizedPrompt.includes('visited') &&
-    /(enqueue|queue|push|add)/.test(normalizedPrompt)
-  const isVisitedAtEnqueuePrompt =
-    normalizedPrompt === 'avoid repeats in graphs; mark visited at enqueue time.' ||
-    (tags.includes('dfs-bfs') &&
-      normalizedPrompt.includes('avoid repeats') &&
-      normalizedPrompt.includes('visited at enqueue')) ||
-    soundsLikeBfsRepeatPrompt
-
-  if (!isVisitedAtEnqueuePrompt) return getFallbackPlainEnglishPromptDetail(tags)
-
+const extractFunctionSignature = (target: string) => {
+  const firstDef = target.match(/^\s*def\s+([A-Za-z_]\w*)\s*\(([^)]*)\):/m)
+  if (!firstDef) return { name: 'solve', params: '', call: 'solve(...)', signature: 'solve(...)' }
+  const params = firstDef[2].trim()
   return {
-    plainEnglish: 'What nodes are reachable from this starting node?',
-    interviewQuestion:
-      'Given a graph represented as an adjacency list and a starting node, return all nodes that can be reached from the starting node.',
-    inputExample: `graph = {
-    "A": ["B", "C"],
-    "B": ["D"],
-    "C": ["E"],
-    "D": [],
-    "E": [],
-    "F": ["G"]
+    name: firstDef[1],
+    params,
+    call: `${firstDef[1]}(${params})`,
+    signature: `${firstDef[1]}(${params})`,
+  }
 }
 
-bfs("A", graph)`,
-    outputExample: '{"A", "B", "C", "D", "E"}',
+const functionWords = (name: string) =>
+  name
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .join(' ')
+
+const sampleValueForParam = (param: string) => {
+  const name = param.split('=', 1)[0].replace(/[*:\s].*$/g, '').trim().toLowerCase()
+  if (!name) return 'value'
+  if (/^(s|str|string|expr|expression)$/.test(name) || name.includes('text')) return '"3+2*2"'
+  if (name.includes('graph') || name.includes('adj')) return '{"A": ["B"], "B": []}'
+  if (name.includes('interval')) return '[[1, 3], [2, 6]]'
+  if (name.includes('edge')) return '[[0, 1], [1, 2]]'
+  if (name.includes('grid') || name.includes('matrix')) return '[[1, 0], [1, 1]]'
+  if (name.includes('target')) return '5'
+  if (name === 'k') return '2'
+  if (name === 'n') return '5'
+  if (name.includes('num') || name.includes('arr') || name.includes('item') || name.includes('value')) return '[1, 2, 3]'
+  return '...'
+}
+
+const getSignatureParamNames = (signature: ReturnType<typeof extractFunctionSignature>) =>
+  signature.params
+    .split(',')
+    .map((param) => param.trim())
+    .filter(Boolean)
+    .map((param) => param.split(':', 1)[0].split('=', 1)[0].trim())
+    .filter(Boolean)
+
+const buildInputExampleFromSignature = (signature: ReturnType<typeof extractFunctionSignature>) => {
+  const params = signature.params
+    .split(',')
+    .map((param) => param.trim())
+    .filter(Boolean)
+    .map((param) => param.split(':', 1)[0].split('=', 1)[0].trim())
+    .filter(Boolean)
+
+  if (params.length === 0) return `${signature.name}()`
+
+  const assignments = params.map((param) => `${param} = ${sampleValueForParam(param)}`)
+  return `${assignments.join('\n')}\n\n${signature.name}(${params.join(', ')})`
+}
+
+const extractReturnSummary = (target: string) => {
+  const returns = [...target.matchAll(/^\s*return\s+(.+)$/gm)].map((match) => match[1].trim())
+  if (returns.length === 0) return 'the value produced by the generated target'
+  return `the expression \`${returns[returns.length - 1]}\``
+}
+
+const inferPlainEnglishProblem = (
+  prompt: string,
+  tags: string[],
+  cardTitle: string,
+  target: string,
+  signature: ReturnType<typeof extractFunctionSignature>,
+): PlainEnglishPromptDetail => {
+  const name = signature.name.toLowerCase()
+  const loweredTarget = target.toLowerCase()
+  const primaryPattern = getPrimaryPatternTag(tags)
+  const patternLabel = patternDisplayLabel(primaryPattern)
+  const fallbackDetail = fallbackPlainEnglishPromptDetails[primaryPattern] ?? fallbackPlainEnglishPromptDetails.generic
+  const readablePrompt = normalizePromptLookup(prompt).replace(/\.$/, '')
+  const returnSummary = extractReturnSummary(target)
+  const params = getSignatureParamNames(signature)
+
+  if (
+    primaryPattern === 'sliding-window' &&
+    ((name.includes('window') && name.includes('max') && name.includes('sum')) ||
+      /window_sum\s*=\s*sum\([^)]*\[:k\]\)/.test(target) ||
+      /nums\[right\]\s*-\s*nums\[right\s*-\s*k\]/.test(target))
+  ) {
+    return {
+      plainEnglish: 'What is the largest sum of any contiguous window of length k?',
+      interviewQuestion:
+        'Given an array of numbers and an integer k, return the maximum sum of any contiguous subarray of length k.',
+      inputExample: `nums = [1, 4, 2, 10, 3]\nk = 3\n\n${signature.name}(nums, k)`,
+      outputExample: '16',
+      explanation: 'The best length-3 window is [4, 2, 10], whose sum is 16.',
+      brassTacks: 'Keep the current k-sized window sum, slide one step, and remember the best sum seen.',
+      leetcodeExamples: [
+        'Maximum Average Subarray I: fixed-size window scoring.',
+        'Subarray Product Less Than K: window score changes as edges move.',
+        'Permutation in String: fixed-size window with counts.',
+      ],
+    }
+  }
+
+  if (name.includes('eval') && (name.includes('expr') || loweredTarget.includes("op = '+'"))) {
+    return {
+      plainEnglish: 'What number does this arithmetic expression evaluate to?',
+      interviewQuestion:
+        'Given a string expression containing non-negative integers and +, -, *, and /, evaluate it with normal operator precedence.',
+      inputExample: `s = "3+2*2"\n\n${signature.name}(s)`,
+      outputExample: '7',
+      explanation: 'Multiplication is applied before addition, so the expression is 3 + 4.',
+      brassTacks: 'Accumulate the current number, push signed terms, collapse multiply/divide immediately, then sum the stack.',
+      leetcodeExamples: [
+        'Basic Calculator II: evaluate +, -, *, and /.',
+        'Basic Calculator: parse signs and nested structure.',
+        'Evaluate Reverse Polish Notation: use a stack for pending values.',
+      ],
+    }
+  }
+
+  if (primaryPattern === 'backtracking' && (name.includes('subset') || name.includes('enumerate') || loweredTarget.includes('path.append'))) {
+    const itemParam = params[0] || 'items'
+    return {
+      plainEnglish: `What are all the take/skip combinations from ${itemParam}?`,
+      interviewQuestion:
+        `Given ${itemParam}, return every subset that can be formed by choosing or skipping each item.`,
+      inputExample: `${itemParam} = [1, 2]\n\n${signature.name}(${itemParam})`,
+      outputExample: '[[], [2], [1], [1, 2]]',
+      explanation: 'Each item has two choices: leave it out or include it in the current path.',
+      brassTacks: 'At each index, recurse once without the item, then choose it, recurse, and undo the choice.',
+      leetcodeExamples: [
+        'Subsets: choose or skip each item.',
+        'Combination Sum: choose, recurse, and backtrack.',
+        'Permutations: track a path and undo choices.',
+      ],
+    }
+  }
+
+  if (primaryPattern === 'binary-search' || name.includes('lower_bound') || name.includes('binary_search')) {
+    return {
+      plainEnglish: 'Where is the first position that satisfies the search condition?',
+      interviewQuestion:
+        `Given sorted input, implement ${signature.signature} by repeatedly discarding the half that cannot contain the answer.`,
+      inputExample: buildInputExampleFromSignature(signature),
+      outputExample: 'the first valid index, or the insertion/search result',
+      explanation: 'Each midpoint check decides which half still might contain the boundary.',
+      brassTacks: 'Keep the answer inside [left, right), probe mid, then move one boundary.',
+      leetcodeExamples: [
+        'Search Insert Position: find the first legal slot.',
+        'Find First and Last Position: locate boundaries.',
+        'Koko Eating Bananas: binary search the answer.',
+      ],
+    }
+  }
+
+  const action = functionWords(signature.name)
+  return {
+    plainEnglish: `What should ${action} return?`,
+    interviewQuestion:
+      `Implement ${signature.signature}: ${readablePrompt || `return the ${action} result for the given input`}.`,
+    inputExample: buildInputExampleFromSignature(signature),
+    outputExample: `returns ${returnSummary}`,
     explanation:
-      'Because starting at "A", you can reach B, C, D, and E, but not F or G.',
+      `${cardTitle} is a ${patternLabel} card. The function name and target code define the concrete problem this prompt is asking for.`,
     brassTacks:
-      'BFS answers: "Starting here, what can I get to if I move one edge at a time?"',
+      readablePrompt || `Write ${signature.signature} so the returned value matches the function's name.`,
     leetcodeExamples: [
-      'Number of Islands: starting from one land cell, what connected land cells can I reach?',
-      'Clone Graph: starting from one graph node, what whole connected component can I visit/copy?',
-      'Course / prerequisite graphs: from this course, what downstream courses are reachable?',
-      'Rotting Oranges: from rotten oranges, what fresh oranges can be reached over time?',
+      ...fallbackDetail.leetcodeExamples.slice(0, 2),
+      `${patternLabel}: return the accumulated answer.`,
     ],
   }
+}
+
+const getPlainEnglishPromptDetail = (
+  prompt: string,
+  tags: string[],
+  cardTitle: string,
+  target: string,
+): PlainEnglishPromptDetail => {
+  const signature = extractFunctionSignature(target)
+  return inferPlainEnglishProblem(prompt, tags, cardTitle, target, signature)
 }
 
 const normalizeTyping = (value: string) =>
@@ -881,6 +1024,13 @@ const inlineNoteForLine = (trimmedLine: string, patternTag: string) => {
     if (/take\s*,\s*skip\s*=/.test(trimmedLine)) return 'take x or skip x'
     if (/dp\[/.test(trimmedLine) || /transition/.test(trimmedLine)) return 'build from solved states'
   }
+  if (patternTag === 'backtracking') {
+    if (/\b(record|res|result|out)\.(append|add)\(/.test(trimmedLine)) return 'record completed path'
+    if (/\bpath\.(append|add)\(/.test(trimmedLine)) return 'choose current item'
+    if (/\bpath\.pop\(/.test(trimmedLine)) return 'undo current choice'
+    if (/\b(dfs|backtrack|search)\(/.test(trimmedLine)) return 'explore this branch'
+    return ''
+  }
   if (patternTag === 'heap' && /heappush/.test(trimmedLine)) return 'include new candidate'
   if (patternTag === 'heap' && /heappop/.test(trimmedLine)) return 'drop smallest kept item'
   if ((patternTag === 'binary-search') && /mid\s*=/.test(trimmedLine)) return 'probe middle boundary'
@@ -1000,6 +1150,35 @@ const buildInlineTemplate = (patternTag: string, algorithmTarget: string) => {
   }
 
   return output.join('\n')
+}
+
+const extractNestedHelperTarget = (algorithmTarget: string) => {
+  const lines = normalizeTyping(algorithmTarget).split('\n')
+  for (let start = 0; start < lines.length; start += 1) {
+    const match = lines[start]?.match(/^(\s*)def\s+(dfs|backtrack|search|helper)\s*\(/)
+    if (!match?.[1]) continue
+    const baseIndent = match[1].length
+    const block = [lines[start] ?? '']
+    for (const nextLine of lines.slice(start + 1)) {
+      const indent = nextLine.length - nextLine.trimStart().length
+      if (nextLine.trim() && indent <= baseIndent) break
+      block.push(nextLine)
+    }
+    return block
+      .map((line) => line.length >= baseIndent ? line.slice(baseIndent) : line.trimStart())
+      .join('\n')
+      .replace(/\blen\((items|nums|arr|values|candidates|choices|s)\)/g, 'n')
+      .trim()
+  }
+  return ''
+}
+
+const buildCoreShapeTemplate = (patternTag: string, algorithmTarget: string) => {
+  if (patternTag === 'backtracking') {
+    const nestedHelper = extractNestedHelperTarget(algorithmTarget)
+    if (nestedHelper) return buildInlineTemplate(patternTag, nestedHelper)
+  }
+  return buildInlineTemplate(patternTag, algorithmTarget)
 }
 
 const normalizeInlineTemplateTarget = (rawTarget: string, patternTag: string) => {
@@ -1338,6 +1517,33 @@ const stripInlineAnnotationNotes = (code: string) =>
     .replace(/\n{3,}/g, '\n\n')
     .trimEnd()
 
+const stripHashAnnotationComments = (code: string) =>
+  code
+    .split('\n')
+    .map((line) => line.split('#', 1)[0].trimEnd())
+    .filter((line) => line.trim().length > 0)
+    .join('\n')
+    .trimEnd()
+
+const inlineDisplayLines = (code: string) => {
+  const displayLines: Array<{ line: string, sourceLineNumber: number, absorbedDecision: boolean }> = []
+  code.split('\n').forEach((line, index) => {
+    const parts = splitInlineAnnotationLine(line)
+    if (parts.noteOnly && displayLines.length > 0) {
+      const previous = displayLines[displayLines.length - 1]
+      const previousParts = splitInlineAnnotationLine(previous.line)
+      if (previousParts.code.trim()) {
+        const combinedNote = [previousParts.note, parts.note].filter((note) => note.trim()).join(' / ')
+        previous.line = appendAlignedNote(previousParts.code, combinedNote)
+        previous.absorbedDecision = previous.absorbedDecision || isInlineDecisionLine(line)
+        return
+      }
+    }
+    displayLines.push({ line, sourceLineNumber: index + 1, absorbedDecision: false })
+  })
+  return displayLines
+}
+
 function InlineAnnotatedCode({
   code,
   language,
@@ -1349,7 +1555,7 @@ function InlineAnnotatedCode({
   syntaxTheme: Record<string, CSSProperties>
   lineClassName?: (line: string, lineNumber: number) => string
 }) {
-  const lines = code.split('\n')
+  const lines = inlineDisplayLines(code)
   const inlineSyntaxStyle = {
     margin: 0,
     padding: 0,
@@ -1365,11 +1571,14 @@ function InlineAnnotatedCode({
   return (
     <pre className="inline-annotated-code">
       <code>
-        {lines.map((line, index) => {
+        {lines.map(({ line, sourceLineNumber, absorbedDecision }) => {
           const parts = splitInlineAnnotationLine(line)
-          const className = lineClassName?.(line, index + 1) ?? 'typing-highlight-line'
+          const baseClassName = lineClassName?.(line, sourceLineNumber) ?? 'typing-highlight-line'
+          const className = absorbedDecision && !baseClassName.includes('inline-decision-line')
+            ? `${baseClassName} inline-decision-line`
+            : baseClassName
           return (
-            <span key={`${index}-${line}`} className={className}>
+            <span key={`${sourceLineNumber}-${line}`} className={className}>
               {parts.code && (
                 <SyntaxHighlighter
                   language={language}
@@ -1472,7 +1681,8 @@ function App() {
   const [skillMapError, setSkillMapError] = useState('')
   const [skillMapRefreshToken, setSkillMapRefreshToken] = useState(0)
   const [skillMapSessionVersion, setSkillMapSessionVersion] = useState(0)
-  const [flowMode, setFlowMode] = useState<FlowMode>('sequential')
+  const [flowMode] = useState<FlowMode>('sequential')
+  const [recallTargetMode, setRecallTargetMode] = useState<RecallTargetMode>('algorithm')
   const [adaptiveVariationLoading, setAdaptiveVariationLoading] = useState(false)
   const [adaptiveVariationError, setAdaptiveVariationError] = useState('')
   const [adaptiveVariationNote, setAdaptiveVariationNote] = useState('')
@@ -1536,8 +1746,12 @@ function App() {
   const sequentialVariationRequestKeyRef = useRef('')
   const focusedPatternSlug = searchParams.get('focusPattern')?.trim() || ''
   const focusedModeParam = searchParams.get('focusMode')?.trim() || ''
+  const requestedPlaylistSlug = searchParams.get('playlist')?.trim() || ''
   const focusedMethodParams = searchParams.getAll('focusMethod').map((method) => method.trim()).filter(Boolean)
-  const focusedMethodSignature = focusedMethodParams.join('\u0000')
+  const requestedPlaylist = useMemo(
+    () => practicePlaylists.find((playlist) => playlist.slug === requestedPlaylistSlug) ?? null,
+    [requestedPlaylistSlug]
+  )
   const focusedPatternNode = useMemo(
     () => skillMap.find((node) => patternToSlug(node.pattern) === focusedPatternSlug) ?? null,
     [focusedPatternSlug]
@@ -1549,6 +1763,7 @@ function App() {
     return null
   }, [focusedModeParam])
   const requestedSkillMap = useMemo<SkillMapNode[]>(() => {
+    if (requestedPlaylist) return playlistQuestionsToSkillMap(requestedPlaylist)
     if (!focusedPatternNode) return skillMap
     const focusedMethodSet = new Set(focusedMethodParams)
     const focusedMethods = focusedMethodSet.size > 0
@@ -1559,7 +1774,7 @@ function App() {
       pattern: focusedPatternNode.pattern,
       methods: [method],
     }))
-  }, [focusedPatternNode, focusedMethodSignature])
+  }, [focusedMethodParams, focusedPatternNode, requestedPlaylist])
   const requestedSkillMapSignature = useMemo(
     () => JSON.stringify(requestedSkillMap),
     [requestedSkillMap]
@@ -1573,9 +1788,15 @@ function App() {
     })
     return targets
   }, [requestedSkillMap])
-  const requestedQuestionType = focusedPatternNode ? 'skill-map-targeted' : questionType
+  const requestedQuestionType = requestedPlaylist
+    ? `playlist:${requestedPlaylist.slug}`
+    : focusedPatternNode
+      ? 'skill-map-targeted'
+      : questionType
   const targetedMethodCount = requestedSkillMap.length
-  const targetedDeckLabel = focusedPatternNode
+  const targetedDeckLabel = requestedPlaylist
+    ? `${requestedPlaylist.title} • ${requestedPlaylist.questions.length} questions`
+    : focusedPatternNode
     ? `${focusedPatternNode.pattern} • ${focusedTemplateMode ? TEMPLATE_MODE_LABELS[focusedTemplateMode] : 'Focused'} • ${targetedMethodCount} method${targetedMethodCount === 1 ? '' : 's'}`
     : ''
 
@@ -1727,31 +1948,45 @@ function App() {
     }
     return fullSolutionTarget
   }, [card.missing, card.templateTargets, fullSolutionTarget])
-  const inlinePracticeTarget = useMemo(() => {
-    const generatedTarget = card.templateTargets?.inline?.trim()
+  const coreShapePracticeTarget = useMemo(() => {
+    const generatedTarget = card.templateTargets?.coreShape?.trim()
     if (generatedTarget) {
+      return normalizeTyping(generatedTarget.replace('{{missing}}', card.missing))
+    }
+    return normalizeTyping(buildCoreShapeTemplate(primaryPatternTag, algorithmPracticeTarget))
+  }, [algorithmPracticeTarget, card.missing, card.templateTargets, primaryPatternTag])
+  const selectedPracticeBaseTarget = recallTargetMode === 'coreShape' ? coreShapePracticeTarget : algorithmPracticeTarget
+  const inlinePracticeTarget = useMemo(() => {
+    const generatedTarget = recallTargetMode === 'algorithm' ? card.templateTargets?.inline?.trim() : ''
+    if (generatedTarget && recallTargetMode === 'algorithm') {
       return normalizeInlineTemplateTarget(generatedTarget.replace('{{missing}}', card.missing), primaryPatternTag)
     }
-    return normalizeTyping(buildInlineTemplate(primaryPatternTag, algorithmPracticeTarget))
-  }, [algorithmPracticeTarget, card.missing, card.templateTargets, primaryPatternTag])
-  const practiceTarget = inlineEnabled ? inlinePracticeTarget : algorithmPracticeTarget
-  const generatedPracticePrompt = card.templatePrompts?.algorithm?.trim() || card.prompt.trim()
+    return normalizeInlineTemplateTarget(selectedPracticeBaseTarget, primaryPatternTag)
+  }, [card.missing, card.templateTargets, primaryPatternTag, recallTargetMode, selectedPracticeBaseTarget])
+  const plainPracticeTarget = useMemo(
+    () => normalizeTyping(stripHashAnnotationComments(stripInlineAnnotationNotes(selectedPracticeBaseTarget))),
+    [selectedPracticeBaseTarget]
+  )
+  const practiceTarget = inlineEnabled ? inlinePracticeTarget : plainPracticeTarget
+  const generatedPracticePrompt =
+    (recallTargetMode === 'coreShape' ? card.templatePrompts?.coreShape?.trim() : card.templatePrompts?.algorithm?.trim())
+    || card.prompt.trim()
   const practicePrompt = useMemo(
     () => generatedPracticePrompt || buildPracticePrompt(currentTemplateMode, primaryPatternTag),
     [currentTemplateMode, generatedPracticePrompt, primaryPatternTag]
   )
   const plainEnglishPromptDetail = useMemo(
-    () => getPlainEnglishPromptDetail(practicePrompt, card.tags),
-    [card.tags, practicePrompt]
+    () => card.plainEnglishPromptDetail ?? getPlainEnglishPromptDetail(practicePrompt, card.tags, card.title, plainPracticeTarget),
+    [card.plainEnglishPromptDetail, card.tags, card.title, plainPracticeTarget, practicePrompt]
   )
   const isPlainEnglishPromptOpen = Boolean(plainEnglishPromptOpen && plainEnglishPromptDetail)
   const displayPracticePrompt =
     isPlainEnglishPromptOpen && plainEnglishPromptDetail ? plainEnglishPromptDetail.plainEnglish : practicePrompt
   const plainEnglishPromptDetailId = `plain-english-prompt-${card.id}`
-  const currentQuestionType = `${requestedQuestionType}:${currentTemplateMode}`
+  const currentQuestionType = `${requestedQuestionType}:${recallTargetMode}`
   const currentSkillTags = useMemo(
-    () => [...card.tags, `template-${currentTemplateMode}`],
-    [card.tags, currentTemplateMode]
+    () => [...card.tags, `template-${currentTemplateMode}`, `target-${recallTargetMode}`],
+    [card.tags, currentTemplateMode, recallTargetMode]
   )
   const visibleCardTags = useMemo(
     () => card.tags.filter((tag) => tag !== 'skill-map'),
@@ -1782,23 +2017,28 @@ function App() {
     return `/practice-history?${searchParams.toString()}`
   }, [card.id, card.title, currentQuestionType, currentSkillTags, hasDeck])
   const currentTemplateLabel = TEMPLATE_MODE_LABELS[currentTemplateMode]
+  const activeRecallLabel = recallTargetMode === 'coreShape' ? 'Core shape' : currentTemplateLabel
   const practiceLanguage = 'python'
   const shouldHighlightInlineDecision = inlineEnabled
   const practiceInputLabel = inlineEnabled
-    ? 'Type the algorithm with inline notes from memory'
-    : 'Type the full algorithm from memory'
+    ? `Type the ${activeRecallLabel.toLowerCase()} with inline notes from memory`
+    : recallTargetMode === 'coreShape'
+      ? 'Type the core shape from memory'
+      : 'Type the full algorithm from memory'
   const supportedPracticeInputLabel = isGhostRepsEnabled
     ? `${practiceInputLabel} with Ghost Reps`
     : practiceInputLabel
   const practicePlaceholder = inlineEnabled
-    ? 'Type the algorithm, decisions, and explanatory notes from memory...'
-    : 'Type the full algorithm from memory...'
+    ? `Type the ${activeRecallLabel.toLowerCase()}, decisions, and inline notes from memory...`
+    : recallTargetMode === 'coreShape'
+      ? 'Type the reusable skeleton from memory...'
+      : 'Type the full algorithm from memory...'
   const supportedPracticePlaceholder = isGhostRepsEnabled
-    ? `Trace the faint ${inlineEnabled ? 'inline' : currentTemplateLabel.toLowerCase()} target here...`
+    ? `Trace the faint ${activeRecallLabel.toLowerCase()} target here...`
     : practicePlaceholder
-  const startRecallLabel = inlineEnabled ? 'Hide inline solution and start recall' : 'Start'
+  const startRecallLabel = inlineEnabled ? `Hide ${activeRecallLabel.toLowerCase()} notes and start recall` : 'Start'
   const supportedStartRecallLabel = isGhostRepsEnabled
-    ? `Start Ghost Reps for ${inlineEnabled ? 'Inline' : currentTemplateLabel}`
+    ? `Start Ghost Reps for ${activeRecallLabel}`
     : startRecallLabel
   const queuedFlowLoading = flowMode === 'adaptive' ? adaptiveVariationLoading : sequentialVariationLoading
   const queuedFlowNote = flowMode === 'adaptive' ? adaptiveVariationNote : sequentialVariationNote
@@ -2008,12 +2248,6 @@ function App() {
     sequentialVariationRequestKeyRef.current = ''
   }
 
-  const handleFlowModeChange = (nextFlowMode: FlowMode) => {
-    if (flowMode === nextFlowMode) return
-    clearQueuedFlowState()
-    setFlowMode(nextFlowMode)
-  }
-
   const resetPerCardInteraction = () => {
     setMainPhase('preview')
     setRecallMinHeight(undefined)
@@ -2038,6 +2272,14 @@ function App() {
 
   const toggleInlineHelper = () => {
     setInlineEnabled((prev) => !prev)
+    if (mainPhase !== 'preview') {
+      resetPerCardInteraction()
+    }
+  }
+
+  const selectRecallTargetMode = (nextMode: RecallTargetMode) => {
+    if (recallTargetMode === nextMode) return
+    setRecallTargetMode(nextMode)
     if (mainPhase !== 'preview') {
       resetPerCardInteraction()
     }
@@ -2675,7 +2917,7 @@ function App() {
 
     if (mainPhase === 'typing') {
       return {
-        label: isGhostRepsEnabled ? 'Log ghost rep' : `Submit ${inlineEnabled ? 'inline' : currentTemplateLabel.toLowerCase()}`,
+        label: isGhostRepsEnabled ? 'Log ghost rep' : `Submit ${activeRecallLabel.toLowerCase()}`,
         onClick: submitMainRecall,
         disabled: mainInput.trim().length === 0,
         icon: (
@@ -2739,12 +2981,12 @@ function App() {
       }
       if (event.key === 'i' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
-        setInlineEnabled((prev) => !prev)
+        toggleInlineHelper()
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [])
+  }, [toggleInlineHelper])
 
   const submissionFeedbackNextStep =
     coachFeedback?.immediateCorrection || coachFeedback?.primaryFocus || 'Review the drifted step, then rewrite the recall target once more.'
@@ -2777,9 +3019,9 @@ function App() {
             : 'LLM'
       : 'Rules'
   const submissionAttemptStatusText = mainCloseEnough
-    ? `${inlineEnabled ? 'Inline helper' : currentTemplateLabel} recall recorded.`
+    ? `${activeRecallLabel} recall recorded.`
     : latestSubmittedWasGhostRep
-      ? `Ghost rep logged for ${inlineEnabled ? 'Inline' : currentTemplateLabel}. Repeat it until the shape starts to stick.`
+      ? `Ghost rep logged for ${activeRecallLabel}. Repeat it until the shape starts to stick.`
     : `This recall attempt is not sound yet. Revise the logic and submit again.`
   const showSubmittedLineReview = mainPhase === 'submitted' && !mainCloseEnough
 
@@ -2967,10 +3209,10 @@ function App() {
         <div className="card-header">
           <div className="card-header-main">
             <h2>{card.title}</h2>
-            <p className="difficulty"><span className="leetcode-num">#{card.id}</span> {card.difficulty}</p>
-            {focusedPatternNode && (
+            <p className="difficulty">{card.difficulty}</p>
+            {(focusedPatternNode || requestedPlaylist) && (
               <p className="card-template-summary">
-                Focused deck: {targetedDeckLabel}
+                {requestedPlaylist ? 'Playlist' : 'Focused deck'}: {targetedDeckLabel}
               </p>
             )}
           </div>
@@ -3015,13 +3257,13 @@ function App() {
                 </svg>
               </button>
             </div>
-            <div className="flow-mode-control" role="group" aria-label="Next question flow mode">
+            <div className="flow-mode-control" role="group" aria-label="Recall target mode">
               <button
                 type="button"
-                className={flowMode === 'sequential' ? 'flow-mode-button active' : 'flow-mode-button'}
-                onClick={() => handleFlowModeChange('sequential')}
-                aria-pressed={flowMode === 'sequential'}
-                title="Sequential flow"
+                className={recallTargetMode === 'algorithm' ? 'flow-mode-button active' : 'flow-mode-button'}
+                onClick={() => selectRecallTargetMode('algorithm')}
+                aria-pressed={recallTargetMode === 'algorithm'}
+                title="Algorithm"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M17.25 8.25 21 12m0 0-3.75 3.75M21 12H3" />
@@ -3029,10 +3271,10 @@ function App() {
               </button>
               <button
                 type="button"
-                className={flowMode === 'adaptive' ? 'flow-mode-button active' : 'flow-mode-button'}
-                onClick={() => handleFlowModeChange('adaptive')}
-                aria-pressed={flowMode === 'adaptive'}
-                title="Adaptive flow"
+                className={recallTargetMode === 'coreShape' ? 'flow-mode-button active' : 'flow-mode-button'}
+                onClick={() => selectRecallTargetMode('coreShape')}
+                aria-pressed={recallTargetMode === 'coreShape'}
+                title="Core shape"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" />

@@ -139,6 +139,18 @@ class CoachSessionPlanResponse(BaseModel):
 class SkillMapNode(BaseModel):
     pattern: str = Field(min_length=1)
     methods: list[str] = []
+    questionTitle: str = ""
+    playlistSlug: str = ""
+
+
+class PlainEnglishPromptDetail(BaseModel):
+    plainEnglish: str = ""
+    interviewQuestion: str = ""
+    inputExample: str = ""
+    outputExample: str = ""
+    explanation: str = ""
+    brassTacks: str = ""
+    leetcodeExamples: list[str] = []
 
 
 class SkillMapDrillCard(BaseModel):
@@ -152,11 +164,12 @@ class SkillMapDrillCard(BaseModel):
     missing: str = Field(min_length=1)
     hint: str = ""
     tags: list[str] = []
+    plainEnglishPromptDetail: PlainEnglishPromptDetail = Field(default_factory=PlainEnglishPromptDetail)
 
 
 class SkillMapDrillsRequest(BaseModel):
     questionType: str = "skill-map"
-    count: int = Field(default=12, ge=1, le=20)
+    count: int = Field(default=12, ge=1, le=30)
     skillMap: list[SkillMapNode] = []
     templateMode: TemplateMode = TemplateMode.algorithm
     templateTargets: dict[str, dict[str, str]] = Field(default_factory=dict)
@@ -259,6 +272,35 @@ class SkillMapModeActivity(BaseModel):
     days: list[SkillMapActivityDay] = []
 
 
+class SkillMapGhostRepSegment(BaseModel):
+    pattern: str = ""
+    slug: str = ""
+    count: int = Field(default=0, ge=0)
+
+
+class SkillMapGhostRepActivityDay(BaseModel):
+    date: str = ""
+    total: int = Field(default=0, ge=0)
+    segments: list[SkillMapGhostRepSegment] = []
+
+
+class SkillMapGhostRepPattern(BaseModel):
+    pattern: str = ""
+    slug: str = ""
+    totalGhostReps: int = Field(default=0, ge=0)
+    daysSinceLastGhostRep: int | None = Field(default=None, ge=0)
+
+
+class SkillMapGhostRepActivity(BaseModel):
+    windowStart: str = ""
+    windowEnd: str = ""
+    totalGhostReps: int = Field(default=0, ge=0)
+    activeDays: int = Field(default=0, ge=0)
+    peakDailyCount: int = Field(default=0, ge=0)
+    days: list[SkillMapGhostRepActivityDay] = []
+    patterns: list[SkillMapGhostRepPattern] = []
+
+
 class SkillMapModeReadiness(BaseModel):
     readiness: float = Field(default=0, ge=0, le=100)
     attemptCount: int = Field(default=0, ge=0)
@@ -315,6 +357,7 @@ class SkillMapOverviewResponse(BaseModel):
     summary: dict[str, Any] = {}
     patterns: list[SkillMapPatternReadiness] = []
     reviewQueue: list[SkillMapCardReadiness] = []
+    ghostRepActivity: SkillMapGhostRepActivity = SkillMapGhostRepActivity()
 
 
 class AdminResetPracticeHistoryRequest(BaseModel):

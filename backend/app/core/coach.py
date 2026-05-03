@@ -49,8 +49,11 @@ from app.core.assessor import (
 )
 from app.core.generator import (
     _clean_concise_prompt,
+    _core_shape_template_target,
+    _inline_template_target,
     _pattern_slug,
     _template_mode_value,
+    attach_plain_english_prompt_detail,
     apply_specimen_tuning_to_target,
     GeneratorRuntime,
     GeneratorTuning,
@@ -1406,19 +1409,36 @@ async def _adaptive_variation_with_llm(body: AdaptiveVariationRequest) -> dict[s
     for tag in ("skill-map", "adaptive-variation", target_dimension_tag):
         if tag not in tags:
             tags.append(tag)
+    pattern_slug = _pattern_slug(pattern_name)
+    core_shape = _core_shape_template_target(pattern_slug, specimen)
+    inline_target = _inline_template_target(pattern_slug, specimen)
 
-    drill = {
-        "id": f"adaptive-{_pattern_slug(pattern_name)}-{_pattern_slug(failure_key)}-{stamp}",
-        "title": title,
-        "difficulty": "Med.",
-        "prompt": prompt,
-        "templatePrompts": {template_mode: prompt},
-        "templateTargets": {template_mode: specimen, TemplateMode.algorithm.value: specimen},
-        "solution": f"{specimen}\n{{{{missing}}}}",
-        "missing": "# repair complete",
-        "hint": hint,
-        "tags": tags,
-    }
+    drill = attach_plain_english_prompt_detail(
+        {
+            "id": f"adaptive-{_pattern_slug(pattern_name)}-{_pattern_slug(failure_key)}-{stamp}",
+            "title": title,
+            "difficulty": "Med.",
+            "prompt": prompt,
+            "templatePrompts": {
+                template_mode: prompt,
+                TemplateMode.algorithm.value: prompt,
+                "coreShape": f"{pattern_name}: recall the reusable core shape.",
+                "inline": f"{pattern_name}: add sparse inline notes.",
+            },
+            "templateTargets": {
+                template_mode: specimen,
+                TemplateMode.algorithm.value: specimen,
+                "coreShape": core_shape,
+                "inline": inline_target,
+            },
+            "solution": f"{specimen}\n{{{{missing}}}}",
+            "missing": "# repair complete",
+            "hint": hint,
+            "tags": tags,
+        },
+        pattern=pattern_name,
+        method=failure_label,
+    )
     return {
         "drill": drill,
         "targetDimension": failure_key,
@@ -1499,19 +1519,36 @@ async def _sequential_variation_with_llm(body: SequentialVariationRequest) -> di
     for tag in ("skill-map", "sequential-flow", "sequential-next-step"):
         if tag not in tags:
             tags.append(tag)
+    pattern_slug = _pattern_slug(pattern_name)
+    core_shape = _core_shape_template_target(pattern_slug, specimen)
+    inline_target = _inline_template_target(pattern_slug, specimen)
 
-    drill = {
-        "id": f"sequential-{_pattern_slug(pattern_name)}-{stamp}",
-        "title": title,
-        "difficulty": "Easy",
-        "prompt": prompt,
-        "templatePrompts": {template_mode: prompt, TemplateMode.algorithm.value: prompt},
-        "templateTargets": {template_mode: specimen, TemplateMode.algorithm.value: specimen},
-        "solution": f"{specimen}\n{{{{missing}}}}",
-        "missing": "# next step complete",
-        "hint": hint,
-        "tags": tags,
-    }
+    drill = attach_plain_english_prompt_detail(
+        {
+            "id": f"sequential-{_pattern_slug(pattern_name)}-{stamp}",
+            "title": title,
+            "difficulty": "Easy",
+            "prompt": prompt,
+            "templatePrompts": {
+                template_mode: prompt,
+                TemplateMode.algorithm.value: prompt,
+                "coreShape": f"{pattern_name}: recall the reusable core shape.",
+                "inline": f"{pattern_name}: add sparse inline notes.",
+            },
+            "templateTargets": {
+                template_mode: specimen,
+                TemplateMode.algorithm.value: specimen,
+                "coreShape": core_shape,
+                "inline": inline_target,
+            },
+            "solution": f"{specimen}\n{{{{missing}}}}",
+            "missing": "# next step complete",
+            "hint": hint,
+            "tags": tags,
+        },
+        pattern=pattern_name,
+        method="next step",
+    )
     return {
         "drill": drill,
         "progressionReason": progression_reason,
@@ -1881,7 +1918,7 @@ async def _persist_skill_map_drills(
         }
         await insert_generated_skill_map_card_row(
             card_id=drill["id"],
-            question_type="skill-map",
+            question_type=str(drill.get("questionType") or "skill-map"),
             title=drill["title"],
             difficulty=drill["difficulty"],
             prompt=drill["prompt"],

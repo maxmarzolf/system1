@@ -501,6 +501,247 @@
   margin: 0 0 1rem;
 }
 
+.dashboard-ghost-panel {
+  margin: 0 0 1rem;
+  padding: 0.9rem;
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-card-surface-soft);
+}
+
+.dashboard-ghost-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.dashboard-ghost-header h2 {
+  margin: 0.15rem 0 0;
+}
+
+.dashboard-ghost-stats,
+.dashboard-ghost-legend,
+.dashboard-ghost-staleness {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.dashboard-ghost-stats {
+  justify-content: flex-end;
+}
+
+.dashboard-ghost-chart {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.dashboard-ghost-day {
+  display: grid;
+  grid-template-columns: 5.25rem minmax(0, 1fr) 2rem;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 2rem;
+}
+
+.dashboard-ghost-day-label {
+  display: grid;
+  gap: 0.08rem;
+  min-width: 0;
+}
+
+.dashboard-ghost-day-label strong {
+  color: var(--hc-fg);
+  font-size: 0.74rem;
+  line-height: 1;
+}
+
+.dashboard-ghost-day-label span,
+.dashboard-ghost-day-total {
+  color: var(--hc-fg-dim);
+  font-size: 0.64rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-ghost-bar {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  height: 1rem;
+  overflow: hidden;
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-panel-bg);
+}
+
+.dashboard-ghost-fill {
+  display: flex;
+  height: 100%;
+  min-width: 0.45rem;
+}
+
+.dashboard-ghost-segment {
+  min-width: 0.45rem;
+  height: 100%;
+  box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.24);
+}
+
+.dashboard-ghost-segment:last-child {
+  box-shadow: none;
+}
+
+.dashboard-ghost-bar-empty {
+  align-items: center;
+  padding: 0 0.35rem;
+  background: transparent;
+}
+
+.dashboard-ghost-empty-label {
+  color: var(--hc-fg-dim);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.dashboard-ghost-day-total {
+  text-align: right;
+}
+
+.dashboard-ghost-footer {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.8rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--hc-border-dim);
+}
+
+.dashboard-ghost-legend-item,
+.dashboard-ghost-gap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 1.45rem;
+  padding: 0.2rem 0.42rem;
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-panel-bg);
+  color: var(--hc-fg);
+  font-size: 0.64rem;
+  line-height: 1.2;
+}
+
+.dashboard-ghost-legend-item strong,
+.dashboard-ghost-gap strong {
+  color: var(--hc-fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-ghost-swatch {
+  width: 0.55rem;
+  height: 0.55rem;
+  flex: 0 0 auto;
+  background: var(--ghost-color);
+}
+
+.dashboard-ghost-gap-hot {
+  border-color: color-mix(in srgb, var(--hc-warning) 55%, var(--hc-border-dim));
+  background: color-mix(in srgb, var(--hc-warning) 9%, transparent);
+}
+
+.dashboard-ghost-gap-hot strong {
+  color: var(--hc-warning);
+}
+
+.dashboard-playlists {
+  margin: 0 0 1rem;
+}
+
+.dashboard-playlists-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.65rem;
+}
+
+.dashboard-playlist-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.85rem;
+}
+
+.dashboard-playlist-card {
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-card-surface-soft);
+  padding: 0.85rem;
+}
+
+.dashboard-playlist-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.9rem;
+  margin-bottom: 0.7rem;
+}
+
+.dashboard-playlist-main h3 {
+  margin: 0;
+  color: var(--hc-fg);
+  font-size: 1rem;
+}
+
+.dashboard-playlist-start {
+  flex-shrink: 0;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--hc-accent);
+  background: var(--hc-picker-active-bg);
+  color: var(--hc-fg);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.dashboard-playlist-start:hover {
+  background: var(--hc-option-hover-bg);
+}
+
+.dashboard-playlist-questions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr));
+  gap: 0.4rem;
+  max-height: 18rem;
+  overflow: auto;
+  padding-right: 0.15rem;
+}
+
+.dashboard-playlist-question {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 2rem;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-panel-bg);
+  color: var(--hc-fg);
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+.dashboard-playlist-question span {
+  min-width: 0;
+}
+
+.dashboard-playlist-question strong {
+  color: var(--hc-fg-dim);
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-align: right;
+  text-transform: uppercase;
+}
+
 .dashboard-mode-unified {
   margin-top: 0.9rem;
   border: 1px solid var(--hc-border-dim);
@@ -1060,6 +1301,44 @@
 .app-dashboard .dashboard-summary {
   gap: 0.38rem;
   margin-bottom: 0.65rem;
+}
+
+.app-dashboard .dashboard-playlists {
+  margin-bottom: 0.72rem;
+}
+
+.app-dashboard .dashboard-playlist-card {
+  padding: 0.7rem;
+}
+
+.app-dashboard .dashboard-playlist-main {
+  gap: 0.7rem;
+  margin-bottom: 0.55rem;
+}
+
+.app-dashboard .dashboard-playlist-main h3 {
+  font-size: 0.92rem;
+}
+
+.app-dashboard .dashboard-playlist-start {
+  padding: 0.38rem 0.5rem;
+  font-size: 0.66rem;
+}
+
+.app-dashboard .dashboard-playlist-questions {
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.35rem;
+  max-height: 14rem;
+}
+
+.app-dashboard .dashboard-playlist-question {
+  min-height: 1.8rem;
+  padding: 0.3rem 0.38rem;
+  font-size: 0.66rem;
+}
+
+.app-dashboard .dashboard-playlist-question strong {
+  font-size: 0.55rem;
 }
 
 .app-dashboard .coach-metric-chip {
@@ -2882,6 +3161,23 @@ button.link:hover {
 }
 
 @media (max-width: 720px) {
+  .dashboard-ghost-header {
+    display: grid;
+  }
+
+  .dashboard-ghost-stats {
+    justify-content: flex-start;
+  }
+
+  .dashboard-ghost-day {
+    grid-template-columns: 3.4rem minmax(0, 1fr) 1.5rem;
+    gap: 0.4rem;
+  }
+
+  .dashboard-ghost-day-label span {
+    display: none;
+  }
+
   .dashboard-mode-tabs {
     flex-direction: column;
   }

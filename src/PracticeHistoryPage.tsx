@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import GhostRepActivityChart, { type GhostRepActivity, type GhostRepPatternOrder } from './GhostRepActivityChart'
 import TopNav from './TopNav'
 
 type PracticeHistoryEntry = {
@@ -94,6 +95,11 @@ type PracticeHistoryResponse = {
   entries: PracticeHistoryEntry[]
 }
 
+type SkillMapOverviewForGhostReps = {
+  patterns: GhostRepPatternOrder[]
+  ghostRepActivity: GhostRepActivity
+}
+
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 const MAIN_RECALL_CLOSE_ENOUGH_ACCURACY = 90
 const apiUrl = (path: string) => `${API_BASE_URL}${path}`
@@ -155,6 +161,25 @@ export default function PracticeHistoryPage() {
   const [practiceHistorySummary, setPracticeHistorySummary] = useState<PracticeHistorySummary | null>(null)
   const [practiceHistoryLoading, setPracticeHistoryLoading] = useState(false)
   const [practiceHistoryError, setPracticeHistoryError] = useState('')
+  const [ghostRepOverview, setGhostRepOverview] = useState<SkillMapOverviewForGhostReps | null>(null)
+  const [ghostRepOverviewError, setGhostRepOverviewError] = useState('')
+
+  useEffect(() => {
+    const loadGhostRepOverview = async () => {
+      setGhostRepOverviewError('')
+      try {
+        const response = await fetch(apiUrl('/api/skill-map-overview'))
+        if (!response.ok) throw new Error('Unable to load Ghost Rep overview')
+        const payload = (await response.json()) as SkillMapOverviewForGhostReps
+        setGhostRepOverview(payload)
+      } catch {
+        setGhostRepOverview(null)
+        setGhostRepOverviewError('Ghost Rep activity is unavailable right now.')
+      }
+    }
+
+    void loadGhostRepOverview()
+  }, [])
 
   useEffect(() => {
     if (!cardId && skillTags.length === 0) {
@@ -206,6 +231,12 @@ export default function PracticeHistoryPage() {
   return (
     <div className="app">
       <TopNav />
+
+        <GhostRepActivityChart
+          activity={ghostRepOverview?.ghostRepActivity}
+          patternOrder={ghostRepOverview?.patterns ?? []}
+        />
+        {ghostRepOverviewError && <p className="coach-error">{ghostRepOverviewError}</p>}
 
         {!hasContext && (
           <p className="coach-muted">

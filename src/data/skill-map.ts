@@ -1,6 +1,8 @@
 export type SkillMapNode = {
   pattern: string
   methods: string[]
+  questionTitle?: string
+  playlistSlug?: string
 }
 
 export const skillMap: SkillMapNode[] = [

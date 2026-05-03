@@ -4,6 +4,7 @@ from app.models import TemplateMode
 from app.core.generator import (
     TEMPLATE_MODE_ORDER,
     _clean_concise_prompt,
+    _core_shape_template_target,
     _normalize_drill_difficulty,
     _pattern_slug,
     _template_mode_value,
@@ -137,6 +138,39 @@ def test_inline_template_normalization_keeps_sliding_window_notes_sparse() -> No
     assert "return final answer" not in normalized
     assert "ch = s[i]" in normalized
     assert "ch = s[i]" not in normalized.split("include entering value", 1)[0].splitlines()[-1]
+
+
+def test_core_shape_extracts_nested_backtracking_helper() -> None:
+    target = (
+        "def enumerate_all(items):\n"
+        "    res = []\n"
+        "    path = []\n"
+        "    def dfs(i):\n"
+        "        if i == len(items):\n"
+        "            res.append(path[:])\n"
+        "            return\n"
+        "        dfs(i + 1)\n"
+        "        path.append(items[i])\n"
+        "        dfs(i + 1)\n"
+        "        path.pop()\n"
+        "    dfs(0)\n"
+        "    return res"
+    )
+
+    core_shape = _core_shape_template_target("backtracking", target)
+
+    assert core_shape.startswith("def dfs(i):")
+    assert "def enumerate_all" not in core_shape
+    assert "dfs(0)" not in core_shape
+    assert "return res" not in core_shape
+    assert "if i == n:" in core_shape
+    assert "choose current item" not in core_shape
+    assert "undo current choice" not in core_shape
+
+    inline_core_shape = _normalize_inline_template_target("backtracking", core_shape)
+
+    assert "choose current item" in inline_core_shape
+    assert "undo current choice" in inline_core_shape
 
 
 def test_specimen_tuning_omits_hints_comments_and_renames_x_loop_value() -> None:
