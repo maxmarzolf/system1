@@ -160,6 +160,7 @@ class SkillMapDrillsRequest(BaseModel):
     skillMap: list[SkillMapNode] = []
     templateMode: TemplateMode = TemplateMode.algorithm
     templateTargets: dict[str, dict[str, str]] = Field(default_factory=dict)
+    specimenTuning: dict[str, Any] = Field(default_factory=dict)
     llmProvider: str = "openai"
 
 
@@ -177,6 +178,7 @@ class AdaptiveVariationRequest(BaseModel):
     templateMode: TemplateMode = TemplateMode.algorithm
     skillTags: list[str] = []
     submissionRubric: dict[str, Any] = Field(default_factory=dict)
+    specimenTuning: dict[str, Any] = Field(default_factory=dict)
     llmProvider: str = "openai"
 
 
@@ -194,6 +196,7 @@ class SequentialVariationRequest(BaseModel):
     expectedAnswer: str = Field(min_length=1)
     templateMode: TemplateMode = TemplateMode.algorithm
     skillTags: list[str] = []
+    specimenTuning: dict[str, Any] = Field(default_factory=dict)
     llmProvider: str = "openai"
 
 

@@ -7,6 +7,8 @@ import { skillMap, type SkillMapNode } from './data/skill-map'
 import { resolveRelatedLeetCodeSet } from './data/related-leetcode'
 import { getLiveCoachFrequencyProfile, loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoachTuning'
 import { loadStoredSubmissionTuning } from './submissionTuning'
+import { loadStoredSpecimenTuning } from './specimenTuning'
+import type { SpecimenTuning } from './specimenTuning'
 import TopNav from './TopNav'
 import { useTheme } from './theme'
 
@@ -107,6 +109,7 @@ type SkillMapDrillsRequest = {
   skillMap: SkillMapNode[]
   templateMode: TemplateMode
   templateTargets: Record<string, Partial<Record<TemplateMode | HelperLayer, string>>>
+  specimenTuning: SpecimenTuning
   llmProvider: LlmProvider
 }
 
@@ -127,6 +130,16 @@ type AttemptEvaluationResponse = {
   accuracy: number
   sound: boolean
   syntaxValid: boolean
+}
+
+type PlainEnglishPromptDetail = {
+  plainEnglish: string
+  interviewQuestion: string
+  inputExample: string
+  outputExample: string
+  explanation: string
+  brassTacks: string
+  leetcodeExamples: string[]
 }
 
 type LineReviewStatus = 'match' | 'mismatch' | 'missing' | 'extra'
@@ -357,6 +370,295 @@ const getPrimaryPatternTag = (tags: string[]) => {
   return 'generic'
 }
 
+const normalizePromptLookup = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ')
+
+const fallbackPlainEnglishPromptDetails: Record<string, PlainEnglishPromptDetail> = {
+  'sliding-window': {
+    plainEnglish: 'What can I learn from a small moving slice of the input?',
+    interviewQuestion:
+      'Given an array and a window size, compute the best value you can get from any contiguous window.',
+    inputExample: 'nums = [1, 4, 2, 10, 3]\nk = 3\n\nmax_window_sum(nums, k)',
+    outputExample: '16',
+    explanation: 'The best window is [4, 2, 10], whose sum is 16.',
+    brassTacks:
+      'Sliding window answers: "What changes when I move the left or right edge one step?"',
+    leetcodeExamples: [
+      'Maximum Average Subarray: keep the best fixed-size window score.',
+      'Longest Substring Without Repeating Characters: expand and shrink until valid.',
+      'Minimum Window Substring: keep the smallest window that satisfies counts.',
+    ],
+  },
+  'two-pointers': {
+    plainEnglish: 'Which side should move so the search space gets smaller?',
+    interviewQuestion:
+      'Given a sorted array and a target, decide whether two values add up to the target.',
+    inputExample: 'nums = [1, 2, 4, 7, 11]\ntarget = 9\n\ntwo_sum_sorted(nums, target)',
+    outputExample: 'true',
+    explanation: 'The values 2 and 7 add up to 9.',
+    brassTacks:
+      'Two pointers answers: "What can I rule out by moving one pointer inward?"',
+    leetcodeExamples: [
+      'Two Sum II: move inward based on the current sum.',
+      'Container With Most Water: move the shorter wall.',
+      'Valid Palindrome: compare mirrored characters.',
+    ],
+  },
+  'binary-search': {
+    plainEnglish: 'Can I discard half of the remaining choices?',
+    interviewQuestion:
+      'Given a sorted array and a target, return the index of the target or -1 if it is missing.',
+    inputExample: 'nums = [1, 3, 5, 7, 9]\ntarget = 7\n\nbinary_search(nums, target)',
+    outputExample: '3',
+    explanation: 'The value 7 is at index 3.',
+    brassTacks:
+      'Binary search answers: "Which half can no longer contain the answer?"',
+    leetcodeExamples: [
+      'Search Insert Position: find the first valid slot.',
+      'Find First and Last Position: search for boundaries.',
+      'Koko Eating Bananas: binary search the answer.',
+    ],
+  },
+  'dfs-bfs': {
+    plainEnglish: 'What nodes are reachable from this starting node?',
+    interviewQuestion:
+      'Given a graph represented as an adjacency list and a starting node, return all nodes that can be reached from the starting node.',
+    inputExample: `graph = {
+    "A": ["B", "C"],
+    "B": ["D"],
+    "C": ["E"],
+    "D": [],
+    "E": [],
+    "F": ["G"]
+}
+
+bfs("A", graph)`,
+    outputExample: '{"A", "B", "C", "D", "E"}',
+    explanation:
+      'Because starting at "A", you can reach B, C, D, and E, but not F or G.',
+    brassTacks:
+      'BFS answers: "Starting here, what can I get to if I move one edge at a time?"',
+    leetcodeExamples: [
+      'Number of Islands: starting from one land cell, what connected land cells can I reach?',
+      'Clone Graph: starting from one graph node, what whole connected component can I visit/copy?',
+      'Course / prerequisite graphs: from this course, what downstream courses are reachable?',
+      'Rotting Oranges: from rotten oranges, what fresh oranges can be reached over time?',
+    ],
+  },
+  'graph-traversal': {
+    plainEnglish: 'What order or reachability fact does this graph structure force?',
+    interviewQuestion:
+      'Given a directed graph, process nodes in an order that respects the edges.',
+    inputExample: 'courses = 4\nprereqs = [[1, 0], [2, 0], [3, 1], [3, 2]]\n\ncourse_order(courses, prereqs)',
+    outputExample: '[0, 1, 2, 3]',
+    explanation: 'Course 0 unlocks 1 and 2, and both must come before 3.',
+    brassTacks:
+      'Graph traversal answers: "What can I visit next, and what must wait?"',
+    leetcodeExamples: [
+      'Course Schedule: track prerequisites with indegrees.',
+      'Pacific Atlantic Water Flow: traverse reachable cells from borders.',
+      'Network Delay Time: expand shortest known paths.',
+    ],
+  },
+  backtracking: {
+    plainEnglish: 'What choices can I try, and how do I undo one cleanly?',
+    interviewQuestion:
+      'Given a set of numbers, return every subset that can be formed.',
+    inputExample: 'nums = [1, 2]\n\nsubsets(nums)',
+    outputExample: '[[], [1], [1, 2], [2]]',
+    explanation: 'Each number can be included or skipped, producing every possible subset.',
+    brassTacks:
+      'Backtracking answers: "Choose, explore, undo, then try the next choice."',
+    leetcodeExamples: [
+      'Subsets: include or skip each item.',
+      'Combination Sum: explore choices while the target remains possible.',
+      'Permutations: choose from remaining unused values.',
+    ],
+  },
+  heap: {
+    plainEnglish: 'Which item should come out next if I only care about priority?',
+    interviewQuestion:
+      'Given a stream of numbers, keep track of the k largest values seen so far.',
+    inputExample: 'nums = [5, 1, 3, 9, 2]\nk = 2\n\ntop_k(nums, k)',
+    outputExample: '[9, 5]',
+    explanation: 'The two largest values are 9 and 5.',
+    brassTacks:
+      'Heap answers: "What should be easiest to remove: smallest, largest, or next best?"',
+    leetcodeExamples: [
+      'Kth Largest Element: maintain the best k candidates.',
+      'Merge K Sorted Lists: repeatedly take the smallest head.',
+      'Task Scheduler: prioritize the most constrained tasks.',
+    ],
+  },
+  'union-find': {
+    plainEnglish: 'Are these things in the same connected group?',
+    interviewQuestion:
+      'Given connections between nodes, count how many connected components remain.',
+    inputExample: 'n = 5\nedges = [[0, 1], [1, 2], [3, 4]]\n\ncount_components(n, edges)',
+    outputExample: '2',
+    explanation: 'Nodes 0, 1, and 2 form one group; nodes 3 and 4 form another.',
+    brassTacks:
+      'Union Find answers: "Who is your group leader after these connections?"',
+    leetcodeExamples: [
+      'Number of Connected Components: merge endpoints of each edge.',
+      'Redundant Connection: detect the edge that closes a cycle.',
+      'Accounts Merge: union emails that belong together.',
+    ],
+  },
+  'dynamic-programming': {
+    plainEnglish: 'What smaller answers do I need before I can answer this one?',
+    interviewQuestion:
+      'Given n steps, count how many ways you can climb if you take 1 or 2 steps at a time.',
+    inputExample: 'n = 5\n\nclimb_stairs(n)',
+    outputExample: '8',
+    explanation: 'The answer builds from the number of ways to reach the previous two steps.',
+    brassTacks:
+      'Dynamic programming answers: "What state summarizes everything I need so far?"',
+    leetcodeExamples: [
+      'Climbing Stairs: combine the previous two states.',
+      'House Robber: choose take or skip for each house.',
+      'Coin Change: build best answers from smaller amounts.',
+    ],
+  },
+  dp: {
+    plainEnglish: 'What smaller answers do I need before I can answer this one?',
+    interviewQuestion:
+      'Given n steps, count how many ways you can climb if you take 1 or 2 steps at a time.',
+    inputExample: 'n = 5\n\nclimb_stairs(n)',
+    outputExample: '8',
+    explanation: 'The answer builds from the number of ways to reach the previous two steps.',
+    brassTacks:
+      'Dynamic programming answers: "What state summarizes everything I need so far?"',
+    leetcodeExamples: [
+      'Climbing Stairs: combine the previous two states.',
+      'House Robber: choose take or skip for each house.',
+      'Coin Change: build best answers from smaller amounts.',
+    ],
+  },
+  intervals: {
+    plainEnglish: 'Do these ranges overlap, touch, or need to stay separate?',
+    interviewQuestion:
+      'Given a list of intervals, merge all overlapping intervals.',
+    inputExample: 'intervals = [[1, 3], [2, 6], [8, 10]]\n\nmerge(intervals)',
+    outputExample: '[[1, 6], [8, 10]]',
+    explanation: '[1, 3] and [2, 6] overlap, so they combine into [1, 6].',
+    brassTacks:
+      'Intervals answers: "After sorting, does the next range extend the current one?"',
+    leetcodeExamples: [
+      'Merge Intervals: combine overlapping ranges.',
+      'Meeting Rooms II: count simultaneous active intervals.',
+      'Insert Interval: place one range and merge neighbors.',
+    ],
+  },
+  'prefix-sums': {
+    plainEnglish: 'Can I answer a range question with two stored totals?',
+    interviewQuestion:
+      'Given an array, quickly return the sum between two indexes.',
+    inputExample: 'nums = [2, 1, 3, 4]\nleft = 1\nright = 3\n\nrange_sum(nums, left, right)',
+    outputExample: '8',
+    explanation: 'The values from index 1 through 3 are 1, 3, and 4, which sum to 8.',
+    brassTacks:
+      'Prefix sums answer: "What changed between the total before and the total after?"',
+    leetcodeExamples: [
+      'Range Sum Query: subtract two prefix totals.',
+      'Subarray Sum Equals K: remember earlier running totals.',
+      'Continuous Subarray Sum: group prefix remainders.',
+    ],
+  },
+  'monotonic-stack': {
+    plainEnglish: 'What earlier items are resolved by this new item?',
+    interviewQuestion:
+      'Given daily temperatures, return how many days each day waits for a warmer temperature.',
+    inputExample: 'temps = [73, 74, 75, 71]\n\ndaily_temperatures(temps)',
+    outputExample: '[1, 1, 0, 0]',
+    explanation: '73 waits one day for 74, and 74 waits one day for 75.',
+    brassTacks:
+      'Monotonic stack answers: "Which unresolved previous values does this value finally beat?"',
+    leetcodeExamples: [
+      'Daily Temperatures: resolve colder days when a warmer day appears.',
+      'Next Greater Element: pop everything beaten by the current value.',
+      'Largest Rectangle in Histogram: resolve bars when height drops.',
+    ],
+  },
+  stack: {
+    plainEnglish: 'What earlier items are resolved by this new item?',
+    interviewQuestion:
+      'Given daily temperatures, return how many days each day waits for a warmer temperature.',
+    inputExample: 'temps = [73, 74, 75, 71]\n\ndaily_temperatures(temps)',
+    outputExample: '[1, 1, 0, 0]',
+    explanation: '73 waits one day for 74, and 74 waits one day for 75.',
+    brassTacks:
+      'Monotonic stack answers: "Which unresolved previous values does this value finally beat?"',
+    leetcodeExamples: [
+      'Daily Temperatures: resolve colder days when a warmer day appears.',
+      'Next Greater Element: pop everything beaten by the current value.',
+      'Largest Rectangle in Histogram: resolve bars when height drops.',
+    ],
+  },
+  generic: {
+    plainEnglish: 'What reusable interview move is this card asking me to practice?',
+    interviewQuestion:
+      'Given an input with a recognizable structure, apply the matching pattern and return the requested result.',
+    inputExample: 'input = ...\n\nsolve(input)',
+    outputExample: 'expected result',
+    explanation: 'The concise prompt names the core move; the code target shows how that move is written.',
+    brassTacks:
+      'The goal is to translate the short pattern reminder into a working interview solution.',
+    leetcodeExamples: [
+      'Identify the pattern from the input shape.',
+      'Maintain the key invariant while scanning or recursing.',
+      'Return the result once the structure has been fully processed.',
+    ],
+  },
+}
+
+const getFallbackPlainEnglishPromptDetail = (tags: string[]) => {
+  const primaryPattern = getPrimaryPatternTag(tags)
+  return fallbackPlainEnglishPromptDetails[primaryPattern] ?? fallbackPlainEnglishPromptDetails.generic
+}
+
+const getPlainEnglishPromptDetail = (prompt: string, tags: string[]): PlainEnglishPromptDetail => {
+  const normalizedPrompt = normalizePromptLookup(prompt)
+  const soundsLikeBfsRepeatPrompt =
+    /(avoid|prevent|skip|ignore).*(repeat|revisit|cycle|duplicate)/.test(normalizedPrompt) &&
+    normalizedPrompt.includes('visited') &&
+    /(enqueue|queue|push|add)/.test(normalizedPrompt)
+  const isVisitedAtEnqueuePrompt =
+    normalizedPrompt === 'avoid repeats in graphs; mark visited at enqueue time.' ||
+    (tags.includes('dfs-bfs') &&
+      normalizedPrompt.includes('avoid repeats') &&
+      normalizedPrompt.includes('visited at enqueue')) ||
+    soundsLikeBfsRepeatPrompt
+
+  if (!isVisitedAtEnqueuePrompt) return getFallbackPlainEnglishPromptDetail(tags)
+
+  return {
+    plainEnglish: 'What nodes are reachable from this starting node?',
+    interviewQuestion:
+      'Given a graph represented as an adjacency list and a starting node, return all nodes that can be reached from the starting node.',
+    inputExample: `graph = {
+    "A": ["B", "C"],
+    "B": ["D"],
+    "C": ["E"],
+    "D": [],
+    "E": [],
+    "F": ["G"]
+}
+
+bfs("A", graph)`,
+    outputExample: '{"A", "B", "C", "D", "E"}',
+    explanation:
+      'Because starting at "A", you can reach B, C, D, and E, but not F or G.',
+    brassTacks:
+      'BFS answers: "Starting here, what can I get to if I move one edge at a time?"',
+    leetcodeExamples: [
+      'Number of Islands: starting from one land cell, what connected land cells can I reach?',
+      'Clone Graph: starting from one graph node, what whole connected component can I visit/copy?',
+      'Course / prerequisite graphs: from this course, what downstream courses are reachable?',
+      'Rotting Oranges: from rotten oranges, what fresh oranges can be reached over time?',
+    ],
+  }
+}
+
 const normalizeTyping = (value: string) =>
   value
     .replace(/\r\n/g, '\n')
@@ -539,15 +841,40 @@ const inlineNoteForLine = (trimmedLine: string, patternTag: string) => {
   if (/^return\b/.test(trimmedLine)) {
     if (/max\(take,\s*skip\)/.test(trimmedLine)) return 'best of final choices'
     if (/return\s+0\b/.test(trimmedLine)) return 'nothing to choose'
-    return 'return final answer'
+    if (/return\s+out\b|return\s+res\b|return\s+result\b/.test(trimmedLine)) return 'return collected result'
+    return ''
   }
   if (/^while\b/.test(trimmedLine)) {
-    if (/invalid|breaks_decision_rule|left\s*<\s*right|<=|queue|stack/.test(trimmedLine)) {
-      return 'restore rule before continuing'
-    }
-    return 'repeat until state settles'
+    if (patternTag === 'sliding-window') return 'shrink until window is valid'
+    if (patternTag === 'binary-search') return 'keep narrowing the search'
+    if (patternTag === 'dfs-bfs' || patternTag === 'graph-traversal') return 'process frontier until empty'
+    return ''
   }
   if (/^(def|for|if|elif|else)\b/.test(trimmedLine)) return ''
+  if (patternTag === 'sliding-window') {
+    if (/\b(best|ans)\s*=\s*max\(/.test(trimmedLine)) return 'keep best valid window'
+    if (/\b(left|l)\s*\+=/.test(trimmedLine)) return 'shrink from the left'
+    if (/\b\w+\[[^\]]+\]\s*=\s*\w+\.get\([^)]*\)\s*\+\s*1/.test(trimmedLine) || /\b\w+\[[^\]]+\]\s*\+=/.test(trimmedLine)) {
+      return 'include entering value'
+    }
+    if (/\b\w+\[[^\]]+\]\s*-/.test(trimmedLine)) return 'remove leaving value'
+    if (/^del\b/.test(trimmedLine)) return 'drop zero count'
+    if (/\.(append|add)\(/.test(trimmedLine) || /^(out|res|result)\s*=\s*\[/.test(trimmedLine)) return 'record current window'
+    return ''
+  }
+  if (patternTag === 'dfs-bfs' || patternTag === 'graph-traversal') {
+    if (/\b(visited|seen)\.add\(/.test(trimmedLine)) return 'mark before enqueueing'
+    if (/\b(popleft|pop)\(/.test(trimmedLine)) return 'take next frontier node'
+    if (/\b(q|queue|frontier)\.(append|add|push)\(/.test(trimmedLine)) return 'enqueue unseen neighbor'
+    if (/\.(append|add)\(/.test(trimmedLine)) return 'record reached node'
+    return ''
+  }
+  if (patternTag === 'two-pointers') {
+    if (/\b(left|l)\s*\+=/.test(trimmedLine)) return 'move left pointer inward'
+    if (/\b(right|r)\s*-/.test(trimmedLine)) return 'move right pointer inward'
+    if (/\b(total|cur|area)\s*=/.test(trimmedLine)) return 'measure current pair'
+    return ''
+  }
   if (patternTag === 'dynamic-programming' || patternTag === 'dp') {
     if (/^take\s*=\s*0\b/.test(trimmedLine)) return 'best if previous was taken'
     if (/^skip\s*=\s*0\b/.test(trimmedLine)) return 'best if previous was skipped'
@@ -559,8 +886,12 @@ const inlineNoteForLine = (trimmedLine: string, patternTag: string) => {
   if ((patternTag === 'binary-search') && /mid\s*=/.test(trimmedLine)) return 'probe middle boundary'
   if ((patternTag === 'binary-search') && /left\s*=\s*mid/.test(trimmedLine)) return 'discard lower half'
   if ((patternTag === 'binary-search') && /right\s*=\s*mid/.test(trimmedLine)) return 'keep possible boundary'
-  if (/\+=|-=|\*=|\/=|=/.test(trimmedLine)) return 'update state for next decision'
-  if (/append|push|pop|add|remove|union|find/.test(trimmedLine)) return 'move through core step'
+  if (['intervals', 'prefix-sums', 'monotonic-stack', 'stack'].includes(patternTag)) {
+    if (/\.(append|add|push)\(/.test(trimmedLine)) return 'record resolved state'
+    if (/\.(pop|remove)\(/.test(trimmedLine)) return 'discard stale candidate'
+    return ''
+  }
+  if (/\b(union|find)\b/.test(trimmedLine)) return 'merge or locate root'
   if (trimmedLine.startsWith('#')) return ''
   if (patternTag === 'union-find' && /^parent\b|^rank\b/.test(trimmedLine)) return 'self-label before merging'
   return ''
@@ -630,12 +961,12 @@ const appendInlineNote = (line: string, patternTag: string) => {
   return appendAlignedNote(cleanedLine, comment)
 }
 
-const shouldPlaceInlineDecisionNoteAfter = (line: string, insideLoop: boolean) => {
+const shouldPlaceInlineDecisionNoteAfter = (line: string, insideLoop: boolean, patternTag: string) => {
   if (!insideLoop) return false
   const codePart = line.split('#', 1)[0].trim()
   if (!codePart) return false
   if (/^(def|for|while|if|elif|else|return)\b/.test(codePart)) return false
-  return /\b(heappush|append|add|push|union|find|pop|popleft|transition)\b/.test(codePart) || /[+\-*/]?=/.test(codePart)
+  return Boolean(inlineNoteForLine(codePart, patternTag))
 }
 
 const buildInlineTemplate = (patternTag: string, algorithmTarget: string) => {
@@ -653,7 +984,7 @@ const buildInlineTemplate = (patternTag: string, algorithmTarget: string) => {
     if (isInlineDecisionLine(nextLine)) {
       inlineDecisionInserted = true
     }
-    if (!inlineDecisionInserted && shouldPlaceInlineDecisionNoteAfter(line, insideLoop)) {
+    if (!inlineDecisionInserted && shouldPlaceInlineDecisionNoteAfter(line, insideLoop, patternTag)) {
       output.push(appendAlignedNote('', inlineDecisionNoteForPattern(patternTag)))
       inlineDecisionInserted = true
     }
@@ -672,7 +1003,9 @@ const buildInlineTemplate = (patternTag: string, algorithmTarget: string) => {
 }
 
 const normalizeInlineTemplateTarget = (rawTarget: string, patternTag: string) => {
-  const lines = normalizeTyping(rawTarget).split('\n')
+  const lines = normalizeTyping(rawTarget)
+    .split('\n')
+    .filter((line) => !isNoteOnlyInlineDecisionLine(line))
   const output = lines.map((line) => appendInlineNote(line, patternTag))
   if (output.some((line) => isInlineDecisionLine(line))) {
     return output.join('\n')
@@ -684,7 +1017,7 @@ const normalizeInlineTemplateTarget = (rawTarget: string, patternTag: string) =>
       insideLoop = true
       return false
     }
-    return shouldPlaceInlineDecisionNoteAfter(line, insideLoop)
+    return shouldPlaceInlineDecisionNoteAfter(line, insideLoop, patternTag)
   })
   if (inlineDecisionIndex >= 0) {
     output.splice(inlineDecisionIndex + 1, 0, appendAlignedNote('', inlineDecisionNoteForPattern(patternTag)))
@@ -991,6 +1324,12 @@ const isInlineDecisionLine = (line: string) => {
   return /\b(window|answer|state|frontier|path|heap|roots|merged|seen|stack|take|skip)\b/i.test(note)
 }
 
+const isNoteOnlyInlineDecisionLine = (line: string) => {
+  const match = line.match(new RegExp(`^\\s{${INLINE_NOTE_COLUMN},}(\\S.*)$`))
+  if (!match) return false
+  return isInlineDecisionLine(appendAlignedNote('', match[1]))
+}
+
 const stripInlineAnnotationNotes = (code: string) =>
   code
     .split('\n')
@@ -1141,6 +1480,7 @@ function App() {
   const [sequentialVariationError, setSequentialVariationError] = useState('')
   const [sequentialVariationNote, setSequentialVariationNote] = useState('')
   const [inlineEnabled, setInlineEnabled] = useState(false)
+  const [plainEnglishPromptOpen, setPlainEnglishPromptOpen] = useState(false)
   const [relatedDrawerOpen, setRelatedDrawerOpen] = useState(false)
 
   const [sessionOrder, setSessionOrder] = useState<number[]>([])
@@ -1264,6 +1604,7 @@ function App() {
       skillMap: requestedSkillMap,
       templateMode: requestedTemplateMode,
       templateTargets: requestedTemplateTargets,
+      specimenTuning: loadStoredSpecimenTuning(),
       llmProvider,
     }
 
@@ -1399,10 +1740,22 @@ function App() {
     () => generatedPracticePrompt || buildPracticePrompt(currentTemplateMode, primaryPatternTag),
     [currentTemplateMode, generatedPracticePrompt, primaryPatternTag]
   )
+  const plainEnglishPromptDetail = useMemo(
+    () => getPlainEnglishPromptDetail(practicePrompt, card.tags),
+    [card.tags, practicePrompt]
+  )
+  const isPlainEnglishPromptOpen = Boolean(plainEnglishPromptOpen && plainEnglishPromptDetail)
+  const displayPracticePrompt =
+    isPlainEnglishPromptOpen && plainEnglishPromptDetail ? plainEnglishPromptDetail.plainEnglish : practicePrompt
+  const plainEnglishPromptDetailId = `plain-english-prompt-${card.id}`
   const currentQuestionType = `${requestedQuestionType}:${currentTemplateMode}`
   const currentSkillTags = useMemo(
     () => [...card.tags, `template-${currentTemplateMode}`],
     [card.tags, currentTemplateMode]
+  )
+  const visibleCardTags = useMemo(
+    () => card.tags.filter((tag) => tag !== 'skill-map'),
+    [card.tags]
   )
   currentCardIdRef.current = card.id
 
@@ -1447,7 +1800,6 @@ function App() {
   const supportedStartRecallLabel = isGhostRepsEnabled
     ? `Start Ghost Reps for ${inlineEnabled ? 'Inline' : currentTemplateLabel}`
     : startRecallLabel
-  const templateProgressText = `Mode: ${currentTemplateLabel}${inlineEnabled ? ' · Inline helper on' : ''}`
   const queuedFlowLoading = flowMode === 'adaptive' ? adaptiveVariationLoading : sequentialVariationLoading
   const queuedFlowNote = flowMode === 'adaptive' ? adaptiveVariationNote : sequentialVariationNote
   const queuedFlowError = flowMode === 'adaptive' ? adaptiveVariationError : sequentialVariationError
@@ -1585,6 +1937,7 @@ function App() {
           templateMode: currentTemplateMode,
           skillTags: currentSkillTags,
           submissionRubric: payload.submissionRubric,
+          specimenTuning: loadStoredSpecimenTuning(),
           llmProvider,
         }),
       })
@@ -1625,6 +1978,7 @@ function App() {
           expectedAnswer: payload.expectedAnswer,
           templateMode: currentTemplateMode,
           skillTags: currentSkillTags,
+          specimenTuning: loadStoredSpecimenTuning(),
           llmProvider,
         }),
       })
@@ -2614,7 +2968,6 @@ function App() {
           <div className="card-header-main">
             <h2>{card.title}</h2>
             <p className="difficulty"><span className="leetcode-num">#{card.id}</span> {card.difficulty}</p>
-            <p className="card-template-summary">{templateProgressText}</p>
             {focusedPatternNode && (
               <p className="card-template-summary">
                 Focused deck: {targetedDeckLabel}
@@ -2686,11 +3039,13 @@ function App() {
                 </svg>
               </button>
             </div>
-            <div className="tags">
-              {card.tags.map((tag) => (
-                <span key={tag} className="tag">{tag}</span>
-              ))}
-            </div>
+            {visibleCardTags.length > 0 && (
+              <div className="tags">
+                {visibleCardTags.map((tag) => (
+                  <span key={tag} className="tag">{tag}</span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -2735,7 +3090,107 @@ function App() {
               )
             ) : (
               <div className="drill-fade-in">
-                <p className="prompt prompt-bar">{practicePrompt}</p>
+                <div className={isPlainEnglishPromptOpen ? 'prompt-toggle-card expanded' : 'prompt-toggle-card'}>
+                  <div className="prompt-toggle-header">
+                    <p className="prompt prompt-bar prompt-toggle-text">{displayPracticePrompt}</p>
+                    {plainEnglishPromptDetail && (
+                      <button
+                        type="button"
+                        className={isPlainEnglishPromptOpen ? 'prompt-toggle-button active' : 'prompt-toggle-button'}
+                        onClick={() => setPlainEnglishPromptOpen((current) => !current)}
+                        aria-expanded={isPlainEnglishPromptOpen}
+                        aria-controls={plainEnglishPromptDetailId}
+                        title={isPlainEnglishPromptOpen ? 'Show concise prompt' : 'Show plain English prompt'}
+                      >
+                        <span>{isPlainEnglishPromptOpen ? 'Concise' : 'Plain English'}</span>
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d={isPlainEnglishPromptOpen ? 'm18 15-6-6-6 6' : 'm6 9 6 6 6-6'} />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  {isPlainEnglishPromptOpen && plainEnglishPromptDetail && (
+                    <div className="prompt-detail" id={plainEnglishPromptDetailId}>
+                      <div className="prompt-detail-section">
+                        <h3>Example interview question</h3>
+                        <p>{plainEnglishPromptDetail.interviewQuestion}</p>
+                      </div>
+                      <div className="prompt-detail-section">
+                        <h3>Input / Output</h3>
+                        <div className="prompt-io-console" aria-label="Input and output example">
+                          <div className="prompt-io-row">
+                            <span className="prompt-io-label prompt-io-label-input">In [1]:</span>
+                            <div className="prompt-io-code">
+                              <SyntaxHighlighter
+                                language="python"
+                                style={syntaxTheme}
+                                customStyle={{
+                                  margin: 0,
+                                  padding: 0,
+                                  background: 'transparent',
+                                  border: 'none',
+                                  fontFamily: 'inherit',
+                                  fontSize: 'inherit',
+                                  lineHeight: 'inherit',
+                                }}
+                                codeTagProps={{ style: { fontFamily: 'inherit' } }}
+                              >
+                                {plainEnglishPromptDetail.inputExample}
+                              </SyntaxHighlighter>
+                            </div>
+                          </div>
+                          <div className="prompt-io-row prompt-io-row-output">
+                            <span className="prompt-io-label prompt-io-label-output">Out[1]:</span>
+                            <div className="prompt-io-code">
+                              <SyntaxHighlighter
+                                language="python"
+                                style={syntaxTheme}
+                                customStyle={{
+                                  margin: 0,
+                                  padding: 0,
+                                  background: 'transparent',
+                                  border: 'none',
+                                  fontFamily: 'inherit',
+                                  fontSize: 'inherit',
+                                  lineHeight: 'inherit',
+                                }}
+                                codeTagProps={{ style: { fontFamily: 'inherit' } }}
+                              >
+                                {plainEnglishPromptDetail.outputExample}
+                              </SyntaxHighlighter>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="prompt-detail-section">
+                        <h3>Explanation</h3>
+                        <p>{plainEnglishPromptDetail.explanation}</p>
+                      </div>
+                      <div className="prompt-detail-section">
+                        <h3>Brass-tacks</h3>
+                        <p>{plainEnglishPromptDetail.brassTacks}</p>
+                      </div>
+                      <div className="prompt-detail-section">
+                        <h3>Shows up as</h3>
+                        <ul>
+                          {plainEnglishPromptDetail.leetcodeExamples.map((example) => (
+                            <li key={example}>{example}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

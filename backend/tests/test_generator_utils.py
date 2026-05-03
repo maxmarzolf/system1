@@ -8,6 +8,7 @@ from app.core.generator import (
     _pattern_slug,
     _template_mode_value,
     _normalize_inline_template_target,
+    apply_specimen_tuning_to_target,
 )
 
 
@@ -99,3 +100,65 @@ def test_inline_template_normalization_refines_dynamic_programming_notes() -> No
     assert "best of final choices" in normalized
     assert "update state for next decision" not in normalized
     assert "state depends on solved states" not in normalized
+
+
+def test_inline_template_normalization_keeps_sliding_window_notes_sparse() -> None:
+    target = (
+        "def slide_counts(s, k):\n"
+        "    if k <= 0 or k > len(s):\n"
+        "        return []                                        return final answer\n"
+        "    freq = {}                                            update state for next decision\n"
+        "    for i in range(k):\n"
+        "        ch = s[i]                                       update state for next decision\n"
+        "                                                             window valid before scoring\n"
+        "        freq[ch] = freq.get(ch, 0) + 1    update state for next decision\n"
+        "    out = [dict(freq)]                            update state for next decision\n"
+        "    for right in range(k, len(s)):\n"
+        "        left = right - k                             update state for next decision\n"
+        "        add = s[right]                             update state for next decision\n"
+        "        rem = s[left]                               update state for next decision\n"
+        "        freq[add] = freq.get(add, 0) + 1        update state for next decision\n"
+        "        freq[rem] -= 1                            update state for next decision\n"
+        "        if freq[rem] == 0:\n"
+        "            del freq[rem]\n"
+        "        out.append(dict(freq))              move through core step\n"
+        "    return out                                       return final answer"
+    )
+
+    normalized = _normalize_inline_template_target("sliding-window", target)
+
+    assert "window valid before scoring" in normalized
+    assert "include entering value" in normalized
+    assert "remove leaving value" in normalized
+    assert "record current window" in normalized
+    assert "drop zero count" in normalized
+    assert "update state for next decision" not in normalized
+    assert "move through core step" not in normalized
+    assert "return final answer" not in normalized
+    assert "ch = s[i]" in normalized
+    assert "ch = s[i]" not in normalized.split("include entering value", 1)[0].splitlines()[-1]
+
+
+def test_specimen_tuning_omits_hints_comments_and_renames_x_loop_value() -> None:
+    target = (
+        "from collections import defaultdict\n\n"
+        "def longest_at_most_k_distinct(nums: list[int], k: int) -> int:\n"
+        "    cnt: dict[int, int] = defaultdict(int)\n"
+        "    l = 0\n"
+        "    best = 0\n"
+        "    for r, x in enumerate(nums):  # expand right\n"
+        "        cnt[x] += 1\n"
+        "        best = max(best, r - l + 1)\n"
+        "    return best"
+    )
+
+    styled = apply_specimen_tuning_to_target(
+        target,
+        {"typeHints": "omit", "comments": "omit", "variableNames": "readable"},
+    )
+
+    assert "def longest_at_most_k_distinct(nums, k):" in styled
+    assert "cnt = defaultdict(int)" in styled
+    assert "# expand right" not in styled
+    assert "for r, val in enumerate(nums):" in styled
+    assert "cnt[val] += 1" in styled

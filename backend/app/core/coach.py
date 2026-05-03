@@ -51,9 +51,11 @@ from app.core.generator import (
     _clean_concise_prompt,
     _pattern_slug,
     _template_mode_value,
+    apply_specimen_tuning_to_target,
     GeneratorRuntime,
     GeneratorTuning,
     SkillMapDrillGenerator,
+    specimen_style_prompt,
 )
 from app.core.narrator import (
     NarratorContext,
@@ -1350,6 +1352,7 @@ async def _adaptive_variation_with_llm(body: AdaptiveVariationRequest) -> dict[s
         "The specimen is the exact next target the user should recall. "
         "Keep the same algorithm family, but vary the specimen to pressure the targetDimension. "
         "For algorithm mode, specimen must be Python. "
+        f"{specimen_style_prompt(body.specimenTuning)} "
         "Prompt must stay concise, usually 8 to 12 words, and should briefly say why the pattern helps before the move. "
         "Do not include markdown. Do not include '{{missing}}'."
     )
@@ -1362,6 +1365,7 @@ async def _adaptive_variation_with_llm(body: AdaptiveVariationRequest) -> dict[s
         "previousTarget": body.expectedAnswer,
         "userAnswer": body.userAnswer,
         "submissionRubric": body.submissionRubric,
+        "specimenTuning": body.specimenTuning,
     }
     llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)
     if not isinstance(llm_response, dict):
@@ -1372,7 +1376,10 @@ async def _adaptive_variation_with_llm(body: AdaptiveVariationRequest) -> dict[s
             api_error_code="provider_empty_response",
         )
 
-    specimen = str(llm_response.get("specimen", "")).replace("\r\n", "\n").replace("{{missing}}", "").strip()
+    specimen = apply_specimen_tuning_to_target(
+        str(llm_response.get("specimen", "")).replace("\r\n", "\n").replace("{{missing}}", "").strip(),
+        body.specimenTuning,
+    )
     if not specimen:
         raise SubmissionFeedbackUnavailableError(
             code="coach_llm_invalid_response",
@@ -1440,6 +1447,7 @@ async def _sequential_variation_with_llm(body: SequentialVariationRequest) -> di
         "Make the smallest logical code change that produces a different useful behavior, boundary, or capability. "
         "The next step should feel like an easy sequential follow-up to the current specimen, not a repair and not a rewrite. "
         "For algorithm mode, specimen must be Python. "
+        f"{specimen_style_prompt(body.specimenTuning)} "
         "Prompt must stay concise, usually 8 to 12 words, and should briefly name the new step. "
         "Do not include markdown. Do not include '{{missing}}'."
     )
@@ -1451,6 +1459,7 @@ async def _sequential_variation_with_llm(body: SequentialVariationRequest) -> di
         "previousPrompt": body.prompt,
         "currentTarget": body.expectedAnswer,
         "skillTags": body.skillTags,
+        "specimenTuning": body.specimenTuning,
     }
     llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)
     if not isinstance(llm_response, dict):
@@ -1461,7 +1470,10 @@ async def _sequential_variation_with_llm(body: SequentialVariationRequest) -> di
             api_error_code="provider_empty_response",
         )
 
-    specimen = str(llm_response.get("specimen", "")).replace("\r\n", "\n").replace("{{missing}}", "").strip()
+    specimen = apply_specimen_tuning_to_target(
+        str(llm_response.get("specimen", "")).replace("\r\n", "\n").replace("{{missing}}", "").strip(),
+        body.specimenTuning,
+    )
     if not specimen:
         raise SubmissionFeedbackUnavailableError(
             code="coach_llm_invalid_response",

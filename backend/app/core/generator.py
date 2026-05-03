@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
 import queue as thread_queue
 import random
 import re
+import tokenize
 import urllib.request
 from collections.abc import Awaitable, Callable, Generator
 from dataclasses import dataclass, field, replace
@@ -118,6 +120,213 @@ def _clean_concise_prompt(value: str, max_chars: int = 80) -> str:
     return f"{shortened}..."
 
 
+SPECIMEN_TUNING_DEFAULTS: dict[str, str] = {
+    "typeHints": "omit",
+    "comments": "omit",
+    "variableNames": "readable",
+}
+
+
+def _normalize_specimen_tuning(raw: Any) -> dict[str, str]:
+    tuning = raw if isinstance(raw, dict) else {}
+    type_hints = str(tuning.get("typeHints", SPECIMEN_TUNING_DEFAULTS["typeHints"])).strip()
+    comments = str(tuning.get("comments", SPECIMEN_TUNING_DEFAULTS["comments"])).strip()
+    variable_names = str(tuning.get("variableNames", SPECIMEN_TUNING_DEFAULTS["variableNames"])).strip()
+    return {
+        "typeHints": type_hints if type_hints in {"omit", "include"} else SPECIMEN_TUNING_DEFAULTS["typeHints"],
+        "comments": comments if comments in {"omit", "brief"} else SPECIMEN_TUNING_DEFAULTS["comments"],
+        "variableNames": variable_names
+        if variable_names in {"readable", "concise", "descriptive"}
+        else SPECIMEN_TUNING_DEFAULTS["variableNames"],
+    }
+
+
+def _split_top_level_commas(value: str) -> list[str]:
+    parts: list[str] = []
+    start = 0
+    depth = 0
+    quote = ""
+    escape = False
+    for index, char in enumerate(value):
+        if escape:
+            escape = False
+            continue
+        if quote:
+            if char == "\\":
+                escape = True
+            elif char == quote:
+                quote = ""
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            continue
+        if char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth = max(0, depth - 1)
+        elif char == "," and depth == 0:
+            parts.append(value[start:index])
+            start = index + 1
+    parts.append(value[start:])
+    return parts
+
+
+def _split_top_level_once(value: str, delimiter: str) -> tuple[str, str]:
+    depth = 0
+    quote = ""
+    escape = False
+    for index, char in enumerate(value):
+        if escape:
+            escape = False
+            continue
+        if quote:
+            if char == "\\":
+                escape = True
+            elif char == quote:
+                quote = ""
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            continue
+        if char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth = max(0, depth - 1)
+        elif char == delimiter and depth == 0:
+            return value[:index], value[index + 1 :]
+    return value, ""
+
+
+def _strip_param_annotation(param: str) -> str:
+    leading = param[: len(param) - len(param.lstrip())]
+    trailing = param[len(param.rstrip()) :]
+    core = param.strip()
+    if not core or core in {"/", "*"}:
+        return param
+    before_default, default = _split_top_level_once(core, "=")
+    before_annotation, _annotation = _split_top_level_once(before_default, ":")
+    stripped = before_annotation.strip()
+    if default:
+        stripped = f"{stripped}={default.strip()}"
+    return f"{leading}{stripped}{trailing}"
+
+
+def _strip_function_signature_hints(line: str) -> str:
+    match = re.match(r"^(\s*def\s+\w+\s*\()(.+)(\)\s*)(?:->\s*[^:]+)?(:\s*)$", line)
+    if not match:
+        return line
+    params = ",".join(_strip_param_annotation(part) for part in _split_top_level_commas(match.group(2)))
+    return f"{match.group(1)}{params}{match.group(3)}{match.group(4)}"
+
+
+def _strip_variable_annotation(line: str) -> str:
+    indent_match = re.match(r"^(\s*)([A-Za-z_]\w*)\s*:", line)
+    if not indent_match:
+        return line
+    before_default, default = _split_top_level_once(line[indent_match.end() :], "=")
+    if not default or not before_default.strip():
+        return line
+    return f"{indent_match.group(1)}{indent_match.group(2)} = {default.strip()}"
+
+
+def _strip_python_type_hints(code: str) -> str:
+    lines = str(code or "").replace("\r\n", "\n").split("\n")
+    output = []
+    for line in lines:
+        without_signature_hints = _strip_function_signature_hints(line)
+        output.append(_strip_variable_annotation(without_signature_hints))
+    return "\n".join(output).strip()
+
+
+def _strip_python_comments(code: str) -> str:
+    lines = str(code or "").replace("\r\n", "\n").split("\n")
+    try:
+        comments = [
+            token.start
+            for token in tokenize.generate_tokens(io.StringIO("\n".join(lines)).readline)
+            if token.type == tokenize.COMMENT
+        ]
+    except (IndentationError, tokenize.TokenError):
+        comments = []
+    for row, col in sorted(comments, reverse=True):
+        index = row - 1
+        if 0 <= index < len(lines):
+            lines[index] = lines[index][:col].rstrip()
+    return "\n".join(line for line in lines if line.strip()).strip()
+
+
+def _rename_block_identifier(lines: list[str], start_index: int, old_name: str, new_name: str) -> None:
+    if old_name == new_name:
+        return
+    block_indent = len(lines[start_index]) - len(lines[start_index].lstrip())
+    pattern = re.compile(rf"\b{re.escape(old_name)}\b")
+    for index in range(start_index, len(lines)):
+        if index > start_index:
+            stripped = lines[index].strip()
+            indent = len(lines[index]) - len(lines[index].lstrip())
+            if stripped and indent <= block_indent:
+                break
+        lines[index] = pattern.sub(new_name, lines[index])
+
+
+def _apply_variable_name_style(code: str, variable_names: str) -> str:
+    if variable_names == "concise":
+        return str(code or "").strip()
+
+    lines = str(code or "").replace("\r\n", "\n").split("\n")
+    element_name = "value" if variable_names == "descriptive" else "val"
+    numeric_name = "num" if variable_names == "descriptive" else "val"
+    for index, line in enumerate(lines):
+        if re.search(r"\bval\b|\bvalue\b", line):
+            continue
+        enumerate_match = re.match(r"^(\s*for\s+[A-Za-z_]\w*\s*,\s*)x(\s+in\s+enumerate\(.+\):\s*)$", line)
+        if enumerate_match:
+            lines[index] = f"{enumerate_match.group(1)}{element_name}{enumerate_match.group(2)}"
+            _rename_block_identifier(lines, index, "x", element_name)
+            continue
+        loop_match = re.match(r"^(\s*for\s+)x(\s+in\s+.+:\s*)$", line)
+        if loop_match:
+            lines[index] = f"{loop_match.group(1)}{element_name}{loop_match.group(2)}"
+            _rename_block_identifier(lines, index, "x", element_name)
+            continue
+        numeric_loop_match = re.match(r"^(\s*for\s+)n(\s+in\s+nums\s*:\s*)$", line)
+        if numeric_loop_match:
+            lines[index] = f"{numeric_loop_match.group(1)}{numeric_name}{numeric_loop_match.group(2)}"
+            _rename_block_identifier(lines, index, "n", numeric_name)
+    return "\n".join(lines).strip()
+
+
+def apply_specimen_tuning_to_target(target: str, raw_tuning: Any) -> str:
+    tuning = _normalize_specimen_tuning(raw_tuning)
+    styled = str(target or "").replace("\r\n", "\n").strip()
+    if tuning["typeHints"] == "omit":
+        styled = _strip_python_type_hints(styled)
+    if tuning["comments"] == "omit":
+        styled = _strip_python_comments(styled)
+    styled = _apply_variable_name_style(styled, tuning["variableNames"])
+    return styled.strip()
+
+
+def specimen_style_prompt(raw_tuning: Any) -> str:
+    tuning = _normalize_specimen_tuning(raw_tuning)
+    type_hint_rule = (
+        "Use simple Python type hints on function parameters and returns."
+        if tuning["typeHints"] == "include"
+        else "Do not include Python type hints or return annotations."
+    )
+    comment_rule = (
+        "Use at most two short '#' comments only when they clarify an invariant."
+        if tuning["comments"] == "brief"
+        else "Do not include '#' comments inside the specimen code."
+    )
+    variable_rule = {
+        "concise": "Use concise conventional pattern names such as l, r, cnt, and best when they aid recall.",
+        "descriptive": "Use explicit names such as left, right, value, counts, and best_length; avoid one-letter data variables.",
+        "readable": "Use readable interview names: prefer val over x for element values, keep left/right or l/r when conventional, and avoid unclear one-letter data variables.",
+    }[tuning["variableNames"]]
+    return f"Specimen code style: {type_hint_rule} {comment_rule} {variable_rule}"
+
+
 def _entry_point_from_template_target(template_mode: str, target: str) -> str:
     lines = str(target or "").replace("\r\n", "\n").split("\n")
     first_line = next((line.strip() for line in lines if line.strip()), "")
@@ -158,10 +367,50 @@ def _inline_note_for_line(trimmed_line: str, pattern_slug: str) -> str:
             return "best of final choices"
         if re.search(r"return\s+0\b", trimmed_line):
             return "nothing to choose"
-        return "return final answer"
+        if re.search(r"return\s+out\b|return\s+res\b|return\s+result\b", trimmed_line):
+            return "return collected result"
+        return ""
     if re.match(r"^while\b", trimmed_line):
-        return "restore rule before continuing"
+        if pattern_slug == "sliding-window":
+            return "shrink until window is valid"
+        if pattern_slug == "binary-search":
+            return "keep narrowing the search"
+        if pattern_slug in {"dfs-bfs", "graph-traversal"}:
+            return "process frontier until empty"
+        return ""
     if re.match(r"^(def|for|if|elif|else)\b", trimmed_line):
+        return ""
+    if pattern_slug == "sliding-window":
+        if re.search(r"\b(best|ans)\s*=\s*max\(", trimmed_line):
+            return "keep best valid window"
+        if re.search(r"\b(left|l)\s*\+=", trimmed_line):
+            return "shrink from the left"
+        if re.search(r"\b\w+\[[^\]]+\]\s*=\s*\w+\.get\([^)]*\)\s*\+\s*1", trimmed_line) or re.search(r"\b\w+\[[^\]]+\]\s*\+=", trimmed_line):
+            return "include entering value"
+        if re.search(r"\b\w+\[[^\]]+\]\s*-=", trimmed_line):
+            return "remove leaving value"
+        if re.match(r"^del\b", trimmed_line):
+            return "drop zero count"
+        if re.search(r"\.(append|add)\(", trimmed_line) or re.match(r"^(out|res|result)\s*=\s*\[", trimmed_line):
+            return "record current window"
+        return ""
+    if pattern_slug in {"dfs-bfs", "graph-traversal"}:
+        if re.search(r"\bvisited\.add\(", trimmed_line) or re.search(r"\bseen\.add\(", trimmed_line):
+            return "mark before enqueueing"
+        if re.search(r"\b(popleft|pop)\(", trimmed_line):
+            return "take next frontier node"
+        if re.search(r"\b(q|queue|frontier)\.(append|add|push)\(", trimmed_line):
+            return "enqueue unseen neighbor"
+        if re.search(r"\.(append|add)\(", trimmed_line):
+            return "record reached node"
+        return ""
+    if pattern_slug == "two-pointers":
+        if re.search(r"\bleft\s*\+=", trimmed_line) or re.search(r"\bl\s*\+=", trimmed_line):
+            return "move left pointer inward"
+        if re.search(r"\bright\s*-=", trimmed_line) or re.search(r"\br\s*-=", trimmed_line):
+            return "move right pointer inward"
+        if re.search(r"\b(total|cur|area)\s*=", trimmed_line):
+            return "measure current pair"
         return ""
     if pattern_slug in {"dynamic-programming", "dp"}:
         if re.match(r"^take\s*=\s*0\b", trimmed_line):
@@ -182,10 +431,14 @@ def _inline_note_for_line(trimmed_line: str, pattern_slug: str) -> str:
         return "discard lower half"
     if pattern_slug == "binary-search" and re.search(r"right\s*=\s*mid", trimmed_line):
         return "keep possible boundary"
-    if re.search(r"\+=|-=|\*=|/=|=", trimmed_line):
-        return "update state for next decision"
-    if re.search(r"\b(append|push|pop|add|remove|union|find)\b", trimmed_line):
-        return "move through core step"
+    if pattern_slug in {"intervals", "prefix-sums", "monotonic-stack", "stack"}:
+        if re.search(r"\.(append|add|push)\(", trimmed_line):
+            return "record resolved state"
+        if re.search(r"\.(pop|remove)\(", trimmed_line):
+            return "discard stale candidate"
+        return ""
+    if re.search(r"\b(union|find)\b", trimmed_line):
+        return "merge or locate root"
     if pattern_slug == "union-find" and re.match(r"^(parent|rank)\b", trimmed_line):
         return "self-label before merging"
     return ""
@@ -266,7 +519,14 @@ def _is_inline_decision_line(line: str) -> bool:
     return bool(re.search(r"\b(window|answer|state|frontier|path|heap|roots|merged|seen|stack|take|skip)\b", match.group(1), re.IGNORECASE))
 
 
-def _should_place_inline_decision_note_after(line: str, inside_loop: bool) -> bool:
+def _is_note_only_inline_decision_line(line: str) -> bool:
+    match = re.match(rf"^\s{{{INLINE_NOTE_COLUMN},}}(\S.*)$", line)
+    if not match:
+        return False
+    return _is_inline_decision_line(_append_aligned_note("", match.group(1)))
+
+
+def _should_place_inline_decision_note_after(line: str, inside_loop: bool, pattern_slug: str) -> bool:
     if not inside_loop:
         return False
     code_part = line.split("#", 1)[0].strip()
@@ -274,10 +534,7 @@ def _should_place_inline_decision_note_after(line: str, inside_loop: bool) -> bo
         return False
     if re.match(r"^(def|for|while|if|elif|else|return)\b", code_part):
         return False
-    return bool(
-        re.search(r"\b(heappush|append|add|push|union|find|pop|popleft|transition)\b", code_part)
-        or re.search(r"[+\-*/]?=", code_part)
-    )
+    return bool(_inline_note_for_line(code_part, pattern_slug))
 
 
 def _inline_template_target(pattern_slug: str, algorithm_target: str) -> str:
@@ -292,7 +549,7 @@ def _inline_template_target(pattern_slug: str, algorithm_target: str) -> str:
         output.append(next_line)
         if _is_inline_decision_line(next_line):
             inline_decision_inserted = True
-        if not inline_decision_inserted and _should_place_inline_decision_note_after(line, inside_loop):
+        if not inline_decision_inserted and _should_place_inline_decision_note_after(line, inside_loop, pattern_slug):
             output.append(_append_aligned_note("", _inline_decision_note_for_pattern(pattern_slug)))
             inline_decision_inserted = True
     if not inline_decision_inserted:
@@ -305,7 +562,11 @@ def _inline_template_target(pattern_slug: str, algorithm_target: str) -> str:
 
 
 def _normalize_inline_template_target(pattern_slug: str, raw_target: str) -> str:
-    lines = str(raw_target or "").replace("\r\n", "\n").strip().split("\n")
+    lines = [
+        line
+        for line in str(raw_target or "").replace("\r\n", "\n").strip().split("\n")
+        if not _is_note_only_inline_decision_line(line)
+    ]
     output = [_append_inline_note(line, pattern_slug) for line in lines]
     if any(_is_inline_decision_line(line) for line in output):
         return "\n".join(output).strip()
@@ -316,7 +577,7 @@ def _normalize_inline_template_target(pattern_slug: str, raw_target: str) -> str
         if re.match(r"^\s*(for|while)\b", line):
             inside_loop = True
             continue
-        if _should_place_inline_decision_note_after(line, inside_loop):
+        if _should_place_inline_decision_note_after(line, inside_loop, pattern_slug):
             inline_decision_index = index
             break
 
@@ -486,6 +747,8 @@ def _template_targets_for_drill(
     if algorithm_target:
         targets[TemplateMode.algorithm.value] = algorithm_target
         targets.setdefault(INLINE_TEMPLATE_KEY, _inline_template_target(pattern_slug, algorithm_target))
+    for mode, target in list(targets.items()):
+        targets[mode] = apply_specimen_tuning_to_target(target, body.specimenTuning)
     if targets.get(INLINE_TEMPLATE_KEY):
         targets[INLINE_TEMPLATE_KEY] = _normalize_inline_template_target(pattern_slug, targets[INLINE_TEMPLATE_KEY])
     return targets
@@ -716,8 +979,12 @@ def build_generator_context(
         "The solution must include exactly one '{{missing}}' placeholder, and missing must be the exact code that replaces it. "
         f"The prompt must be very short: {active_tuning.output.concise_prompt_words} words or fewer. "
         "templateTargets may include algorithm and inline. "
-        "Inline must be Python based on the full algorithm, with aligned subtle side-notes instead of '#' comments. "
-        "Inline notes must be 8 words or fewer, and decision notes must avoid legacy mode labels. "
+        "Inline must be Python based on the full algorithm, with sparse aligned side-notes instead of '#' comments. "
+        "Inline notes must be 8 words or fewer, specific to the line's role, and only on key invariant, mutation, frontier, boundary, or result-recording lines. "
+        "Do not annotate routine temporaries, guards, every assignment, every return, or loop headers. "
+        "Never use generic notes like 'update state for next decision', 'move through core step', or 'return final answer'. "
+        "Decision notes must avoid legacy mode labels. "
+        f"{specimen_style_prompt(body.specimenTuning)} "
         "When you return templateTargets, make them specific to the drill's pattern and method instead of generic pattern text. "
         "templatePrompts must be an object keyed by algorithm and inline when those targets are provided. "
         "Each templatePrompts value should briefly say why the pattern helps and then name the key move. "
@@ -754,6 +1021,7 @@ def build_generator_context(
         "generationSeed": generation_seed,
         "templateMode": _template_mode_value(body.templateMode),
         "templateTargets": body.templateTargets,
+        "specimenTuning": _normalize_specimen_tuning(body.specimenTuning),
         "skillMap": trimmed_skill_map,
         "practiceHistory": {
             "overall": progress_summary.get("overall", {}),

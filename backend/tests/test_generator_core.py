@@ -122,3 +122,23 @@ def test_build_generator_context_applies_readiness_threshold(skill_map_request, 
     # readiness 95 with attempts > 0 still remains; threshold change should not remove attempted patterns.
     assert "two-pointers" in pattern_progress
     assert context.output_tuning.readiness_threshold == 93.0
+
+
+def test_build_generator_context_includes_specimen_tuning(skill_map_request, progress_summary) -> None:
+    skill_map_request.specimenTuning = {
+        "typeHints": "include",
+        "comments": "brief",
+        "variableNames": "descriptive",
+    }
+
+    context = build_generator_context(
+        skill_map_request,
+        progress_summary,
+        provider="openai",
+        provider_label="ChatGPT",
+        tuning=GeneratorTuning(),
+    )
+
+    assert context.llm_payload["specimenTuning"] == skill_map_request.specimenTuning
+    assert "Use simple Python type hints" in context.system_prompt
+    assert "Use explicit names" in context.system_prompt
