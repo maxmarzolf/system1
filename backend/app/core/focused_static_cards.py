@@ -110,7 +110,8 @@ def min_window_len(nums, target):
         total += val
         while total >= target:
             best = min(best, right - left + 1)
-            total -= nums[left]; left += 1
+            total -= nums[left]
+            left += 1
     return 0 if best > len(nums) else best
 """,
     ),
@@ -135,10 +136,13 @@ def has_permutation(s, pattern):
     need = Counter(pattern)
     window = Counter(s[:len(pattern)])
     for right in range(len(pattern), len(s) + 1):
-        if window == need: return True
-        if right == len(s): break
+        if window == need:
+            return True
+        if right == len(s):
+            break
         left = right - len(pattern)
-        window[s[right]] += 1; window[s[left]] -= 1
+        window[s[right]] += 1
+        window[s[left]] -= 1
     return False
 """,
     ),
@@ -166,7 +170,8 @@ def longest_replacement(s, k):
         counts[ch] = counts.get(ch, 0) + 1
         max_count = max(max_count, counts[ch])
         while right - left + 1 - max_count > k:
-            counts[s[left]] -= 1; left += 1
+            counts[s[left]] -= 1
+            left += 1
         best = max(best, right - left + 1)
     return best
 """,
@@ -245,8 +250,10 @@ def inward_scan(nums, target):
     left, right = 0, len(nums) - 1
     while left < right:
         total = nums[left] + nums[right]
-        if total < target: left += 1
-        else: right -= 1
+        if total < target:
+            left += 1
+        else:
+            right -= 1
     return left, right
 """,
     ),
@@ -271,8 +278,10 @@ def max_area(height):
     left, right, best = 0, len(height) - 1, 0
     while left < right:
         best = max(best, min(height[left], height[right]) * (right - left))
-        if height[left] < height[right]: left += 1
-        else: right -= 1
+        if height[left] < height[right]:
+            left += 1
+        else:
+            right -= 1
     return best
 """,
     ),
@@ -294,15 +303,21 @@ def max_area(height):
         ("three_sum",),
         """
 def three_sum(nums):
-    nums.sort(); out = []
+    nums.sort()
+    out = []
     for i, val in enumerate(nums):
-        if i and val == nums[i - 1]: continue
+        if i and val == nums[i - 1]:
+            continue
         left, right = i + 1, len(nums) - 1
         while left < right:
             total = val + nums[left] + nums[right]
-            if total < 0: left += 1
-            elif total > 0: right -= 1
-            else: out.append([val, nums[left], nums[right]]); left += 1
+            if total < 0:
+                left += 1
+            elif total > 0:
+                right -= 1
+            else:
+                out.append([val, nums[left], nums[right]])
+                left += 1
     return out
 """,
     ),
@@ -326,7 +341,8 @@ def three_sum(nums):
 def is_palindrome(s):
     left, right = 0, len(s) - 1
     while left < right:
-        if s[left] != s[right]: return False
+        if s[left] != s[right]:
+            return False
         left += 1
         right -= 1
     return True
@@ -839,9 +855,73 @@ METHOD_PROFILE_CATALOG: dict[tuple[str, str], dict[str, str]] = {
 }
 
 
+STATIC_DIFFICULTY_CATALOG: dict[tuple[str, str], str] = {
+    ("sliding-window", "fixed-vs-variable-window"): "Easy",
+    ("sliding-window", "expand-shrink-rhythm"): "Med.",
+    ("sliding-window", "frequency-maps"): "Med.",
+    ("sliding-window", "valid-window-rule"): "Med.",
+    ("sliding-window", "window-score-updates"): "Med.",
+    ("two-pointers", "same-direction-scan"): "Easy",
+    ("two-pointers", "opposing-pointers"): "Med.",
+    ("two-pointers", "sorted-array-leverage"): "Med.",
+    ("two-pointers", "dedupe-rules"): "Med.",
+    ("two-pointers", "pointer-move-rule"): "Easy",
+    ("binary-search", "left-right-bounds"): "Easy",
+    ("binary-search", "mid-calculation"): "Easy",
+    ("binary-search", "search-on-answer"): "Med.",
+    ("binary-search", "first-last-occurrence"): "Med.",
+    ("binary-search", "boundary-rule-handling"): "Easy",
+    ("dfs-bfs", "base-case-guards"): "Easy",
+    ("dfs-bfs", "visited-tracking"): "Med.",
+    ("dfs-bfs", "pre-post-order-thinking"): "Easy",
+    ("dfs-bfs", "queue-frontier-management"): "Med.",
+    ("dfs-bfs", "level-by-level-expansion"): "Med.",
+    ("backtracking", "choice-explore-undo"): "Med.",
+    ("backtracking", "path-state"): "Med.",
+    ("backtracking", "pruning-conditions"): "Med.",
+    ("backtracking", "start-index-control"): "Med.",
+    ("backtracking", "result-collection"): "Med.",
+    ("heap", "top-k-maintenance"): "Med.",
+    ("heap", "min-vs-max-heap-choice"): "Easy",
+    ("heap", "push-pop-discipline"): "Hard",
+    ("heap", "stream-processing"): "Easy",
+    ("heap", "lazy-deletion-patterns"): "Hard",
+    ("union-find", "parent-initialization"): "Med.",
+    ("union-find", "find-with-compression"): "Med.",
+    ("union-find", "union-by-rank-size"): "Med.",
+    ("union-find", "component-counting"): "Med.",
+    ("union-find", "cycle-detection"): "Med.",
+    ("dynamic-programming", "state-definition"): "Med.",
+    ("dynamic-programming", "transition-equation"): "Easy",
+    ("dynamic-programming", "base-cases"): "Easy",
+    ("dynamic-programming", "iteration-order"): "Med.",
+    ("dynamic-programming", "space-optimization"): "Med.",
+    ("graph-traversal", "adjacency-representation"): "Med.",
+    ("graph-traversal", "start-state-selection"): "Med.",
+    ("graph-traversal", "topological-ordering"): "Med.",
+    ("graph-traversal", "indegree-bookkeeping"): "Med.",
+    ("graph-traversal", "shortest-path-framing"): "Med.",
+    ("intervals", "sort-by-start-end"): "Easy",
+    ("intervals", "merge-overlap-logic"): "Med.",
+    ("intervals", "sweep-decisions"): "Hard",
+    ("intervals", "room-resource-counting"): "Med.",
+    ("intervals", "boundary-comparisons"): "Med.",
+    ("prefix-sums", "running-total-setup"): "Easy",
+    ("prefix-sums", "sum-to-index-map"): "Med.",
+    ("prefix-sums", "subarray-difference-trick"): "Easy",
+    ("prefix-sums", "mod-remainder-buckets"): "Med.",
+    ("prefix-sums", "constant-time-range-queries"): "Easy",
+    ("monotonic-stack", "increasing-vs-decreasing-stack"): "Med.",
+    ("monotonic-stack", "next-greater-smaller"): "Easy",
+    ("monotonic-stack", "pop-trigger-rule"): "Hard",
+    ("monotonic-stack", "index-storage"): "Med.",
+    ("monotonic-stack", "span-area-computation"): "Hard",
+}
+
+
 SPECIFIC_SKELETONS: dict[str, str] = {
     "tree_depth": """
-def tree_depth(root):
+def tree_depth(root):                                   
     if not root:
         return 0
     left = tree_depth(root.left)
@@ -852,10 +932,12 @@ def tree_depth(root):
 def traverse_seen(graph, start):
     seen, stack, order = {start}, [start], []
     while stack:
-        node = stack.pop(); order.append(node)
+        node = stack.pop()
+        order.append(node)
         for nxt in graph[node]:
             if nxt not in seen:
-                seen.add(nxt); stack.append(nxt)
+                seen.add(nxt)
+                stack.append(nxt)
     return order
 """,
     "post_order_height": """
@@ -870,10 +952,12 @@ def post_order_height(root):
 def bfs_frontier(graph, start):
     seen, frontier, order = {start}, [start], []
     while frontier:
-        node = frontier.pop(0); order.append(node)
+        node = frontier.pop(0)
+        order.append(node)
         for nxt in graph[node]:
             if nxt not in seen:
-                seen.add(nxt); frontier.append(nxt)
+                seen.add(nxt)
+                frontier.append(nxt)
     return order
 """,
     "bfs_levels": """
@@ -882,57 +966,99 @@ def bfs_levels(root):
     while queue:
         level, next_queue = [], []
         for node in queue:
-            level.append(node.val); next_queue += [node.left, node.right]
-        levels.append(level); queue = [node for node in next_queue if node]
+            level.append(node.val)
+            next_queue += [node.left, node.right]
+        levels.append(level)
+        queue = [node for node in next_queue if node]
     return levels
 """,
     "dfs_choices": """
 def dfs_choices(items):
     path, result = [], []
+
     def dfs(i):
-        if i == len(items): result.append(path[:]); return
+        if i == len(items):
+            result.append(path[:])
+            return
         dfs(i + 1)
-        path.append(items[i]); dfs(i + 1); path.pop()
-    dfs(0); return result
+        path.append(items[i])
+        dfs(i + 1)
+        path.pop()
+
+    dfs(0)
+    return result
 """,
     "permute_path": """
 def permute_path(nums):
     path, used, result = [], set(), []
+
     def dfs():
-        if len(path) == len(nums): result.append(path[:]); return
+        if len(path) == len(nums):
+            result.append(path[:])
+            return
         for i, val in enumerate(nums):
-            if i in used: continue
-            used.add(i); path.append(val); dfs(); path.pop(); used.remove(i)
-    dfs(); return result
+            if i in used:
+                continue
+            used.add(i)
+            path.append(val)
+            dfs()
+            path.pop()
+            used.remove(i)
+
+    dfs()
+    return result
 """,
     "combination_prune": """
 def combination_prune(nums, target):
-    nums.sort(); path, result = [], []
+    nums.sort()
+    path, result = [], []
+
     def dfs(start, total):
-        if total == target: result.append(path[:]); return
+        if total == target:
+            result.append(path[:])
+            return
         for i in range(start, len(nums)):
-            if total + nums[i] > target: break
-            path.append(nums[i]); dfs(i + 1, total + nums[i]); path.pop()
-    dfs(0, 0); return result
+            if total + nums[i] > target:
+                break
+            path.append(nums[i])
+            dfs(i + 1, total + nums[i])
+            path.pop()
+
+    dfs(0, 0)
+    return result
 """,
     "combine_from": """
 def combine_from(nums, k):
     path, result = [], []
+
     def dfs(start):
-        if len(path) == k: result.append(path[:]); return
+        if len(path) == k:
+            result.append(path[:])
+            return
         for i in range(start, len(nums)):
-            path.append(nums[i]); dfs(i + 1); path.pop()
-    dfs(0); return result
+            path.append(nums[i])
+            dfs(i + 1)
+            path.pop()
+
+    dfs(0)
+    return result
 """,
     "collect_paths": """
 def collect_paths(root):
     path, result = [], []
+
     def dfs(node):
-        if not node: return
+        if not node:
+            return
         path.append(node.val)
-        if not node.left and not node.right: result.append(path[:])
-        dfs(node.left); dfs(node.right); path.pop()
-    dfs(root); return result
+        if not node.left and not node.right:
+            result.append(path[:])
+        dfs(node.left)
+        dfs(node.right)
+        path.pop()
+
+    dfs(root)
+    return result
 """,
     "keep_top_k": """
 def keep_top_k(nums, k):
@@ -958,7 +1084,8 @@ def rebalance_heaps(nums):
     for val in nums:
         heappush(low, -val)
         heappush(high, -heappop(low))
-        if len(high) > len(low): heappush(low, -heappop(high))
+        if len(high) > len(low):
+            heappush(low, -heappop(high))
     return -low[0]
 """,
     "stream_top_k": """
@@ -966,7 +1093,8 @@ def stream_top_k(stream, k):
     heap, snapshots = [], []
     for val in stream:
         heappush(heap, val)
-        if len(heap) > k: heappop(heap)
+        if len(heap) > k:
+            heappop(heap)
         snapshots.append(heap[0])
     return snapshots
 """,
@@ -993,9 +1121,12 @@ def find(parent, x):
     "union_by_size": """
 def union_by_size(parent, size, a, b):
     ra, rb = find(parent, a), find(parent, b)
-    if ra == rb: return False
-    if size[ra] < size[rb]: ra, rb = rb, ra
-    parent[rb] = ra; size[ra] += size[rb]
+    if ra == rb:
+        return False
+    if size[ra] < size[rb]:
+        ra, rb = rb, ra
+    parent[rb] = ra
+    size[ra] += size[rb]
     return True
 """,
     "count_components": """
@@ -1003,7 +1134,8 @@ def count_components(n, edges):
     parent, size = init_parent(n)
     count = n
     for a, b in edges:
-        if union_by_size(parent, size, a, b): count -= 1
+        if union_by_size(parent, size, a, b):
+            count -= 1
     return count
 """,
     "find_cycle_edge": """
@@ -1062,36 +1194,46 @@ def rob_rolling(nums):
 def walk_adjacency(graph, start):
     seen, stack, order = {start}, [start], []
     while stack:
-        node = stack.pop(); order.append(node)
+        node = stack.pop()
+        order.append(node)
         for nxt in graph.get(node, []):
             if nxt not in seen:
-                seen.add(nxt); stack.append(nxt)
+                seen.add(nxt)
+                stack.append(nxt)
     return order
 """,
     "start_components": """
 def start_components(graph):
     seen, count = set(), 0
     for start in graph:
-        if start in seen: continue
-        count += 1; stack = [start]; seen.add(start)
+        if start in seen:
+            continue
+        count += 1
+        stack = [start]
+        seen.add(start)
         while stack:
             node = stack.pop()
             for nxt in graph[node]:
-                if nxt not in seen: seen.add(nxt); stack.append(nxt)
+                if nxt not in seen:
+                    seen.add(nxt)
+                    stack.append(nxt)
     return count
 """,
     "topo_order": """
 def topo_order(graph):
     indegree = {node: 0 for node in graph}
     for node in graph:
-        for nxt in graph[node]: indegree[nxt] += 1
+        for nxt in graph[node]:
+            indegree[nxt] += 1
     queue = [node for node in indegree if indegree[node] == 0]
     order = []
     while queue:
-        node = queue.pop(0); order.append(node)
+        node = queue.pop(0)
+        order.append(node)
         for nxt in graph[node]:
             indegree[nxt] -= 1
-            if indegree[nxt] == 0: queue.append(nxt)
+            if indegree[nxt] == 0:
+                queue.append(nxt)
     return order
 """,
     "update_indegree": """
@@ -1108,9 +1250,12 @@ def shortest_path_bfs(graph, start, target):
     while queue:
         for _ in range(len(queue)):
             node = queue.pop(0)
-            if node == target: return dist
+            if node == target:
+                return dist
             for nxt in graph[node]:
-                if nxt not in seen: seen.add(nxt); queue.append(nxt)
+                if nxt not in seen:
+                    seen.add(nxt)
+                    queue.append(nxt)
         dist += 1
     return -1
 """,
@@ -1124,18 +1269,22 @@ def merge_intervals(intervals):
     intervals.sort()
     out = []
     for start, end in intervals:
-        if not out or start > out[-1][1]: out.append([start, end])
-        else: out[-1][1] = max(out[-1][1], end)
+        if not out or start > out[-1][1]:
+            out.append([start, end])
+        else:
+            out[-1][1] = max(out[-1][1], end)
     return out
 """,
     "sweep_intervals": """
 def sweep_intervals(intervals):
     events = []
     for start, end in intervals:
-        events.append((start, 1)); events.append((end, -1))
+        events.append((start, 1))
+        events.append((end, -1))
     active = best = 0
     for _, delta in sorted(events):
-        active += delta; best = max(best, active)
+        active += delta
+        best = max(best, active)
     return best
 """,
     "min_rooms": """
@@ -1144,18 +1293,22 @@ def min_rooms(meetings):
     ends = sorted(end for _, end in meetings)
     used = end_i = 0
     for start in starts:
-        if start >= ends[end_i]: end_i += 1
-        else: used += 1
+        if start >= ends[end_i]:
+            end_i += 1
+        else:
+            used += 1
     return used
 """,
     "insert_interval": """
 def insert_interval(intervals, new_interval):
     out, i = [], 0
     while i < len(intervals) and intervals[i][1] < new_interval[0]:
-        out.append(intervals[i]); i += 1
+        out.append(intervals[i])
+        i += 1
     while i < len(intervals) and intervals[i][0] <= new_interval[1]:
         new_interval[0] = min(new_interval[0], intervals[i][0])
-        new_interval[1] = max(new_interval[1], intervals[i][1]); i += 1
+        new_interval[1] = max(new_interval[1], intervals[i][1])
+        i += 1
     return out + [new_interval] + intervals[i:]
 """,
     "running_total": """
@@ -1228,7 +1381,8 @@ def span_indices(prices):
         while stack and prices[stack[-1]] <= price:
             stack.pop()
         prev = stack[-1] if stack else -1
-        spans.append(i - prev); stack.append(i)
+        spans.append(i - prev)
+        stack.append(i)
     return spans
 """,
     "area_from_span": """
@@ -1255,9 +1409,12 @@ def binary_search(nums, target):
     left, right = 0, len(nums) - 1
     while left <= right:
         mid = left + (right - left) // 2
-        if nums[mid] == target: return mid
-        if nums[mid] < target: left = mid + 1
-        else: right = mid - 1
+        if nums[mid] == target:
+            return mid
+        if nums[mid] < target:
+            left = mid + 1
+        else:
+            right = mid - 1
     return -1
 """
         if function_name == "min_speed":
@@ -1266,8 +1423,10 @@ def min_speed(piles, hours):
     left, right = 1, max(piles)
     while left < right:
         mid = (left + right) // 2
-        if can_finish(mid, piles, hours): right = mid
-        else: left = mid + 1
+        if can_finish(mid, piles, hours):
+            right = mid
+        else:
+            left = mid + 1
     return left
 """
         if function_name == "search_range":
@@ -1285,8 +1444,10 @@ def first_bad(n, is_bad):
     left, right = 1, n
     while left < right:
         mid = left + (right - left) // 2
-        if is_bad(mid): right = mid
-        else: left = mid + 1
+        if is_bad(mid):
+            right = mid
+        else:
+            left = mid + 1
     return left
 """
         return """
@@ -1294,8 +1455,10 @@ def lower_bound(nums, target):
     left, right = 0, len(nums)
     while left < right:
         mid = (left + right) // 2
-        if nums[mid] < target: left = mid + 1
-        else: right = mid
+        if nums[mid] < target:
+            left = mid + 1
+        else:
+            right = mid
     return left
 """
     if family == "graph-traversal":
@@ -1304,11 +1467,13 @@ def lower_bound(nums, target):
 def {function_name}(graph):
     indegree = {{node: 0 for node in graph}}
     for node in graph:
-        for nxt in graph[node]: indegree[nxt] += 1
+        for nxt in graph[node]:
+            indegree[nxt] += 1
     queue = [node for node in indegree if indegree[node] == 0]
     order = []
     while queue:
-        node = queue.pop(0); order.append(node)
+        node = queue.pop(0)
+        order.append(node)
     return order
 """
         if function_name == "shortest_path_bfs":
@@ -1318,9 +1483,12 @@ def shortest_path_bfs(graph, start, target):
     while queue:
         for _ in range(len(queue)):
             node = queue.pop(0)
-            if node == target: return dist
+            if node == target:
+                return dist
             for nxt in graph[node]:
-                if nxt not in seen: seen.add(nxt); queue.append(nxt)
+                if nxt not in seen:
+                    seen.add(nxt)
+                    queue.append(nxt)
         dist += 1
     return -1
 """
@@ -1328,10 +1496,12 @@ def shortest_path_bfs(graph, start, target):
 def {function_name}(graph, start):
     seen, queue, out = {{start}}, [start], []
     while queue:
-        node = queue.pop(0); out.append(node)
+        node = queue.pop(0)
+        out.append(node)
         for nxt in graph[node]:
             if nxt not in seen:
-                seen.add(nxt); queue.append(nxt)
+                seen.add(nxt)
+                queue.append(nxt)
     return out
 """
     if family == "dfs-bfs":
@@ -1339,20 +1509,28 @@ def {function_name}(graph, start):
 def {function_name}(graph, start):
     seen, queue, out = {{start}}, [start], []
     while queue:
-        node = queue.pop(0); out.append(node)
+        node = queue.pop(0)
+        out.append(node)
         for nxt in graph[node]:
             if nxt not in seen:
-                seen.add(nxt); queue.append(nxt)
+                seen.add(nxt)
+                queue.append(nxt)
     return out
 """
     if family == "backtracking":
         return f"""
 def {function_name}(items):
     path, result = [], []
+
     def dfs(i):
-        if i == len(items): result.append(path[:]); return
+        if i == len(items):
+            result.append(path[:])
+            return
         dfs(i + 1)
-        path.append(items[i]); dfs(i + 1); path.pop()
+        path.append(items[i])
+        dfs(i + 1)
+        path.pop()
+
     dfs(0)
     return result
 """
@@ -1370,10 +1548,13 @@ def {function_name}(nums, k):
         return f"""
 def {function_name}(n, edges):
     parent = list(range(n))
+
     def find(x):
         while parent[x] != x:
-            parent[x] = parent[parent[x]]; x = parent[x]
+            parent[x] = parent[parent[x]]
+            x = parent[x]
         return x
+
     for a, b in edges:
         parent[find(a)] = find(b)
     return parent
@@ -1393,8 +1574,10 @@ def {function_name}(intervals):
     intervals.sort()
     out = []
     for start, end in intervals:
-        if not out or start > out[-1][1]: out.append([start, end])
-        else: out[-1][1] = max(out[-1][1], end)
+        if not out or start > out[-1][1]:
+            out.append([start, end])
+        else:
+            out[-1][1] = max(out[-1][1], end)
     return out
 """
     if family == "prefix-sums":
@@ -1487,8 +1670,20 @@ def focused_profile(pattern: str, method: str) -> dict[str, Any]:
     slug = method_slug(method)
     profile = FOCUSED_CARD_CATALOG.get((family, slug))
     if profile:
-        return profile
-    return _generic_profile(family, method)
+        return {
+            **profile,
+            "difficulty": STATIC_DIFFICULTY_CATALOG.get((family, slug), profile.get("difficulty", "Med.")),
+        }
+    generic_profile = _generic_profile(family, method)
+    return {
+        **generic_profile,
+        "difficulty": STATIC_DIFFICULTY_CATALOG.get((family, slug), generic_profile.get("difficulty", "Med.")),
+    }
+
+
+def focused_difficulty(pattern: str, method: str) -> str:
+    difficulty = str(focused_profile(pattern, method).get("difficulty", "Med.")).strip()
+    return difficulty if difficulty in {"Easy", "Med.", "Hard"} else "Med."
 
 
 def focused_prompt(pattern: str, method: str) -> str:

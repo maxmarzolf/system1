@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -15,14 +16,10 @@ from app.submission_rubric import compact_submission_rubric, summarize_submissio
 
 
 def _pattern_slug(pattern: str) -> str:
-    return (
-        pattern.lower()
-        .replace("/", " ")
-        .replace("&", " ")
-        .replace("-", " ")
-        .strip()
-        .replace("  ", " ")
-        .replace(" ", "-")
+    return re.sub(
+        r"\s+",
+        "-",
+        re.sub(r"[^a-z0-9\s-]", " ", pattern.lower().replace("/", " ").replace("&", " ").replace("-", " ")).strip(),
     )
 
 

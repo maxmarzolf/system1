@@ -18,6 +18,7 @@ from fastapi.responses import StreamingResponse
 
 from app.config import settings
 from app.core.focused_static_cards import (
+    focused_difficulty as _focused_difficulty,
     focused_hint as _focused_hint,
     focused_profile as _focused_profile,
     focused_prompt as _focused_prompt,
@@ -1111,7 +1112,7 @@ def _focused_drill_from_source(
     return {
         "id": str((raw or {}).get("id", f"focused-{pattern_slug}-{index + 1}")),
         "title": title,
-        "difficulty": "Easy",
+        "difficulty": _focused_difficulty(pattern, method),
         "prompt": prompt,
         "templatePrompts": {
             TemplateMode.algorithm.value: prompt,
@@ -1316,7 +1317,7 @@ def _process_raw_drill(
             {
                 "id": str(raw.get("id", f"focused-{pattern_slug}-{index + 1}")),
                 "title": title,
-                "difficulty": "Easy",
+                "difficulty": _focused_difficulty(pattern, method),
                 "prompt": prompt,
                 "templatePrompts": {
                     TemplateMode.algorithm.value: prompt,

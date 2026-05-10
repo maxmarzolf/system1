@@ -7,6 +7,7 @@ import difflib
 import json
 import keyword
 import logging
+import random
 import re
 import urllib.error
 import urllib.request
@@ -2086,6 +2087,55 @@ def _normalize_mcq_choice_id(value: Any, fallback_index: int) -> str:
     return ["A", "B", "C", "D"][fallback_index]
 
 
+def _strip_unparsed_tuple_assignment_parens(line: str) -> str:
+    if " = (" not in line or not line.endswith(")"):
+        return line
+    prefix, rhs = line.split(" = ", 1)
+    if not re.fullmatch(r"\s*[A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)+", prefix):
+        return line
+
+    inner = rhs[1:-1]
+    depth = 0
+    has_top_level_comma = False
+    for char in inner:
+        if char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth -= 1
+        elif char == "," and depth == 0:
+            has_top_level_comma = True
+            break
+    if not has_top_level_comma:
+        return line
+    return f"{prefix} = {inner}"
+
+
+def _normalize_python_snippet_display(code: str) -> str:
+    normalized = "\n".join(line.replace("\t", "    ").rstrip() for line in code.strip().splitlines()).strip()
+    if not normalized:
+        return ""
+    try:
+        formatted = ast.unparse(ast.parse(normalized))
+    except SyntaxError:
+        return normalized
+    return "\n".join(_strip_unparsed_tuple_assignment_parens(line) for line in formatted.splitlines()).strip()
+
+
+def _normalize_python_markdown_display(text: str) -> str:
+    def replace_fence(match: re.Match[str]) -> str:
+        language = str(match.group(1) or "python").strip() or "python"
+        raw_code = str(match.group(2) or "")
+        normalized_language = language.lower()
+        code = (
+            _normalize_python_snippet_display(raw_code)
+            if normalized_language in {"python", "py"}
+            else raw_code.strip()
+        )
+        return f"```{language}\n{code}\n```"
+
+    return re.sub(r"```([A-Za-z0-9_-]+)?\s*\n?([\s\S]*?)```", replace_fence, text.strip())
+
+
 def _process_multiple_choice_card(raw: Any, index: int, body: MultipleChoiceDrillsRequest) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
@@ -2094,8 +2144,8 @@ def _process_multiple_choice_card(raw: Any, index: int, body: MultipleChoiceDril
     pattern = str(raw.get("pattern") or getattr(source_node, "pattern", "") or "Algorithm").strip()
     pattern_slug = _pattern_slug(pattern) or "algorithm"
     title = str(raw.get("title") or f"{pattern} Multiple Choice").strip()
-    question = str(raw.get("question") or "").strip()
-    explanation = str(raw.get("explanation") or "").strip()
+    question = _normalize_python_markdown_display(str(raw.get("question") or ""))
+    explanation = _normalize_python_markdown_display(str(raw.get("explanation") or ""))
     difficulty = _normalize_mcq_difficulty(str(raw.get("difficulty") or body.difficulty))
 
     raw_choices = raw.get("choices")
@@ -2107,10 +2157,10 @@ def _process_multiple_choice_card(raw: Any, index: int, body: MultipleChoiceDril
     for choice_index, choice in enumerate(raw_choices[:4]):
         if isinstance(choice, dict):
             choice_id = _normalize_mcq_choice_id(choice.get("id"), choice_index)
-            text = str(choice.get("text") or "").strip()
+            text = _normalize_python_markdown_display(str(choice.get("text") or ""))
         else:
             choice_id = ["A", "B", "C", "D"][choice_index]
-            text = str(choice or "").strip()
+            text = _normalize_python_markdown_display(str(choice or ""))
         if not text:
             return None
         if choice_id in seen_ids:
@@ -2124,6 +2174,13 @@ def _process_multiple_choice_card(raw: Any, index: int, body: MultipleChoiceDril
         return None
     if not question or not explanation:
         return None
+
+    # Shuffle choices so the correct answer isn't always A/B, then re-label A–D.
+    random.shuffle(choices)
+    label_order = ["A", "B", "C", "D"]
+    correct_text = next(c["text"] for c in choices if c["id"] == correct_choice_id)
+    choices = [{"id": label_order[i], "text": c["text"]} for i, c in enumerate(choices)]
+    correct_choice_id = next(c["id"] for c in choices if c["text"] == correct_text)
 
     raw_tags = [str(tag).strip() for tag in raw.get("tags", []) if str(tag).strip()] if isinstance(raw.get("tags"), list) else []
     tags = []
@@ -2173,8 +2230,10 @@ async def coach_multiple_choice_drills(body: MultipleChoiceDrillsRequest) -> Mul
         "The drills array must contain exactly the requested count. "
         "Each drill must have id, title, pattern, difficulty, question, choices, correctChoiceId, explanation, and tags. "
         "Each choices array must contain exactly four objects with ids A, B, C, and D and concise answer text. "
+        "Anchor each drill on the named algorithm pattern itself, not on an individual LeetCode problem. "
         "Prefer code-centered questions: show a compact Python snippet, loop condition, state update, return line, or one-line mutation when that makes the algorithm idea concrete. "
         "Roughly three out of four drills should include a short code snippet in the question or choices; the rest may be purely conceptual. "
+        "Any Python snippets must be fenced as ```python blocks and must follow PEP 8: 4-space indentation, snake_case names, spaces around binary operators, spaces after commas, and no cramped one-letter soup except conventional indexes. "
         "Questions must test the broader algorithm pattern, invariant, tradeoff, state choice, boundary condition, or debugging insight, not a specific static memorized fact. "
         "Keep snippets compact: at most 4 short lines in the question, and at most one short line per choice. "
         "Make distractors plausible for adjacent patterns or common code-level mistakes. "

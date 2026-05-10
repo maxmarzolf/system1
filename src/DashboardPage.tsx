@@ -5,47 +5,7 @@ import { practicePlaylists } from './data/playlists'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 
-type SkillMapActivityDay = {
-  date: string
-  count: number
-  inFuture: boolean
-}
-
-type SkillMapModeActivity = {
-  windowStart: string
-  windowEnd: string
-  recentSubmitCount: number
-  lastSevenDaySubmitCount: number
-  activeDays: number
-  currentStreak: number
-  longestStreak: number
-  peakDailyCount: number
-  days: SkillMapActivityDay[]
-}
-
-type DimensionItem = {
-  key: string
-  label: string
-  avgScore?: number
-  weakCount?: number
-  failCount?: number
-  partialCount?: number
-  attemptCount?: number
-}
-
-type PrimaryFailureItem = {
-  key: string
-  label: string
-  count: number
-}
-
 type DimensionSummary = {
-  rubricAttemptCount?: number
-  avgRubricScore?: number
-  topWeakDimension?: DimensionItem
-  weakDimensions?: DimensionItem[]
-  topPrimaryFailure?: PrimaryFailureItem
-  primaryFailures?: PrimaryFailureItem[]
   verdictCounts?: Record<string, number>
 }
 
@@ -65,7 +25,6 @@ type SkillMapModeReadiness = {
   daysSinceLastSubmit: number | null
   stale: boolean
   dimensionSummary: DimensionSummary
-  activity: SkillMapModeActivity
 }
 
 type SkillMapPatternReadiness = {
@@ -86,33 +45,10 @@ type SkillMapPatternReadiness = {
 }
 
 type SkillMapOverviewResponse = {
-  summary: {
-    totalGeneratedCards: number
-    attemptedCards: number
-    untouchedCards: number
-    staleCards: number
-    ghostRepCount: number
-    unsupportedAttemptCount: number
-    workCount: number
-    patternsStarted: number
-    patternsUntouched: number
-    avgPatternReadiness: number
-    successThreshold: number
-    staleAfterDays: number
-  }
   patterns: SkillMapPatternReadiness[]
 }
 
 type TemplateMode = 'algorithm'
-const TEMPLATE_MODE_ORDER: TemplateMode[] = ['algorithm']
-const ACTIVITY_WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
-const shortDateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
-const longDateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-
-const formatTemplateModeLabel = (templateMode: TemplateMode) =>
-  ({
-    algorithm: 'Algorithm',
-  })[templateMode] ?? templateMode
 
 const readinessTone = (readiness: number) => {
   if (readiness >= 80) return 'success'
@@ -120,182 +56,249 @@ const readinessTone = (readiness: number) => {
   return 'error'
 }
 
-const parseCalendarDate = (value: string) => new Date(`${value}T12:00:00`)
-const formatCalendarDate = (value: string) => shortDateFormatter.format(parseCalendarDate(value))
-const formatCalendarLongDate = (value: string) => longDateFormatter.format(parseCalendarDate(value))
-const formatSubmittedAt = (value: string) => longDateFormatter.format(new Date(value))
+const normalizePatternKey = (slug: string, pattern: string) =>
+  (slug || pattern)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
 
-const dimensionLabel = (item?: DimensionItem | PrimaryFailureItem) =>
-  item?.label?.trim() || item?.key?.replace(/_/g, ' ') || ''
+function SkillAlgorithmIllustration({ slug, pattern }: { slug: string; pattern: string }) {
+  const patternKey = normalizePatternKey(slug, pattern)
 
-const formatWeakDimension = (summary?: DimensionSummary) => {
-  const weak = summary?.topWeakDimension
-  if (!weak?.key) return 'No repeated weak dimension yet.'
-  const count = weak.weakCount ?? weak.failCount ?? 0
-  const countText = count > 0 ? ` · ${count} weak` : ''
-  return `${dimensionLabel(weak)}${weak.avgScore !== undefined ? ` · ${weak.avgScore}% avg` : ''}${countText}`
-}
+  if (patternKey === 'sliding-window') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <rect className="skill-svg-highlight" x="48" y="25" width="63" height="34" rx="4" />
+          <g className="skill-svg-grid">
+            {[16, 48, 80, 112, 144].map((x) => (
+              <rect key={x} x={x - 13} y="31" width="26" height="22" rx="2" />
+            ))}
+          </g>
+          <path className="skill-svg-line skill-svg-accent" d="M42 66h75" />
+          <path className="skill-svg-line skill-svg-accent" d="m113 61 7 5-7 5" />
+          <path className="skill-svg-line" d="M48 20v42M111 20v42" />
+        </svg>
+      </div>
+    )
+  }
 
-const formatPrimaryFailure = (summary?: DimensionSummary) => {
-  const primary = summary?.topPrimaryFailure
-  if (!primary?.key) return ''
-  return `${dimensionLabel(primary)}${primary.count ? ` · ${primary.count}x` : ''}`
-}
+  if (patternKey === 'two-pointers') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <g className="skill-svg-grid">
+            {[24, 52, 80, 108, 136].map((x) => (
+              <rect key={x} x={x - 11} y="32" width="22" height="20" rx="2" />
+            ))}
+          </g>
+          <path className="skill-svg-line skill-svg-accent" d="M24 22v29M136 22v29" />
+          <path className="skill-svg-line skill-svg-accent" d="M28 21h37" />
+          <path className="skill-svg-line skill-svg-accent" d="m61 16 7 5-7 5" />
+          <path className="skill-svg-line skill-svg-accent" d="M132 21H95" />
+          <path className="skill-svg-line skill-svg-accent" d="m99 16-7 5 7 5" />
+          <path className="skill-svg-line" d="M24 62h112" />
+        </svg>
+      </div>
+    )
+  }
 
-const dimensionTone = (score?: number) => {
-  if (score === undefined) return 'empty'
-  if (score >= 80) return 'pass'
-  if (score >= 55) return 'partial'
-  return 'fail'
-}
+  if (patternKey === 'binary-search') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <path className="skill-svg-line" d="M20 24h120" />
+          <path className="skill-svg-line skill-svg-muted" d="M42 43h76" />
+          <path className="skill-svg-line skill-svg-muted" d="M61 62h38" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="80" cy="24" r="5" />
+          <circle className="skill-svg-node" cx="80" cy="43" r="4" />
+          <circle className="skill-svg-node" cx="80" cy="62" r="3.5" />
+          <path className="skill-svg-line skill-svg-accent" d="M80 18v50" />
+          <path className="skill-svg-line" d="M20 18v12M140 18v12M42 37v12M118 37v12M61 56v12M99 56v12" />
+        </svg>
+      </div>
+    )
+  }
 
-const activityIntensity = (count: number, peakDailyCount: number) => {
-  if (count <= 0) return 'none'
-  if (count >= 4) return 'max'
-  if (count === 3) return 'high'
-  if (count === 2) return 'mid'
-  if (peakDailyCount >= 6 && count >= Math.ceil(peakDailyCount * 0.75)) return 'high'
-  if (peakDailyCount >= 6 && count >= Math.ceil(peakDailyCount * 0.45)) return 'mid'
-  return 'low'
-}
+  if (patternKey === 'dfs-bfs') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <path className="skill-svg-line" d="M80 18 45 43M80 18l35 25M45 43 30 66M45 43l30 23M115 43l-20 23M115 43l25 23" />
+          <path className="skill-svg-line skill-svg-accent" d="M80 18 45 43 30 66" />
+          <g>
+            <circle className="skill-svg-node skill-svg-accent-fill" cx="80" cy="18" r="7" />
+            <circle className="skill-svg-node skill-svg-accent-fill" cx="45" cy="43" r="6" />
+            <circle className="skill-svg-node skill-svg-accent-fill" cx="30" cy="66" r="5" />
+            <circle className="skill-svg-node" cx="115" cy="43" r="6" />
+            <circle className="skill-svg-node" cx="75" cy="66" r="5" />
+            <circle className="skill-svg-node" cx="95" cy="66" r="5" />
+            <circle className="skill-svg-node" cx="140" cy="66" r="5" />
+          </g>
+        </svg>
+      </div>
+    )
+  }
 
-const formatLastSubmitSummary = (modeSummary: SkillMapModeReadiness) => {
-  if (modeSummary.daysSinceLastSubmit === null) return 'No submission history yet for this mode.'
-  if (modeSummary.daysSinceLastSubmit === 0) return 'Last submit was today.'
-  if (modeSummary.daysSinceLastSubmit === 1) return 'Last submit was 1 day ago.'
-  return `Last submit was ${modeSummary.daysSinceLastSubmit} days ago.`
-}
+  if (patternKey === 'backtracking') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <path className="skill-svg-line" d="M80 14 48 35M80 14l32 21M48 35 30 58M48 35l28 23M112 35 92 58M112 35l28 23" />
+          <path className="skill-svg-line skill-svg-accent" d="M80 14 48 35 76 58" />
+          <path className="skill-svg-line skill-svg-dashed" d="M76 58 48 35 112 35" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="80" cy="14" r="6" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="48" cy="35" r="5.5" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="76" cy="58" r="5" />
+          <circle className="skill-svg-node" cx="112" cy="35" r="5.5" />
+          <circle className="skill-svg-node" cx="30" cy="58" r="5" />
+          <circle className="skill-svg-node" cx="92" cy="58" r="5" />
+          <circle className="skill-svg-node" cx="140" cy="58" r="5" />
+        </svg>
+      </div>
+    )
+  }
 
-function DashboardActivityModal({
-  modeLabel,
-  modeSummary,
-  onClose,
-}: {
-  modeLabel: string
-  modeSummary: SkillMapModeReadiness
-  onClose: () => void
-}) {
-  const activity = modeSummary.activity
-  const hasRubricHistory = Boolean(modeSummary.dimensionSummary?.rubricAttemptCount)
-  const primaryFailure = formatPrimaryFailure(modeSummary.dimensionSummary)
+  if (patternKey === 'heap-priority-queue') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <path className="skill-svg-line" d="M80 15 50 39M80 15l30 24M50 39 34 63M50 39l25 24M110 39 88 63M110 39l28 24" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="80" cy="15" r="8" />
+          <circle className="skill-svg-node" cx="50" cy="39" r="7" />
+          <circle className="skill-svg-node" cx="110" cy="39" r="7" />
+          <circle className="skill-svg-node" cx="34" cy="63" r="5.5" />
+          <circle className="skill-svg-node" cx="75" cy="63" r="5.5" />
+          <circle className="skill-svg-node" cx="88" cy="63" r="5.5" />
+          <circle className="skill-svg-node" cx="138" cy="63" r="5.5" />
+          <path className="skill-svg-line skill-svg-accent" d="M80 4v-1M70 8l-7-7M90 8l7-7" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (patternKey === 'union-find') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <path className="skill-svg-line skill-svg-accent" d="M34 61 55 41M75 61 55 41M55 41V21" />
+          <path className="skill-svg-line" d="M105 61 126 41M146 61 126 41" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="55" cy="21" r="7" />
+          <circle className="skill-svg-node" cx="55" cy="41" r="6" />
+          <circle className="skill-svg-node" cx="34" cy="61" r="6" />
+          <circle className="skill-svg-node" cx="75" cy="61" r="6" />
+          <circle className="skill-svg-node" cx="126" cy="41" r="7" />
+          <circle className="skill-svg-node" cx="105" cy="61" r="6" />
+          <circle className="skill-svg-node" cx="146" cy="61" r="6" />
+          <path className="skill-svg-line skill-svg-dashed skill-svg-accent" d="M75 61c14-18 30-20 51-20" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (patternKey === 'dynamic-programming') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <g className="skill-svg-grid">
+            {[0, 1, 2, 3].map((row) =>
+              [0, 1, 2, 3, 4].map((col) => (
+                <rect
+                  key={`${row}-${col}`}
+                  className={row + col <= 4 ? 'skill-svg-cell-filled' : ''}
+                  x={38 + col * 18}
+                  y={13 + row * 15}
+                  width="15"
+                  height="12"
+                  rx="2"
+                />
+              )),
+            )}
+          </g>
+          <path className="skill-svg-line skill-svg-accent" d="M45 19h36v15h18v15h18v15" />
+          <path className="skill-svg-line skill-svg-accent" d="m113 59 5 5-6 4" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (patternKey === 'graph-traversal') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <path className="skill-svg-line" d="M35 28 70 18l42 14 13 34-45 5-45-18 35-35M70 18l10 53M112 32 80 71M35 53l77-21" />
+          <path className="skill-svg-line skill-svg-accent" d="M35 28 70 18 112 32 125 66" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="35" cy="28" r="6" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="70" cy="18" r="6" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="112" cy="32" r="6" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="125" cy="66" r="6" />
+          <circle className="skill-svg-node" cx="35" cy="53" r="6" />
+          <circle className="skill-svg-node" cx="80" cy="71" r="6" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (patternKey === 'intervals') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <path className="skill-svg-line skill-svg-muted" d="M20 66h120" />
+          <rect className="skill-svg-block" x="24" y="20" width="52" height="10" rx="3" />
+          <rect className="skill-svg-block skill-svg-accent-fill" x="56" y="35" width="54" height="10" rx="3" />
+          <rect className="skill-svg-block" x="106" y="50" width="32" height="10" rx="3" />
+          <path className="skill-svg-line skill-svg-accent" d="M24 72h86" />
+          <path className="skill-svg-line skill-svg-accent" d="M24 65v13M110 65v13" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (patternKey === 'prefix-sums') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <g className="skill-svg-grid">
+            <rect x="24" y="54" width="16" height="12" rx="2" />
+            <rect x="48" y="46" width="16" height="20" rx="2" />
+            <rect x="72" y="38" width="16" height="28" rx="2" />
+            <rect x="96" y="30" width="16" height="36" rx="2" />
+            <rect x="120" y="22" width="16" height="44" rx="2" />
+          </g>
+          <path className="skill-svg-line skill-svg-accent" d="M24 54h16v-8h24v-8h24v-8h24v-8h24" />
+          <path className="skill-svg-line skill-svg-muted" d="M20 66h120" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (patternKey === 'monotonic-stack') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <g className="skill-svg-grid">
+            <rect x="45" y="56" width="38" height="10" rx="2" />
+            <rect x="45" y="43" width="30" height="10" rx="2" />
+            <rect x="45" y="30" width="22" height="10" rx="2" />
+            <rect x="45" y="17" width="14" height="10" rx="2" />
+          </g>
+          <rect className="skill-svg-block skill-svg-accent-fill" x="103" y="31" width="24" height="14" rx="2" />
+          <path className="skill-svg-line skill-svg-accent" d="M101 38H75" />
+          <path className="skill-svg-line skill-svg-accent" d="m79 33-7 5 7 5" />
+          <path className="skill-svg-line skill-svg-dashed" d="M67 30c14-7 14-16-8-12" />
+        </svg>
+      </div>
+    )
+  }
 
   return (
-    <div className="dashboard-activity-modal" onClick={onClose}>
-      <div
-        className="dashboard-activity-popover"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`${modeLabel} submission calendar`}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="dashboard-activity-popover-header">
-          <div>
-            <p className="dashboard-activity-eyebrow">{modeLabel} mode activity</p>
-            <h4>Submission calendar</h4>
-          </div>
-          <div className="dashboard-activity-popover-actions">
-            <span className={`coach-status-value coach-status-value-${readinessTone(modeSummary.readiness)}`}>
-              {activity.recentSubmitCount} recent
-            </span>
-            <button type="button" className="dashboard-activity-close" onClick={onClose} aria-label="Close calendar">
-              Close
-            </button>
-          </div>
-        </div>
-
-        <p className="dashboard-activity-description">
-          {formatLastSubmitSummary(modeSummary)}
-          {modeSummary.lastSubmittedAt ? ` Recorded ${formatSubmittedAt(modeSummary.lastSubmittedAt)}.` : ''}
-        </p>
-
-        <div className="dashboard-activity-stats">
-          <div className="dashboard-activity-stat">
-            <span className="dashboard-activity-stat-label">7d</span>
-            <strong>{activity.lastSevenDaySubmitCount}</strong>
-          </div>
-          <div className="dashboard-activity-stat">
-            <span className="dashboard-activity-stat-label">6w</span>
-            <strong>{activity.recentSubmitCount}</strong>
-          </div>
-          <div className="dashboard-activity-stat">
-            <span className="dashboard-activity-stat-label">Streak</span>
-            <strong>{activity.currentStreak}</strong>
-          </div>
-          <div className="dashboard-activity-stat">
-            <span className="dashboard-activity-stat-label">Best run</span>
-            <strong>{activity.longestStreak}</strong>
-          </div>
-        </div>
-
-        <div className="dashboard-activity-detail-grid">
-          <div className="dashboard-activity-detail">
-            <span>Cards</span>
-            <strong>{modeSummary.practicedCards}/{modeSummary.totalCards}</strong>
-          </div>
-          <div className="dashboard-activity-detail">
-            <span>Work</span>
-            <strong>{modeSummary.workCount}</strong>
-          </div>
-          <div className="dashboard-activity-detail">
-            <span>Ghost Reps</span>
-            <strong>{modeSummary.ghostRepCount}</strong>
-          </div>
-          <div className="dashboard-activity-detail">
-            <span>Recall</span>
-            <strong>{modeSummary.unsupportedAttemptCount}</strong>
-          </div>
-          <div className="dashboard-activity-detail">
-            <span>Avg</span>
-            <strong>{modeSummary.avgAccuracy}%</strong>
-          </div>
-          <div className="dashboard-activity-detail">
-            <span>Status</span>
-            <strong>{modeSummary.stale ? 'Review due' : 'Fresh enough'}</strong>
-          </div>
-        </div>
-
-        <div className="dashboard-activity-rubric">
-          {hasRubricHistory ? (
-            <>
-              <p>Weak spot: {formatWeakDimension(modeSummary.dimensionSummary)}</p>
-              {primaryFailure && <p>Primary miss: {primaryFailure}</p>}
-            </>
-          ) : (
-            <p>Rubric history starts on the next submit.</p>
-          )}
-        </div>
-
-        <div className="dashboard-activity-calendar">
-          <div className="dashboard-activity-weekdays">
-            {ACTIVITY_WEEKDAY_LABELS.map((label, index) => (
-              <span key={`${label}-${index}`}>{label}</span>
-            ))}
-          </div>
-          <div className="dashboard-activity-grid">
-            {activity.days.map((day) => (
-              <span
-                key={day.date}
-                className={[
-                  'dashboard-activity-cell',
-                  `dashboard-activity-cell-${activityIntensity(day.count, activity.peakDailyCount)}`,
-                  day.inFuture ? 'dashboard-activity-cell-future' : '',
-                ].filter(Boolean).join(' ')}
-                title={
-                  day.inFuture
-                    ? `${formatCalendarLongDate(day.date)}: upcoming`
-                    : day.count > 0
-                      ? `${formatCalendarLongDate(day.date)}: ${day.count} submit${day.count === 1 ? '' : 's'}`
-                      : `${formatCalendarLongDate(day.date)}: no submits`
-                }
-              />
-            ))}
-          </div>
-        </div>
-
-        <p className="dashboard-activity-range">
-          {formatCalendarDate(activity.windowStart)} - {formatCalendarDate(activity.windowEnd)} · {activity.activeDays} active day{activity.activeDays === 1 ? '' : 's'}
-        </p>
-      </div>
+    <div className="skill-map-illustration" aria-hidden="true">
+      <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+        <path className="skill-svg-line" d="M36 24h88M36 43h88M36 62h88" />
+        <circle className="skill-svg-node skill-svg-accent-fill" cx="55" cy="24" r="5" />
+        <circle className="skill-svg-node" cx="89" cy="43" r="5" />
+        <circle className="skill-svg-node" cx="70" cy="62" r="5" />
+      </svg>
     </div>
   )
 }
@@ -307,8 +310,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedMethodsByPattern, setSelectedMethodsByPattern] = useState<Record<string, string[]>>({})
-  const [expandedStats, setExpandedStats] = useState<Record<string, boolean>>({})
-  const [activeCalendar, setActiveCalendar] = useState<{ modeLabel: string; modeSummary: SkillMapModeReadiness } | null>(null)
+  const [openMethodDropdown, setOpenMethodDropdown] = useState('')
 
   useEffect(() => {
     const loadOverview = async () => {
@@ -333,7 +335,6 @@ export default function DashboardPage() {
     void loadOverview()
   }, [])
 
-  const summary = overview?.summary
   const patterns = overview?.patterns ?? []
   const toggleCoreMethod = (patternSlug: string, method: string) => {
     setSelectedMethodsByPattern((current) => {
@@ -418,232 +419,77 @@ export default function DashboardPage() {
           {patterns.map((node) => {
             const selectedMethods = selectedMethodsByPattern[node.slug] ?? []
             const patternSelected = selectedMethods.length > 0
+            const methodDropdownOpen = openMethodDropdown === node.slug
+            const methodDropdownId = `skill-method-menu-${node.slug}`
             return (
-              <article key={node.slug} className="skill-map-card">
+              <article key={node.slug} className={methodDropdownOpen ? 'skill-map-card skill-map-card-menu-open' : 'skill-map-card'}>
                 <div className="skill-map-header">
                   <h3>{node.pattern}</h3>
                   <span className={`coach-status-value coach-status-value-${readinessTone(node.overallReadiness)}`}>
                     {node.overallReadiness}%
                   </span>
                 </div>
-                <div className="dashboard-summary" style={{ marginBottom: '0.7rem' }}>
+                <div className="dashboard-summary skill-map-card-stats">
                   <span className="coach-metric-chip">{node.practicedCards}/{node.totalCards} cards worked</span>
-                  <span className="coach-metric-chip">{node.untouchedCards} untouched</span>
                   <span className="coach-metric-chip">{node.staleCards} stale</span>
-                  <span className="coach-metric-chip">{node.workCount} work logged</span>
                   <span className="coach-metric-chip">{node.ghostRepCount} Ghost Reps</span>
-                  <span className="coach-metric-chip">{node.unsupportedAttemptCount} recall attempts</span>
                 </div>
                 <div
                   className={patternSelected ? 'skill-method-panel skill-method-panel-selected' : 'skill-method-panel'}
                 >
-                  <div className="skill-method-list">
-                    {node.methods.map((method) => {
-                      const methodSelected = selectedMethods.includes(method)
-                      return (
-                        <button
-                          key={method}
-                          type="button"
-                          className={methodSelected ? 'skill-method-chip skill-method-chip-selected' : 'skill-method-chip'}
-                          onClick={() => toggleCoreMethod(node.slug, method)}
-                          aria-pressed={methodSelected}
-                        >
-                          {method}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-                {patternSelected && (
-                  <p className="skill-map-target-note">
-                    {`${selectedMethods.length} core method${selectedMethods.length === 1 ? '' : 's'} selected. Start a focused set when ready.`}
-                  </p>
-                )}
-                <div className="dashboard-mode-unified">
-                  <div className="dashboard-mode-unified-header">
-                    <button
-                      type="button"
-                      className="dashboard-stats-toggle"
-                      onClick={() => setExpandedStats((prev) => ({ ...prev, [node.slug]: !prev[node.slug] }))}
-                      aria-expanded={!!expandedStats[node.slug]}
-                    >
-                      {expandedStats[node.slug] ? '▾ Stats' : '▸ Stats'}
-                    </button>
-                  </div>
-                  <div className="dashboard-mode-tabs">
-                    <button
-                      className={patternSelected ? 'dashboard-mode-tab dashboard-mode-tab-actionable' : 'dashboard-mode-tab'}
-                      disabled={!patternSelected}
-                      onClick={() => {
-                        if (patternSelected) launchFocusedPractice(node.slug, selectedMethods)
-                      }}
-                    >
-                      <span className="dashboard-mode-tab-label">Start practice</span>
-                      <span className={`coach-status-value coach-status-value-${readinessTone(node.modes.algorithm.readiness)}`}>
-                        {node.modes.algorithm.readiness}%
-                      </span>
-                    </button>
-                  </div>
-                  {expandedStats[node.slug] && (
-                    <div className="dashboard-mode-table-wrap">
-                      <table className="dashboard-mode-table">
-                        <thead>
-                          <tr>
-                            <th></th>
-                            <th>Cards</th>
-                            <th>Reps</th>
-                            <th>Ghost</th>
-                            <th>Acc</th>
-                            <th>Status</th>
-                            <th>Last</th>
-                            <th></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {TEMPLATE_MODE_ORDER.map((mode) => {
-                            const s = node.modes[mode]
-                            const daysAgo = s.daysSinceLastSubmit
-                            return (
-                              <tr key={mode}>
-                                <td className="dashboard-mode-table-mode">{formatTemplateModeLabel(mode)}</td>
-                                <td>{s.practicedCards}/{s.totalCards}</td>
-                                <td>{s.workCount}</td>
-                                <td>{s.ghostRepCount}</td>
-                                <td>{s.avgAccuracy}%</td>
-                                <td>{s.stale ? 'Stale' : 'Fresh'}</td>
-                                <td className="dashboard-mode-table-last">
-                                  {daysAgo === null ? '—' : daysAgo === 0 ? 'Today' : `${daysAgo}d`}
-                                </td>
-                                <td>
-                                  <button
-                                    type="button"
-                                    className="dashboard-mode-table-cal"
-                                    title={`View ${formatTemplateModeLabel(mode)} calendar`}
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      setActiveCalendar({ modeLabel: formatTemplateModeLabel(mode), modeSummary: s })
-                                    }}
-                                  >
-                                    ▦
-                                  </button>
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                      {TEMPLATE_MODE_ORDER.some((mode) => {
-                        const s = node.modes[mode]
-                        return s.dimensionSummary?.rubricAttemptCount && (formatWeakDimension(s.dimensionSummary) || formatPrimaryFailure(s.dimensionSummary))
-                      }) && (
-                        <div className="dashboard-mode-dimensions">
-                          {TEMPLATE_MODE_ORDER.map((mode) => {
-                            const s = node.modes[mode]
-                            if (!s.dimensionSummary?.rubricAttemptCount) return null
-                            const weak = formatWeakDimension(s.dimensionSummary)
-                            const miss = formatPrimaryFailure(s.dimensionSummary)
-                            if (!weak && !miss) return null
-                            return (
-                              <p key={mode} className="dashboard-mode-meta">
-                                <strong>{formatTemplateModeLabel(mode)}</strong>
-                                {weak ? ` · Weak: ${weak}` : ''}
-                                {miss ? ` · Miss: ${miss}` : ''}
-                              </p>
-                            )
-                          })}
-                        </div>
-                      )}
-                      {TEMPLATE_MODE_ORDER.some((mode) => {
-                        const s = node.modes[mode]
-                        return s.staleCards > 0
-                      }) && (
-                        <div className="dashboard-summary">
-                          {TEMPLATE_MODE_ORDER.map((mode) => {
-                            const s = node.modes[mode]
-                            if (s.staleCards === 0) return null
-                            return (
-                              <span key={mode} className="coach-metric-chip">
-                                {formatTemplateModeLabel(mode)}: {s.staleCards} stale
-                              </span>
-                            )
-                          })}
-                        </div>
-                      )}
+                  <button
+                    type="button"
+                    className="skill-method-dropdown-trigger"
+                    onClick={() => setOpenMethodDropdown((current) => (current === node.slug ? '' : node.slug))}
+                    aria-expanded={methodDropdownOpen}
+                    aria-controls={methodDropdownId}
+                  >
+                    <span>Methods</span>
+                    <strong>{patternSelected ? `${selectedMethods.length} selected` : 'Choose methods'}</strong>
+                  </button>
+                  {methodDropdownOpen && (
+                    <div className="skill-method-dropdown-menu" id={methodDropdownId}>
+                      <div className="skill-method-list">
+                        {node.methods.map((method) => {
+                          const methodSelected = selectedMethods.includes(method)
+                          return (
+                            <button
+                              key={method}
+                              type="button"
+                              className={methodSelected ? 'skill-method-chip skill-method-chip-selected' : 'skill-method-chip'}
+                              onClick={() => toggleCoreMethod(node.slug, method)}
+                              aria-pressed={methodSelected}
+                            >
+                              {method}
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
                   )}
+                </div>
+                <SkillAlgorithmIllustration slug={node.slug} pattern={node.pattern} />
+                <div className="dashboard-mode-tabs">
+                  <button
+                    type="button"
+                    className={patternSelected ? 'dashboard-mode-tab dashboard-mode-tab-actionable' : 'dashboard-mode-tab'}
+                    disabled={!patternSelected}
+                    onClick={() => {
+                      if (patternSelected) {
+                        setOpenMethodDropdown('')
+                        launchFocusedPractice(node.slug, selectedMethods)
+                      }
+                    }}
+                  >
+                    <span className="dashboard-mode-tab-label">Start practice</span>
+                  </button>
                 </div>
               </article>
             )
           })}
         </div>
 
-        <div className="dashboard-overview">
-          <h2>Readiness Overview</h2>
-          <p className="skill-map-intro">
-            Readiness rises on strong independent recall, supported work is tracked separately, and stale skills decay after a few days without practice.
-          </p>
-          {summary && (
-            <div className="dashboard-summary">
-              <span className="coach-metric-chip">{summary.avgPatternReadiness}% avg pattern readiness</span>
-              <span className="coach-metric-chip">{summary.workCount} work logged</span>
-              <span className="coach-metric-chip">{summary.ghostRepCount} Ghost Reps</span>
-              <span className="coach-metric-chip">{summary.unsupportedAttemptCount} recall attempts</span>
-              <span className="coach-metric-chip">{summary.attemptedCards}/{summary.totalGeneratedCards} cards worked</span>
-              <span className="coach-metric-chip">{summary.untouchedCards} untouched cards</span>
-              <span className="coach-metric-chip">{summary.staleCards} stale cards</span>
-              <span className="coach-metric-chip">{summary.patternsStarted} patterns started</span>
-              <span className="coach-metric-chip">{summary.patternsUntouched} untouched patterns</span>
-            </div>
-          )}
-          {summary && patterns.some((node) => (node.dimensionSummary?.weakDimensions?.length ?? 0) > 0) && (
-            <section className="dashboard-dimension-panel">
-              <div>
-                <p className="dashboard-activity-eyebrow">Dimension History</p>
-                <h3>Repeated repair targets</h3>
-              </div>
-              <div className="dashboard-dimension-grid">
-                {patterns
-                  .filter((node) => (node.dimensionSummary?.weakDimensions?.length ?? 0) > 0)
-                  .slice(0, 6)
-                  .map((node) => {
-                    const weakDimensions = node.dimensionSummary.weakDimensions ?? []
-                    return (
-                      <article key={node.slug} className="dashboard-dimension-row">
-                        <div>
-                          <strong>{node.pattern}</strong>
-                          <p className="dashboard-mode-meta">{formatPrimaryFailure(node.dimensionSummary) || 'No primary failure trend yet'}</p>
-                        </div>
-                        <div className="dashboard-dimension-chips">
-                          {weakDimensions.slice(0, 4).map((dimension) => (
-                            <span
-                              key={`${node.slug}-${dimension.key}`}
-                              className={`dashboard-dimension-chip dashboard-dimension-chip-${dimensionTone(dimension.avgScore)}`}
-                              title={`${dimensionLabel(dimension)} · ${dimension.avgScore ?? 0}% average`}
-                            >
-                              {dimensionLabel(dimension)}
-                            </span>
-                          ))}
-                        </div>
-                      </article>
-                    )
-                  })}
-              </div>
-            </section>
-          )}
-          {summary && (
-            <p className="skill-map-intro">
-              Strong submit threshold: {summary.successThreshold}% • Review becomes due after about {summary.staleAfterDays} days.
-            </p>
-          )}
-        </div>
       </section>
-      {activeCalendar && (
-        <DashboardActivityModal
-          modeLabel={activeCalendar.modeLabel}
-          modeSummary={activeCalendar.modeSummary}
-          onClose={() => setActiveCalendar(null)}
-        />
-      )}
     </div>
   )
 }

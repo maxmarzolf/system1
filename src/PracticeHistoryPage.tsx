@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
 import { apiUrl } from './api'
 import GhostRepActivityChart, { type GhostRepActivity, type GhostRepPatternOrder } from './GhostRepActivityChart'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
@@ -113,28 +112,9 @@ type SkillMapOverviewForGhostReps = {
 }
 
 const MAIN_RECALL_CLOSE_ENOUGH_ACCURACY = 90
-type TemplateMode = 'algorithm'
-const TEMPLATE_MODE_ORDER: TemplateMode[] = ['algorithm']
-const TEMPLATE_MODE_LABELS: Record<string, string> = {
-    algorithm: 'Algorithm',
-    total: 'Inline',
-}
-const formatTemplateModeLabel = (templateMode: PracticeHistoryEntry['templateMode']) =>
-  TEMPLATE_MODE_LABELS[templateMode] ?? 'Legacy'
-
-const formatSupportLayerLabel = (supportLayer: PracticeHistoryEntry['supportLayer']) =>
-  supportLayer === 'ghost-reps' ? 'Ghost Rep' : 'Unsupported'
 
 const isMultipleChoiceEntry = (entry: PracticeHistoryEntry) =>
   entry.questionType.startsWith('skill-map-mcq') || entry.generatedCard.cardMode === 'multiple-choice'
-
-const choiceTextByStoredAnswer = (entry: PracticeHistoryEntry, storedAnswer: string) => {
-  const answer = storedAnswer.trim()
-  const choiceId = answer.match(/^([A-D])\./)?.[1] || answer
-  const choice = entry.generatedCard.choices?.find((item) => item.id === choiceId)
-  if (choice?.id && choice.text) return `${choice.id}. ${choice.text}`
-  return answer
-}
 
 const summarizeHistoryText = (entry: PracticeHistoryEntry) => {
   if (isMultipleChoiceEntry(entry)) {
@@ -158,30 +138,9 @@ const summarizeHistoryText = (entry: PracticeHistoryEntry) => {
 const dimensionLabel = (dimension?: { key?: string; label?: string }) =>
   dimension?.label?.trim() || dimension?.key?.replace(/_/g, ' ') || ''
 
-const rubricDimensionsForDisplay = (rubric: SubmissionRubric) =>
-  Object.values({ ...(rubric.dimensions ?? {}), ...(rubric.modifiers ?? {}) })
-    .filter((dimension) => dimension.status && dimension.status !== 'not_applicable')
-    .sort((a, b) => {
-      const statusRank = (status?: string) => ({ fail: 0, partial: 1, pass: 2 }[status ?? ''] ?? 3)
-      return statusRank(a.status) - statusRank(b.status) || (a.score ?? 0) - (b.score ?? 0)
-    })
-    .slice(0, 6)
-
-const formatWeakDimension = (summary?: DimensionSummary) => {
-  const weak = summary?.topWeakDimension
-  if (!weak?.key) return ''
-  return `${dimensionLabel(weak)}${weak.avgScore !== undefined ? ` ${weak.avgScore}%` : ''}`
-}
 
 export default function PracticeHistoryPage() {
   const configuredProviderLabel = useConfiguredProviderLabel()
-  const [searchParams] = useSearchParams()
-  const cardId = searchParams.get('cardId')?.trim() || ''
-  const questionType = searchParams.get('questionType')?.trim() || 'skill-map'
-  const skillTags = useMemo(
-    () => searchParams.getAll('tag').map((tag) => tag.trim()).filter(Boolean),
-    [searchParams]
-  )
 
   const [practiceHistory, setPracticeHistory] = useState<PracticeHistoryEntry[]>([])
   const [practiceHistorySummary, setPracticeHistorySummary] = useState<PracticeHistorySummary | null>(null)
@@ -189,6 +148,7 @@ export default function PracticeHistoryPage() {
   const [practiceHistoryError, setPracticeHistoryError] = useState('')
   const [ghostRepOverview, setGhostRepOverview] = useState<SkillMapOverviewForGhostReps | null>(null)
   const [ghostRepOverviewError, setGhostRepOverviewError] = useState('')
+  const [selectedSlugs, setSelectedSlugs] = useState<string[]>([])
 
   useEffect(() => {
     const loadGhostRepOverview = async () => {
@@ -208,10 +168,9 @@ export default function PracticeHistoryPage() {
   }, [])
 
   useEffect(() => {
-    if (!cardId && skillTags.length === 0) {
+    if (selectedSlugs.length === 0) {
       setPracticeHistory([])
       setPracticeHistorySummary(null)
-      setPracticeHistoryLoading(false)
       setPracticeHistoryError('')
       return
     }
@@ -225,9 +184,9 @@ export default function PracticeHistoryPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            cardId,
-            questionType,
-            skillTags,
+            cardId: '',
+            questionType: 'skill-map',
+            skillTags: selectedSlugs,
             limit: 20,
           }),
         })
@@ -246,177 +205,77 @@ export default function PracticeHistoryPage() {
     }
 
     void loadPracticeHistory()
-  }, [cardId, questionType, skillTags])
+  }, [selectedSlugs])
 
-  const historyWeakestTag = practiceHistorySummary?.weakestTag?.trim() || ''
-  const recentPrimaryFocuses =
-    practiceHistorySummary?.recentPrimaryFocuses.map((focus) => focus.trim()).filter(Boolean) ?? []
+  const handleSelectionChange = useCallback((slugs: string[]) => {
+    setSelectedSlugs(slugs)
+  }, [])
+
   const repeatedWeakDimensions = practiceHistorySummary?.dimensionSummary?.weakDimensions ?? []
-  const hasContext = Boolean(cardId || skillTags.length > 0)
 
   return (
     <div className="app">
       <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} />
 
-        <GhostRepActivityChart
-          activity={ghostRepOverview?.ghostRepActivity}
-          patternOrder={ghostRepOverview?.patterns ?? []}
-        />
-        {ghostRepOverviewError && <p className="coach-error">{ghostRepOverviewError}</p>}
+      <GhostRepActivityChart
+        activity={ghostRepOverview?.ghostRepActivity}
+        patternOrder={ghostRepOverview?.patterns ?? []}
+        onSelectionChange={handleSelectionChange}
+      />
+      {ghostRepOverviewError && <p className="coach-error">{ghostRepOverviewError}</p>}
 
-        {!hasContext && (
-          <p className="coach-muted">
-            Open this page from a practice card to load related submission history.
-          </p>
-        )}
-
-        {hasContext && (
-          <div className="practice-history-panel panel">
-            <div className="practice-history-header">
-              <div>
-                <h3>Recent Submission History</h3>
-              </div>
-              {practiceHistorySummary && (
-                <div className="practice-history-summary">
-                  <span className="coach-metric-chip">{practiceHistorySummary.attemptCount} related attempts</span>
-                  <span className="coach-metric-chip">Readiness {practiceHistorySummary.readiness}%</span>
-                  <span className="coach-metric-chip">Avg {practiceHistorySummary.recentAvgAccuracy}%</span>
-                  {practiceHistorySummary.daysSinceLastSubmit !== null && (
-                    <span className="coach-metric-chip">
-                      {practiceHistorySummary.daysSinceLastSubmit === 0
-                        ? 'Practiced today'
-                        : `${practiceHistorySummary.daysSinceLastSubmit}d since last submit`}
-                    </span>
-                  )}
-                  {practiceHistorySummary.stale && (
-                    <span className="coach-metric-chip">Review due</span>
-                  )}
-                  {historyWeakestTag && (
-                    <span className="coach-metric-chip">Weakest {historyWeakestTag}</span>
-                  )}
-                </div>
-              )}
-            </div>
-
+      {selectedSlugs.length > 0 && (
+        <div className="pattern-history-section">
+          <div className="pattern-history-header">
+            <span className="pattern-history-title">Recent Practice</span>
             {practiceHistorySummary && (
-              <div className="practice-history-focuses">
-                {TEMPLATE_MODE_ORDER.map((mode) => (
-                  <span key={mode} className="coach-metric-chip">
-                    {formatTemplateModeLabel(mode)} {practiceHistorySummary.templateModes?.[mode]?.readiness ?? 0}%
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {repeatedWeakDimensions.length > 0 && (
-              <div className="practice-history-rubric-summary">
-                <p className="practice-history-meta">Repeated weak dimensions</p>
-                <div className="practice-history-focuses">
-                  {repeatedWeakDimensions.slice(0, 5).map((dimension) => (
-                    <span key={dimension.key} className="coach-metric-chip">
-                      {dimensionLabel(dimension)} {dimension.avgScore ?? 0}%
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {recentPrimaryFocuses.length > 0 && (
-              <div className="practice-history-focuses">
-                {recentPrimaryFocuses.map((focus) => (
-                  <span key={focus} className="coach-metric-chip">{focus}</span>
-                ))}
-              </div>
-            )}
-
-            {practiceHistoryLoading && <p className="coach-muted">Loading recent attempts...</p>}
-            {!practiceHistoryLoading && practiceHistoryError && <p className="coach-error">{practiceHistoryError}</p>}
-            {!practiceHistoryLoading && !practiceHistoryError && practiceHistory.length === 0 && (
-              <p className="coach-muted">No stored submission history yet for this skill pattern.</p>
-            )}
-            {!practiceHistoryLoading && practiceHistory.length > 0 && (
-              <div className="practice-history-list">
-                {practiceHistory.map((entry) => {
-                  const multipleChoice = isMultipleChoiceEntry(entry)
-                  const entryTone =
-                    entry.exact
-                      ? 'success'
-                      : entry.accuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY
-                        ? 'warning'
-                        : 'error'
-
-                  return (
-                    <article key={`${entry.attemptId}-${entry.createdAt}`} className="practice-history-entry">
-                      <div className="practice-history-entry-top">
-                        <div>
-                          <p className="practice-history-title">{entry.cardTitle || entry.cardId}</p>
-                          <p className="practice-history-meta">
-                            {multipleChoice
-                              ? `Multiple Choice · ${entry.generatedCard.difficulty || 'Med.'} · ${(entry.elapsedMs / 1000).toFixed(1)}s`
-                              : `${formatTemplateModeLabel(entry.templateMode)} · ${formatSupportLayerLabel(entry.supportLayer)} · ${entry.liveFeedbackCount} live feedback ${entry.liveFeedbackCount === 1 ? 'snapshot' : 'snapshots'} · ${(entry.elapsedMs / 1000).toFixed(1)}s`}
-                          </p>
-                        </div>
-                        <span className={`coach-status-value coach-status-value-${entryTone}`}>
-                          {multipleChoice ? (entry.exact ? 'Correct' : 'Missed') : `${entry.accuracy}%`}
-                        </span>
-                      </div>
-                      {multipleChoice && (
-                        <div className="practice-history-focuses">
-                          {entry.generatedCard.pattern && <span className="coach-metric-chip">{entry.generatedCard.pattern}</span>}
-                          <span className="coach-metric-chip">Selected {choiceTextByStoredAnswer(entry, entry.userAnswer)}</span>
-                          <span className="coach-metric-chip">Correct {choiceTextByStoredAnswer(entry, entry.correctAnswer)}</span>
-                        </div>
-                      )}
-                      {!multipleChoice && (entry.liveCoachUsed || entry.supportLayer === 'ghost-reps') && (
-                        <div className="practice-history-focuses">
-                          {entry.liveCoachUsed && <span className="coach-metric-chip">Live coach used</span>}
-                          {entry.supportLayer === 'ghost-reps' && <span className="coach-metric-chip">Support Layer Ghost Reps</span>}
-                        </div>
-                      )}
-                      {!multipleChoice && entry.submissionRubric?.verdict && (
-                        <div className="practice-history-rubric-strip">
-                          <div className="practice-history-rubric-strip-top">
-                            <span className="coach-metric-chip">
-                              Verdict {entry.submissionRubric.verdict}
-                            </span>
-                            <span className="coach-metric-chip">
-                              Rubric {entry.submissionRubric.score?.overall ?? 0}%
-                            </span>
-                            {entry.submissionRubric.primaryFailure?.key && entry.submissionRubric.primaryFailure.key !== 'sound' && (
-                              <span className="coach-metric-chip">
-                                Primary {dimensionLabel(entry.submissionRubric.primaryFailure)}
-                              </span>
-                            )}
-                          </div>
-                          <div className="practice-history-dimension-strip">
-                            {rubricDimensionsForDisplay(entry.submissionRubric).map((dimension) => (
-                              <span
-                                key={`${entry.attemptId}-${dimension.key}`}
-                                className={`practice-history-dimension-pill practice-history-dimension-pill-${dimension.status}`}
-                              >
-                                {dimensionLabel(dimension)} {dimension.score ?? 0}%
-                              </span>
-                            ))}
-                          </div>
-                          {(entry.submissionRubric.recommendedAction || formatWeakDimension(practiceHistorySummary?.templateModes?.[entry.templateMode]?.dimensionSummary)) && (
-                            <p className="practice-history-meta">
-                              {entry.submissionRubric.recommendedAction ||
-                                `Repair ${formatWeakDimension(practiceHistorySummary?.templateModes?.[entry.templateMode]?.dimensionSummary)} next.`}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                      <p className="practice-history-question">
-                        {entry.question || entry.generatedCard.question || entry.generatedCard.prompt || 'Stored generated question'}
-                      </p>
-                      <p className="practice-history-feedback">{summarizeHistoryText(entry)}</p>
-                    </article>
-                  )
-                })}
-              </div>
+              <>
+                <span className="coach-metric-chip">{practiceHistorySummary.attemptCount} attempts</span>
+                <span className="coach-metric-chip">Readiness {practiceHistorySummary.readiness}%</span>
+                <span className="coach-metric-chip">Avg {practiceHistorySummary.recentAvgAccuracy}%</span>
+                {repeatedWeakDimensions.length > 0 && (
+                  <span className="coach-metric-chip">Weak: {dimensionLabel(repeatedWeakDimensions[0])} {repeatedWeakDimensions[0].avgScore ?? 0}%</span>
+                )}
+              </>
             )}
           </div>
-        )}
+
+          {practiceHistoryLoading && <p className="coach-muted">Loading recent attempts...</p>}
+          {!practiceHistoryLoading && practiceHistoryError && <p className="coach-error">{practiceHistoryError}</p>}
+          {!practiceHistoryLoading && !practiceHistoryError && practiceHistory.length === 0 && (
+            <p className="coach-muted">No stored submission history yet for this skill pattern.</p>
+          )}
+
+          {!practiceHistoryLoading && practiceHistory.length > 0 && (
+            <div className="practice-history-list">
+              {practiceHistory.map((entry) => {
+                const multipleChoice = isMultipleChoiceEntry(entry)
+                const entryTone = entry.exact
+                  ? 'success'
+                  : entry.accuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY
+                    ? 'warning'
+                    : 'error'
+                const entryDate = new Date(entry.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+
+                return (
+                  <article key={`${entry.attemptId}-${entry.createdAt}`} className="practice-history-entry">
+                    <div className="practice-history-entry-top">
+                      <p className="practice-history-title">{entry.cardTitle || entry.cardId}</p>
+                      <span className={`coach-status-value coach-status-value-${entryTone}`}>
+                        {multipleChoice ? (entry.exact ? 'Correct' : 'Missed') : `${entry.accuracy}%`}
+                      </span>
+                    </div>
+                    <p className="practice-history-meta">
+                      {entryDate} · {multipleChoice ? 'MCQ' : 'Ghost Rep'} · {(entry.elapsedMs / 1000).toFixed(1)}s
+                    </p>
+                    <p className="practice-history-feedback">{summarizeHistoryText(entry)}</p>
+                  </article>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

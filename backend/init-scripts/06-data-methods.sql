@@ -7,7 +7,7 @@ INSERT INTO methods (pattern_id, name) VALUES
     ((SELECT id FROM patterns WHERE name = 'Sliding Window'), 'fixed vs variable window'),
     ((SELECT id FROM patterns WHERE name = 'Sliding Window'), 'expand / shrink rhythm'),
     ((SELECT id FROM patterns WHERE name = 'Sliding Window'), 'frequency maps'),
-    ((SELECT id FROM patterns WHERE name = 'Sliding Window'), 'valid window invariant'),
+    ((SELECT id FROM patterns WHERE name = 'Sliding Window'), 'valid window rule'),
     ((SELECT id FROM patterns WHERE name = 'Sliding Window'), 'window score updates');
 
 -- Two Pointers Methods
@@ -16,7 +16,7 @@ INSERT INTO methods (pattern_id, name) VALUES
     ((SELECT id FROM patterns WHERE name = 'Two Pointers'), 'opposing pointers'),
     ((SELECT id FROM patterns WHERE name = 'Two Pointers'), 'sorted-array leverage'),
     ((SELECT id FROM patterns WHERE name = 'Two Pointers'), 'dedupe rules'),
-    ((SELECT id FROM patterns WHERE name = 'Two Pointers'), 'pointer move invariant');
+    ((SELECT id FROM patterns WHERE name = 'Two Pointers'), 'pointer move rule');
 
 -- Binary Search Methods
 INSERT INTO methods (pattern_id, name) VALUES
@@ -24,7 +24,7 @@ INSERT INTO methods (pattern_id, name) VALUES
     ((SELECT id FROM patterns WHERE name = 'Binary Search'), 'mid calculation'),
     ((SELECT id FROM patterns WHERE name = 'Binary Search'), 'search on answer'),
     ((SELECT id FROM patterns WHERE name = 'Binary Search'), 'first / last occurrence'),
-    ((SELECT id FROM patterns WHERE name = 'Binary Search'), 'invariant handling');
+    ((SELECT id FROM patterns WHERE name = 'Binary Search'), 'boundary rule handling');
 
 -- DFS / BFS Methods
 INSERT INTO methods (pattern_id, name) VALUES
@@ -94,6 +94,6 @@ INSERT INTO methods (pattern_id, name) VALUES
 INSERT INTO methods (pattern_id, name) VALUES
     ((SELECT id FROM patterns WHERE name = 'Monotonic Stack'), 'increasing vs decreasing stack'),
     ((SELECT id FROM patterns WHERE name = 'Monotonic Stack'), 'next greater / smaller'),
-    ((SELECT id FROM patterns WHERE name = 'Monotonic Stack'), 'pop trigger invariant'),
+    ((SELECT id FROM patterns WHERE name = 'Monotonic Stack'), 'pop trigger rule'),
     ((SELECT id FROM patterns WHERE name = 'Monotonic Stack'), 'index storage'),
     ((SELECT id FROM patterns WHERE name = 'Monotonic Stack'), 'span / area computation');

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -15,6 +16,7 @@ from app.core.generator import (
     runtime_with_tuning,
 )
 from app.core.focused_static_cards import (
+    focused_difficulty,
     focused_hint,
     focused_prompt,
     focused_skeleton_for_method,
@@ -229,22 +231,33 @@ def test_focused_static_catalog_covers_dashboard_methods() -> None:
             title = focused_title(pattern, method)
             prompt = focused_prompt(pattern, method)
             hint = focused_hint(pattern, method)
+            difficulty = focused_difficulty(pattern, method)
             skeleton = focused_skeleton_for_method(pattern, method)
             target_terms = focused_target_terms(pattern, method)
 
             assert title
             assert prompt
             assert hint
+            assert difficulty in {"Easy", "Med.", "Hard"}
             assert skeleton
             assert target_terms
             assert _test_word_count(prompt) <= 8
             assert _test_word_count(hint) <= 12
             assert any(term.lower() in skeleton.lower() for term in target_terms)
+            assert ";" not in skeleton
+            assert not re.search(r"^\s*(if|elif|else|for|while)[^\n]*:[^\n]*\S", skeleton, re.MULTILINE)
             prompts.append(prompt)
             skeletons.append(skeleton)
 
         assert len(set(prompts)) == len(prompts)
         assert len(set(skeletons)) == len(skeletons)
+
+    assert focused_difficulty("Sliding Window", "fixed vs variable window") == "Easy"
+    assert focused_difficulty("Sliding Window", "frequency maps") == "Med."
+    assert focused_difficulty("Heap / Priority Queue", "push / pop discipline") == "Hard"
+    assert focused_difficulty("Intervals", "sweep decisions") == "Hard"
+    assert focused_difficulty("Prefix Sums", "constant-time range queries") == "Easy"
+    assert focused_difficulty("Monotonic Stack", "pop trigger rule") == "Hard"
 
 
 @pytest.mark.asyncio

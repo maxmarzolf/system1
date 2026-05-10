@@ -269,6 +269,29 @@ type LlmProviderSelection = 'auto' | LlmProvider
 
 const skillMapDeckRequestCache = new Map<string, Promise<SkillMapDrillsResponse>>()
 const multipleChoiceDeckRequestCache = new Map<string, Promise<MultipleChoiceDrillsResponse>>()
+const MULTIPLE_CHOICE_MIN_COUNT = 1
+const MULTIPLE_CHOICE_MAX_COUNT = 30
+const DEFAULT_MULTIPLE_CHOICE_COUNT = 5
+const MCQ_CORE_ALGORITHM_ANCHORS: SkillMapNode[] = [
+  { pattern: 'Sliding Window', methods: ['fixed vs variable window', 'expand / shrink rhythm', 'frequency maps'] },
+  { pattern: 'Two Pointers', methods: ['same-direction scan', 'opposing pointers', 'sorted-array leverage'] },
+  { pattern: 'Binary Search', methods: ['bounds invariant', 'search on answer', 'first / last occurrence'] },
+  { pattern: 'Trees', methods: ['recursive traversal', 'path state', 'subtree return values'] },
+  { pattern: 'Graph Traversal', methods: ['visited tracking', 'BFS frontier', 'DFS recursion'] },
+  { pattern: 'Dynamic Programming', methods: ['state definition', 'transition equation', 'iteration order'] },
+  { pattern: 'Backtracking', methods: ['choice / explore / undo', 'path state', 'pruning'] },
+  { pattern: 'Tries', methods: ['prefix tree nodes', 'word markers', 'character transitions'] },
+  { pattern: 'Heap / Priority Queue', methods: ['top-k maintenance', 'min vs max heap', 'stream processing'] },
+  { pattern: 'Union Find', methods: ['find with compression', 'union by size', 'component counting'] },
+  { pattern: 'Intervals', methods: ['sort by boundary', 'merge overlaps', 'sweep decisions'] },
+  { pattern: 'Prefix Sums', methods: ['running total', 'difference trick', 'remainder buckets'] },
+  { pattern: 'Monotonic Stack', methods: ['pop trigger invariant', 'next greater / smaller', 'index storage'] },
+  { pattern: 'Stacks / Queues', methods: ['LIFO/FIFO state', 'simulation', 'monotonic queues'] },
+  { pattern: 'Linked Lists', methods: ['fast / slow pointers', 'pointer rewiring', 'dummy node'] },
+  { pattern: 'Matrix / Grid', methods: ['direction vectors', 'bounds checks', 'multi-source BFS'] },
+  { pattern: 'Greedy', methods: ['local choice rule', 'exchange argument', 'sorted decisions'] },
+  { pattern: 'Topological Sort', methods: ['indegree bookkeeping', 'DAG ordering', 'cycle detection'] },
+]
 
 const requestSkillMapDrills = (body: SkillMapDrillsRequest) => {
   const requestKey = JSON.stringify(body)
@@ -427,6 +450,9 @@ const patternToSlug = (pattern: string) =>
     .replace(/-/g, ' ')
     .trim()
     .replace(/\s+/g, '-')
+
+const clampMultipleChoiceQuestionCount = (count: number) =>
+  Math.min(MULTIPLE_CHOICE_MAX_COUNT, Math.max(MULTIPLE_CHOICE_MIN_COUNT, count))
 
 const ensureTemplateModes = (modes: TemplateMode[]) => {
   const next = TEMPLATE_MODE_ORDER.filter((mode) => modes.includes(mode))
@@ -1901,7 +1927,8 @@ const parseMarkdownCodeSegments = (text: string): MarkdownCodeSegment[] => {
 
   while ((match = fencePattern.exec(text)) !== null) {
     if (match.index > cursor) {
-      segments.push({ type: 'text', text: text.slice(cursor, match.index) })
+      const textContent = text.slice(cursor, match.index).trim()
+      if (textContent) segments.push({ type: 'text', text: textContent })
     }
     segments.push({
       type: 'code',
@@ -1912,10 +1939,36 @@ const parseMarkdownCodeSegments = (text: string): MarkdownCodeSegment[] => {
   }
 
   if (cursor < text.length) {
-    segments.push({ type: 'text', text: text.slice(cursor) })
+    const textContent = text.slice(cursor).trim()
+    if (textContent) segments.push({ type: 'text', text: textContent })
   }
 
   return segments.length > 0 ? segments : [{ type: 'text', text }]
+}
+
+const normalizePythonCodeForDisplay = (code: string, language: string) => {
+  if (normalizeCodeLanguage(language) !== 'python') return code.trim()
+
+  return code
+    .replace(/\t/g, '    ')
+    .split('\n')
+    .map((line) => {
+      const trimmedRight = line.trimEnd()
+      const leadingWhitespace = trimmedRight.match(/^\s*/)?.[0] ?? ''
+      const content = trimmedRight.slice(leadingWhitespace.length)
+      const indentationWidth = leadingWhitespace.length > 0
+        ? Math.max(4, Math.ceil(leadingWhitespace.length / 4) * 4)
+        : 0
+      const paddedContent = content
+        .replace(/\s*,\s*/g, ', ')
+        .replace(/\s*(==|!=|<=|>=|\+=|-=|\*=|\/=|%=|\/\/|\*\*|[+\-*/%<>])\s*/g, ' $1 ')
+        .replace(/(?<![<>=!+\-*/%])\s*=\s*(?![=])/g, ' = ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      return `${' '.repeat(indentationWidth)}${paddedContent}`
+    })
+    .join('\n')
+    .trim()
 }
 
 const renderInlineMarkdownText = (text: string) => {
@@ -1942,7 +1995,7 @@ function MarkdownCodeContent({
       {parseMarkdownCodeSegments(text).map((segment, index) => {
         if (segment.type === 'code') {
           return (
-            <span key={index} className="multiple-choice-code-block">
+            <span key={index} className="multiple-choice-code-text-block">
               <SyntaxHighlighter
                 language={segment.language}
                 style={syntaxTheme}
@@ -1969,7 +2022,7 @@ function MarkdownCodeContent({
                   },
                 }}
               >
-                {segment.code}
+                {normalizePythonCodeForDisplay(segment.code, segment.language)}
               </SyntaxHighlighter>
             </span>
           )
@@ -1991,6 +2044,7 @@ function App() {
   const questionType = 'skill-map' as const
   const [practiceMode, setPracticeMode] = useState<PracticeMode>('recall')
   const [multipleChoiceDifficulty, setMultipleChoiceDifficulty] = useState<MultipleChoiceDifficulty>('Med.')
+  const [multipleChoiceQuestionCount, setMultipleChoiceQuestionCount] = useState(DEFAULT_MULTIPLE_CHOICE_COUNT)
   const [enabledTemplateModes, setEnabledTemplateModes] = useState<TemplateMode[]>(() => [...DEFAULT_TEMPLATE_MODES])
   const [supportLayer, setSupportLayer] = useState<SupportLayer>('none')
   const [skillMapDeck, setSkillMapDeck] = useState<Flashcard[]>([])
@@ -2106,6 +2160,25 @@ function App() {
     () => JSON.stringify(requestedSkillMap),
     [requestedSkillMap]
   )
+  const multipleChoiceSkillMap = useMemo<SkillMapNode[]>(() => {
+    if (requestedPlaylist) {
+      return playlistQuestionsToSkillMap(requestedPlaylist)
+    }
+    if (focusedPatternNode) {
+      // Anchored launch from dashboard — respect selected methods
+      const focusedMethodSet = new Set(focusedMethodParams)
+      const filteredMethods = focusedMethodSet.size > 0
+        ? focusedPatternNode.methods.filter((method) => focusedMethodSet.has(method))
+        : focusedPatternNode.methods
+      const methods = filteredMethods.length > 0 ? filteredMethods : focusedPatternNode.methods
+      return [{ pattern: focusedPatternNode.pattern, methods }]
+    }
+    return MCQ_CORE_ALGORITHM_ANCHORS
+  }, [focusedMethodParams, focusedPatternNode, requestedPlaylist])
+  const multipleChoiceSkillMapSignature = useMemo(
+    () => JSON.stringify(multipleChoiceSkillMap),
+    [multipleChoiceSkillMap]
+  )
   const requestedTemplateMode = focusedTemplateMode ?? DEFAULT_TEMPLATE_MODES[0]
   const requestedTemplateTargets = useMemo(() => {
     const targets: Record<string, Partial<Record<TemplateMode, string>>> = {}
@@ -2200,8 +2273,8 @@ function App() {
 
     const requestBody: MultipleChoiceDrillsRequest = {
       questionType: 'skill-map-mcq',
-      count: requestedSkillMap.length,
-      skillMap: requestedSkillMap,
+      count: multipleChoiceQuestionCount,
+      skillMap: multipleChoiceSkillMap,
       difficulty: multipleChoiceDifficulty,
       llmProvider: requestLlmProvider,
     }
@@ -2272,7 +2345,7 @@ function App() {
     if (practiceMode !== 'multiple-choice') return
     void fetchMultipleChoiceDeck()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [practiceMode, llmProvider, requestedQuestionType, requestedSkillMapSignature, multipleChoiceDifficulty, multipleChoiceRefreshToken])
+  }, [practiceMode, llmProvider, requestedQuestionType, multipleChoiceSkillMapSignature, multipleChoiceDifficulty, multipleChoiceQuestionCount, multipleChoiceRefreshToken])
 
   useEffect(() => {
     saveStoredLiveCoachTuning(liveCoachTuning)
@@ -3409,7 +3482,6 @@ function App() {
   const latestSubmittedWasGhostRep = latestSubmittedAttempt?.supportLayer === 'ghost-reps'
   const submittedMultipleChoiceId = multipleChoiceCard ? multipleChoiceSubmittedByCard[multipleChoiceCard.id] ?? '' : ''
   const selectedMultipleChoice = multipleChoiceCard?.choices.find((choice) => choice.id === multipleChoiceSelectedChoiceId) ?? null
-  const submittedMultipleChoice = multipleChoiceCard?.choices.find((choice) => choice.id === submittedMultipleChoiceId) ?? null
   const correctMultipleChoice = multipleChoiceCard?.choices.find((choice) => choice.id === multipleChoiceCard.correctChoiceId) ?? null
   const multipleChoiceSubmitted = Boolean(submittedMultipleChoiceId)
   const multipleChoiceCorrect = Boolean(submittedMultipleChoiceId && submittedMultipleChoiceId === multipleChoiceCard?.correctChoiceId)
@@ -3733,7 +3805,18 @@ function App() {
           <div className="card-header-main">
             <h2>{activeCardTitle}</h2>
             <p className="difficulty">{activeCardDifficulty}</p>
-            {(focusedPatternNode || requestedPlaylist) && (
+            {practiceMode === 'multiple-choice' ? (
+              <div className="coach-metric-row card-header-metric-row">
+                <span className="coach-metric-chip">Algorithm anchors</span>
+                <span className="coach-metric-chip">{multipleChoiceQuestionCount} questions</span>
+                <span className="coach-metric-chip">{multipleChoiceDifficulty}</span>
+                {(focusedPatternNode || requestedPlaylist) && (
+                  <span className="coach-metric-chip">
+                    {requestedPlaylist ? 'Playlist bias' : `Focus ${focusedPatternNode?.pattern}`}
+                  </span>
+                )}
+              </div>
+            ) : (focusedPatternNode || requestedPlaylist) && (
               <p className="card-template-summary">
                 {requestedPlaylist ? 'Playlist' : 'Focused deck'}: {targetedDeckLabel}
               </p>
@@ -3761,24 +3844,42 @@ function App() {
               </button>
             </div>
             {practiceMode === 'multiple-choice' ? (
-              <div className="flow-mode-control" role="group" aria-label="Multiple choice difficulty">
-                <button
-                  type="button"
-                  className={multipleChoiceDifficulty === 'Med.' ? 'flow-mode-button active' : 'flow-mode-button'}
-                  onClick={() => setMultipleChoiceDifficulty('Med.')}
-                  aria-pressed={multipleChoiceDifficulty === 'Med.'}
-                >
-                  Med.
-                </button>
-                <button
-                  type="button"
-                  className={multipleChoiceDifficulty === 'Hard' ? 'flow-mode-button active' : 'flow-mode-button'}
-                  onClick={() => setMultipleChoiceDifficulty('Hard')}
-                  aria-pressed={multipleChoiceDifficulty === 'Hard'}
-                >
-                  Hard
-                </button>
-              </div>
+              <>
+                <div className="flow-mode-control" role="group" aria-label="Multiple choice difficulty">
+                  <button
+                    type="button"
+                    className={multipleChoiceDifficulty === 'Med.' ? 'flow-mode-button active' : 'flow-mode-button'}
+                    onClick={() => setMultipleChoiceDifficulty('Med.')}
+                    aria-pressed={multipleChoiceDifficulty === 'Med.'}
+                  >
+                    Med.
+                  </button>
+                  <button
+                    type="button"
+                    className={multipleChoiceDifficulty === 'Hard' ? 'flow-mode-button active' : 'flow-mode-button'}
+                    onClick={() => setMultipleChoiceDifficulty('Hard')}
+                    aria-pressed={multipleChoiceDifficulty === 'Hard'}
+                  >
+                    Hard
+                  </button>
+                </div>
+                <div className="multiple-choice-set-control">
+                  <label htmlFor="multiple-choice-question-count">Set</label>
+                  <input
+                    id="multiple-choice-question-count"
+                    type="number"
+                    min={MULTIPLE_CHOICE_MIN_COUNT}
+                    max={MULTIPLE_CHOICE_MAX_COUNT}
+                    step="1"
+                    value={multipleChoiceQuestionCount}
+                    onChange={(event) => {
+                      const nextCount = Number.parseInt(event.currentTarget.value, 10)
+                      setMultipleChoiceQuestionCount(clampMultipleChoiceQuestionCount(Number.isNaN(nextCount) ? MULTIPLE_CHOICE_MIN_COUNT : nextCount))
+                    }}
+                    aria-label="MCQ set size"
+                  />
+                </div>
+              </>
             ) : (
               <>
                 <div className="support-layer-control" aria-label="Practice support controls">
@@ -3899,19 +4000,9 @@ function App() {
                 )
               ) : multipleChoiceCard ? (
                 <div className="multiple-choice-question-panel">
-                  <div className="prompt prompt-bar multiple-choice-question">
+                  <div className="prompt multiple-choice-question">
                     <MarkdownCodeContent text={multipleChoiceCard.question} syntaxTheme={syntaxTheme} />
                   </div>
-                  <div className="coach-metric-row">
-                    <span className="coach-metric-chip">Multiple Choice</span>
-                    <span className="coach-metric-chip">{multipleChoiceCard.pattern}</span>
-                    <span className="coach-metric-chip">{multipleChoiceCard.difficulty}</span>
-                  </div>
-                  {multipleChoiceSubmitted && (
-                    <p className={multipleChoiceCorrect ? 'status success' : 'status error'}>
-                      {multipleChoiceCorrect ? 'Correct.' : 'Not quite.'}
-                    </p>
-                  )}
                 </div>
               ) : null
             ) : !hasDeck ? (
@@ -4080,40 +4171,33 @@ function App() {
                           <span className="multiple-choice-option-id">{choice.id}</span>
                           <span className="multiple-choice-option-text">
                             <MarkdownCodeContent text={choice.text} syntaxTheme={syntaxTheme} compact />
+                            {multipleChoiceSubmitted && isSubmittedChoice && (
+                              <span className="multiple-choice-inline-result">
+                                {multipleChoiceCorrect ? (
+                                  <span className="multiple-choice-inline-result-explanation">
+                                    <MarkdownCodeContent text={multipleChoiceCard.explanation} syntaxTheme={syntaxTheme} compact />
+                                  </span>
+                                ) : (
+                                  <>
+                                    <span className="multiple-choice-inline-result-wrong">Incorrect.</span>
+                                    {correctMultipleChoice && (
+                                      <span className="multiple-choice-inline-result-correct-label">
+                                        Correct answer: <strong>{correctMultipleChoice.id}.</strong>{' '}
+                                        <MarkdownCodeContent text={correctMultipleChoice.text} syntaxTheme={syntaxTheme} compact />
+                                      </span>
+                                    )}
+                                    <span className="multiple-choice-inline-result-explanation">
+                                      <MarkdownCodeContent text={multipleChoiceCard.explanation} syntaxTheme={syntaxTheme} compact />
+                                    </span>
+                                  </>
+                                )}
+                              </span>
+                            )}
                           </span>
                         </button>
                       )
                     })}
                   </div>
-                  {multipleChoiceSubmitted && (
-                    <div className="coach-docked-panel multiple-choice-result">
-                      <div className="coach-docked-card">
-                        <div className="coach-card-header">
-                          <h4>Answer</h4>
-                          <span className={`coach-status-chip coach-status-chip-${multipleChoiceCorrect ? 'success' : 'error'}`}>
-                            {multipleChoiceCorrect ? 'Correct' : 'Missed'}
-                          </span>
-                        </div>
-                        <div className="coach-metric-row">
-                          {submittedMultipleChoice && (
-                            <span className="coach-metric-chip">Selected {submittedMultipleChoice.id}</span>
-                          )}
-                          {correctMultipleChoice && (
-                            <span className="coach-metric-chip">Correct {correctMultipleChoice.id}</span>
-                          )}
-                        </div>
-                        {correctMultipleChoice && (
-                          <p className="coach-panel-copy">
-                            <strong>{correctMultipleChoice.id}.</strong>{' '}
-                            <MarkdownCodeContent text={correctMultipleChoice.text} syntaxTheme={syntaxTheme} compact />
-                          </p>
-                        )}
-                        <div className="coach-panel-copy">
-                          <MarkdownCodeContent text={multipleChoiceCard.explanation} syntaxTheme={syntaxTheme} />
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               ) : null
             ) : !hasDeck ? (
