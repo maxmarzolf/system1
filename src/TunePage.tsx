@@ -13,6 +13,7 @@ import {
   saveStoredSpecimenTuning,
 } from './specimenTuning'
 import type { SpecimenTuning } from './specimenTuning'
+import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 
 const trackedDimensions = [
@@ -144,6 +145,7 @@ function ToggleControl({
 }
 
 export default function TunePage() {
+  const configuredProviderLabel = useConfiguredProviderLabel()
   const [liveCoachTuning, setLiveCoachTuning] = useState<LiveCoachTuning>(() => loadStoredLiveCoachTuning())
   const [submissionTuning, setSubmissionTuning] = useState<SubmissionTuning>(() => loadStoredSubmissionTuning())
   const [specimenTuning, setSpecimenTuning] = useState<SpecimenTuning>(() => loadStoredSpecimenTuning())
@@ -174,7 +176,7 @@ export default function TunePage() {
 
   return (
     <div className="app app-tune">
-      <TopNav />
+      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} />
 
       <section className="tune-surface">
         <div className="tune-hero">

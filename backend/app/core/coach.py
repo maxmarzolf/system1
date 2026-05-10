@@ -26,6 +26,7 @@ from app.models import (
     CoachAttemptFeedbackResponse,
     CoachPracticeHistoryRequest,
     CoachPracticeHistoryResponse,
+    CoachProviderDefaultResponse,
     CoachSessionPlanRequest,
     CoachSessionPlanResponse,
     SequentialVariationRequest,
@@ -1599,6 +1600,11 @@ def _llm_provider_available(provider: str) -> bool:
     if provider == "gemma":
         return bool(settings.coach_gemma_api_key)
     return bool(settings.coach_openai_api_key)
+
+
+async def coach_provider_default() -> CoachProviderDefaultResponse:
+    configured = _resolve_llm_provider("")
+    return CoachProviderDefaultResponse(provider=configured)
 
 
 NARRATOR_RUNTIME = NarratorRuntime(

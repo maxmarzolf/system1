@@ -59,7 +59,7 @@ function NavbarCounter({
 }
 
 export default function TopNav({
-  llmProviderLabel = 'ChatGPT',
+  llmProviderLabel = 'Auto (OpenAI)',
   llmProviderMenu,
   llmProviderMenuOpen = false,
   onToggleLlmProviderMenu,
@@ -80,17 +80,23 @@ export default function TopNav({
         <Link to="/" className="navbar-brand">System 1</Link>
         <span className="navbar-divider" />
         <div className="navbar-group llm-provider-group" ref={llmProviderMenuRef}>
-          <button
-            type="button"
-            className={llmProviderMenuOpen ? 'navbar-picker active' : 'navbar-picker'}
-            aria-haspopup="listbox"
-            aria-expanded={llmProviderMenuOpen}
-            aria-label="Coach model"
-            onClick={onToggleLlmProviderMenu}
-            disabled={!onToggleLlmProviderMenu}
-          >
-            {llmProviderLabel}
-          </button>
+          {onToggleLlmProviderMenu || llmProviderMenu ? (
+            <button
+              type="button"
+              className={llmProviderMenuOpen ? 'navbar-picker active' : 'navbar-picker'}
+              aria-haspopup="listbox"
+              aria-expanded={llmProviderMenuOpen}
+              aria-label="Coach model"
+              onClick={onToggleLlmProviderMenu}
+              disabled={!onToggleLlmProviderMenu}
+            >
+              {llmProviderLabel}
+            </button>
+          ) : (
+            <span className="navbar-picker" aria-label="Coach model auto selection">
+              {llmProviderLabel}
+            </span>
+          )}
           {llmProviderMenu}
         </div>
       </div>

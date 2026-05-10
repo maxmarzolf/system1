@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     admin_reset_token: str = "reset-practice-history"
     coach_llm_provider: str = Field(
         default="openai",
-        validation_alias=AliasChoices("COACH_LLM_PROVIDER"),
+        validation_alias=AliasChoices("LLM_DEFAULT", "COACH_LLM_PROVIDER"),
     )
     coach_openai_api_key: str = Field(
         default="",

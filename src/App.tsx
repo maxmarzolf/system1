@@ -10,6 +10,8 @@ import { getLiveCoachFrequencyProfile, loadStoredLiveCoachTuning, saveStoredLive
 import { loadStoredSubmissionTuning } from './submissionTuning'
 import { loadStoredSpecimenTuning } from './specimenTuning'
 import type { SpecimenTuning } from './specimenTuning'
+import { apiUrl } from './api'
+import { providerDisplayLabel, useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 import { useTheme } from './theme'
 
@@ -114,7 +116,7 @@ type SkillMapDrillsRequest = {
   templateMode: TemplateMode
   templateTargets: Record<string, Partial<Record<TemplateMode | HelperLayer | CoreShapeLayer, string>>>
   specimenTuning: SpecimenTuning
-  llmProvider: LlmProvider
+  llmProvider: string
 }
 
 type AdaptiveVariationResponse = {
@@ -229,15 +231,8 @@ type LiveCoachTimingDecision = {
 type FlowMode = 'sequential' | 'adaptive'
 
 type LlmProvider = 'openai' | 'claude' | 'gemma'
+type LlmProviderSelection = 'auto' | LlmProvider
 
-const LLM_PROVIDER_OPTIONS: Array<{ value: LlmProvider, label: string }> = [
-  { value: 'openai', label: 'ChatGPT' },
-  { value: 'claude', label: 'Claude' },
-  { value: 'gemma', label: 'Gemma 4' },
-]
-
-const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
-const apiUrl = (path: string) => `${API_BASE_URL}${path}`
 const skillMapDeckRequestCache = new Map<string, Promise<SkillMapDrillsResponse>>()
 
 const requestSkillMapDrills = (body: SkillMapDrillsRequest) => {
@@ -1700,8 +1695,9 @@ function App() {
   const [sessionAccuracyByCard, setSessionAccuracyByCard] = useState<Record<string, number>>({})
   const [sessionElapsedByCard, setSessionElapsedByCard] = useState<Record<string, number>>({})
   const [sessionPlanRequested, setSessionPlanRequested] = useState(false)
-  const [llmProvider, setLlmProvider] = useState<LlmProvider>('openai')
-  const [llmProviderMenuOpen, setLlmProviderMenuOpen] = useState(false)
+  const llmProvider: LlmProviderSelection = 'auto'
+  const configuredProviderLabel = useConfiguredProviderLabel()
+  const requestLlmProvider = llmProvider === 'auto' ? '' : llmProvider
 
   const [liveCoachUsedThisAttempt, setLiveCoachUsedThisAttempt] = useState(false)
 
@@ -1734,7 +1730,6 @@ function App() {
   const previewCodeContainerRef = useRef<HTMLDivElement | null>(null)
   const [recallMinHeight, setRecallMinHeight] = useState<number | undefined>(undefined)
   const mainGutterRef = useRef<HTMLDivElement | null>(null)
-  const llmProviderMenuRef = useRef<HTMLDivElement | null>(null)
   const currentCardIdRef = useRef('')
   const liveCoachRequestVersionRef = useRef(0)
   const liveCoachSnapshotRef = useRef<LiveCoachSnapshot | null>(null)
@@ -1826,7 +1821,7 @@ function App() {
       templateMode: requestedTemplateMode,
       templateTargets: requestedTemplateTargets,
       specimenTuning: loadStoredSpecimenTuning(),
-      llmProvider,
+      llmProvider: requestLlmProvider,
     }
 
     try {
@@ -1900,7 +1895,7 @@ function App() {
   useEffect(() => {
     void fetchSkillMapDeck()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [llmProvider, requestedQuestionType, requestedSkillMapSignature, requestedTemplateMode, skillMapRefreshToken])
+  }, [llmProvider, requestLlmProvider, requestedQuestionType, requestedSkillMapSignature, requestedTemplateMode, skillMapRefreshToken])
 
   useEffect(() => {
     saveStoredLiveCoachTuning(liveCoachTuning)
@@ -1911,27 +1906,6 @@ function App() {
     startSession()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skillMapSessionVersion, skillMapLoading])
-
-  useEffect(() => {
-    if (!llmProviderMenuOpen) return
-
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!llmProviderMenuRef.current?.contains(event.target as Node)) {
-        setLlmProviderMenuOpen(false)
-      }
-    }
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setLlmProviderMenuOpen(false)
-    }
-
-    window.addEventListener('mousedown', handlePointerDown)
-    window.addEventListener('keydown', handleEscape)
-    return () => {
-      window.removeEventListener('mousedown', handlePointerDown)
-      window.removeEventListener('keydown', handleEscape)
-    }
-  }, [llmProviderMenuOpen])
 
   const currentDeckIndex = sessionOrder[sessionPosition] ?? 0
   const card = filteredDeck[currentDeckIndex] ?? filteredDeck[0] ?? emptySkillMapCard
@@ -2178,7 +2152,7 @@ function App() {
           skillTags: currentSkillTags,
           submissionRubric: payload.submissionRubric,
           specimenTuning: loadStoredSpecimenTuning(),
-          llmProvider,
+          llmProvider: requestLlmProvider,
         }),
       })
       if (!response.ok) throw new Error('Unable to generate adaptive variation')
@@ -2219,7 +2193,7 @@ function App() {
           templateMode: currentTemplateMode,
           skillTags: currentSkillTags,
           specimenTuning: loadStoredSpecimenTuning(),
-          llmProvider,
+          llmProvider: requestLlmProvider,
         }),
       })
       if (!response.ok) throw new Error('Unable to generate sequential variation')
@@ -2450,7 +2424,7 @@ function App() {
           },
           liveCoachTuning,
           submissionTuning,
-          llmProvider,
+          llmProvider: requestLlmProvider,
         }),
       })
       if (!response.ok) throw new Error('Unable to load live coach feedback')
@@ -2515,7 +2489,7 @@ function App() {
           })),
           questionType: currentQuestionType,
           mode: 'main-recall',
-          llmProvider,
+          llmProvider: requestLlmProvider,
           templateMode: currentTemplateMode,
           enabledTemplateModes: activeTemplateModes,
           submissionTuning,
@@ -2530,7 +2504,9 @@ function App() {
         }
 
         const defaultProviderLabel =
-          LLM_PROVIDER_OPTIONS.find((option) => option.value === llmProvider)?.label ?? 'LLM'
+          llmProvider === 'auto'
+            ? configuredProviderLabel
+            : providerDisplayLabel(llmProvider)
         const detail =
           parsedError &&
           typeof parsedError === 'object' &&
@@ -2616,7 +2592,7 @@ function App() {
                 )
               : 0,
           weakestCards: weakCards,
-          llmProvider,
+          llmProvider: requestLlmProvider,
         }),
       })
       if (!response.ok) throw new Error('Unable to load coach session plan')
@@ -3157,32 +3133,7 @@ function App() {
       )}
 
       <TopNav
-        llmProviderLabel={LLM_PROVIDER_OPTIONS.find((option) => option.value === llmProvider)?.label ?? 'ChatGPT'}
-        llmProviderMenuOpen={llmProviderMenuOpen}
-        onToggleLlmProviderMenu={() => setLlmProviderMenuOpen((open) => !open)}
-        llmProviderMenuRef={llmProviderMenuRef}
-        llmProviderMenu={
-          llmProviderMenuOpen ? (
-            <div className="navbar-picker-menu" role="listbox" aria-label="Coach model options">
-              {LLM_PROVIDER_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="option"
-                  aria-selected={llmProvider === option.value}
-                  className={llmProvider === option.value ? 'navbar-picker-option active' : 'navbar-picker-option'}
-                  onClick={() => {
-                    setLlmProvider(option.value)
-                    setLlmProviderMenuOpen(false)
-                  }}
-                >
-                  <span>{option.label}</span>
-                  {llmProvider === option.value && <span className="navbar-picker-check">Active</span>}
-                </button>
-              ))}
-            </div>
-          ) : undefined
-        }
+        llmProviderLabel={`Auto (${configuredProviderLabel})`}
         sessionCounterText={sessionCounterText}
         sessionCounterLoading={skillMapLoading}
         practiceHistoryHref={practiceHistoryHref}

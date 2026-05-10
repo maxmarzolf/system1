@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { apiUrl } from './api'
 import GhostRepActivityChart, { type GhostRepActivity, type GhostRepPatternOrder } from './GhostRepActivityChart'
+import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 
 type PracticeHistoryEntry = {
@@ -100,9 +102,7 @@ type SkillMapOverviewForGhostReps = {
   ghostRepActivity: GhostRepActivity
 }
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 const MAIN_RECALL_CLOSE_ENOUGH_ACCURACY = 90
-const apiUrl = (path: string) => `${API_BASE_URL}${path}`
 type TemplateMode = 'algorithm'
 const TEMPLATE_MODE_ORDER: TemplateMode[] = ['algorithm']
 const TEMPLATE_MODE_LABELS: Record<string, string> = {
@@ -149,6 +149,7 @@ const formatWeakDimension = (summary?: DimensionSummary) => {
 }
 
 export default function PracticeHistoryPage() {
+  const configuredProviderLabel = useConfiguredProviderLabel()
   const [searchParams] = useSearchParams()
   const cardId = searchParams.get('cardId')?.trim() || ''
   const questionType = searchParams.get('questionType')?.trim() || 'skill-map'
@@ -230,7 +231,7 @@ export default function PracticeHistoryPage() {
 
   return (
     <div className="app">
-      <TopNav />
+      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} />
 
         <GhostRepActivityChart
           activity={ghostRepOverview?.ghostRepActivity}

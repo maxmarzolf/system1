@@ -244,7 +244,7 @@ Submission feedback (`liveMode=false`) runs Assessor → Narrator in sequence.
 ```
 
 Backend provider settings:
-- `COACH_LLM_PROVIDER` (default: `openai`; supported values: `openai`, `claude`, `gemma`)
+- `LLM_DEFAULT` (default: `openai`; supported values: `openai`, `claude`, `gemma`)
 
 OpenAI variables:
 - `COACH_OPENAI_API_KEY` (preferred)
@@ -274,7 +274,7 @@ Generator tuning variables (environment-backed):
 Local dev example (OpenAI):
 ```bash
 cd backend
-export COACH_LLM_PROVIDER="openai"
+export LLM_DEFAULT="openai"
 export OPENAI_API_KEY="your_key_here"
 venv/bin/python main.py
 ```
@@ -282,7 +282,7 @@ venv/bin/python main.py
 Local dev example (Claude):
 ```bash
 cd backend
-export COACH_LLM_PROVIDER="claude"
+export LLM_DEFAULT="claude"
 export ANTHROPIC_API_KEY="your_key_here"
 venv/bin/python main.py
 ```
@@ -291,7 +291,7 @@ Local dev example (Gemma via Ollama):
 ```bash
 ollama serve  # in a separate terminal
 cd backend
-export COACH_LLM_PROVIDER="gemma"
+export LLM_DEFAULT="gemma"
 venv/bin/python main.py
 ```
 
@@ -308,7 +308,7 @@ cat > backend/.env <<'EOF'
 PORT=3001
 DATABASE_URL=postgresql://flashcard_user:flashcard_password@postgres:5432/flashcard_db
 ADMIN_RESET_TOKEN=reset-practice-history
-COACH_LLM_PROVIDER=openai
+LLM_DEFAULT=openai
 COACH_OPENAI_API_KEY=your_key_here
 COACH_OPENAI_MODEL=gpt-5.2
 COACH_OPENAI_BASE_URL=https://api.openai.com/v1

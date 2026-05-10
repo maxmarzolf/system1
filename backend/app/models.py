@@ -136,6 +136,10 @@ class CoachSessionPlanResponse(BaseModel):
     llmUsed: bool = False
 
 
+class CoachProviderDefaultResponse(BaseModel):
+    provider: str = "openai"
+
+
 class SkillMapNode(BaseModel):
     pattern: str = Field(min_length=1)
     methods: list[str] = []

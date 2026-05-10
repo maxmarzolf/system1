@@ -9,6 +9,7 @@ from app.models import (
     CoachAttemptFeedbackResponse,
     CoachPracticeHistoryRequest,
     CoachPracticeHistoryResponse,
+    CoachProviderDefaultResponse,
     CoachSessionPlanRequest,
     CoachSessionPlanResponse,
     SequentialVariationRequest,
@@ -19,6 +20,11 @@ from app.models import (
 from app.core import coach as coach_service
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])
+
+
+@router.get("/provider-default", response_model=CoachProviderDefaultResponse)
+async def coach_provider_default():
+    return await coach_service.coach_provider_default()
 
 
 @router.post("/evaluate-attempt", response_model=CoachAttemptEvaluationResponse)

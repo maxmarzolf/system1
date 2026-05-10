@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { apiUrl } from './api'
 import { practicePlaylists } from './data/playlists'
+import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 
 type SkillMapActivityDay = {
@@ -101,8 +103,6 @@ type SkillMapOverviewResponse = {
   patterns: SkillMapPatternReadiness[]
 }
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
-const apiUrl = (path: string) => `${API_BASE_URL}${path}`
 type TemplateMode = 'algorithm'
 const TEMPLATE_MODE_ORDER: TemplateMode[] = ['algorithm']
 const ACTIVITY_WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
@@ -303,6 +303,7 @@ function DashboardActivityModal({
 export default function DashboardPage() {
   const navigate = useNavigate()
   const [overview, setOverview] = useState<SkillMapOverviewResponse | null>(null)
+  const configuredProviderLabel = useConfiguredProviderLabel()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedMethodsByPattern, setSelectedMethodsByPattern] = useState<Record<string, string[]>>({})
@@ -361,7 +362,7 @@ export default function DashboardPage() {
 
   return (
     <div className="app app-dashboard">
-      <TopNav />
+      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} />
 
       <section className="dashboard">
         {error && <p className="skill-map-intro">{error}</p>}
