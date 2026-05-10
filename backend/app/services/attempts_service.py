@@ -128,28 +128,38 @@ def _build_ghost_rep_activity(
     today = datetime.now(timezone.utc).date()
     window_start = today - timedelta(days=max(window_days - 1, 0))
     known_pattern_slugs = set(slug_to_pattern)
-    counts_by_day_pattern: dict[str, Counter[str]] = {}
-    pattern_totals: Counter[str] = Counter()
-    last_seen_by_pattern: dict[str, date] = {}
+    counts_by_day_type_pattern: dict[str, Counter[tuple[str, str]]] = {}
+    pattern_ghost_totals: Counter[str] = Counter()
+    pattern_mcq_totals: Counter[str] = Counter()
+    last_ghost_seen_by_pattern: dict[str, date] = {}
+    last_work_seen_by_pattern: dict[str, date] = {}
 
     for row in attempt_rows:
-        if str(row["support_layer"] or "none") != "ghost-reps":
-            continue
         created_at = _coerce_utc_datetime(row["created_at"])
         if created_at is None:
             continue
         category_tags = [str(tag) for tag in (row["category_tags"] or [])]
+        is_mcq = "skill-map-mcq" in category_tags
+        is_ghost_rep = str(row["support_layer"] or "none") == "ghost-reps"
+        if not is_ghost_rep and not is_mcq:
+            continue
         matched_pattern_slugs = [tag for tag in category_tags if tag in known_pattern_slugs]
         if not matched_pattern_slugs:
             continue
+        work_type = "multiple-choice" if is_mcq else "ghost-reps"
         attempt_date = created_at.date()
         iso_date = attempt_date.isoformat()
         for slug in matched_pattern_slugs:
-            pattern_totals[slug] += 1
+            if is_mcq:
+                pattern_mcq_totals[slug] += 1
+            else:
+                pattern_ghost_totals[slug] += 1
             if attempt_date >= window_start:
-                counts_by_day_pattern.setdefault(iso_date, Counter())[slug] += 1
-            if slug not in last_seen_by_pattern or attempt_date > last_seen_by_pattern[slug]:
-                last_seen_by_pattern[slug] = attempt_date
+                counts_by_day_type_pattern.setdefault(iso_date, Counter())[(work_type, slug)] += 1
+            if is_ghost_rep and (slug not in last_ghost_seen_by_pattern or attempt_date > last_ghost_seen_by_pattern[slug]):
+                last_ghost_seen_by_pattern[slug] = attempt_date
+            if slug not in last_work_seen_by_pattern or attempt_date > last_work_seen_by_pattern[slug]:
+                last_work_seen_by_pattern[slug] = attempt_date
 
     days: list[dict[str, Any]] = []
     active_days = 0
@@ -157,21 +167,29 @@ def _build_ghost_rep_activity(
     cursor = window_start
     while cursor <= today:
         iso_date = cursor.isoformat()
-        day_counts = counts_by_day_pattern.get(iso_date, Counter())
+        day_counts = counts_by_day_type_pattern.get(iso_date, Counter())
         total = sum(day_counts.values())
+        ghost_rep_count = sum(count for (work_type, _slug), count in day_counts.items() if work_type == "ghost-reps")
+        multiple_choice_count = sum(count for (work_type, _slug), count in day_counts.items() if work_type == "multiple-choice")
         if total > 0:
             active_days += 1
         peak_daily_count = max(peak_daily_count, total)
         days.append({
             "date": iso_date,
             "total": total,
+            "ghostRepCount": ghost_rep_count,
+            "multipleChoiceCount": multiple_choice_count,
             "segments": [
                 {
                     "pattern": slug_to_pattern[slug],
                     "slug": slug,
+                    "workType": work_type,
                     "count": count,
                 }
-                for slug, count in day_counts.most_common()
+                for (work_type, slug), count in sorted(
+                    day_counts.items(),
+                    key=lambda item: (0 if item[0][0] == "ghost-reps" else 1, slug_to_pattern[item[0][1]], item[0][1]),
+                )
             ],
         })
         cursor += timedelta(days=1)
@@ -180,8 +198,11 @@ def _build_ghost_rep_activity(
         {
             "pattern": pattern,
             "slug": slug,
-            "totalGhostReps": int(pattern_totals.get(slug, 0)),
-            "daysSinceLastGhostRep": (today - last_seen_by_pattern[slug]).days if slug in last_seen_by_pattern else None,
+            "totalGhostReps": int(pattern_ghost_totals.get(slug, 0)),
+            "totalMultipleChoice": int(pattern_mcq_totals.get(slug, 0)),
+            "totalWork": int(pattern_ghost_totals.get(slug, 0) + pattern_mcq_totals.get(slug, 0)),
+            "daysSinceLastGhostRep": (today - last_ghost_seen_by_pattern[slug]).days if slug in last_ghost_seen_by_pattern else None,
+            "daysSinceLastPractice": (today - last_work_seen_by_pattern[slug]).days if slug in last_work_seen_by_pattern else None,
         }
         for slug, pattern in slug_to_pattern.items()
     ]
@@ -189,7 +210,9 @@ def _build_ghost_rep_activity(
     return {
         "windowStart": window_start.isoformat(),
         "windowEnd": today.isoformat(),
-        "totalGhostReps": sum(day["total"] for day in days),
+        "totalGhostReps": sum(day["ghostRepCount"] for day in days),
+        "totalMultipleChoice": sum(day["multipleChoiceCount"] for day in days),
+        "workCount": sum(day["total"] for day in days),
         "activeDays": active_days,
         "peakDailyCount": peak_daily_count,
         "days": days,
@@ -242,13 +265,15 @@ def build_skill_map_overview(
         card_id = str(row["tracked_card_id"] or "").strip()
         if not card_id:
             continue
+        category_tags = [str(tag) for tag in (row["category_tags"] or [])]
+        if "skill-map-mcq" in category_tags:
+            continue
         template_mode = str(row["template_mode"] or "algorithm").strip() or "algorithm"
         support_layer = str(row["support_layer"] or "none")
         if support_layer == "ghost-reps":
             total_ghost_rep_count += 1
         else:
             total_unsupported_attempt_count += 1
-        category_tags = [str(tag) for tag in (row["category_tags"] or [])]
         matched_pattern_slugs = [tag for tag in category_tags if tag in known_pattern_slugs]
 
         if card_id not in generated_cards:

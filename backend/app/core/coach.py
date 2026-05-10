@@ -29,10 +29,13 @@ from app.models import (
     CoachProviderDefaultResponse,
     CoachSessionPlanRequest,
     CoachSessionPlanResponse,
+    MultipleChoiceDrillsRequest,
+    MultipleChoiceDrillsResponse,
     SequentialVariationRequest,
     SequentialVariationResponse,
     SkillMapDrillsRequest,
     SkillMapDrillsResponse,
+    SkillMapNode,
     TemplateMode,
 )
 from app.readiness import READINESS_MODE_ORDER, summarize_readiness
@@ -2067,6 +2070,189 @@ async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
         provider_label=_llm_provider_label(provider),
         provider_available=_llm_provider_available(provider),
     )
+
+
+def _normalize_mcq_difficulty(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"hard", "difficult"}:
+        return "Hard"
+    return "Med."
+
+
+def _normalize_mcq_choice_id(value: Any, fallback_index: int) -> str:
+    text = str(value or "").strip().upper()
+    if text in {"A", "B", "C", "D"}:
+        return text
+    return ["A", "B", "C", "D"][fallback_index]
+
+
+def _process_multiple_choice_card(raw: Any, index: int, body: MultipleChoiceDrillsRequest) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+
+    source_node = body.skillMap[index % max(len(body.skillMap), 1)] if body.skillMap else None
+    pattern = str(raw.get("pattern") or getattr(source_node, "pattern", "") or "Algorithm").strip()
+    pattern_slug = _pattern_slug(pattern) or "algorithm"
+    title = str(raw.get("title") or f"{pattern} Multiple Choice").strip()
+    question = str(raw.get("question") or "").strip()
+    explanation = str(raw.get("explanation") or "").strip()
+    difficulty = _normalize_mcq_difficulty(str(raw.get("difficulty") or body.difficulty))
+
+    raw_choices = raw.get("choices")
+    if not isinstance(raw_choices, list) or len(raw_choices) < 4:
+        return None
+
+    choices: list[dict[str, str]] = []
+    seen_ids: set[str] = set()
+    for choice_index, choice in enumerate(raw_choices[:4]):
+        if isinstance(choice, dict):
+            choice_id = _normalize_mcq_choice_id(choice.get("id"), choice_index)
+            text = str(choice.get("text") or "").strip()
+        else:
+            choice_id = ["A", "B", "C", "D"][choice_index]
+            text = str(choice or "").strip()
+        if not text:
+            return None
+        if choice_id in seen_ids:
+            choice_id = ["A", "B", "C", "D"][choice_index]
+        seen_ids.add(choice_id)
+        choices.append({"id": choice_id, "text": text})
+
+    correct_choice_id = _normalize_mcq_choice_id(raw.get("correctChoiceId"), 0)
+    choice_ids = {choice["id"] for choice in choices}
+    if correct_choice_id not in choice_ids:
+        return None
+    if not question or not explanation:
+        return None
+
+    raw_tags = [str(tag).strip() for tag in raw.get("tags", []) if str(tag).strip()] if isinstance(raw.get("tags"), list) else []
+    tags = []
+    for tag in ["skill-map", "skill-map-mcq", pattern_slug, *raw_tags]:
+        if tag and tag not in tags:
+            tags.append(tag)
+
+    stamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S%f")
+    return {
+        "id": f"mcq-{stamp}-{index + 1}",
+        "title": title,
+        "pattern": pattern,
+        "difficulty": difficulty,
+        "question": question,
+        "choices": choices,
+        "correctChoiceId": correct_choice_id,
+        "explanation": explanation,
+        "tags": tags,
+    }
+
+
+async def coach_multiple_choice_drills(body: MultipleChoiceDrillsRequest) -> MultipleChoiceDrillsResponse:
+    provider = _resolve_available_llm_provider(body.llmProvider)
+    provider_label = _llm_provider_label(provider)
+    if not _llm_provider_available(provider):
+        raise HTTPException(
+            status_code=503,
+            detail=_submission_feedback_error_detail(
+                "mcq_generation_missing_api_key",
+                f"Multiple choice questions cannot be generated at this time. No API key is configured for {provider_label}.",
+                provider,
+                "provider_auth_error",
+            ),
+        )
+
+    difficulty = _normalize_mcq_difficulty(body.difficulty)
+    generation_seed = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S%f")
+    skill_map = list(body.skillMap[: body.count])
+    if not skill_map:
+        skill_map = [SkillMapNode(pattern="Algorithm", methods=[])]
+    while len(skill_map) < body.count:
+        skill_map.extend(skill_map[: body.count - len(skill_map)])
+
+    system_prompt = (
+        "You generate multiple-choice cards for algorithm pattern recognition and reasoning. "
+        "Return only a top-level JSON object shaped exactly like {\"drills\": [...]}. "
+        "The drills array must contain exactly the requested count. "
+        "Each drill must have id, title, pattern, difficulty, question, choices, correctChoiceId, explanation, and tags. "
+        "Each choices array must contain exactly four objects with ids A, B, C, and D and concise answer text. "
+        "Prefer code-centered questions: show a compact Python snippet, loop condition, state update, return line, or one-line mutation when that makes the algorithm idea concrete. "
+        "Roughly three out of four drills should include a short code snippet in the question or choices; the rest may be purely conceptual. "
+        "Questions must test the broader algorithm pattern, invariant, tradeoff, state choice, boundary condition, or debugging insight, not a specific static memorized fact. "
+        "Keep snippets compact: at most 4 short lines in the question, and at most one short line per choice. "
+        "Make distractors plausible for adjacent patterns or common code-level mistakes. "
+        "Use the requested difficulty for every drill. "
+        "Tags must include skill-map, skill-map-mcq, and the slug for the algorithm pattern."
+    )
+    llm_payload = {
+        "questionType": body.questionType,
+        "count": body.count,
+        "difficulty": difficulty,
+        "generationSeed": generation_seed,
+        "skillMap": [
+            {
+                "pattern": node.pattern,
+                "methods": node.methods,
+                "patternSlug": _pattern_slug(node.pattern),
+            }
+            for node in skill_map[: body.count]
+        ],
+        "schema": {
+            "drill": {
+                "id": "temporary id from model; server will replace it",
+                "title": "short pattern-first title",
+                "pattern": "algorithm pattern name",
+                "difficulty": difficulty,
+                "question": "one multiple-choice question",
+                "choices": [
+                    {"id": "A", "text": "choice text"},
+                    {"id": "B", "text": "choice text"},
+                    {"id": "C", "text": "choice text"},
+                    {"id": "D", "text": "choice text"},
+                ],
+                "correctChoiceId": "A",
+                "explanation": "why the answer is correct in one or two sentences",
+                "tags": ["skill-map", "skill-map-mcq", "pattern-slug"],
+            }
+        },
+    }
+
+    llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider, 5000, 60, 0.7)
+    if not llm_response or not isinstance(llm_response.get("drills"), list):
+        raise HTTPException(
+            status_code=503,
+            detail=_submission_feedback_error_detail(
+                "mcq_generation_no_response",
+                f"Multiple choice questions cannot be generated at this time. No valid response from {provider_label}.",
+                provider,
+                "provider_empty_response",
+            ),
+        )
+
+    drills: list[dict[str, Any]] = []
+    for index, raw in enumerate(llm_response["drills"][: body.count]):
+        processed = _process_multiple_choice_card(raw, index, body)
+        if not processed:
+            raise HTTPException(
+                status_code=503,
+                detail=_submission_feedback_error_detail(
+                    "mcq_generation_invalid_response",
+                    f"Multiple choice questions cannot be generated at this time. Invalid response from {provider_label}.",
+                    provider,
+                    "provider_invalid_json",
+                ),
+            )
+        drills.append(processed)
+
+    if len(drills) != body.count:
+        raise HTTPException(
+            status_code=503,
+            detail=_submission_feedback_error_detail(
+                "mcq_generation_invalid_response",
+                f"Multiple choice questions cannot be generated at this time. Invalid response from {provider_label}.",
+                provider,
+                "provider_invalid_json",
+            ),
+        )
+
+    return MultipleChoiceDrillsResponse(drills=drills, llmUsed=True)
 
 
 async def coach_adaptive_variation(body: AdaptiveVariationRequest):

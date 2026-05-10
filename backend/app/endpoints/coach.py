@@ -12,6 +12,8 @@ from app.models import (
     CoachProviderDefaultResponse,
     CoachSessionPlanRequest,
     CoachSessionPlanResponse,
+    MultipleChoiceDrillsRequest,
+    MultipleChoiceDrillsResponse,
     SequentialVariationRequest,
     SequentialVariationResponse,
     SkillMapDrillsRequest,
@@ -55,6 +57,11 @@ async def coach_skill_map_drills(body: SkillMapDrillsRequest):
 @router.post("/skill-map-drills-stream")
 async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
     return await coach_service.coach_skill_map_drills_stream(body)
+
+
+@router.post("/multiple-choice-drills", response_model=MultipleChoiceDrillsResponse)
+async def coach_multiple_choice_drills(body: MultipleChoiceDrillsRequest):
+    return await coach_service.coach_multiple_choice_drills(body)
 
 
 @router.post("/adaptive-variation", response_model=AdaptiveVariationResponse)

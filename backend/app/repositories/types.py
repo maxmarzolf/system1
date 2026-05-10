@@ -10,6 +10,7 @@ class PracticeHistoryRow(TypedDict):
     cardId: str
     cardTitle: str
     question: str
+    questionType: str
     correctAnswer: str
     userAnswer: str
     accuracy: float
@@ -33,6 +34,7 @@ class PracticeHistoryEntry(TypedDict):
     cardId: str
     cardTitle: str
     question: str
+    questionType: str
     correctAnswer: str
     userAnswer: str
     accuracy: float

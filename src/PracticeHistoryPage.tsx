@@ -11,6 +11,9 @@ type PracticeHistoryEntry = {
   cardId: string
   cardTitle: string
   question: string
+  questionType: string
+  correctAnswer: string
+  userAnswer: string
   accuracy: number
   exact: boolean
   elapsedMs: number
@@ -19,7 +22,14 @@ type PracticeHistoryEntry = {
   liveCoachUsed: boolean
   categoryTags: string[]
   generatedCard: {
+    cardMode?: string
     prompt?: string
+    question?: string
+    difficulty?: string
+    pattern?: string
+    correctChoiceId?: string
+    choices?: Array<{ id?: string; text?: string }>
+    explanation?: string
   }
   liveFeedbackCount: number
   latestLiveFeedback: {
@@ -115,7 +125,22 @@ const formatTemplateModeLabel = (templateMode: PracticeHistoryEntry['templateMod
 const formatSupportLayerLabel = (supportLayer: PracticeHistoryEntry['supportLayer']) =>
   supportLayer === 'ghost-reps' ? 'Ghost Rep' : 'Unsupported'
 
+const isMultipleChoiceEntry = (entry: PracticeHistoryEntry) =>
+  entry.questionType.startsWith('skill-map-mcq') || entry.generatedCard.cardMode === 'multiple-choice'
+
+const choiceTextByStoredAnswer = (entry: PracticeHistoryEntry, storedAnswer: string) => {
+  const answer = storedAnswer.trim()
+  const choiceId = answer.match(/^([A-D])\./)?.[1] || answer
+  const choice = entry.generatedCard.choices?.find((item) => item.id === choiceId)
+  if (choice?.id && choice.text) return `${choice.id}. ${choice.text}`
+  return answer
+}
+
 const summarizeHistoryText = (entry: PracticeHistoryEntry) => {
+  if (isMultipleChoiceEntry(entry)) {
+    return entry.generatedCard.explanation?.trim() || 'Multiple choice result saved.'
+  }
+
   const submissionSummary =
     entry.submissionFeedback.fullFeedback ||
     entry.submissionFeedback.diagnosis ||
@@ -312,6 +337,7 @@ export default function PracticeHistoryPage() {
             {!practiceHistoryLoading && practiceHistory.length > 0 && (
               <div className="practice-history-list">
                 {practiceHistory.map((entry) => {
+                  const multipleChoice = isMultipleChoiceEntry(entry)
                   const entryTone =
                     entry.exact
                       ? 'success'
@@ -325,20 +351,29 @@ export default function PracticeHistoryPage() {
                         <div>
                           <p className="practice-history-title">{entry.cardTitle || entry.cardId}</p>
                           <p className="practice-history-meta">
-                            {formatTemplateModeLabel(entry.templateMode)} · {formatSupportLayerLabel(entry.supportLayer)} · {entry.liveFeedbackCount} live feedback {entry.liveFeedbackCount === 1 ? 'snapshot' : 'snapshots'} · {(entry.elapsedMs / 1000).toFixed(1)}s
+                            {multipleChoice
+                              ? `Multiple Choice · ${entry.generatedCard.difficulty || 'Med.'} · ${(entry.elapsedMs / 1000).toFixed(1)}s`
+                              : `${formatTemplateModeLabel(entry.templateMode)} · ${formatSupportLayerLabel(entry.supportLayer)} · ${entry.liveFeedbackCount} live feedback ${entry.liveFeedbackCount === 1 ? 'snapshot' : 'snapshots'} · ${(entry.elapsedMs / 1000).toFixed(1)}s`}
                           </p>
                         </div>
                         <span className={`coach-status-value coach-status-value-${entryTone}`}>
-                          {entry.accuracy}%
+                          {multipleChoice ? (entry.exact ? 'Correct' : 'Missed') : `${entry.accuracy}%`}
                         </span>
                       </div>
-                      {(entry.liveCoachUsed || entry.supportLayer === 'ghost-reps') && (
+                      {multipleChoice && (
+                        <div className="practice-history-focuses">
+                          {entry.generatedCard.pattern && <span className="coach-metric-chip">{entry.generatedCard.pattern}</span>}
+                          <span className="coach-metric-chip">Selected {choiceTextByStoredAnswer(entry, entry.userAnswer)}</span>
+                          <span className="coach-metric-chip">Correct {choiceTextByStoredAnswer(entry, entry.correctAnswer)}</span>
+                        </div>
+                      )}
+                      {!multipleChoice && (entry.liveCoachUsed || entry.supportLayer === 'ghost-reps') && (
                         <div className="practice-history-focuses">
                           {entry.liveCoachUsed && <span className="coach-metric-chip">Live coach used</span>}
                           {entry.supportLayer === 'ghost-reps' && <span className="coach-metric-chip">Support Layer Ghost Reps</span>}
                         </div>
                       )}
-                      {entry.submissionRubric?.verdict && (
+                      {!multipleChoice && entry.submissionRubric?.verdict && (
                         <div className="practice-history-rubric-strip">
                           <div className="practice-history-rubric-strip-top">
                             <span className="coach-metric-chip">
@@ -372,7 +407,7 @@ export default function PracticeHistoryPage() {
                         </div>
                       )}
                       <p className="practice-history-question">
-                        {entry.question || entry.generatedCard.prompt || 'Stored generated question'}
+                        {entry.question || entry.generatedCard.question || entry.generatedCard.prompt || 'Stored generated question'}
                       </p>
                       <p className="practice-history-feedback">{summarizeHistoryText(entry)}</p>
                     </article>

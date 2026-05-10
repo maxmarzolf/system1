@@ -29,6 +29,26 @@ type Flashcard = {
   plainEnglishPromptDetail?: PlainEnglishPromptDetail
 }
 
+type PracticeMode = 'recall' | 'multiple-choice'
+type MultipleChoiceDifficulty = 'Med.' | 'Hard'
+
+type MultipleChoiceChoice = {
+  id: string
+  text: string
+}
+
+type MultipleChoiceCard = {
+  id: string
+  title: string
+  pattern: string
+  difficulty: MultipleChoiceDifficulty
+  question: string
+  choices: MultipleChoiceChoice[]
+  correctChoiceId: string
+  explanation: string
+  tags: string[]
+}
+
 const emptySkillMapCard: Flashcard = {
   id: 'skill-map-loading',
   title: 'Skill Map Card',
@@ -45,6 +65,7 @@ type HelperLayer = 'inline'
 type CoreShapeLayer = 'coreShape'
 type RecallTargetMode = TemplateMode | CoreShapeLayer
 type SupportLayer = 'none' | 'ghost-reps'
+type InlineLens = 'pattern' | 'plainEnglish' | 'why' | 'transfer' | 'debug'
 
 type AttemptPayload = {
   mode: 'main-recall'
@@ -101,6 +122,11 @@ type SkillMapDrillsResponse = {
   llmUsed: boolean
 }
 
+type MultipleChoiceDrillsResponse = {
+  drills: MultipleChoiceCard[]
+  llmUsed: boolean
+}
+
 type ApiErrorDetail = {
   code?: string
   message?: string
@@ -116,6 +142,14 @@ type SkillMapDrillsRequest = {
   templateMode: TemplateMode
   templateTargets: Record<string, Partial<Record<TemplateMode | HelperLayer | CoreShapeLayer, string>>>
   specimenTuning: SpecimenTuning
+  llmProvider: string
+}
+
+type MultipleChoiceDrillsRequest = {
+  questionType: string
+  count: number
+  skillMap: SkillMapNode[]
+  difficulty: MultipleChoiceDifficulty
   llmProvider: string
 }
 
@@ -234,6 +268,7 @@ type LlmProvider = 'openai' | 'claude' | 'gemma'
 type LlmProviderSelection = 'auto' | LlmProvider
 
 const skillMapDeckRequestCache = new Map<string, Promise<SkillMapDrillsResponse>>()
+const multipleChoiceDeckRequestCache = new Map<string, Promise<MultipleChoiceDrillsResponse>>()
 
 const requestSkillMapDrills = (body: SkillMapDrillsRequest) => {
   const requestKey = JSON.stringify(body)
@@ -277,6 +312,51 @@ const requestSkillMapDrills = (body: SkillMapDrillsRequest) => {
     })
 
   skillMapDeckRequestCache.set(requestKey, request)
+  return request
+}
+
+const requestMultipleChoiceDrills = (body: MultipleChoiceDrillsRequest) => {
+  const requestKey = JSON.stringify(body)
+  const existingRequest = multipleChoiceDeckRequestCache.get(requestKey)
+  if (existingRequest) return existingRequest
+
+  const request = fetch(apiUrl('/api/coach/multiple-choice-drills'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: requestKey,
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        let parsedError: unknown = null
+        try {
+          parsedError = await response.json()
+        } catch {
+          parsedError = null
+        }
+
+        const detail =
+          parsedError &&
+          typeof parsedError === 'object' &&
+          parsedError !== null &&
+          'detail' in parsedError &&
+          typeof (parsedError as { detail?: unknown }).detail === 'object' &&
+          (parsedError as { detail?: unknown }).detail !== null
+            ? ((parsedError as { detail: ApiErrorDetail }).detail)
+            : null
+
+        throw new Error(
+          detail?.message?.trim() || 'Unable to generate multiple choice questions'
+        )
+      }
+      return (await response.json()) as MultipleChoiceDrillsResponse
+    })
+    .finally(() => {
+      if (multipleChoiceDeckRequestCache.get(requestKey) === request) {
+        multipleChoiceDeckRequestCache.delete(requestKey)
+      }
+    })
+
+  multipleChoiceDeckRequestCache.set(requestKey, request)
   return request
 }
 
@@ -332,6 +412,13 @@ const DEFAULT_TEMPLATE_MODES: TemplateMode[] = ['algorithm']
 const TEMPLATE_MODE_LABELS: Record<TemplateMode, string> = {
   algorithm: 'Algorithm',
 }
+const INLINE_LENS_OPTIONS: Array<{ value: InlineLens; label: string; title: string }> = [
+  { value: 'pattern', label: 'Pattern', title: 'Pattern' },
+  { value: 'plainEnglish', label: 'Plain English', title: 'Plain English' },
+  { value: 'why', label: 'Why', title: 'Why' },
+  { value: 'transfer', label: 'Transfer', title: 'Transfer' },
+  { value: 'debug', label: 'Debug My Understanding', title: 'Debug My Understanding' },
+]
 const patternToSlug = (pattern: string) =>
   pattern
     .toLowerCase()
@@ -943,7 +1030,7 @@ const findBestLiveNoteAnchorLine = (lines: string[], note: string, preferredInde
   return findNearestWrittenLineIndex(lines, preferredIndex)
 }
 
-const inlineDecisionNoteForPattern = (patternTag: string) => {
+const patternInlineDecisionNoteForPattern = (patternTag: string) => {
   switch (patternTag) {
     case 'sliding-window':
       return 'window valid before scoring'
@@ -975,7 +1062,39 @@ const inlineDecisionNoteForPattern = (patternTag: string) => {
   }
 }
 
-const inlineNoteForLine = (trimmedLine: string, patternTag: string) => {
+const inlineDecisionNoteForPattern = (patternTag: string, lens: InlineLens = 'pattern') => {
+  if (patternTag === 'dynamic-programming' || patternTag === 'dp') {
+    switch (lens) {
+      case 'plainEnglish':
+        return 'at each item choose take or skip'
+      case 'why':
+        return 'current best depends on earlier bests'
+      case 'transfer':
+        return 'define state, transition, final answer'
+      case 'debug':
+        return 'state meaning matters more than array'
+      case 'pattern':
+      default:
+        return 'state stores best answer so far'
+    }
+  }
+
+  switch (lens) {
+    case 'plainEnglish':
+      return 'make the next local decision'
+    case 'why':
+      return 'preserve the rule before moving on'
+    case 'transfer':
+      return 'state, update, answer'
+    case 'debug':
+      return 'check what this state represents'
+    case 'pattern':
+    default:
+      return patternInlineDecisionNoteForPattern(patternTag)
+  }
+}
+
+const patternInlineNoteForLine = (trimmedLine: string, patternTag: string) => {
   if (/^return\b/.test(trimmedLine)) {
     if (/max\(take,\s*skip\)/.test(trimmedLine)) return 'best of final choices'
     if (/return\s+0\b/.test(trimmedLine)) return 'nothing to choose'
@@ -1042,6 +1161,105 @@ const inlineNoteForLine = (trimmedLine: string, patternTag: string) => {
   return ''
 }
 
+const dynamicProgrammingInlineNoteForLine = (trimmedLine: string, lens: InlineLens) => {
+  const hasDpState = /\bdp\s*=/.test(trimmedLine)
+  const isLoop = /^for\b/.test(trimmedLine)
+  const isTake = /^take\s*=/.test(trimmedLine)
+  const isSkip = /^skip\s*=/.test(trimmedLine)
+  const isReturn = /^return\b/.test(trimmedLine)
+  const isTransition = !isReturn && (/^dp\[[^\]]+\]\s*=\s*max\(/.test(trimmedLine) || /max\(take,\s*skip\)/.test(trimmedLine))
+
+  if (lens === 'pattern') {
+    if (hasDpState) return 'state table indexed by prefix'
+    if (isLoop) return 'build states left to right'
+    if (isTake) return 'candidate using current item'
+    if (isSkip) return 'candidate carrying previous best'
+    if (isTransition) return 'transition stores best candidate'
+    if (isReturn) return 'answer is final state'
+  }
+
+  if (lens === 'plainEnglish') {
+    if (hasDpState) return 'dp[i] means best using first i items'
+    if (isLoop) return 'look at each item in order'
+    if (isTake) return 'use this item plus earlier safe best'
+    if (isSkip) return 'ignore this item and keep previous best'
+    if (isTransition) return 'choose the better of taking or skipping'
+    if (isReturn) return 'final slot holds the full answer'
+  }
+
+  if (lens === 'why') {
+    if (hasDpState) return 'stores solved smaller answers'
+    if (isLoop) return 'each step extends the solved prefix'
+    if (isTake) return 'taking blocks the adjacent previous item'
+    if (isSkip) return 'skipping preserves the known best'
+    if (isTransition) return 'optimal answer is the better valid choice'
+    if (isReturn) return 'all choices have been summarized'
+  }
+
+  if (lens === 'transfer') {
+    if (hasDpState) return 'common DP move: name state meaning'
+    if (isLoop) return 'common DP move: scan states in order'
+    if (isTake) return 'choice branch uses compatible previous state'
+    if (isSkip) return 'choice branch carries previous state'
+    if (isTransition) return 'transition compares candidate choices'
+    if (isReturn) return 'return the state covering the whole input'
+  }
+
+  if (lens === 'debug') {
+    if (hasDpState) return 'do not memorize array; define dp[i]'
+    if (isLoop) return 'i indexes dp slots, val is current item'
+    if (isTake) return 'check the index you jump back to'
+    if (isSkip) return 'previous best already considered earlier items'
+    if (isTransition) return 'if this feels magic, name take and skip'
+    if (isReturn) return 'last state is answer only by definition'
+  }
+
+  return ''
+}
+
+const transformInlineNoteForLens = (note: string, lens: InlineLens) => {
+  if (!note) return ''
+  if (lens === 'pattern') return note
+  if (lens === 'plainEnglish') return note
+    .replace(/^include entering value$/, 'add the new value')
+    .replace(/^remove leaving value$/, 'take out the old value')
+    .replace(/^record current window$/, 'save this answer')
+    .replace(/^mark before enqueueing$/, 'remember this node is seen')
+    .replace(/^take next frontier node$/, 'work on the next node')
+    .replace(/^enqueue unseen neighbor$/, 'save neighbor to visit later')
+    .replace(/^choose current item$/, 'try this choice')
+    .replace(/^undo current choice$/, 'put things back before trying next')
+  if (lens === 'why') return note
+    .replace(/^keep best valid window$/, 'only valid windows can improve answer')
+    .replace(/^shrink from the left$/, 'restore the window rule')
+    .replace(/^probe middle boundary$/, 'middle tells which half survives')
+    .replace(/^discard lower half$/, 'lower values cannot contain answer')
+    .replace(/^keep possible boundary$/, 'answer may still be at mid')
+  if (lens === 'transfer') return note
+    .replace(/^keep best valid window$/, 'update answer after state is valid')
+    .replace(/^shrink from the left$/, 'move boundary until invariant holds')
+    .replace(/^probe middle boundary$/, 'search on a monotonic decision')
+    .replace(/^record resolved state$/, 'emit or store resolved candidate')
+    .replace(/^discard stale candidate$/, 'remove candidates that cannot win')
+  if (lens === 'debug') return note
+    .replace(/^keep best valid window$/, 'update best only after validity check')
+    .replace(/^shrink from the left$/, 'ask what broke the invariant')
+    .replace(/^probe middle boundary$/, 'check your inclusive bounds')
+    .replace(/^record resolved state$/, 'confirm this state is truly done')
+    .replace(/^discard stale candidate$/, 'confirm it cannot affect future answers')
+  return note
+}
+
+const inlineNoteForLine = (trimmedLine: string, patternTag: string, lens: InlineLens = 'pattern') => {
+  if (/^(def|if|elif|else)\b/.test(trimmedLine)) return ''
+  if (patternTag === 'dynamic-programming' || patternTag === 'dp') {
+    const dpNote = dynamicProgrammingInlineNoteForLine(trimmedLine, lens)
+    if (dpNote) return dpNote
+  }
+  const patternNote = patternInlineNoteForLine(trimmedLine, patternTag)
+  return transformInlineNoteForLens(patternNote, lens)
+}
+
 const appendAlignedNote = (line: string, note: string) => {
   const compactNote = shortenAnnotationNote(note)
   if (!compactNote) return line
@@ -1081,14 +1299,14 @@ const stripKnownInlineNote = (line: string) => {
   return firstIndex === undefined ? line : line.slice(0, firstIndex).trimEnd()
 }
 
-const appendInlineNote = (line: string, patternTag: string) => {
+const appendInlineNote = (line: string, patternTag: string, lens: InlineLens = 'pattern') => {
   if (hasAlignedInlineNote(line)) {
     const parts = splitInlineAnnotationLine(line)
     if (!parts.note) return line.trimEnd()
     const cleanedNote = removeDuplicateInlineNotes(parts.note)
-    if (INLINE_GENERIC_NOTES.some((note) => note.toLowerCase() === cleanedNote.toLowerCase())) {
-      if (!parts.code.trim()) return appendAlignedNote('', inlineDecisionNoteForPattern(patternTag))
-      const comment = inlineNoteForLine(parts.code.trim(), patternTag)
+    if (INLINE_GENERIC_NOTES.some((note) => note.toLowerCase() === cleanedNote.toLowerCase()) || lens !== 'pattern') {
+      if (!parts.code.trim()) return appendAlignedNote('', inlineDecisionNoteForPattern(patternTag, lens))
+      const comment = inlineNoteForLine(parts.code.trim(), patternTag, lens)
       return appendAlignedNote(parts.code, comment)
     }
     return appendAlignedNote(parts.code, cleanedNote)
@@ -1102,19 +1320,19 @@ const appendInlineNote = (line: string, patternTag: string) => {
   const cleanedLine = stripKnownInlineNote(line)
   const trimmedLine = cleanedLine.trim()
   if (!trimmedLine) return line
-  const comment = inlineNoteForLine(trimmedLine, patternTag)
+  const comment = inlineNoteForLine(trimmedLine, patternTag, lens)
   return appendAlignedNote(cleanedLine, comment)
 }
 
-const shouldPlaceInlineDecisionNoteAfter = (line: string, insideLoop: boolean, patternTag: string) => {
+const shouldPlaceInlineDecisionNoteAfter = (line: string, insideLoop: boolean, patternTag: string, lens: InlineLens = 'pattern') => {
   if (!insideLoop) return false
   const codePart = line.split('#', 1)[0].trim()
   if (!codePart) return false
   if (/^(def|for|while|if|elif|else|return)\b/.test(codePart)) return false
-  return Boolean(inlineNoteForLine(codePart, patternTag))
+  return Boolean(inlineNoteForLine(codePart, patternTag, lens))
 }
 
-const buildInlineTemplate = (patternTag: string, algorithmTarget: string) => {
+const buildInlineTemplate = (patternTag: string, algorithmTarget: string, lens: InlineLens = 'pattern') => {
   const lines = normalizeTyping(algorithmTarget).split('\n')
   const output: string[] = []
   let inlineDecisionInserted = false
@@ -1124,13 +1342,13 @@ const buildInlineTemplate = (patternTag: string, algorithmTarget: string) => {
     if (/^\s*(for|while)\b/.test(line)) {
       insideLoop = true
     }
-    const nextLine = appendInlineNote(line, patternTag)
+    const nextLine = appendInlineNote(line, patternTag, lens)
     output.push(nextLine)
     if (isInlineDecisionLine(nextLine)) {
       inlineDecisionInserted = true
     }
-    if (!inlineDecisionInserted && shouldPlaceInlineDecisionNoteAfter(line, insideLoop, patternTag)) {
-      output.push(appendAlignedNote('', inlineDecisionNoteForPattern(patternTag)))
+    if (!inlineDecisionInserted && shouldPlaceInlineDecisionNoteAfter(line, insideLoop, patternTag, lens)) {
+      output.push(appendAlignedNote('', inlineDecisionNoteForPattern(patternTag, lens)))
       inlineDecisionInserted = true
     }
   })
@@ -1138,9 +1356,9 @@ const buildInlineTemplate = (patternTag: string, algorithmTarget: string) => {
   if (!inlineDecisionInserted) {
     const defIndex = lines.findIndex((line) => /^\s*def\s+/.test(line))
     if (defIndex >= 0) {
-      output.splice(defIndex + 1, 0, appendAlignedNote('', inlineDecisionNoteForPattern(patternTag)))
+      output.splice(defIndex + 1, 0, appendAlignedNote('', inlineDecisionNoteForPattern(patternTag, lens)))
     } else {
-      output.unshift(appendAlignedNote('', inlineDecisionNoteForPattern(patternTag)))
+      output.unshift(appendAlignedNote('', inlineDecisionNoteForPattern(patternTag, lens)))
     }
   }
 
@@ -1176,11 +1394,11 @@ const buildCoreShapeTemplate = (patternTag: string, algorithmTarget: string) => 
   return buildInlineTemplate(patternTag, algorithmTarget)
 }
 
-const normalizeInlineTemplateTarget = (rawTarget: string, patternTag: string) => {
+const normalizeInlineTemplateTarget = (rawTarget: string, patternTag: string, lens: InlineLens = 'pattern') => {
   const lines = normalizeTyping(rawTarget)
     .split('\n')
     .filter((line) => !isNoteOnlyInlineDecisionLine(line))
-  const output = lines.map((line) => appendInlineNote(line, patternTag))
+  const output = lines.map((line) => appendInlineNote(line, patternTag, lens))
   if (output.some((line) => isInlineDecisionLine(line))) {
     return output.join('\n')
   }
@@ -1191,16 +1409,16 @@ const normalizeInlineTemplateTarget = (rawTarget: string, patternTag: string) =>
       insideLoop = true
       return false
     }
-    return shouldPlaceInlineDecisionNoteAfter(line, insideLoop, patternTag)
+    return shouldPlaceInlineDecisionNoteAfter(line, insideLoop, patternTag, lens)
   })
   if (inlineDecisionIndex >= 0) {
-    output.splice(inlineDecisionIndex + 1, 0, appendAlignedNote('', inlineDecisionNoteForPattern(patternTag)))
+    output.splice(inlineDecisionIndex + 1, 0, appendAlignedNote('', inlineDecisionNoteForPattern(patternTag, lens)))
   } else {
     const defIndex = lines.findIndex((line) => /^\s*def\s+/.test(line))
     if (defIndex >= 0) {
-      output.splice(defIndex + 1, 0, appendAlignedNote('', inlineDecisionNoteForPattern(patternTag)))
+      output.splice(defIndex + 1, 0, appendAlignedNote('', inlineDecisionNoteForPattern(patternTag, lens)))
     } else {
-      output.unshift(appendAlignedNote('', inlineDecisionNoteForPattern(patternTag)))
+      output.unshift(appendAlignedNote('', inlineDecisionNoteForPattern(patternTag, lens)))
     }
   }
   return output.join('\n')
@@ -1495,7 +1713,7 @@ const splitInlineAnnotationLine = (line: string) => {
 const isInlineDecisionLine = (line: string) => {
   const { note, noteOnly } = splitInlineAnnotationLine(line)
   if (!noteOnly) return false
-  return /\b(window|answer|state|frontier|path|heap|roots|merged|seen|stack|take|skip)\b/i.test(note)
+  return /\b(window|answer|state|frontier|path|heap|roots|merged|seen|stack|take|skip|best|rule|choice|decision)\b/i.test(note)
 }
 
 const isNoteOnlyInlineDecisionLine = (line: string) => {
@@ -1665,10 +1883,114 @@ function LiveFeedbackCode({
   )
 }
 
+type MarkdownCodeSegment =
+  | { type: 'text'; text: string }
+  | { type: 'code'; code: string; language: string }
+
+const normalizeCodeLanguage = (language: string) => {
+  const normalized = language.trim().toLowerCase()
+  if (normalized === 'py') return 'python'
+  return normalized || 'python'
+}
+
+const parseMarkdownCodeSegments = (text: string): MarkdownCodeSegment[] => {
+  const segments: MarkdownCodeSegment[] = []
+  const fencePattern = /```([A-Za-z0-9_-]+)?\s*\n?([\s\S]*?)```/g
+  let cursor = 0
+  let match: RegExpExecArray | null
+
+  while ((match = fencePattern.exec(text)) !== null) {
+    if (match.index > cursor) {
+      segments.push({ type: 'text', text: text.slice(cursor, match.index) })
+    }
+    segments.push({
+      type: 'code',
+      language: normalizeCodeLanguage(match[1] ?? 'python'),
+      code: match[2].trim(),
+    })
+    cursor = match.index + match[0].length
+  }
+
+  if (cursor < text.length) {
+    segments.push({ type: 'text', text: text.slice(cursor) })
+  }
+
+  return segments.length > 0 ? segments : [{ type: 'text', text }]
+}
+
+const renderInlineMarkdownText = (text: string) => {
+  const parts = text.split(/(`[^`]+`)/g)
+  return parts.map((part, index) => {
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+      return <code key={index} className="multiple-choice-inline-code">{part.slice(1, -1)}</code>
+    }
+    return <span key={index}>{part}</span>
+  })
+}
+
+function MarkdownCodeContent({
+  text,
+  syntaxTheme,
+  compact = false,
+}: {
+  text: string
+  syntaxTheme: Record<string, CSSProperties>
+  compact?: boolean
+}) {
+  return (
+    <span className={compact ? 'multiple-choice-markdown compact' : 'multiple-choice-markdown'}>
+      {parseMarkdownCodeSegments(text).map((segment, index) => {
+        if (segment.type === 'code') {
+          return (
+            <span key={index} className="multiple-choice-code-block">
+              <SyntaxHighlighter
+                language={segment.language}
+                style={syntaxTheme}
+                PreTag="span"
+                CodeTag="span"
+                customStyle={{
+                  margin: 0,
+                  padding: 0,
+                  background: 'transparent',
+                  border: 'none',
+                  display: 'block',
+                  fontFamily: 'inherit',
+                  fontSize: 'inherit',
+                  lineHeight: 'inherit',
+                  whiteSpace: 'pre-wrap',
+                }}
+                codeTagProps={{
+                  style: {
+                    background: 'transparent',
+                    fontFamily: 'inherit',
+                    fontSize: 'inherit',
+                    lineHeight: 'inherit',
+                    whiteSpace: 'pre-wrap',
+                  },
+                }}
+              >
+                {segment.code}
+              </SyntaxHighlighter>
+            </span>
+          )
+        }
+
+        return (
+          <span key={index} className="multiple-choice-text-block">
+            {renderInlineMarkdownText(segment.text)}
+          </span>
+        )
+      })}
+    </span>
+  )
+}
+
 function App() {
   const { theme } = useTheme()
   const [searchParams] = useSearchParams()
   const questionType = 'skill-map' as const
+  const [practiceMode, setPracticeMode] = useState<PracticeMode>('recall')
+  const [multipleChoiceDifficulty, setMultipleChoiceDifficulty] = useState<MultipleChoiceDifficulty>('Med.')
   const [enabledTemplateModes, setEnabledTemplateModes] = useState<TemplateMode[]>(() => [...DEFAULT_TEMPLATE_MODES])
   const [supportLayer, setSupportLayer] = useState<SupportLayer>('none')
   const [skillMapDeck, setSkillMapDeck] = useState<Flashcard[]>([])
@@ -1676,6 +1998,11 @@ function App() {
   const [skillMapError, setSkillMapError] = useState('')
   const [skillMapRefreshToken, setSkillMapRefreshToken] = useState(0)
   const [skillMapSessionVersion, setSkillMapSessionVersion] = useState(0)
+  const [multipleChoiceDeck, setMultipleChoiceDeck] = useState<MultipleChoiceCard[]>([])
+  const [multipleChoiceLoading, setMultipleChoiceLoading] = useState(false)
+  const [multipleChoiceError, setMultipleChoiceError] = useState('')
+  const [multipleChoiceRefreshToken, setMultipleChoiceRefreshToken] = useState(0)
+  const [multipleChoiceSessionVersion, setMultipleChoiceSessionVersion] = useState(0)
   const [flowMode] = useState<FlowMode>('sequential')
   const [recallTargetMode, setRecallTargetMode] = useState<RecallTargetMode>('algorithm')
   const [adaptiveVariationLoading, setAdaptiveVariationLoading] = useState(false)
@@ -1685,6 +2012,7 @@ function App() {
   const [sequentialVariationError, setSequentialVariationError] = useState('')
   const [sequentialVariationNote, setSequentialVariationNote] = useState('')
   const [inlineEnabled, setInlineEnabled] = useState(false)
+  const [inlineLens, setInlineLens] = useState<InlineLens>('pattern')
   const [plainEnglishPromptOpen, setPlainEnglishPromptOpen] = useState(false)
   const [relatedDrawerOpen, setRelatedDrawerOpen] = useState(false)
 
@@ -1705,6 +2033,9 @@ function App() {
   const [mainInput, setMainInput] = useState('')
   const [mainStartedAt, setMainStartedAt] = useState<number | null>(null)
   const [mainCloseEnough, setMainCloseEnough] = useState(false)
+  const [multipleChoiceSelectedChoiceId, setMultipleChoiceSelectedChoiceId] = useState('')
+  const [multipleChoiceStartedAt, setMultipleChoiceStartedAt] = useState<number | null>(null)
+  const [multipleChoiceSubmittedByCard, setMultipleChoiceSubmittedByCard] = useState<Record<string, string>>({})
   const [currentInteractionId, setCurrentInteractionId] = useState('')
   const [mainRecallHistoryByCard, setMainRecallHistoryByCard] = useState<Record<string, RecallAttemptSnapshot[]>>({})
   const [liveCoachFeedback, setLiveCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
@@ -1737,6 +2068,7 @@ function App() {
   const lastMainInputEditAtRef = useRef(0)
   const coachRequestVersionRef = useRef(0)
   const skillMapDeckRequestVersionRef = useRef(0)
+  const multipleChoiceDeckRequestVersionRef = useRef(0)
   const adaptiveVariationRequestKeyRef = useRef('')
   const sequentialVariationRequestKeyRef = useRef('')
   const focusedPatternSlug = searchParams.get('focusPattern')?.trim() || ''
@@ -1859,8 +2191,44 @@ function App() {
     }
   }
 
-  const startSession = () => {
-    setSessionOrder(Array.from({ length: filteredDeck.length }, (_, idx) => idx))
+  const fetchMultipleChoiceDeck = async () => {
+    multipleChoiceDeckRequestVersionRef.current += 1
+    const requestVersion = multipleChoiceDeckRequestVersionRef.current
+    setMultipleChoiceLoading(true)
+    setMultipleChoiceError('')
+    setMultipleChoiceDeck([])
+
+    const requestBody: MultipleChoiceDrillsRequest = {
+      questionType: 'skill-map-mcq',
+      count: requestedSkillMap.length,
+      skillMap: requestedSkillMap,
+      difficulty: multipleChoiceDifficulty,
+      llmProvider: requestLlmProvider,
+    }
+
+    try {
+      const payload = await requestMultipleChoiceDrills(requestBody)
+      if (multipleChoiceDeckRequestVersionRef.current !== requestVersion) return
+      setMultipleChoiceDeck(payload.drills)
+      setMultipleChoiceSessionVersion((prev) => prev + 1)
+    } catch (error) {
+      if (multipleChoiceDeckRequestVersionRef.current !== requestVersion) return
+      setMultipleChoiceDeck([])
+      setMultipleChoiceSessionVersion((prev) => prev + 1)
+      setMultipleChoiceError(
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : 'Multiple choice generation is unavailable right now.'
+      )
+    } finally {
+      if (multipleChoiceDeckRequestVersionRef.current === requestVersion) {
+        setMultipleChoiceLoading(false)
+      }
+    }
+  }
+
+  const startSession = (deckLength: number) => {
+    setSessionOrder(Array.from({ length: deckLength }, (_, idx) => idx))
     setSessionPosition(0)
     setSessionFinished(false)
     setSessionResults({})
@@ -1873,6 +2241,9 @@ function App() {
     setMainInput('')
     setMainStartedAt(null)
     setMainCloseEnough(false)
+    setMultipleChoiceSelectedChoiceId('')
+    setMultipleChoiceStartedAt(Date.now())
+    setMultipleChoiceSubmittedByCard({})
     setCurrentInteractionId('')
     setMainRecallHistoryByCard({})
     setLiveCoachFeedback(null)
@@ -1898,17 +2269,36 @@ function App() {
   }, [llmProvider, requestLlmProvider, requestedQuestionType, requestedSkillMapSignature, requestedTemplateMode, skillMapRefreshToken])
 
   useEffect(() => {
+    if (practiceMode !== 'multiple-choice') return
+    void fetchMultipleChoiceDeck()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [practiceMode, llmProvider, requestedQuestionType, requestedSkillMapSignature, multipleChoiceDifficulty, multipleChoiceRefreshToken])
+
+  useEffect(() => {
     saveStoredLiveCoachTuning(liveCoachTuning)
   }, [liveCoachTuning])
 
   useEffect(() => {
+    if (practiceMode !== 'recall') return
     if (skillMapLoading) return
-    startSession()
+    startSession(filteredDeck.length)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [skillMapSessionVersion, skillMapLoading])
+  }, [practiceMode, skillMapSessionVersion, skillMapLoading])
+
+  useEffect(() => {
+    if (practiceMode !== 'multiple-choice') return
+    if (multipleChoiceLoading) return
+    startSession(multipleChoiceDeck.length)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [practiceMode, multipleChoiceSessionVersion, multipleChoiceLoading])
 
   const currentDeckIndex = sessionOrder[sessionPosition] ?? 0
   const card = filteredDeck[currentDeckIndex] ?? filteredDeck[0] ?? emptySkillMapCard
+  const multipleChoiceCard = multipleChoiceDeck[currentDeckIndex] ?? multipleChoiceDeck[0] ?? null
+  const activeCardId = practiceMode === 'multiple-choice' ? multipleChoiceCard?.id ?? '' : card.id
+  const activeCardTitle = practiceMode === 'multiple-choice' ? multipleChoiceCard?.title ?? 'Multiple Choice' : card.title
+  const activeCardDifficulty = practiceMode === 'multiple-choice' ? multipleChoiceCard?.difficulty ?? multipleChoiceDifficulty : card.difficulty
+  const activeCardTags = practiceMode === 'multiple-choice' ? multipleChoiceCard?.tags ?? [] : card.tags
   const primaryPatternTag = useMemo(() => getPrimaryPatternTag(card.tags), [card.tags])
   const fullSolutionTarget = useMemo(
     () => normalizeTyping(card.solution.replace('{{missing}}', card.missing)),
@@ -1933,10 +2323,11 @@ function App() {
   const inlinePracticeTarget = useMemo(() => {
     const generatedTarget = recallTargetMode === 'algorithm' ? card.templateTargets?.inline?.trim() : ''
     if (generatedTarget && recallTargetMode === 'algorithm') {
-      return normalizeInlineTemplateTarget(generatedTarget.replace('{{missing}}', card.missing), primaryPatternTag)
+      const cleanGeneratedTarget = stripInlineAnnotationNotes(generatedTarget.replace('{{missing}}', card.missing))
+      return normalizeInlineTemplateTarget(cleanGeneratedTarget, primaryPatternTag, inlineLens)
     }
-    return normalizeInlineTemplateTarget(selectedPracticeBaseTarget, primaryPatternTag)
-  }, [card.missing, card.templateTargets, primaryPatternTag, recallTargetMode, selectedPracticeBaseTarget])
+    return normalizeInlineTemplateTarget(selectedPracticeBaseTarget, primaryPatternTag, inlineLens)
+  }, [card.missing, card.templateTargets, inlineLens, primaryPatternTag, recallTargetMode, selectedPracticeBaseTarget])
   const plainPracticeTarget = useMemo(
     () => normalizeTyping(stripHashAnnotationComments(stripInlineAnnotationNotes(selectedPracticeBaseTarget))),
     [selectedPracticeBaseTarget]
@@ -1957,26 +2348,59 @@ function App() {
   const displayPracticePrompt =
     isPlainEnglishPromptOpen && plainEnglishPromptDetail ? plainEnglishPromptDetail.plainEnglish : practicePrompt
   const plainEnglishPromptDetailId = `plain-english-prompt-${card.id}`
-  const currentQuestionType = `${requestedQuestionType}:${recallTargetMode}`
+  const currentQuestionType = `${requestedQuestionType}:${recallTargetMode}${inlineEnabled ? `:${inlineLens}` : ''}`
+  const currentMultipleChoiceQuestionType = 'skill-map-mcq'
   const currentSkillTags = useMemo(
-    () => [...card.tags, `template-${currentTemplateMode}`, `target-${recallTargetMode}`],
-    [card.tags, currentTemplateMode, recallTargetMode]
+    () => [
+      ...card.tags,
+      `template-${currentTemplateMode}`,
+      `target-${recallTargetMode}`,
+      ...(inlineEnabled ? [`inline-${inlineLens}`] : []),
+    ],
+    [card.tags, currentTemplateMode, inlineEnabled, inlineLens, recallTargetMode]
+  )
+  const currentRecallHistoryKey = `${card.id}:${currentTemplateMode}:${recallTargetMode}:${inlineEnabled ? inlineLens : 'plain'}`
+  const currentMultipleChoiceSkillTags = useMemo(
+    () => [
+      ...(multipleChoiceCard?.tags ?? []),
+      'mode-multiple-choice',
+      `difficulty-${multipleChoiceDifficulty === 'Hard' ? 'hard' : 'med'}`,
+    ],
+    [multipleChoiceCard?.tags, multipleChoiceDifficulty]
   )
   const visibleCardTags = useMemo(
-    () => card.tags.filter((tag) => tag !== 'skill-map'),
-    [card.tags]
+    () => activeCardTags.filter((tag) => tag !== 'skill-map' && tag !== 'skill-map-mcq'),
+    [activeCardTags]
   )
-  currentCardIdRef.current = card.id
+  currentCardIdRef.current = activeCardId
 
-  const hasDeck = filteredDeck.length > 0
+  const hasRecallDeck = filteredDeck.length > 0
+  const hasMultipleChoiceDeck = multipleChoiceDeck.length > 0
+  const hasDeck = practiceMode === 'multiple-choice' ? hasMultipleChoiceDeck : hasRecallDeck
+  const activeLoading = practiceMode === 'multiple-choice' ? multipleChoiceLoading : skillMapLoading
+  const activeError = practiceMode === 'multiple-choice' ? multipleChoiceError : skillMapError
   const isGhostRepsEnabled = supportLayer === 'ghost-reps'
-  const hasAnsweredCurrent = Object.prototype.hasOwnProperty.call(sessionResults, card.id)
+  const hasAnsweredCurrent = Boolean(activeCardId && Object.prototype.hasOwnProperty.call(sessionResults, activeCardId))
   const sessionCounterText =
     sessionOrder.length === 0
       ? '0 / 0'
       : `${Math.min(sessionPosition + 1, Math.max(sessionOrder.length, 1))} / ${sessionOrder.length}`
   const practiceHistoryHref = useMemo(() => {
     if (!hasDeck) return '/practice-history'
+
+    if (practiceMode === 'multiple-choice' && multipleChoiceCard) {
+      const searchParams = new URLSearchParams({
+        cardId: multipleChoiceCard.id,
+        cardTitle: multipleChoiceCard.title,
+        questionType: currentMultipleChoiceQuestionType,
+      })
+
+      currentMultipleChoiceSkillTags.forEach((tag) => {
+        searchParams.append('tag', tag)
+      })
+
+      return `/practice-history?${searchParams.toString()}`
+    }
 
     const searchParams = new URLSearchParams({
       cardId: card.id,
@@ -1989,7 +2413,17 @@ function App() {
     })
 
     return `/practice-history?${searchParams.toString()}`
-  }, [card.id, card.title, currentQuestionType, currentSkillTags, hasDeck])
+  }, [
+    card.id,
+    card.title,
+    currentMultipleChoiceQuestionType,
+    currentMultipleChoiceSkillTags,
+    currentQuestionType,
+    currentSkillTags,
+    hasDeck,
+    multipleChoiceCard,
+    practiceMode,
+  ])
   const currentTemplateLabel = TEMPLATE_MODE_LABELS[currentTemplateMode]
   const activeRecallLabel = recallTargetMode === 'coreShape' ? 'Core shape' : currentTemplateLabel
   const practiceLanguage = 'python'
@@ -2022,15 +2456,17 @@ function App() {
       ? 'Building a targeted repair variation...'
       : 'Building the next sequential step...'
   const relatedLeetCodeSet = useMemo(
-    () => resolveRelatedLeetCodeSet({
-      patternTag: primaryPatternTag,
-      title: card.title,
-      prompt: practicePrompt,
-      target: practiceTarget,
-      tags: card.tags,
-      focusedMethods: focusedMethodParams,
-    }),
-    [card.tags, card.title, focusedMethodParams, practicePrompt, practiceTarget, primaryPatternTag]
+    () => practiceMode === 'recall'
+      ? resolveRelatedLeetCodeSet({
+          patternTag: primaryPatternTag,
+          title: card.title,
+          prompt: practicePrompt,
+          target: practiceTarget,
+          tags: card.tags,
+          focusedMethods: focusedMethodParams,
+        })
+      : null,
+    [card.tags, card.title, focusedMethodParams, practiceMode, practicePrompt, practiceTarget, primaryPatternTag]
   )
 
   useEffect(() => {
@@ -2038,16 +2474,17 @@ function App() {
   }, [card.id, currentTemplateMode, relatedLeetCodeSet?.heading])
 
   const completeCardInSession = (isCorrect: boolean, accuracy: number, elapsedMs?: number) => {
+    if (!activeCardId) return
     setSessionResults((prevResults) => {
-      const next = { ...prevResults, [card.id]: isCorrect }
+      const next = { ...prevResults, [activeCardId]: isCorrect }
       if (Object.keys(next).length >= sessionOrder.length) {
         setSessionFinished(true)
       }
       return next
     })
-    setSessionAccuracyByCard((prev) => ({ ...prev, [card.id]: accuracy }))
+    setSessionAccuracyByCard((prev) => ({ ...prev, [activeCardId]: accuracy }))
     if (elapsedMs !== undefined) {
-      setSessionElapsedByCard((prev) => ({ ...prev, [card.id]: elapsedMs }))
+      setSessionElapsedByCard((prev) => ({ ...prev, [activeCardId]: elapsedMs }))
     }
   }
 
@@ -2077,6 +2514,50 @@ function App() {
           liveCoachUsed: payload.liveCoachUsed,
           coachFeedback: payload.coachFeedback ?? null,
           submissionRubric: payload.submissionRubric ?? null,
+        }),
+      })
+    } catch {
+      // silently fail
+    }
+  }
+
+  const submitMultipleChoiceAttemptToServer = async (payload: {
+    interactionId: string
+    selectedChoice: MultipleChoiceChoice
+    correctChoice: MultipleChoiceChoice
+    correct: boolean
+    elapsedMs: number
+  }) => {
+    if (!multipleChoiceCard) return
+    try {
+      await fetch(apiUrl('/api/attempts'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cardId: multipleChoiceCard.id,
+          cardTitle: multipleChoiceCard.title,
+          question: multipleChoiceCard.question,
+          questionType: currentMultipleChoiceQuestionType,
+          categoryTags: currentMultipleChoiceSkillTags,
+          correctAnswer: `${payload.correctChoice.id}. ${payload.correctChoice.text}`,
+          userAnswer: `${payload.selectedChoice.id}. ${payload.selectedChoice.text}`,
+          mode: 'main-recall',
+          correct: payload.correct,
+          accuracy: payload.correct ? 100 : 0,
+          exact: payload.correct,
+          elapsedMs: payload.elapsedMs,
+          interactionId: payload.interactionId,
+          generatedCardId: multipleChoiceCard.id,
+          generatedCard: {
+            ...multipleChoiceCard,
+            cardMode: 'multiple-choice',
+            prompt: multipleChoiceCard.question,
+          },
+          templateMode: 'algorithm',
+          supportLayer: 'none',
+          liveCoachUsed: false,
+          coachFeedback: null,
+          submissionRubric: null,
         }),
       })
     } catch {
@@ -2228,6 +2709,8 @@ function App() {
     setMainInput('')
     setMainStartedAt(null)
     setMainCloseEnough(false)
+    setMultipleChoiceSelectedChoiceId('')
+    setMultipleChoiceStartedAt(Date.now())
     setCurrentInteractionId('')
     setLiveCoachFeedback(null)
     setLiveCoachLoading(false)
@@ -2259,9 +2742,17 @@ function App() {
     }
   }
 
+  const selectInlineLens = (nextLens: InlineLens) => {
+    if (inlineLens === nextLens) return
+    setInlineLens(nextLens)
+    if (mainPhase !== 'preview') {
+      resetPerCardInteraction()
+    }
+  }
+
   useEffect(() => {
     resetPerCardInteraction()
-  }, [card.id, sessionPosition])
+  }, [activeCardId, practiceMode, sessionPosition])
 
   const startMainRecall = () => {
     if (!hasDeck || hasAnsweredCurrent || sessionFinished) return
@@ -2607,7 +3098,7 @@ function App() {
   }
 
   const submitMainRecall = async () => {
-    if (!hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'typing') return
+    if (practiceMode !== 'recall' || !hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'typing') return
 
     const startedAt = mainStartedAt ?? Date.now()
     const interactionId = currentInteractionId || createInteractionId()
@@ -2621,7 +3112,7 @@ function App() {
     const sound = evaluation.sound
     const isGhostRep = supportLayer === 'ghost-reps'
     const closeEnough = !isGhostRep && sound
-    const historyKey = `${card.id}:${currentTemplateMode}`
+    const historyKey = currentRecallHistoryKey
     const currentHistory = mainRecallHistoryByCard[historyKey] ?? []
     const attemptSnapshot = summarizeRecallAttempt(
       normalizedInputLines,
@@ -2686,6 +3177,42 @@ function App() {
     }
   }
 
+  const submitMultipleChoice = async () => {
+    if (
+      practiceMode !== 'multiple-choice' ||
+      !multipleChoiceCard ||
+      !hasDeck ||
+      hasAnsweredCurrent ||
+      sessionFinished ||
+      !multipleChoiceSelectedChoiceId
+    ) {
+      return
+    }
+
+    const selectedChoice = multipleChoiceCard.choices.find((choice) => choice.id === multipleChoiceSelectedChoiceId)
+    const correctChoice = multipleChoiceCard.choices.find((choice) => choice.id === multipleChoiceCard.correctChoiceId)
+    if (!selectedChoice || !correctChoice) return
+
+    const interactionId = currentInteractionId || createInteractionId()
+    if (!currentInteractionId) setCurrentInteractionId(interactionId)
+    const elapsedMs = Math.max(Date.now() - (multipleChoiceStartedAt ?? Date.now()), 1)
+    const correct = selectedChoice.id === correctChoice.id
+
+    setMultipleChoiceSubmittedByCard((prev) => ({
+      ...prev,
+      [multipleChoiceCard.id]: selectedChoice.id,
+    }))
+    completeCardInSession(correct, correct ? 100 : 0, elapsedMs)
+
+    await submitMultipleChoiceAttemptToServer({
+      interactionId,
+      selectedChoice,
+      correctChoice,
+      correct,
+      elapsedMs,
+    })
+  }
+
   const reviseMainRecall = () => {
     if (!hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'submitted' || mainCloseEnough) return
     setMainPhase('typing')
@@ -2712,6 +3239,10 @@ function App() {
   }
 
   const restartSession = () => {
+    if (practiceMode === 'multiple-choice') {
+      setMultipleChoiceRefreshToken((prev) => prev + 1)
+      return
+    }
     setSkillMapRefreshToken((prev) => prev + 1)
   }
 
@@ -2738,9 +3269,10 @@ function App() {
 
   useEffect(() => {
     if (!sessionFinished) return
+    if (practiceMode === 'multiple-choice') return
     void fetchSessionPlan()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionFinished])
+  }, [practiceMode, sessionFinished])
 
   const liveStructure = useMemo(
     () => analyzeLiveStructure(mainInput, currentTemplateMode),
@@ -2751,8 +3283,8 @@ function App() {
     [practiceTarget, mainInput]
   )
   const currentCardRecallHistory = useMemo(
-    () => mainRecallHistoryByCard[`${card.id}:${currentTemplateMode}`] ?? [],
-    [card.id, currentTemplateMode, mainRecallHistoryByCard]
+    () => mainRecallHistoryByCard[currentRecallHistoryKey] ?? [],
+    [currentRecallHistoryKey, mainRecallHistoryByCard]
   )
   const inlineLiveNotes = useMemo(() => {
     if (mainPhase !== 'typing' || !liveCoachTuning.enabled) return []
@@ -2875,8 +3407,45 @@ function App() {
   const latestSubmittedAttempt =
     mainPhase === 'submitted' ? currentCardRecallHistory[currentCardRecallHistory.length - 1] ?? null : null
   const latestSubmittedWasGhostRep = latestSubmittedAttempt?.supportLayer === 'ghost-reps'
+  const submittedMultipleChoiceId = multipleChoiceCard ? multipleChoiceSubmittedByCard[multipleChoiceCard.id] ?? '' : ''
+  const selectedMultipleChoice = multipleChoiceCard?.choices.find((choice) => choice.id === multipleChoiceSelectedChoiceId) ?? null
+  const submittedMultipleChoice = multipleChoiceCard?.choices.find((choice) => choice.id === submittedMultipleChoiceId) ?? null
+  const correctMultipleChoice = multipleChoiceCard?.choices.find((choice) => choice.id === multipleChoiceCard.correctChoiceId) ?? null
+  const multipleChoiceSubmitted = Boolean(submittedMultipleChoiceId)
+  const multipleChoiceCorrect = Boolean(submittedMultipleChoiceId && submittedMultipleChoiceId === multipleChoiceCard?.correctChoiceId)
+  const inlineLensTabs = inlineEnabled ? (
+    <div className="inline-lens-tabs" role="tablist" aria-label="Inline explanation lens">
+      {INLINE_LENS_OPTIONS.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          role="tab"
+          className={inlineLens === option.value ? 'inline-lens-tab active' : 'inline-lens-tab'}
+          aria-selected={inlineLens === option.value}
+          title={option.title}
+          onClick={() => selectInlineLens(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  ) : null
   const primaryCardAction = (() => {
     if (!hasDeck) return null
+
+    if (practiceMode === 'multiple-choice') {
+      if (multipleChoiceSubmitted) return null
+      return {
+        label: 'Submit answer',
+        onClick: submitMultipleChoice,
+        disabled: !selectedMultipleChoice || hasAnsweredCurrent || sessionFinished,
+        icon: (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m4.5 12.75 6 6 9-13.5" />
+          </svg>
+        ),
+      }
+    }
 
     if (mainPhase === 'preview') {
       return {
@@ -2947,6 +3516,7 @@ function App() {
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
+      if (practiceMode !== 'recall') return
       if (event.key === 'g' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
         setSupportLayer((prev) => (prev === 'ghost-reps' ? 'none' : 'ghost-reps'))
@@ -2962,7 +3532,7 @@ function App() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [toggleInlineHelper])
+  }, [practiceMode, toggleInlineHelper])
 
   const submissionFeedbackNextStep =
     coachFeedback?.immediateCorrection || coachFeedback?.primaryFocus || 'Review the drifted step, then rewrite the recall target once more.'
@@ -2999,7 +3569,7 @@ function App() {
     : latestSubmittedWasGhostRep
       ? `Ghost rep logged for ${activeRecallLabel}. Repeat it until the shape starts to stick.`
     : `This recall attempt is not sound yet. Revise the logic and submit again.`
-  const showSubmittedLineReview = mainPhase === 'submitted' && !mainCloseEnough
+  const showSubmittedLineReview = mainPhase === 'submitted' && !mainCloseEnough && !latestSubmittedWasGhostRep
 
   useEffect(() => {
     if (liveCoachTuning.enabled) return
@@ -3011,6 +3581,7 @@ function App() {
 
   useEffect(() => {
     if (!liveCoachTuning.enabled) return
+    if (practiceMode !== 'recall') return
     if (!hasDeck || mainPhase !== 'typing' || sessionFinished || hasAnsweredCurrent) return
 
     const trimmedInput = normalizeTyping(mainInput)
@@ -3104,6 +3675,7 @@ function App() {
     mainInput,
     mainPhase,
     practiceTarget,
+    practiceMode,
     sessionFinished,
   ])
 
@@ -3135,7 +3707,7 @@ function App() {
       <TopNav
         llmProviderLabel={`Auto (${configuredProviderLabel})`}
         sessionCounterText={sessionCounterText}
-        sessionCounterLoading={skillMapLoading}
+        sessionCounterLoading={activeLoading}
         practiceHistoryHref={practiceHistoryHref}
       />
 
@@ -3159,8 +3731,8 @@ function App() {
       <section className="card">
         <div className="card-header">
           <div className="card-header-main">
-            <h2>{card.title}</h2>
-            <p className="difficulty">{card.difficulty}</p>
+            <h2>{activeCardTitle}</h2>
+            <p className="difficulty">{activeCardDifficulty}</p>
             {(focusedPatternNode || requestedPlaylist) && (
               <p className="card-template-summary">
                 {requestedPlaylist ? 'Playlist' : 'Focused deck'}: {targetedDeckLabel}
@@ -3168,47 +3740,88 @@ function App() {
             )}
           </div>
           <div className="card-header-side">
-            <div className="support-layer-control" aria-label="Practice support controls">
+            <div className="flow-mode-control" role="group" aria-label="Practice mode">
               <button
                 type="button"
-                className={inlineEnabled ? 'navbar-toggle active' : 'navbar-toggle'}
-                onClick={toggleInlineHelper}
-                aria-pressed={inlineEnabled}
-                aria-label={inlineEnabled ? 'Turn Inline off' : 'Turn Inline on'}
-                title="Inline"
+                className={practiceMode === 'recall' ? 'flow-mode-button active' : 'flow-mode-button'}
+                onClick={() => setPracticeMode('recall')}
+                aria-pressed={practiceMode === 'recall'}
+                title="Recall"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                </svg>
+                Recall
               </button>
               <button
                 type="button"
-                className={isGhostRepsEnabled ? 'navbar-toggle active' : 'navbar-toggle'}
-                onClick={() => setSupportLayer(isGhostRepsEnabled ? 'none' : 'ghost-reps')}
-                aria-pressed={isGhostRepsEnabled}
-                aria-label={isGhostRepsEnabled ? 'Turn Ghost Reps off' : 'Turn Ghost Reps on'}
-                title="Ghost Reps"
+                className={practiceMode === 'multiple-choice' ? 'flow-mode-button active' : 'flow-mode-button'}
+                onClick={() => setPracticeMode('multiple-choice')}
+                aria-pressed={practiceMode === 'multiple-choice'}
+                title="Multiple Choice"
               >
-                <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M2 12.5V6.5a5 5 0 0 1 10 0v6l-1.5-1.5-1.5 1.5-1.5-1.5-1.5 1.5-1.5-1.5-1.5 1.5Z"/>
-                  <circle cx="5.5" cy="6.5" r="0.75" fill="currentColor" stroke="none"/>
-                  <circle cx="8.5" cy="6.5" r="0.75" fill="currentColor" stroke="none"/>
-                </svg>
-              </button>
-              <button
-                type="button"
-                className={liveCoachTuning.enabled ? 'navbar-toggle active' : 'navbar-toggle'}
-                onClick={toggleLiveFeedback}
-                aria-pressed={liveCoachTuning.enabled}
-                aria-label={liveCoachTuning.enabled ? 'Turn live feedback off' : 'Turn live feedback on'}
-                title="Live"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
-                </svg>
+                MCQ
               </button>
             </div>
-            <div className="flow-mode-control" role="group" aria-label="Recall target mode">
+            {practiceMode === 'multiple-choice' ? (
+              <div className="flow-mode-control" role="group" aria-label="Multiple choice difficulty">
+                <button
+                  type="button"
+                  className={multipleChoiceDifficulty === 'Med.' ? 'flow-mode-button active' : 'flow-mode-button'}
+                  onClick={() => setMultipleChoiceDifficulty('Med.')}
+                  aria-pressed={multipleChoiceDifficulty === 'Med.'}
+                >
+                  Med.
+                </button>
+                <button
+                  type="button"
+                  className={multipleChoiceDifficulty === 'Hard' ? 'flow-mode-button active' : 'flow-mode-button'}
+                  onClick={() => setMultipleChoiceDifficulty('Hard')}
+                  aria-pressed={multipleChoiceDifficulty === 'Hard'}
+                >
+                  Hard
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="support-layer-control" aria-label="Practice support controls">
+                  <button
+                    type="button"
+                    className={inlineEnabled ? 'navbar-toggle active' : 'navbar-toggle'}
+                    onClick={toggleInlineHelper}
+                    aria-pressed={inlineEnabled}
+                    aria-label={inlineEnabled ? 'Turn Inline off' : 'Turn Inline on'}
+                    title="Inline"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className={isGhostRepsEnabled ? 'navbar-toggle active' : 'navbar-toggle'}
+                    onClick={() => setSupportLayer(isGhostRepsEnabled ? 'none' : 'ghost-reps')}
+                    aria-pressed={isGhostRepsEnabled}
+                    aria-label={isGhostRepsEnabled ? 'Turn Ghost Reps off' : 'Turn Ghost Reps on'}
+                    title="Ghost Reps"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M2 12.5V6.5a5 5 0 0 1 10 0v6l-1.5-1.5-1.5 1.5-1.5-1.5-1.5 1.5-1.5-1.5-1.5 1.5Z"/>
+                      <circle cx="5.5" cy="6.5" r="0.75" fill="currentColor" stroke="none"/>
+                      <circle cx="8.5" cy="6.5" r="0.75" fill="currentColor" stroke="none"/>
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className={liveCoachTuning.enabled ? 'navbar-toggle active' : 'navbar-toggle'}
+                    onClick={toggleLiveFeedback}
+                    aria-pressed={liveCoachTuning.enabled}
+                    aria-label={liveCoachTuning.enabled ? 'Turn live feedback off' : 'Turn live feedback on'}
+                    title="Live"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="flow-mode-control" role="group" aria-label="Recall target mode">
               <button
                 type="button"
                 className={recallTargetMode === 'algorithm' ? 'flow-mode-button active' : 'flow-mode-button'}
@@ -3231,7 +3844,9 @@ function App() {
                   <path d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" />
                 </svg>
               </button>
-            </div>
+                </div>
+              </>
+            )}
             {visibleCardTags.length > 0 && (
               <div className="tags">
                 {visibleCardTags.map((tag) => (
@@ -3244,10 +3859,10 @@ function App() {
 
         {sessionFinished && (
           <p className="status success" style={{ marginTop: 0, marginBottom: '1.5rem' }}>
-            Session complete. {correctCount} of {attempts} cards were sound. Avg score: {avgAccuracy}%.
+            Session complete. {correctCount} of {attempts} {practiceMode === 'multiple-choice' ? 'questions were correct' : 'cards were sound'}. Avg score: {avgAccuracy}%.
           </p>
         )}
-        {sessionFinished && (
+        {sessionFinished && practiceMode === 'recall' && (
           <div className="hint" style={{ marginTop: 0, marginBottom: '1.5rem' }}>
             <strong>Coach Session Plan</strong>
             {sessionPlanLoading && <p style={{ margin: '0.5rem 0 0' }}>Building your next-session plan...</p>}
@@ -3268,8 +3883,39 @@ function App() {
 
         <div className="card-grid">
           <div className="panel">
-            {!hasDeck ? (
-              skillMapLoading ? (
+            {practiceMode === 'multiple-choice' ? (
+              !hasDeck ? (
+                activeLoading ? (
+                  <div className="skeleton-group">
+                    <div className="skeleton-line w95 tall" />
+                    <div className="skeleton-line w80" />
+                    <div className="skeleton-line w60" />
+                  </div>
+                ) : (
+                  <>
+                    <p className="prompt prompt-bar">Multiple choice is unavailable right now.</p>
+                    <p className="hint">{activeError || 'Regenerate to request another LLM question set.'}</p>
+                  </>
+                )
+              ) : multipleChoiceCard ? (
+                <div className="multiple-choice-question-panel">
+                  <div className="prompt prompt-bar multiple-choice-question">
+                    <MarkdownCodeContent text={multipleChoiceCard.question} syntaxTheme={syntaxTheme} />
+                  </div>
+                  <div className="coach-metric-row">
+                    <span className="coach-metric-chip">Multiple Choice</span>
+                    <span className="coach-metric-chip">{multipleChoiceCard.pattern}</span>
+                    <span className="coach-metric-chip">{multipleChoiceCard.difficulty}</span>
+                  </div>
+                  {multipleChoiceSubmitted && (
+                    <p className={multipleChoiceCorrect ? 'status success' : 'status error'}>
+                      {multipleChoiceCorrect ? 'Correct.' : 'Not quite.'}
+                    </p>
+                  )}
+                </div>
+              ) : null
+            ) : !hasDeck ? (
+              activeLoading ? (
                 <div className="skeleton-group">
                   <div className="skeleton-line w95 tall" />
                   <div className="skeleton-line w80" />
@@ -3278,7 +3924,7 @@ function App() {
               ) : (
                 <>
                   <p className="prompt prompt-bar">The skill-map deck is unavailable right now.</p>
-                  <p className="hint">{skillMapError || 'Try restarting the session to request another generated deck.'}</p>
+                  <p className="hint">{activeError || 'Try restarting the session to request another generated deck.'}</p>
                 </>
               )
             ) : (
@@ -3389,8 +4035,89 @@ function App() {
           </div>
 
           <div className="panel">
-            {!hasDeck ? (
-              skillMapLoading ? (
+            {practiceMode === 'multiple-choice' ? (
+              !hasDeck ? (
+                activeLoading ? (
+                  <div className="skeleton-group">
+                    <div className="skeleton-line w60" />
+                    <div className="skeleton-line w95 tall" />
+                    <div className="skeleton-line w95 tall" />
+                    <div className="skeleton-line w80 tall" />
+                    <div className="skeleton-line w95 tall" />
+                    <div className="skeleton-line w45" />
+                  </div>
+                ) : (
+                  <div className="hint" style={{ marginTop: 0 }}>
+                    {activeError || 'No multiple choice questions are available yet.'}
+                  </div>
+                )
+              ) : multipleChoiceCard ? (
+                <div className="multiple-choice-card">
+                  <div className="multiple-choice-options" role="radiogroup" aria-label="Answer choices">
+                    {multipleChoiceCard.choices.map((choice) => {
+                      const isSelected = multipleChoiceSelectedChoiceId === choice.id
+                      const isSubmittedChoice = submittedMultipleChoiceId === choice.id
+                      const isCorrectChoice = multipleChoiceCard.correctChoiceId === choice.id
+                      const resultClass = multipleChoiceSubmitted
+                        ? isCorrectChoice
+                          ? ' correct'
+                          : isSubmittedChoice
+                            ? ' incorrect'
+                            : ''
+                        : ''
+                      return (
+                        <button
+                          key={choice.id}
+                          type="button"
+                          className={`multiple-choice-option${isSelected ? ' selected' : ''}${resultClass}`}
+                          onClick={() => {
+                            if (!multipleChoiceSubmitted) setMultipleChoiceSelectedChoiceId(choice.id)
+                          }}
+                          disabled={multipleChoiceSubmitted || hasAnsweredCurrent || sessionFinished}
+                          role="radio"
+                          aria-checked={isSelected || isSubmittedChoice}
+                        >
+                          <span className="multiple-choice-option-id">{choice.id}</span>
+                          <span className="multiple-choice-option-text">
+                            <MarkdownCodeContent text={choice.text} syntaxTheme={syntaxTheme} compact />
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {multipleChoiceSubmitted && (
+                    <div className="coach-docked-panel multiple-choice-result">
+                      <div className="coach-docked-card">
+                        <div className="coach-card-header">
+                          <h4>Answer</h4>
+                          <span className={`coach-status-chip coach-status-chip-${multipleChoiceCorrect ? 'success' : 'error'}`}>
+                            {multipleChoiceCorrect ? 'Correct' : 'Missed'}
+                          </span>
+                        </div>
+                        <div className="coach-metric-row">
+                          {submittedMultipleChoice && (
+                            <span className="coach-metric-chip">Selected {submittedMultipleChoice.id}</span>
+                          )}
+                          {correctMultipleChoice && (
+                            <span className="coach-metric-chip">Correct {correctMultipleChoice.id}</span>
+                          )}
+                        </div>
+                        {correctMultipleChoice && (
+                          <p className="coach-panel-copy">
+                            <strong>{correctMultipleChoice.id}.</strong>{' '}
+                            <MarkdownCodeContent text={correctMultipleChoice.text} syntaxTheme={syntaxTheme} compact />
+                          </p>
+                        )}
+                        <div className="coach-panel-copy">
+                          <MarkdownCodeContent text={multipleChoiceCard.explanation} syntaxTheme={syntaxTheme} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : null
+            ) : !hasDeck ? (
+              activeLoading ? (
                 <div className="skeleton-group">
                   <div className="skeleton-line w60" />
                   <div className="skeleton-line w95 tall" />
@@ -3401,11 +4128,12 @@ function App() {
                 </div>
               ) : (
                 <div className="hint" style={{ marginTop: 0 }}>
-                  {skillMapError || 'No drills are available yet.'}
+                  {activeError || 'No drills are available yet.'}
                 </div>
               )
             ) : mainPhase === 'preview' && (
               <div className="drill-fade-in">
+                {inlineLensTabs}
                 <div className="code-container" ref={previewCodeContainerRef}>
                   {shouldHighlightInlineDecision ? (
                     <InlineDecisionCode
@@ -3447,10 +4175,23 @@ function App() {
                 <label className="answer-label" htmlFor="main-recall-input">
                   {supportedPracticeInputLabel}
                 </label>
-                <div className="code-container recall-editor-container" style={recallMinHeight ? { minHeight: recallMinHeight } : undefined}>
+                <div
+                  className={[
+                    'code-container recall-editor-container',
+                    latestSubmittedWasGhostRep ? 'recall-editor-container-ghost-submitted' : '',
+                  ].filter(Boolean).join(' ')}
+                  style={recallMinHeight ? { minHeight: recallMinHeight } : undefined}
+                >
                   <div className="typing-editor-shell">
+                    {inlineLensTabs}
                     <div className="typing-editor no-gutter">
                       <div className="typing-code-area">
+                        {latestSubmittedWasGhostRep && latestSubmittedAttempt && (
+                          <div className="ghost-submit-summary" aria-live="polite">
+                            <span>Accuracy {latestSubmittedAttempt.accuracy}%</span>
+                            <span>Time {(latestSubmittedAttempt.elapsedMs / 1000).toFixed(1)}s</span>
+                          </div>
+                        )}
                         {mainPhase === 'typing' && isGhostRepsEnabled && (
                           <div className="typing-ghost-target" aria-hidden="true" ref={mainGhostRef}>
                             {shouldHighlightInlineDecision ? (
@@ -3567,7 +4308,7 @@ function App() {
                         )}
                       </div>
                     </div>
-                    {mainPhase === 'submitted' && (
+                    {mainPhase === 'submitted' && !latestSubmittedWasGhostRep && (
                       <div className="coach-docked-panel">
                         <div className="coach-docked-card">
                           <div className="coach-card-header">

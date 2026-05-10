@@ -186,6 +186,36 @@ class SkillMapDrillsResponse(BaseModel):
     llmUsed: bool = False
 
 
+class MultipleChoiceChoice(BaseModel):
+    id: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+
+
+class MultipleChoiceCard(BaseModel):
+    id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    pattern: str = Field(min_length=1)
+    difficulty: str = Field(default="Med.")
+    question: str = Field(min_length=1)
+    choices: list[MultipleChoiceChoice] = Field(min_length=4, max_length=4)
+    correctChoiceId: str = Field(min_length=1)
+    explanation: str = ""
+    tags: list[str] = []
+
+
+class MultipleChoiceDrillsRequest(BaseModel):
+    questionType: str = "skill-map-mcq"
+    count: int = Field(default=12, ge=1, le=30)
+    skillMap: list[SkillMapNode] = []
+    difficulty: str = Field(default="Med.")
+    llmProvider: str = "openai"
+
+
+class MultipleChoiceDrillsResponse(BaseModel):
+    drills: list[MultipleChoiceCard]
+    llmUsed: bool = False
+
+
 class AdaptiveVariationRequest(BaseModel):
     cardId: str = Field(min_length=1)
     cardTitle: str = ""
@@ -236,6 +266,7 @@ class CoachPracticeHistoryEntry(BaseModel):
     cardId: str = ""
     cardTitle: str = ""
     question: str = ""
+    questionType: str = ""
     correctAnswer: str = ""
     userAnswer: str = ""
     accuracy: float = Field(default=0, ge=0, le=100)
@@ -279,12 +310,15 @@ class SkillMapModeActivity(BaseModel):
 class SkillMapGhostRepSegment(BaseModel):
     pattern: str = ""
     slug: str = ""
+    workType: str = "ghost-reps"
     count: int = Field(default=0, ge=0)
 
 
 class SkillMapGhostRepActivityDay(BaseModel):
     date: str = ""
     total: int = Field(default=0, ge=0)
+    ghostRepCount: int = Field(default=0, ge=0)
+    multipleChoiceCount: int = Field(default=0, ge=0)
     segments: list[SkillMapGhostRepSegment] = []
 
 
@@ -292,13 +326,18 @@ class SkillMapGhostRepPattern(BaseModel):
     pattern: str = ""
     slug: str = ""
     totalGhostReps: int = Field(default=0, ge=0)
+    totalMultipleChoice: int = Field(default=0, ge=0)
+    totalWork: int = Field(default=0, ge=0)
     daysSinceLastGhostRep: int | None = Field(default=None, ge=0)
+    daysSinceLastPractice: int | None = Field(default=None, ge=0)
 
 
 class SkillMapGhostRepActivity(BaseModel):
     windowStart: str = ""
     windowEnd: str = ""
     totalGhostReps: int = Field(default=0, ge=0)
+    totalMultipleChoice: int = Field(default=0, ge=0)
+    workCount: int = Field(default=0, ge=0)
     activeDays: int = Field(default=0, ge=0)
     peakDailyCount: int = Field(default=0, ge=0)
     days: list[SkillMapGhostRepActivityDay] = []
