@@ -12,6 +12,9 @@ from app.repositories.attempts_repository import (
 	fetch_skill_map_overview_pattern_rows,
 	insert_score_attempt_row,
 )
+from app.repositories.static_functions_repository import (
+	fetch_static_function_practice_rows,
+)
 from app.repositories.admin_repository import (
 	PRACTICE_HISTORY_TABLES,
 	count_practice_history_rows,
@@ -29,6 +32,7 @@ __all__ = [
 	"fetch_skill_map_overview_pattern_rows",
 	"fetch_skill_map_overview_generated_rows",
 	"fetch_skill_map_overview_attempt_rows",
+	"fetch_static_function_practice_rows",
 	"PRACTICE_HISTORY_TABLES",
 	"count_practice_history_rows",
 	"truncate_practice_history_tables",

@@ -33,6 +33,7 @@
   --hc-menu-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
   --hc-option-hover-bg: rgba(111, 195, 223, 0.08);
   --hc-option-active-bg: rgba(111, 195, 223, 0.12);
+  --hc-mcq-option-bg: var(--hc-field-gradient);
   --hc-toggle-idle-bg: rgba(255, 255, 255, 0.03);
   --hc-toggle-on-fg: #7fd8a7;
   --hc-toggle-on-bg: rgba(127, 216, 167, 0.08);
@@ -149,6 +150,7 @@
   --hc-menu-shadow: 0 10px 24px rgba(0, 49, 97, 0.16);
   --hc-option-hover-bg: rgba(0, 95, 184, 0.08);
   --hc-option-active-bg: rgba(0, 95, 184, 0.14);
+  --hc-mcq-option-bg: #ffffff;
   --hc-toggle-idle-bg: rgba(0, 0, 0, 0.04);
   --hc-toggle-on-fg: #116329;
   --hc-toggle-on-bg: rgba(17, 99, 41, 0.1);

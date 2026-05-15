@@ -309,8 +309,6 @@ export default function DashboardPage() {
   const configuredProviderLabel = useConfiguredProviderLabel()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [selectedMethodsByPattern, setSelectedMethodsByPattern] = useState<Record<string, string[]>>({})
-  const [openMethodDropdown, setOpenMethodDropdown] = useState('')
 
   useEffect(() => {
     const loadOverview = async () => {
@@ -336,24 +334,10 @@ export default function DashboardPage() {
   }, [])
 
   const patterns = overview?.patterns ?? []
-  const toggleCoreMethod = (patternSlug: string, method: string) => {
-    setSelectedMethodsByPattern((current) => {
-      const currentMethods = current[patternSlug] ?? []
-      const methodSelected = currentMethods.includes(method)
-      const nextMethods = methodSelected
-        ? currentMethods.filter((item) => item !== method)
-        : [...currentMethods, method]
-      return {
-        ...current,
-        [patternSlug]: nextMethods,
-      }
-    })
-  }
-  const launchFocusedPractice = (patternSlug: string, selectedMethods: string[]) => {
+  const launchFocusedPractice = (patternSlug: string) => {
     const nextParams = new URLSearchParams({
       focusPattern: patternSlug,
     })
-    selectedMethods.forEach((method) => nextParams.append('focusMethod', method))
     navigate(`/?${nextParams.toString()}`)
   }
   const launchPlaylist = (playlistSlug: string) => {
@@ -417,12 +401,8 @@ export default function DashboardPage() {
         <div className="skill-map-grid">
           {loading && !error && <p className="skill-map-intro">Loading readiness overview...</p>}
           {patterns.map((node) => {
-            const selectedMethods = selectedMethodsByPattern[node.slug] ?? []
-            const patternSelected = selectedMethods.length > 0
-            const methodDropdownOpen = openMethodDropdown === node.slug
-            const methodDropdownId = `skill-method-menu-${node.slug}`
             return (
-              <article key={node.slug} className={methodDropdownOpen ? 'skill-map-card skill-map-card-menu-open' : 'skill-map-card'}>
+              <article key={node.slug} className="skill-map-card">
                 <div className="skill-map-header">
                   <h3>{node.pattern}</h3>
                   <span className={`coach-status-value coach-status-value-${readinessTone(node.overallReadiness)}`}>
@@ -430,56 +410,16 @@ export default function DashboardPage() {
                   </span>
                 </div>
                 <div className="dashboard-summary skill-map-card-stats">
-                  <span className="coach-metric-chip">{node.practicedCards}/{node.totalCards} cards worked</span>
+                  <span className="coach-metric-chip">{node.totalCards} static functions</span>
                   <span className="coach-metric-chip">{node.staleCards} stale</span>
                   <span className="coach-metric-chip">{node.ghostRepCount} Ghost Reps</span>
-                </div>
-                <div
-                  className={patternSelected ? 'skill-method-panel skill-method-panel-selected' : 'skill-method-panel'}
-                >
-                  <button
-                    type="button"
-                    className="skill-method-dropdown-trigger"
-                    onClick={() => setOpenMethodDropdown((current) => (current === node.slug ? '' : node.slug))}
-                    aria-expanded={methodDropdownOpen}
-                    aria-controls={methodDropdownId}
-                  >
-                    <span>Methods</span>
-                    <strong>{patternSelected ? `${selectedMethods.length} selected` : 'Choose methods'}</strong>
-                  </button>
-                  {methodDropdownOpen && (
-                    <div className="skill-method-dropdown-menu" id={methodDropdownId}>
-                      <div className="skill-method-list">
-                        {node.methods.map((method) => {
-                          const methodSelected = selectedMethods.includes(method)
-                          return (
-                            <button
-                              key={method}
-                              type="button"
-                              className={methodSelected ? 'skill-method-chip skill-method-chip-selected' : 'skill-method-chip'}
-                              onClick={() => toggleCoreMethod(node.slug, method)}
-                              aria-pressed={methodSelected}
-                            >
-                              {method}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
                 </div>
                 <SkillAlgorithmIllustration slug={node.slug} pattern={node.pattern} />
                 <div className="dashboard-mode-tabs">
                   <button
                     type="button"
-                    className={patternSelected ? 'dashboard-mode-tab dashboard-mode-tab-actionable' : 'dashboard-mode-tab'}
-                    disabled={!patternSelected}
-                    onClick={() => {
-                      if (patternSelected) {
-                        setOpenMethodDropdown('')
-                        launchFocusedPractice(node.slug, selectedMethods)
-                      }
-                    }}
+                    className="dashboard-mode-tab dashboard-mode-tab-actionable"
+                    onClick={() => launchFocusedPractice(node.slug)}
                   >
                     <span className="dashboard-mode-tab-label">Start practice</span>
                   </button>

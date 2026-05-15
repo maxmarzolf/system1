@@ -279,8 +279,6 @@ def build_skill_map_overview(
                 "title": str(row["card_title"] or card_id),
                 "patternSlugs": matched_pattern_slugs,
             }
-        for slug in matched_pattern_slugs:
-            card_ids_by_pattern.setdefault(slug, set()).add(card_id)
 
         attempt = {
             "accuracy": float(row["accuracy"] or 0),

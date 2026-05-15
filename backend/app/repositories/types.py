@@ -79,6 +79,18 @@ class SkillMapOverviewGeneratedRow(TypedDict):
     tags: list[str] | None
 
 
+class StaticFunctionPracticeRow(TypedDict):
+    name: str
+    title: str
+    difficulty: str
+    description: str
+    code: str
+    tags: list[str] | None
+    leetcode_examples: list[str] | str | None
+    pattern_slug: str
+    pattern_name: str
+
+
 class SkillMapOverviewAttemptRow(TypedDict):
     tracked_card_id: str
     card_title: str

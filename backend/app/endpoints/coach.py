@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.models import (
     AdaptiveVariationRequest,
@@ -20,6 +20,7 @@ from app.models import (
     SkillMapDrillsResponse,
 )
 from app.core import coach as coach_service
+from app.core import static_practice as static_practice_service
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])
 
@@ -57,6 +58,16 @@ async def coach_skill_map_drills(body: SkillMapDrillsRequest):
 @router.post("/skill-map-drills-stream")
 async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
     return await coach_service.coach_skill_map_drills_stream(body)
+
+
+@router.get("/static-function-drills", response_model=SkillMapDrillsResponse)
+async def coach_random_static_function_drills(count: int = Query(default=10, ge=1, le=30)):
+    return await static_practice_service.random_static_function_drills(count)
+
+
+@router.get("/static-function-drills/{pattern_slug}", response_model=SkillMapDrillsResponse)
+async def coach_static_function_drills(pattern_slug: str):
+    return await static_practice_service.static_function_drills_for_pattern(pattern_slug)
 
 
 @router.post("/multiple-choice-drills", response_model=MultipleChoiceDrillsResponse)

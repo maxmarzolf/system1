@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import inspect
+import json
+
 import asyncpg
 
 from app.config import settings
+from app.core import static_functions
+from app.core.static_function_catalog import STATIC_FUNCTION_CATALOG
 
 pool: asyncpg.Pool | None = None
 
@@ -12,7 +17,10 @@ async def connect() -> asyncpg.Pool:
     pool = await asyncpg.create_pool(settings.database_url)
     await _apply_storage_cleanup(pool)
     await _ensure_recall_history_schema(pool)
+    await _ensure_generated_question_schema(pool)
     await _ensure_practice_history_schema(pool)
+    await _ensure_static_function_schema(pool)
+    await _seed_static_functions(pool)
     return pool
 
 
@@ -165,6 +173,57 @@ async def _ensure_recall_history_schema(db_pool: asyncpg.Pool) -> None:
         )
 
 
+async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS question (
+                id VARCHAR(80) PRIMARY KEY,
+                user_id VARCHAR(80) NOT NULL DEFAULT '0000',
+                question_text TEXT NOT NULL,
+                question_help_text TEXT NOT NULL DEFAULT '',
+                recall_answer TEXT,
+                multiple_choice_answer_label_1 VARCHAR(1),
+                multiple_choice_answer_text_1 TEXT,
+                multiple_choice_answer_label_2 VARCHAR(1),
+                multiple_choice_answer_text_2 TEXT,
+                multiple_choice_answer_label_3 VARCHAR(1),
+                multiple_choice_answer_text_3 TEXT,
+                multiple_choice_answer_label_4 VARCHAR(1),
+                multiple_choice_answer_text_4 TEXT,
+                multiple_choice_correct_answer_label VARCHAR(1),
+                multiple_choice_correct_answer_text TEXT,
+                fingerprint VARCHAR(64) NOT NULL,
+                created_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                modified_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_question_fingerprint
+                ON question(fingerprint);
+
+            CREATE INDEX IF NOT EXISTS idx_question_user_id
+                ON question(user_id);
+
+            CREATE INDEX IF NOT EXISTS idx_question_created_date
+                ON question(created_date DESC);
+
+            CREATE TABLE IF NOT EXISTS answer (
+                id BIGSERIAL PRIMARY KEY,
+                session_id VARCHAR(80) NOT NULL DEFAULT '0000',
+                user_id VARCHAR(80) NOT NULL DEFAULT '0000',
+                question_id VARCHAR(80) NOT NULL REFERENCES question(id),
+                answer TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_answer_question_id
+                ON answer(question_id);
+
+            CREATE INDEX IF NOT EXISTS idx_answer_session_user
+                ON answer(session_id, user_id);
+            """
+        )
+
+
 async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
     async with db_pool.acquire() as conn:
         await conn.execute(
@@ -267,3 +326,167 @@ async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
             DROP COLUMN IF EXISTS draft_milestones;
             """
         )
+
+
+def _display_label(slug: str) -> str:
+    overrides = {
+        "dfs-bfs": "DFS / BFS",
+        "heap": "Heap / Priority Queue",
+        "dynamic-programming": "Dynamic Programming",
+        "prefix-sums": "Prefix Sums",
+        "monotonic-stack": "Monotonic Stack",
+        "stacks-queues": "Stacks / Queues",
+        "linked-lists": "Linked Lists",
+        "matrix-grid": "Matrix / Grid",
+        "topological-sort": "Topological Sort",
+        "greedy-sorting": "Greedy / Sorting",
+        "trie": "Trie",
+        "trees": "Trees",
+    }
+    if slug in overrides:
+        return overrides[slug]
+    return " ".join(part.capitalize() for part in slug.split("-") if part)
+
+
+async def _ensure_static_function_schema(db_pool: asyncpg.Pool) -> None:
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS static_function_patterns (
+                pattern_slug VARCHAR(80) PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                display_order INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS static_function_methods (
+                pattern_slug VARCHAR(80) NOT NULL REFERENCES static_function_patterns(pattern_slug) ON DELETE CASCADE,
+                method_slug VARCHAR(120) NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                display_order INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (pattern_slug, method_slug)
+            );
+
+            CREATE TABLE IF NOT EXISTS static_functions (
+                name VARCHAR(120) PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                difficulty VARCHAR(20) NOT NULL CHECK (difficulty IN ('Easy', 'Med.', 'Hard')),
+                description TEXT NOT NULL DEFAULT '',
+                code TEXT NOT NULL,
+                tags TEXT[] DEFAULT '{}',
+                leetcode_examples JSONB NOT NULL DEFAULT '[]'::jsonb,
+                display_order INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS static_function_skill_map (
+                function_name VARCHAR(120) NOT NULL REFERENCES static_functions(name) ON DELETE CASCADE,
+                pattern_slug VARCHAR(80) NOT NULL REFERENCES static_function_patterns(pattern_slug) ON DELETE CASCADE,
+                method_slug VARCHAR(120) NOT NULL,
+                display_order INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (function_name, pattern_slug, method_slug)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_static_function_skill_map_pattern
+                ON static_function_skill_map(pattern_slug, display_order);
+
+            CREATE INDEX IF NOT EXISTS idx_static_functions_tags
+                ON static_functions USING GIN(tags);
+            """
+        )
+
+
+async def _seed_static_functions(db_pool: asyncpg.Pool) -> None:
+    pattern_order: dict[str, int] = {}
+    method_order: dict[tuple[str, str], int] = {}
+    function_rows: list[tuple[str, dict, str, int]] = []
+    mapping_rows: list[tuple[str, str, str, int]] = []
+
+    for function_index, (function_name, meta) in enumerate(STATIC_FUNCTION_CATALOG.items(), 1):
+        code = inspect.getsource(getattr(static_functions, function_name)).strip()
+        function_rows.append((function_name, meta, code, function_index))
+        for pattern_slug in meta["patterns"]:
+            pattern_order.setdefault(pattern_slug, len(pattern_order) + 1)
+            for method_slug in meta["methods"]:
+                method_key = (pattern_slug, method_slug)
+                method_order.setdefault(method_key, len(method_order) + 1)
+                mapping_rows.append((function_name, pattern_slug, method_slug, function_index))
+
+    async with db_pool.acquire() as conn:
+        async with conn.transaction():
+            for pattern_slug, display_order in pattern_order.items():
+                await conn.execute(
+                    """
+                    INSERT INTO static_function_patterns (pattern_slug, name, display_order, updated_at)
+                    VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+                    ON CONFLICT (pattern_slug) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        display_order = EXCLUDED.display_order,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    pattern_slug,
+                    _display_label(pattern_slug),
+                    display_order,
+                )
+
+            for (pattern_slug, method_slug), display_order in method_order.items():
+                await conn.execute(
+                    """
+                    INSERT INTO static_function_methods (pattern_slug, method_slug, name, display_order, updated_at)
+                    VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+                    ON CONFLICT (pattern_slug, method_slug) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        display_order = EXCLUDED.display_order,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    pattern_slug,
+                    method_slug,
+                    _display_label(method_slug).lower(),
+                    display_order,
+                )
+
+            for function_name, meta, code, display_order in function_rows:
+                await conn.execute(
+                    """
+                    INSERT INTO static_functions
+                        (name, title, difficulty, description, code, tags, leetcode_examples, display_order, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, CURRENT_TIMESTAMP)
+                    ON CONFLICT (name) DO UPDATE SET
+                        title = EXCLUDED.title,
+                        difficulty = EXCLUDED.difficulty,
+                        description = EXCLUDED.description,
+                        code = EXCLUDED.code,
+                        tags = EXCLUDED.tags,
+                        leetcode_examples = EXCLUDED.leetcode_examples,
+                        display_order = EXCLUDED.display_order,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    function_name,
+                    meta["title"],
+                    meta["difficulty"],
+                    meta["description"],
+                    code,
+                    list(meta["tags"]),
+                    json.dumps(list(meta["leetcodeExamples"])),
+                    display_order,
+                )
+
+            await conn.execute("DELETE FROM static_function_skill_map")
+            for function_name, pattern_slug, method_slug, display_order in mapping_rows:
+                await conn.execute(
+                    """
+                    INSERT INTO static_function_skill_map
+                        (function_name, pattern_slug, method_slug, display_order)
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT (function_name, pattern_slug, method_slug) DO UPDATE SET
+                        display_order = EXCLUDED.display_order
+                    """,
+                    function_name,
+                    pattern_slug,
+                    method_slug,
+                    display_order,
+                )

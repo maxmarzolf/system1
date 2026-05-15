@@ -80,13 +80,13 @@ async def fetch_patterns_with_methods_rows() -> list[PatternMethodRow]:
         rows = await conn.fetch(
             """
             SELECT
-                p.id AS pattern_id,
+                (DENSE_RANK() OVER (ORDER BY p.display_order ASC, p.pattern_slug ASC))::int AS pattern_id,
                 p.name AS pattern_name,
-                m.id AS method_id,
+                (ROW_NUMBER() OVER (ORDER BY p.display_order ASC, m.display_order ASC, m.method_slug ASC))::int AS method_id,
                 m.name AS method_name
-            FROM patterns p
-            LEFT JOIN methods m ON m.pattern_id = p.id
-            ORDER BY p.id ASC, m.id ASC
+            FROM static_function_patterns p
+            LEFT JOIN static_function_methods m ON m.pattern_slug = p.pattern_slug
+            ORDER BY p.display_order ASC, m.display_order ASC, m.method_slug ASC
             """
         )
     return [cast(PatternMethodRow, dict(row)) for row in rows]
@@ -97,12 +97,12 @@ async def fetch_skill_map_overview_pattern_rows() -> list[SkillMapOverviewPatter
         rows = await conn.fetch(
             """
             SELECT
-                p.id AS pattern_id,
+                (DENSE_RANK() OVER (ORDER BY p.display_order ASC, p.pattern_slug ASC))::int AS pattern_id,
                 p.name AS pattern_name,
                 m.name AS method_name
-            FROM patterns p
-            LEFT JOIN methods m ON m.pattern_id = p.id
-            ORDER BY p.id ASC, m.id ASC
+            FROM static_function_patterns p
+            LEFT JOIN static_function_methods m ON m.pattern_slug = p.pattern_slug
+            ORDER BY p.display_order ASC, m.display_order ASC, m.method_slug ASC
             """
         )
     return [cast(SkillMapOverviewPatternRow, dict(row)) for row in rows]
@@ -113,9 +113,15 @@ async def fetch_skill_map_overview_generated_rows() -> list[SkillMapOverviewGene
         rows = await conn.fetch(
             """
             SELECT id, title, tags
-            FROM generated_skill_map_cards
-            WHERE question_type LIKE 'skill-map%'
-            ORDER BY created_at DESC
+            FROM (
+                SELECT
+                    'static-function-' || name AS id,
+                    title,
+                    tags,
+                    display_order
+                FROM static_functions
+            ) rows
+            ORDER BY display_order ASC
             """
         )
     return [cast(SkillMapOverviewGeneratedRow, dict(row)) for row in rows]

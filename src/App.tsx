@@ -338,6 +338,50 @@ const requestSkillMapDrills = (body: SkillMapDrillsRequest) => {
   return request
 }
 
+const requestStaticFunctionDrills = (patternSlug: string) => {
+  const requestKey = `static:${patternSlug}`
+  const existingRequest = skillMapDeckRequestCache.get(requestKey)
+  if (existingRequest) return existingRequest
+
+  const request = fetch(apiUrl(`/api/coach/static-function-drills/${encodeURIComponent(patternSlug)}`))
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new Error('Unable to load static functions')
+      }
+      return (await response.json()) as SkillMapDrillsResponse
+    })
+    .finally(() => {
+      if (skillMapDeckRequestCache.get(requestKey) === request) {
+        skillMapDeckRequestCache.delete(requestKey)
+      }
+    })
+
+  skillMapDeckRequestCache.set(requestKey, request)
+  return request
+}
+
+const requestRandomStaticFunctionDrills = (count = 10) => {
+  const requestKey = `static-random:${count}`
+  const existingRequest = skillMapDeckRequestCache.get(requestKey)
+  if (existingRequest) return existingRequest
+
+  const request = fetch(apiUrl(`/api/coach/static-function-drills?count=${count}`))
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new Error('Unable to load static functions')
+      }
+      return (await response.json()) as SkillMapDrillsResponse
+    })
+    .finally(() => {
+      if (skillMapDeckRequestCache.get(requestKey) === request) {
+        skillMapDeckRequestCache.delete(requestKey)
+      }
+    })
+
+  skillMapDeckRequestCache.set(requestKey, request)
+  return request
+}
+
 const requestMultipleChoiceDrills = (body: MultipleChoiceDrillsRequest) => {
   const requestKey = JSON.stringify(body)
   const existingRequest = multipleChoiceDeckRequestCache.get(requestKey)
@@ -451,6 +495,24 @@ const patternToSlug = (pattern: string) =>
     .trim()
     .replace(/\s+/g, '-')
 
+const patternLabelFromSlug = (slug: string) => {
+  const overrides: Record<string, string> = {
+    'dfs-bfs': 'DFS / BFS',
+    heap: 'Heap / Priority Queue',
+    'dynamic-programming': 'Dynamic Programming',
+    'prefix-sums': 'Prefix Sums',
+    'monotonic-stack': 'Monotonic Stack',
+    'stacks-queues': 'Stacks / Queues',
+    'linked-lists': 'Linked Lists',
+    'matrix-grid': 'Matrix / Grid',
+    'topological-sort': 'Topological Sort',
+    'greedy-sorting': 'Greedy / Sorting',
+    trie: 'Trie',
+    trees: 'Trees',
+  }
+  return overrides[slug] ?? slug.split('-').filter(Boolean).map((part) => part[0]?.toUpperCase() + part.slice(1)).join(' ')
+}
+
 const clampMultipleChoiceQuestionCount = (count: number) =>
   Math.min(MULTIPLE_CHOICE_MAX_COUNT, Math.max(MULTIPLE_CHOICE_MIN_COUNT, count))
 
@@ -474,6 +536,13 @@ const getPrimaryPatternTag = (tags: string[]) => {
     'intervals',
     'prefix-sums',
     'monotonic-stack',
+    'stacks-queues',
+    'linked-lists',
+    'matrix-grid',
+    'topological-sort',
+    'greedy-sorting',
+    'trie',
+    'trees',
     'stack',
   ]) {
     if (tags.includes(tag)) return tag
@@ -2190,14 +2259,14 @@ function App() {
   }, [requestedSkillMap])
   const requestedQuestionType = requestedPlaylist
     ? `playlist:${requestedPlaylist.slug}`
-    : focusedPatternNode
-      ? 'skill-map-targeted'
+    : focusedPatternSlug
+      ? 'skill-map-static'
       : questionType
-  const targetedMethodCount = requestedSkillMap.length
+  const focusedPatternLabel = focusedPatternNode?.pattern ?? patternLabelFromSlug(focusedPatternSlug)
   const targetedDeckLabel = requestedPlaylist
     ? `${requestedPlaylist.title} • ${requestedPlaylist.questions.length} questions`
-    : focusedPatternNode
-    ? `${focusedPatternNode.pattern} • ${focusedTemplateMode ? TEMPLATE_MODE_LABELS[focusedTemplateMode] : 'Focused'} • ${targetedMethodCount} method${targetedMethodCount === 1 ? '' : 's'}`
+    : focusedPatternSlug
+    ? `${focusedPatternLabel} • Static functions`
     : ''
 
   const filteredDeck = useMemo(() => skillMapDeck, [skillMapDeck])
@@ -2230,6 +2299,22 @@ function App() {
     }
 
     try {
+      if (focusedPatternSlug && !requestedPlaylist) {
+        const payload = await requestStaticFunctionDrills(focusedPatternSlug)
+        if (skillMapDeckRequestVersionRef.current !== requestVersion) return
+        setSkillMapDeck(payload.drills)
+        setSkillMapSessionVersion((prev) => prev + 1)
+        return
+      }
+
+      if (!requestedPlaylist) {
+        const payload = await requestRandomStaticFunctionDrills(10)
+        if (skillMapDeckRequestVersionRef.current !== requestVersion) return
+        setSkillMapDeck(payload.drills)
+        setSkillMapSessionVersion((prev) => prev + 1)
+        return
+      }
+
       const result = await requestSkillMapDrillsStream(
         requestBody,
         (drill) => {
@@ -2339,7 +2424,7 @@ function App() {
   useEffect(() => {
     void fetchSkillMapDeck()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [llmProvider, requestLlmProvider, requestedQuestionType, requestedSkillMapSignature, requestedTemplateMode, skillMapRefreshToken])
+  }, [focusedPatternSlug, llmProvider, requestLlmProvider, requestedQuestionType, requestedSkillMapSignature, requestedTemplateMode, skillMapRefreshToken])
 
   useEffect(() => {
     if (practiceMode !== 'multiple-choice') return
@@ -3810,15 +3895,15 @@ function App() {
                 <span className="coach-metric-chip">Algorithm anchors</span>
                 <span className="coach-metric-chip">{multipleChoiceQuestionCount} questions</span>
                 <span className="coach-metric-chip">{multipleChoiceDifficulty}</span>
-                {(focusedPatternNode || requestedPlaylist) && (
+                {(focusedPatternSlug || requestedPlaylist) && (
                   <span className="coach-metric-chip">
-                    {requestedPlaylist ? 'Playlist bias' : `Focus ${focusedPatternNode?.pattern}`}
+                    {requestedPlaylist ? 'Playlist bias' : `Focus ${focusedPatternLabel}`}
                   </span>
                 )}
               </div>
-            ) : (focusedPatternNode || requestedPlaylist) && (
+            ) : (focusedPatternSlug || requestedPlaylist) && (
               <p className="card-template-summary">
-                {requestedPlaylist ? 'Playlist' : 'Focused deck'}: {targetedDeckLabel}
+                {requestedPlaylist ? 'Playlist' : 'Static deck'}: {targetedDeckLabel}
               </p>
             )}
           </div>

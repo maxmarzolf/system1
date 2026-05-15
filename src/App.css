@@ -418,7 +418,7 @@
   gap: 0.7rem;
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--hc-border-dim);
-  background: var(--hc-field-gradient);
+  background: var(--hc-mcq-option-bg);
   color: var(--hc-fg);
   text-align: left;
 }
@@ -551,10 +551,10 @@
   position: relative;
   z-index: 0;
   display: grid;
-  grid-template-rows: auto auto auto minmax(4.75rem, 1fr) auto;
+  grid-template-rows: auto auto minmax(5rem, 1fr) auto;
   align-content: stretch;
   gap: 0.45rem;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 1 / 0.86;
   min-width: 0;
   border: 1px solid var(--hc-border-dim);
   background: var(--hc-card-surface-gradient);
@@ -1252,7 +1252,11 @@
 }
 
 .skill-map-card .dashboard-mode-tabs {
-  margin-top: 0;
+  justify-self: center;
+  width: auto;
+  margin-top: 0.05rem;
+  border: 0;
+  background: transparent;
 }
 
 .dashboard-mode-tab {
@@ -1269,6 +1273,24 @@
   font-size: 0.78rem;
   font-weight: 600;
   cursor: default;
+}
+
+.skill-map-card .dashboard-mode-tab {
+  flex: 0 0 auto;
+  justify-content: center;
+  min-width: 9.25rem;
+  min-height: 2rem;
+  padding: 0.42rem 0.68rem;
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-card-surface-soft);
+}
+
+.skill-map-card .dashboard-mode-tab:last-child {
+  border-right: 1px solid var(--hc-border-dim);
+}
+
+.skill-map-card .dashboard-mode-tab:hover {
+  border-color: var(--hc-accent);
 }
 
 .dashboard-mode-tab:last-child {
@@ -1292,6 +1314,7 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-size: 0.68rem;
+  white-space: nowrap;
 }
 
 .dashboard-mode-header {
@@ -1510,6 +1533,7 @@
 .app-dashboard .skill-map-card {
   gap: 0.4rem;
   padding: 0.7rem;
+  min-height: 15.25rem;
 }
 
 .app-dashboard .skill-map-header {
@@ -1537,6 +1561,16 @@
 .app-dashboard .dashboard-mode-tab {
   padding: 0.38rem 0.5rem;
   font-size: 0.72rem;
+}
+
+.app-dashboard .skill-map-card .dashboard-mode-tab {
+  min-width: 8.8rem;
+  min-height: 1.85rem;
+  padding: 0.34rem 0.58rem;
+}
+
+.app-dashboard .skill-map-card .dashboard-mode-tab:last-child {
+  border-right: 1px solid var(--hc-border-dim);
 }
 
 .app-dashboard .dashboard-mode-tab-label {

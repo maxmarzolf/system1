@@ -129,6 +129,54 @@ CREATE INDEX IF NOT EXISTS idx_answer_session_user
     ON answer(session_id, user_id);
 
 -- ============================================================================
+-- Static Function Bank
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS static_function_patterns (
+    pattern_slug VARCHAR(80) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS static_function_methods (
+    pattern_slug VARCHAR(80) NOT NULL REFERENCES static_function_patterns(pattern_slug) ON DELETE CASCADE,
+    method_slug VARCHAR(120) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (pattern_slug, method_slug)
+);
+
+CREATE TABLE IF NOT EXISTS static_functions (
+    name VARCHAR(120) PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    difficulty VARCHAR(20) NOT NULL CHECK (difficulty IN ('Easy', 'Med.', 'Hard')),
+    description TEXT NOT NULL DEFAULT '',
+    code TEXT NOT NULL,
+    tags TEXT[] DEFAULT '{}',
+    leetcode_examples JSONB NOT NULL DEFAULT '[]'::jsonb,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS static_function_skill_map (
+    function_name VARCHAR(120) NOT NULL REFERENCES static_functions(name) ON DELETE CASCADE,
+    pattern_slug VARCHAR(80) NOT NULL REFERENCES static_function_patterns(pattern_slug) ON DELETE CASCADE,
+    method_slug VARCHAR(120) NOT NULL,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (function_name, pattern_slug, method_slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_static_function_skill_map_pattern
+    ON static_function_skill_map(pattern_slug, display_order);
+
+CREATE INDEX IF NOT EXISTS idx_static_functions_tags
+    ON static_functions USING GIN(tags);
+
+-- ============================================================================
 -- Coach Feedback Events Table
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS coach_feedback_events (
