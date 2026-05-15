@@ -79,6 +79,56 @@ CREATE INDEX IF NOT EXISTS idx_generated_skill_map_cards_tags
     ON generated_skill_map_cards USING GIN(tags);
 
 -- ============================================================================
+-- Question Table
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS question (
+    id VARCHAR(80) PRIMARY KEY,
+    user_id VARCHAR(80) NOT NULL DEFAULT '0000',
+    question_text TEXT NOT NULL,
+    question_help_text TEXT NOT NULL DEFAULT '',
+    recall_answer TEXT,
+    multiple_choice_answer_label_1 VARCHAR(1),
+    multiple_choice_answer_text_1 TEXT,
+    multiple_choice_answer_label_2 VARCHAR(1),
+    multiple_choice_answer_text_2 TEXT,
+    multiple_choice_answer_label_3 VARCHAR(1),
+    multiple_choice_answer_text_3 TEXT,
+    multiple_choice_answer_label_4 VARCHAR(1),
+    multiple_choice_answer_text_4 TEXT,
+    multiple_choice_correct_answer_label VARCHAR(1),
+    multiple_choice_correct_answer_text TEXT,
+    fingerprint VARCHAR(64) NOT NULL,
+    created_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    modified_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_question_fingerprint
+    ON question(fingerprint);
+
+CREATE INDEX IF NOT EXISTS idx_question_user_id
+    ON question(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_question_created_date
+    ON question(created_date DESC);
+
+-- ============================================================================
+-- Answer Table
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS answer (
+    id BIGSERIAL PRIMARY KEY,
+    session_id VARCHAR(80) NOT NULL DEFAULT '0000',
+    user_id VARCHAR(80) NOT NULL DEFAULT '0000',
+    question_id VARCHAR(80) NOT NULL REFERENCES question(id),
+    answer TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_answer_question_id
+    ON answer(question_id);
+
+CREATE INDEX IF NOT EXISTS idx_answer_session_user
+    ON answer(session_id, user_id);
+
+-- ============================================================================
 -- Coach Feedback Events Table
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS coach_feedback_events (

@@ -76,6 +76,7 @@ cd backend && pytest tests/test_generator_*.py -v --cov=app.routers.generator --
 - Readiness Overview by skill-map pattern and template mode
 - Practice history with stored attempts, live feedback snapshots, and final feedback
 - Skill-map drill generation backed by stored practice history
+- MCQ generation owned by generator core, with persisted MCQs in `question` and fingerprint dedupe
 
 ## Development
 
@@ -93,6 +94,8 @@ The backend now has a focused pytest suite for generator-related behavior and in
 
 - Install backend dependencies: `pip install -r backend/requirements.txt`
 - Run all backend tests: `cd backend && pytest -v`
+- Run unit-focused backend tests only: `cd backend && pytest -v -m "not integration"`
+- Run integration tests only: `cd backend && pytest -v -m integration`
 - Run generator-focused tests with coverage: `cd backend && pytest tests/test_generator_*.py -v --cov=app.routers.generator --cov-report=term-missing`
 
 Test scope in this pass:
@@ -166,6 +169,8 @@ PostgreSQL is available to the backend at `postgresql://flashcard_user:flashcard
 - **score_attempts**: Stores recall attempts, answers, accuracy, timing, template mode, generated card metadata, live-coach usage, and final feedback
 - **coach_feedback_events**: Stores live feedback events and final submission feedback events
 - **generated_skill_map_cards**: Stores generated drills and generation context
+- **question**: Stores generated question content (recall + MCQ shape), including MCQ labels/text and correct-label/correct-text
+- **answer**: Schema groundwork for future submitted answers (session/user placeholders retained for now)
 - **patterns** and **methods**: Store the skill-map taxonomy
 
 **API Endpoints:**
@@ -211,13 +216,25 @@ The Postgres image loads scripts in this order:
 ### LLM Coach Feedback
 
 The coach pipeline uses three distinct LLM roles, each with its own provider selection and token budget.
-Generator behavior is now centered in `backend/app/routers/generator.py` through a core `SkillMapDrillGenerator` service, while `coach.py` acts as the API orchestration facade.
+Generator behavior is centered in `backend/app/core/generator.py` through `SkillMapDrillGenerator` and MCQ generation helpers, while `coach.py` acts as API orchestration.
+Provider resolution and shared JSON-call utilities are in `backend/app/core/llm.py` to avoid circular dependencies between coach and generator modules.
 
 | Role | Purpose | Provider selection | Max tokens |
 |------|---------|-------------------|------------|
 | **Signal Assessor** | Structural assessment of each attempt (replaces ~1500 lines of rule-based signals) | Fastest available: Gemma → Claude → OpenAI | 600 |
 | **Feedback Narrator** | Narrative coaching text for submission feedback | User-selected available provider | 1800 |
 | **Practice Generator** | Seeds skill-map practice decks and creates adaptive repair variations | User-selected available provider | 2000 |
+
+### MCQ Persistence Notes
+
+- Endpoint: `POST /api/coach/multiple-choice-drills`
+- Flow ownership: router -> `coach.py` delegator -> `generator.py` MCQ generation
+- Persistence: generated MCQs are written to `question` via repository SQL
+- Dedupe: `question.fingerprint` unique index prevents duplicate semantic MCQs
+- Fingerprint input is normalized semantic content (question text + canonicalized choice texts + correct answer text), not raw model output formatting
+- Persistence is fail-open: endpoint still returns generated drills if DB write fails, with server-side warning logs
+- Provider fallback: if the selected provider returns an empty/invalid JSON payload, MCQ generation now tries the next configured available provider before returning an error
+- Transient resilience: MCQ generation retries temporary provider failures with short backoff before failing or moving to the next provider
 
 Live feedback (`liveMode=true`) uses only the Signal Assessor — no Narrator call.
 Submission feedback (`liveMode=false`) runs Assessor → Narrator in sequence.

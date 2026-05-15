@@ -18,6 +18,15 @@ from typing import Any
 from fastapi import HTTPException
 
 from app.config import settings
+from app.core.llm import (
+    call_llm_json as _call_llm_json,
+    extract_json_dict as _extract_json_dict,
+    llm_provider_available as _llm_provider_available,
+    llm_provider_label as _llm_provider_label,
+    preferred_provider_chain as _preferred_provider_chain,
+    resolve_available_llm_provider as _resolve_available_llm_provider,
+    resolve_llm_provider as _resolve_llm_provider,
+)
 from app.models import (
     AdaptiveVariationRequest,
     AdaptiveVariationResponse,
@@ -43,6 +52,7 @@ from app.readiness import READINESS_MODE_ORDER, summarize_readiness
 from app.repositories.coach_repository import (
     fetch_practice_history_entries,
     insert_feedback_event_row,
+    insert_generated_multiple_choice_question_rows,
     insert_generated_skill_map_card_row,
 )
 from app.core.assessor import (
@@ -60,7 +70,9 @@ from app.core.generator import (
     _template_mode_value,
     attach_plain_english_prompt_detail,
     apply_specimen_tuning_to_target,
+    generate_multiple_choice_drills_response,
     GeneratorRuntime,
+    GeneratorUnavailableError,
     GeneratorTuning,
     SkillMapDrillGenerator,
     specimen_style_prompt,
@@ -119,12 +131,6 @@ SUBMISSION_DIMENSION_LABELS = {
     "syntax": "Syntax and executability",
     "completionTime": "Speed and fluency",
 }
-ANTHROPIC_MODEL_CANDIDATES = (
-    "claude-sonnet-4-6",
-    "claude-sonnet-4-5-20250929",
-    "claude-sonnet-4-20250514",
-    "claude-3-haiku-20240307",
-)
 SUBMISSION_LLM_MAX_RETRIES = 3
 SUBMISSION_LLM_RETRY_DELAYS_SECONDS = (0.3, 0.6, 0.9)
 ASSESSOR_MAX_TOKENS = 600
@@ -140,14 +146,6 @@ class SubmissionFeedbackUnavailableError(RuntimeError):
         self.message = message
         self.provider = provider
         self.api_error_code = api_error_code
-
-
-def _llm_provider_label(provider: str) -> str:
-    if provider == "claude":
-        return "Claude"
-    if provider == "gemma":
-        return "Gemma"
-    return "ChatGPT"
 
 
 def _submission_feedback_error_detail(
@@ -1561,51 +1559,6 @@ async def _sequential_variation_with_llm(body: SequentialVariationRequest) -> di
     }
 
 
-def _normalize_llm_provider(value: str) -> str:
-    normalized = value.strip().lower()
-    if not normalized:
-        return ""
-    if normalized in {"claude", "anthropic"}:
-        return "claude"
-    if normalized in {"openai", "chatgpt", "gpt"}:
-        return "openai"
-    if normalized in {"gemma", "gemma4", "google"}:
-        return "gemma"
-    return ""
-
-
-def _resolve_llm_provider(requested_provider: str) -> str:
-    requested = _normalize_llm_provider(str(requested_provider or ""))
-    configured = _normalize_llm_provider(str(settings.coach_llm_provider or ""))
-    return requested or configured or "openai"
-
-
-def _preferred_provider_chain(requested_provider: str) -> list[str]:
-    requested = _normalize_llm_provider(str(requested_provider or ""))
-    configured = _normalize_llm_provider(str(settings.coach_llm_provider or ""))
-    chain = [requested, configured, "gemma", "claude", "openai"]
-    ordered: list[str] = []
-    for provider in chain:
-        if provider and provider not in ordered:
-            ordered.append(provider)
-    return ordered
-
-
-def _resolve_available_llm_provider(requested_provider: str) -> str:
-    for candidate in _preferred_provider_chain(requested_provider):
-        if _llm_provider_available(candidate):
-            return candidate
-    return _resolve_llm_provider(requested_provider)
-
-
-def _llm_provider_available(provider: str) -> bool:
-    if provider == "claude":
-        return bool(settings.coach_anthropic_api_key)
-    if provider == "gemma":
-        return bool(settings.coach_gemma_api_key)
-    return bool(settings.coach_openai_api_key)
-
-
 async def coach_provider_default() -> CoachProviderDefaultResponse:
     configured = _resolve_llm_provider("")
     return CoachProviderDefaultResponse(provider=configured)
@@ -1618,213 +1571,6 @@ NARRATOR_RUNTIME = NarratorRuntime(
     max_retries=SUBMISSION_LLM_MAX_RETRIES,
     retry_delays_seconds=SUBMISSION_LLM_RETRY_DELAYS_SECONDS,
 )
-
-def _extract_json_dict(value: str) -> dict[str, Any] | None:
-    text = value.strip()
-
-    if text.startswith("```"):
-        lines = text.splitlines()
-        if lines and lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        text = "\n".join(lines).strip()
-
-    try:
-        parsed = json.loads(text)
-    except ValueError:
-        decoder = json.JSONDecoder()
-        for match in re.finditer(r"\{", text):
-            try:
-                parsed, _ = decoder.raw_decode(text[match.start() :])
-                if isinstance(parsed, dict):
-                    return parsed
-            except ValueError:
-                continue
-        return None
-    return parsed if isinstance(parsed, dict) else None
-
-
-def _call_openai_json(
-    system_prompt: str,
-    user_payload: dict[str, Any],
-    max_tokens: int = 1800,
-    timeout_seconds: int = 30,
-    temperature: float = 0.2,
-) -> dict[str, Any] | None:
-    if not settings.coach_openai_api_key:
-        return None
-
-    url = f"{settings.coach_openai_base_url.rstrip('/')}/chat/completions"
-    body = {
-        "model": settings.coach_openai_model,
-        "temperature": temperature,
-        "max_completion_tokens": max_tokens,
-        "response_format": {"type": "json_object"},
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": json.dumps(user_payload)},
-        ],
-    }
-
-    def post_completion(request_body: dict[str, Any]) -> dict[str, Any]:
-        data = json.dumps(request_body).encode("utf-8")
-        request = urllib.request.Request(
-            url,
-            data=data,
-            method="POST",
-            headers={
-                "Authorization": f"Bearer {settings.coach_openai_api_key}",
-                "Content-Type": "application/json",
-            },
-        )
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-            raw = response.read().decode("utf-8")
-            return json.loads(raw)
-
-    try:
-        payload = post_completion(body)
-        content = payload["choices"][0]["message"]["content"]
-        return _extract_json_dict(content)
-    except urllib.error.HTTPError as error:
-        details = error.read().decode("utf-8", errors="replace")
-        if (
-            error.code == 400
-            and "max_completion_tokens" in details
-            and "unsupported" in details.lower()
-        ):
-            fallback_body = {**body}
-            fallback_body.pop("max_completion_tokens", None)
-            fallback_body["max_tokens"] = max_tokens
-            try:
-                payload = post_completion(fallback_body)
-                content = payload["choices"][0]["message"]["content"]
-                return _extract_json_dict(content)
-            except (urllib.error.URLError, KeyError, IndexError, ValueError, TypeError, TimeoutError) as fallback_error:
-                logger.warning("OpenAI fallback request failed: %s", fallback_error)
-                return None
-        logger.warning("OpenAI request failed (%s): %s", error.code, details[:400])
-        return None
-    except (urllib.error.URLError, KeyError, IndexError, ValueError, TypeError, TimeoutError) as error:
-        logger.warning("OpenAI request failed: %s", error)
-        return None
-
-
-def _call_claude_json(system_prompt: str, user_payload: dict[str, Any], max_tokens: int = 1800) -> dict[str, Any] | None:
-    if not settings.coach_anthropic_api_key:
-        return None
-
-    url = f"{settings.coach_anthropic_base_url.rstrip('/')}/messages"
-    configured_model = str(settings.coach_anthropic_model or "").strip()
-    candidate_models: list[str] = []
-    for model in (configured_model, *ANTHROPIC_MODEL_CANDIDATES):
-        if model and model not in candidate_models:
-            candidate_models.append(model)
-
-    for model in candidate_models:
-        body = {
-            "model": model,
-            "temperature": 0.2,
-            "max_tokens": max_tokens,
-            "system": f"{system_prompt}\nReturn only valid JSON. Do not include markdown.",
-            "messages": [
-                {"role": "user", "content": json.dumps(user_payload)},
-            ],
-        }
-        data = json.dumps(body).encode("utf-8")
-        request = urllib.request.Request(
-            url,
-            data=data,
-            method="POST",
-            headers={
-                "x-api-key": settings.coach_anthropic_api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                raw = response.read().decode("utf-8")
-                payload = json.loads(raw)
-                content = payload.get("content", [])
-                if not isinstance(content, list):
-                    logger.warning("Anthropic response content was not a list for model '%s'.", model)
-                    return None
-                text_parts: list[str] = []
-                for item in content:
-                    if isinstance(item, dict) and item.get("type") == "text":
-                        text_parts.append(str(item.get("text", "")))
-                if not text_parts:
-                    logger.warning("Anthropic response had no text blocks for model '%s'.", model)
-                    return None
-                parsed = _extract_json_dict("\n".join(text_parts))
-                if parsed is None:
-                    logger.warning("Anthropic response did not contain parseable JSON for model '%s'.", model)
-                return parsed
-        except urllib.error.HTTPError as error:
-            details = error.read().decode("utf-8", errors="replace")
-            model_not_found = error.code in {400, 404} and "model" in details.lower()
-            if model_not_found:
-                logger.warning("Anthropic model '%s' unavailable (%s). Trying next configured model.", model, error.code)
-                continue
-            logger.warning("Anthropic request failed (%s): %s", error.code, details[:400])
-            return None
-        except (urllib.error.URLError, KeyError, IndexError, ValueError, TypeError, TimeoutError) as error:
-            logger.warning("Anthropic request failed for model '%s': %s", model, error)
-            return None
-
-    logger.warning("No usable Anthropic model found from configured candidates.")
-    return None
-
-
-def _call_gemma_json(system_prompt: str, user_payload: dict[str, Any], max_tokens: int = 1800) -> dict[str, Any] | None:
-    if not settings.coach_gemma_api_key:
-        return None
-
-    model = str(settings.coach_gemma_model or "").strip() or "gemma-4-31b-it"
-    url = f"{settings.coach_gemma_base_url.rstrip('/')}/models/{model}:generateContent?key={settings.coach_gemma_api_key}"
-    prompt = f"{system_prompt}\nReturn only valid JSON. Do not include markdown.\n\n{json.dumps(user_payload)}"
-    body = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.2, "maxOutputTokens": max_tokens, "responseMimeType": "application/json"},
-    }
-    data = json.dumps(body).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=data,
-        method="POST",
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            raw = response.read().decode("utf-8")
-            payload = json.loads(raw)
-            candidates = payload.get("candidates", [])
-            if candidates and isinstance(candidates, list):
-                parts = candidates[0].get("content", {}).get("parts", [])
-                text_parts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("text")]
-                if text_parts:
-                    return _extract_json_dict("\n".join(text_parts))
-            return None
-    except (urllib.error.URLError, KeyError, IndexError, ValueError, TypeError, TimeoutError) as error:
-        logger.warning("Gemma request failed: %s", error)
-        return None
-
-
-def _call_llm_json(
-    system_prompt: str,
-    user_payload: dict[str, Any],
-    provider: str,
-    max_tokens: int = 1800,
-    timeout_seconds: int = 30,
-    temperature: float = 0.2,
-) -> dict[str, Any] | None:
-    if provider == "claude":
-        return _call_claude_json(system_prompt, user_payload, max_tokens)
-    if provider == "gemma":
-        return _call_gemma_json(system_prompt, user_payload, max_tokens)
-    return _call_openai_json(system_prompt, user_payload, max_tokens, timeout_seconds, temperature)
-
 
 GENERATOR_RUNTIME = GeneratorRuntime(
     call_llm_json=_call_llm_json,
@@ -2073,245 +1819,48 @@ async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
     )
 
 
-def _normalize_mcq_difficulty(value: str) -> str:
-    normalized = str(value or "").strip().lower()
-    if normalized in {"hard", "difficult"}:
-        return "Hard"
-    return "Med."
-
-
-def _normalize_mcq_choice_id(value: Any, fallback_index: int) -> str:
-    text = str(value or "").strip().upper()
-    if text in {"A", "B", "C", "D"}:
-        return text
-    return ["A", "B", "C", "D"][fallback_index]
-
-
-def _strip_unparsed_tuple_assignment_parens(line: str) -> str:
-    if " = (" not in line or not line.endswith(")"):
-        return line
-    prefix, rhs = line.split(" = ", 1)
-    if not re.fullmatch(r"\s*[A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)+", prefix):
-        return line
-
-    inner = rhs[1:-1]
-    depth = 0
-    has_top_level_comma = False
-    for char in inner:
-        if char in "([{":
-            depth += 1
-        elif char in ")]}":
-            depth -= 1
-        elif char == "," and depth == 0:
-            has_top_level_comma = True
-            break
-    if not has_top_level_comma:
-        return line
-    return f"{prefix} = {inner}"
-
-
-def _normalize_python_snippet_display(code: str) -> str:
-    normalized = "\n".join(line.replace("\t", "    ").rstrip() for line in code.strip().splitlines()).strip()
-    if not normalized:
-        return ""
-    try:
-        formatted = ast.unparse(ast.parse(normalized))
-    except SyntaxError:
-        return normalized
-    return "\n".join(_strip_unparsed_tuple_assignment_parens(line) for line in formatted.splitlines()).strip()
-
-
-def _normalize_python_markdown_display(text: str) -> str:
-    def replace_fence(match: re.Match[str]) -> str:
-        language = str(match.group(1) or "python").strip() or "python"
-        raw_code = str(match.group(2) or "")
-        normalized_language = language.lower()
-        code = (
-            _normalize_python_snippet_display(raw_code)
-            if normalized_language in {"python", "py"}
-            else raw_code.strip()
-        )
-        return f"```{language}\n{code}\n```"
-
-    return re.sub(r"```([A-Za-z0-9_-]+)?\s*\n?([\s\S]*?)```", replace_fence, text.strip())
-
-
-def _process_multiple_choice_card(raw: Any, index: int, body: MultipleChoiceDrillsRequest) -> dict[str, Any] | None:
-    if not isinstance(raw, dict):
-        return None
-
-    source_node = body.skillMap[index % max(len(body.skillMap), 1)] if body.skillMap else None
-    pattern = str(raw.get("pattern") or getattr(source_node, "pattern", "") or "Algorithm").strip()
-    pattern_slug = _pattern_slug(pattern) or "algorithm"
-    title = str(raw.get("title") or f"{pattern} Multiple Choice").strip()
-    question = _normalize_python_markdown_display(str(raw.get("question") or ""))
-    explanation = _normalize_python_markdown_display(str(raw.get("explanation") or ""))
-    difficulty = _normalize_mcq_difficulty(str(raw.get("difficulty") or body.difficulty))
-
-    raw_choices = raw.get("choices")
-    if not isinstance(raw_choices, list) or len(raw_choices) < 4:
-        return None
-
-    choices: list[dict[str, str]] = []
-    seen_ids: set[str] = set()
-    for choice_index, choice in enumerate(raw_choices[:4]):
-        if isinstance(choice, dict):
-            choice_id = _normalize_mcq_choice_id(choice.get("id"), choice_index)
-            text = _normalize_python_markdown_display(str(choice.get("text") or ""))
-        else:
-            choice_id = ["A", "B", "C", "D"][choice_index]
-            text = _normalize_python_markdown_display(str(choice or ""))
-        if not text:
-            return None
-        if choice_id in seen_ids:
-            choice_id = ["A", "B", "C", "D"][choice_index]
-        seen_ids.add(choice_id)
-        choices.append({"id": choice_id, "text": text})
-
-    correct_choice_id = _normalize_mcq_choice_id(raw.get("correctChoiceId"), 0)
-    choice_ids = {choice["id"] for choice in choices}
-    if correct_choice_id not in choice_ids:
-        return None
-    if not question or not explanation:
-        return None
-
-    # Shuffle choices so the correct answer isn't always A/B, then re-label A–D.
-    random.shuffle(choices)
-    label_order = ["A", "B", "C", "D"]
-    correct_text = next(c["text"] for c in choices if c["id"] == correct_choice_id)
-    choices = [{"id": label_order[i], "text": c["text"]} for i, c in enumerate(choices)]
-    correct_choice_id = next(c["id"] for c in choices if c["text"] == correct_text)
-
-    raw_tags = [str(tag).strip() for tag in raw.get("tags", []) if str(tag).strip()] if isinstance(raw.get("tags"), list) else []
-    tags = []
-    for tag in ["skill-map", "skill-map-mcq", pattern_slug, *raw_tags]:
-        if tag and tag not in tags:
-            tags.append(tag)
-
-    stamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S%f")
-    return {
-        "id": f"mcq-{stamp}-{index + 1}",
-        "title": title,
-        "pattern": pattern,
-        "difficulty": difficulty,
-        "question": question,
-        "choices": choices,
-        "correctChoiceId": correct_choice_id,
-        "explanation": explanation,
-        "tags": tags,
-    }
-
-
 async def coach_multiple_choice_drills(body: MultipleChoiceDrillsRequest) -> MultipleChoiceDrillsResponse:
     provider = _resolve_available_llm_provider(body.llmProvider)
     provider_label = _llm_provider_label(provider)
-    if not _llm_provider_available(provider):
+    fallback_providers = [
+        (
+            candidate,
+            _llm_provider_label(candidate),
+            _llm_provider_available(candidate),
+        )
+        for candidate in _preferred_provider_chain(body.llmProvider)
+    ]
+
+    async def persist_generated_questions(drills: list[dict[str, Any]]) -> None:
+        now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
+        await insert_generated_multiple_choice_question_rows(
+            questions=drills,
+            user_id="0000",
+            created_date=now,
+            modified_date=now,
+        )
+
+    try:
+        return await generate_multiple_choice_drills_response(
+            body,
+            provider=provider,
+            provider_label=provider_label,
+            provider_available=_llm_provider_available(provider),
+            call_llm_json=_call_llm_json,
+            fallback_providers=fallback_providers,
+            persist_generated_questions=persist_generated_questions,
+            logger=logger,
+        )
+    except GeneratorUnavailableError as error:
         raise HTTPException(
             status_code=503,
             detail=_submission_feedback_error_detail(
-                "mcq_generation_missing_api_key",
-                f"Multiple choice questions cannot be generated at this time. No API key is configured for {provider_label}.",
-                provider,
-                "provider_auth_error",
+                error.code,
+                error.message,
+                error.provider,
+                error.api_error_code,
             ),
-        )
-
-    difficulty = _normalize_mcq_difficulty(body.difficulty)
-    generation_seed = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S%f")
-    skill_map = list(body.skillMap[: body.count])
-    if not skill_map:
-        skill_map = [SkillMapNode(pattern="Algorithm", methods=[])]
-    while len(skill_map) < body.count:
-        skill_map.extend(skill_map[: body.count - len(skill_map)])
-
-    system_prompt = (
-        "You generate multiple-choice cards for algorithm pattern recognition and reasoning. "
-        "Return only a top-level JSON object shaped exactly like {\"drills\": [...]}. "
-        "The drills array must contain exactly the requested count. "
-        "Each drill must have id, title, pattern, difficulty, question, choices, correctChoiceId, explanation, and tags. "
-        "Each choices array must contain exactly four objects with ids A, B, C, and D and concise answer text. "
-        "Anchor each drill on the named algorithm pattern itself, not on an individual LeetCode problem. "
-        "Prefer code-centered questions: show a compact Python snippet, loop condition, state update, return line, or one-line mutation when that makes the algorithm idea concrete. "
-        "Roughly three out of four drills should include a short code snippet in the question or choices; the rest may be purely conceptual. "
-        "Any Python snippets must be fenced as ```python blocks and must follow PEP 8: 4-space indentation, snake_case names, spaces around binary operators, spaces after commas, and no cramped one-letter soup except conventional indexes. "
-        "Questions must test the broader algorithm pattern, invariant, tradeoff, state choice, boundary condition, or debugging insight, not a specific static memorized fact. "
-        "Keep snippets compact: at most 4 short lines in the question, and at most one short line per choice. "
-        "Make distractors plausible for adjacent patterns or common code-level mistakes. "
-        "Use the requested difficulty for every drill. "
-        "Tags must include skill-map, skill-map-mcq, and the slug for the algorithm pattern."
-    )
-    llm_payload = {
-        "questionType": body.questionType,
-        "count": body.count,
-        "difficulty": difficulty,
-        "generationSeed": generation_seed,
-        "skillMap": [
-            {
-                "pattern": node.pattern,
-                "methods": node.methods,
-                "patternSlug": _pattern_slug(node.pattern),
-            }
-            for node in skill_map[: body.count]
-        ],
-        "schema": {
-            "drill": {
-                "id": "temporary id from model; server will replace it",
-                "title": "short pattern-first title",
-                "pattern": "algorithm pattern name",
-                "difficulty": difficulty,
-                "question": "one multiple-choice question",
-                "choices": [
-                    {"id": "A", "text": "choice text"},
-                    {"id": "B", "text": "choice text"},
-                    {"id": "C", "text": "choice text"},
-                    {"id": "D", "text": "choice text"},
-                ],
-                "correctChoiceId": "A",
-                "explanation": "why the answer is correct in one or two sentences",
-                "tags": ["skill-map", "skill-map-mcq", "pattern-slug"],
-            }
-        },
-    }
-
-    llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider, 5000, 60, 0.7)
-    if not llm_response or not isinstance(llm_response.get("drills"), list):
-        raise HTTPException(
-            status_code=503,
-            detail=_submission_feedback_error_detail(
-                "mcq_generation_no_response",
-                f"Multiple choice questions cannot be generated at this time. No valid response from {provider_label}.",
-                provider,
-                "provider_empty_response",
-            ),
-        )
-
-    drills: list[dict[str, Any]] = []
-    for index, raw in enumerate(llm_response["drills"][: body.count]):
-        processed = _process_multiple_choice_card(raw, index, body)
-        if not processed:
-            raise HTTPException(
-                status_code=503,
-                detail=_submission_feedback_error_detail(
-                    "mcq_generation_invalid_response",
-                    f"Multiple choice questions cannot be generated at this time. Invalid response from {provider_label}.",
-                    provider,
-                    "provider_invalid_json",
-                ),
-            )
-        drills.append(processed)
-
-    if len(drills) != body.count:
-        raise HTTPException(
-            status_code=503,
-            detail=_submission_feedback_error_detail(
-                "mcq_generation_invalid_response",
-                f"Multiple choice questions cannot be generated at this time. Invalid response from {provider_label}.",
-                provider,
-                "provider_invalid_json",
-            ),
-        )
-
-    return MultipleChoiceDrillsResponse(drills=drills, llmUsed=True)
+        ) from error
 
 
 async def coach_adaptive_variation(body: AdaptiveVariationRequest):

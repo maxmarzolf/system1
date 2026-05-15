@@ -56,6 +56,10 @@ class ScoreAttemptInsertResult(TypedDict):
     id: int
 
 
+class QuestionInsertResult(TypedDict):
+    id: str
+
+
 class PatternMethodRow(TypedDict):
     pattern_id: int
     pattern_name: str
