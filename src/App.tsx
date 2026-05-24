@@ -153,6 +153,22 @@ type MultipleChoiceDrillsRequest = {
   llmProvider: string
 }
 
+type PromptToggleExplanationRequest = {
+  cardId: string
+  cardTitle: string
+  prompt: string
+  target: string
+  tags: string[]
+  llmProvider: string
+}
+
+type PromptToggleExplanationResponse = {
+  plainEnglish: string
+  inputExample: string
+  outputExample: string
+  llmUsed: boolean
+}
+
 type AdaptiveVariationResponse = {
   drill: Flashcard
   targetDimension: string
@@ -269,6 +285,7 @@ type LlmProviderSelection = 'auto' | LlmProvider
 
 const skillMapDeckRequestCache = new Map<string, Promise<SkillMapDrillsResponse>>()
 const multipleChoiceDeckRequestCache = new Map<string, Promise<MultipleChoiceDrillsResponse>>()
+const promptToggleExplanationRequestCache = new Map<string, Promise<PromptToggleExplanationResponse>>()
 const MULTIPLE_CHOICE_MIN_COUNT = 1
 const MULTIPLE_CHOICE_MAX_COUNT = 30
 const DEFAULT_MULTIPLE_CHOICE_COUNT = 5
@@ -379,6 +396,54 @@ const requestRandomStaticFunctionDrills = (count = 10) => {
     })
 
   skillMapDeckRequestCache.set(requestKey, request)
+  return request
+}
+
+const requestStaticFunctionDrillsByTag = (tagSlug: string, count = 10) => {
+  const requestKey = `static-tag:${tagSlug}:${count}`
+  const existingRequest = skillMapDeckRequestCache.get(requestKey)
+  if (existingRequest) return existingRequest
+
+  const request = fetch(apiUrl(`/api/coach/static-function-drills?tag=${encodeURIComponent(tagSlug)}&count=${count}`))
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new Error('Unable to load tagged static functions')
+      }
+      return (await response.json()) as SkillMapDrillsResponse
+    })
+    .finally(() => {
+      if (skillMapDeckRequestCache.get(requestKey) === request) {
+        skillMapDeckRequestCache.delete(requestKey)
+      }
+    })
+
+  skillMapDeckRequestCache.set(requestKey, request)
+  return request
+}
+
+const requestPromptToggleExplanation = (body: PromptToggleExplanationRequest) => {
+  const requestKey = JSON.stringify(body)
+  const existingRequest = promptToggleExplanationRequestCache.get(requestKey)
+  if (existingRequest) return existingRequest
+
+  const request = fetch(apiUrl('/api/coach/prompt-toggle-explanation'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: requestKey,
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new Error('Unable to generate plain English explanation')
+      }
+      return (await response.json()) as PromptToggleExplanationResponse
+    })
+    .finally(() => {
+      if (promptToggleExplanationRequestCache.get(requestKey) === request) {
+        promptToggleExplanationRequestCache.delete(requestKey)
+      }
+    })
+
+  promptToggleExplanationRequestCache.set(requestKey, request)
   return request
 }
 
@@ -2109,7 +2174,7 @@ function MarkdownCodeContent({
 
 function App() {
   const { theme } = useTheme()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const questionType = 'skill-map' as const
   const [practiceMode, setPracticeMode] = useState<PracticeMode>('recall')
   const [multipleChoiceDifficulty, setMultipleChoiceDifficulty] = useState<MultipleChoiceDifficulty>('Med.')
@@ -2137,6 +2202,9 @@ function App() {
   const [inlineEnabled, setInlineEnabled] = useState(false)
   const [inlineLens, setInlineLens] = useState<InlineLens>('pattern')
   const [plainEnglishPromptOpen, setPlainEnglishPromptOpen] = useState(false)
+  const [promptToggleDetail, setPromptToggleDetail] = useState<PromptToggleExplanationResponse | null>(null)
+  const [plainEnglishPromptLoading, setPlainEnglishPromptLoading] = useState(false)
+  const [tagsExpanded, setTagsExpanded] = useState(false)
   const [relatedDrawerOpen, setRelatedDrawerOpen] = useState(false)
 
   const [sessionOrder, setSessionOrder] = useState<number[]>([])
@@ -2189,12 +2257,14 @@ function App() {
   const liveCoachSnapshotRef = useRef<LiveCoachSnapshot | null>(null)
   const lastLiveCoachDecisionKeyRef = useRef('')
   const lastMainInputEditAtRef = useRef(0)
+  const promptToggleExplanationRequestVersionRef = useRef(0)
   const coachRequestVersionRef = useRef(0)
   const skillMapDeckRequestVersionRef = useRef(0)
   const multipleChoiceDeckRequestVersionRef = useRef(0)
   const adaptiveVariationRequestKeyRef = useRef('')
   const sequentialVariationRequestKeyRef = useRef('')
   const focusedPatternSlug = searchParams.get('focusPattern')?.trim() || ''
+  const focusedTagSlug = searchParams.get('focusTag')?.trim() || ''
   const focusedModeParam = searchParams.get('focusMode')?.trim() || ''
   const requestedPlaylistSlug = searchParams.get('playlist')?.trim() || ''
   const focusedMethodParams = searchParams.getAll('focusMethod').map((method) => method.trim()).filter(Boolean)
@@ -2259,12 +2329,16 @@ function App() {
   }, [requestedSkillMap])
   const requestedQuestionType = requestedPlaylist
     ? `playlist:${requestedPlaylist.slug}`
+    : focusedTagSlug
+      ? `tag:${focusedTagSlug}`
     : focusedPatternSlug
       ? 'skill-map-static'
       : questionType
   const focusedPatternLabel = focusedPatternNode?.pattern ?? patternLabelFromSlug(focusedPatternSlug)
   const targetedDeckLabel = requestedPlaylist
     ? `${requestedPlaylist.title} • ${requestedPlaylist.questions.length} questions`
+    : focusedTagSlug
+      ? `Tag: ${patternLabelFromSlug(focusedTagSlug)}`
     : focusedPatternSlug
     ? `${focusedPatternLabel} • Static functions`
     : ''
@@ -2299,6 +2373,14 @@ function App() {
     }
 
     try {
+      if (focusedTagSlug && !requestedPlaylist) {
+        const payload = await requestStaticFunctionDrillsByTag(focusedTagSlug, 10)
+        if (skillMapDeckRequestVersionRef.current !== requestVersion) return
+        setSkillMapDeck(payload.drills)
+        setSkillMapSessionVersion((prev) => prev + 1)
+        return
+      }
+
       if (focusedPatternSlug && !requestedPlaylist) {
         const payload = await requestStaticFunctionDrills(focusedPatternSlug)
         if (skillMapDeckRequestVersionRef.current !== requestVersion) return
@@ -2424,7 +2506,7 @@ function App() {
   useEffect(() => {
     void fetchSkillMapDeck()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedPatternSlug, llmProvider, requestLlmProvider, requestedQuestionType, requestedSkillMapSignature, requestedTemplateMode, skillMapRefreshToken])
+  }, [focusedPatternSlug, focusedTagSlug, llmProvider, requestLlmProvider, requestedQuestionType, requestedSkillMapSignature, requestedTemplateMode, skillMapRefreshToken])
 
   useEffect(() => {
     if (practiceMode !== 'multiple-choice') return
@@ -2498,14 +2580,55 @@ function App() {
     () => generatedPracticePrompt || buildPracticePrompt(currentTemplateMode, primaryPatternTag),
     [currentTemplateMode, generatedPracticePrompt, primaryPatternTag]
   )
-  const plainEnglishPromptDetail = useMemo(
+  const fallbackPlainEnglishPromptDetail = useMemo(
     () => card.plainEnglishPromptDetail ?? getPlainEnglishPromptDetail(practicePrompt, card.tags, card.title, plainPracticeTarget),
     [card.plainEnglishPromptDetail, card.tags, card.title, plainPracticeTarget, practicePrompt]
   )
-  const isPlainEnglishPromptOpen = Boolean(plainEnglishPromptOpen && plainEnglishPromptDetail)
-  const displayPracticePrompt =
-    isPlainEnglishPromptOpen && plainEnglishPromptDetail ? plainEnglishPromptDetail.plainEnglish : practicePrompt
+  const isPlainEnglishPromptOpen = plainEnglishPromptOpen
   const plainEnglishPromptDetailId = `plain-english-prompt-${card.id}`
+  const promptToggleRequestKey = `${card.id}:${practicePrompt}:${practiceTarget}:${requestLlmProvider}`
+  const tagsListId = `card-tags-${card.id}`
+
+  const fetchPlainEnglishPromptExplanation = async () => {
+    const requestCardId = card.id
+    promptToggleExplanationRequestVersionRef.current += 1
+    const requestVersion = promptToggleExplanationRequestVersionRef.current
+    setPlainEnglishPromptLoading(true)
+
+    try {
+      const payload = await requestPromptToggleExplanation({
+        cardId: requestCardId,
+        cardTitle: card.title,
+        prompt: practicePrompt,
+        target: practiceTarget,
+        tags: card.tags,
+        llmProvider: requestLlmProvider,
+      })
+      if (currentCardIdRef.current !== requestCardId || promptToggleExplanationRequestVersionRef.current !== requestVersion) return
+      setPromptToggleDetail(payload)
+    } catch {
+      if (currentCardIdRef.current !== requestCardId || promptToggleExplanationRequestVersionRef.current !== requestVersion) return
+      setPromptToggleDetail({
+        plainEnglish: fallbackPlainEnglishPromptDetail.plainEnglish,
+        inputExample: fallbackPlainEnglishPromptDetail.inputExample,
+        outputExample: fallbackPlainEnglishPromptDetail.outputExample,
+        llmUsed: false,
+      })
+    } finally {
+      if (currentCardIdRef.current === requestCardId && promptToggleExplanationRequestVersionRef.current === requestVersion) {
+        setPlainEnglishPromptLoading(false)
+      }
+    }
+  }
+
+  const requestPlainEnglishPromptExplanation = useEffectEvent(fetchPlainEnglishPromptExplanation)
+
+  useEffect(() => {
+    setPromptToggleDetail(null)
+    setPlainEnglishPromptLoading(false)
+    promptToggleExplanationRequestVersionRef.current = 0
+  }, [promptToggleRequestKey])
+
   const currentQuestionType = `${requestedQuestionType}:${recallTargetMode}${inlineEnabled ? `:${inlineLens}` : ''}`
   const currentMultipleChoiceQuestionType = 'skill-map-mcq'
   const currentSkillTags = useMemo(
@@ -2531,6 +2654,12 @@ function App() {
     [activeCardTags]
   )
   currentCardIdRef.current = activeCardId
+
+  const handleTagClick = (tag: string) => {
+    setPracticeMode('recall')
+    setTagsExpanded(false)
+    setSearchParams(tag === focusedTagSlug ? {} : { focusTag: tag })
+  }
 
   const hasRecallDeck = filteredDeck.length > 0
   const hasMultipleChoiceDeck = multipleChoiceDeck.length > 0
@@ -2878,6 +3007,11 @@ function App() {
     setCoachLoading(false)
     setCoachError('')
     setSubmissionFailureModal(null)
+    setPlainEnglishPromptOpen(false)
+    setPromptToggleDetail(null)
+    setPlainEnglishPromptLoading(false)
+    setTagsExpanded(false)
+    promptToggleExplanationRequestVersionRef.current = 0
     liveCoachRequestVersionRef.current = 0
     liveCoachSnapshotRef.current = null
     lastLiveCoachDecisionKeyRef.current = ''
@@ -3888,7 +4022,7 @@ function App() {
       <section className="card">
         <div className="card-header">
           <div className="card-header-main">
-            <h2>{activeCardTitle}</h2>
+            <h3>{activeCardTitle}</h3>
             <p className="difficulty">{activeCardDifficulty}</p>
             {practiceMode === 'multiple-choice' ? (
               <div className="coach-metric-row card-header-metric-row">
@@ -4035,9 +4169,31 @@ function App() {
             )}
             {visibleCardTags.length > 0 && (
               <div className="tags">
-                {visibleCardTags.map((tag) => (
-                  <span key={tag} className="tag">{tag}</span>
-                ))}
+                <button
+                  type="button"
+                  className={tagsExpanded ? 'tags-toggle active' : 'tags-toggle'}
+                  onClick={() => setTagsExpanded((current) => !current)}
+                  aria-expanded={tagsExpanded}
+                  aria-controls={tagsListId}
+                  title={tagsExpanded ? 'Hide tags' : 'Show tags'}
+                >
+                  tags
+                </button>
+                {tagsExpanded && (
+                  <div className="tags-list" id={tagsListId}>
+                    {visibleCardTags.map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        className={focusedTagSlug === tag ? 'tag tag-button active' : 'tag tag-button'}
+                        onClick={() => handleTagClick(tag)}
+                        aria-pressed={focusedTagSlug === tag}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -4107,17 +4263,22 @@ function App() {
               <div className="drill-fade-in">
                 <div className={isPlainEnglishPromptOpen ? 'prompt-toggle-card expanded' : 'prompt-toggle-card'}>
                   <div className="prompt-toggle-header">
-                    <p className="prompt prompt-bar prompt-toggle-text">{displayPracticePrompt}</p>
-                    {plainEnglishPromptDetail && (
+                    <p className="prompt prompt-bar prompt-toggle-text">{practicePrompt}</p>
+                    {fallbackPlainEnglishPromptDetail && (
                       <button
                         type="button"
                         className={isPlainEnglishPromptOpen ? 'prompt-toggle-button active' : 'prompt-toggle-button'}
-                        onClick={() => setPlainEnglishPromptOpen((current) => !current)}
+                        onClick={() => {
+                          if (!plainEnglishPromptOpen && !promptToggleDetail && !plainEnglishPromptLoading) {
+                            void requestPlainEnglishPromptExplanation()
+                          }
+                          setPlainEnglishPromptOpen((current) => !current)
+                        }}
                         aria-expanded={isPlainEnglishPromptOpen}
                         aria-controls={plainEnglishPromptDetailId}
-                        title={isPlainEnglishPromptOpen ? 'Show concise prompt' : 'Show plain English prompt'}
+                        title={isPlainEnglishPromptOpen ? 'Hide explanation' : 'Show explanation'}
                       >
-                        <span>{isPlainEnglishPromptOpen ? 'Concise' : 'Plain English'}</span>
+                        <span>{isPlainEnglishPromptOpen ? 'Hide' : 'Explanation'}</span>
                         <svg
                           width="14"
                           height="14"
@@ -4134,11 +4295,15 @@ function App() {
                       </button>
                     )}
                   </div>
-                  {isPlainEnglishPromptOpen && plainEnglishPromptDetail && (
+                  {isPlainEnglishPromptOpen && fallbackPlainEnglishPromptDetail && (
                     <div className="prompt-detail" id={plainEnglishPromptDetailId}>
                       <div className="prompt-detail-section">
-                        <h3>Example interview question</h3>
-                        <p>{plainEnglishPromptDetail.interviewQuestion}</p>
+                        <h3>Explanation</h3>
+                        <p>
+                          {plainEnglishPromptLoading
+                            ? 'Generating a plain English explanation...'
+                            : promptToggleDetail?.plainEnglish || fallbackPlainEnglishPromptDetail.plainEnglish}
+                        </p>
                       </div>
                       <div className="prompt-detail-section">
                         <h3>Input / Output</h3>
@@ -4160,7 +4325,7 @@ function App() {
                                 }}
                                 codeTagProps={{ style: { fontFamily: 'inherit' } }}
                               >
-                                {plainEnglishPromptDetail.inputExample}
+                                {promptToggleDetail?.inputExample || fallbackPlainEnglishPromptDetail.inputExample}
                               </SyntaxHighlighter>
                             </div>
                           </div>
@@ -4181,27 +4346,11 @@ function App() {
                                 }}
                                 codeTagProps={{ style: { fontFamily: 'inherit' } }}
                               >
-                                {plainEnglishPromptDetail.outputExample}
+                                {promptToggleDetail?.outputExample || fallbackPlainEnglishPromptDetail.outputExample}
                               </SyntaxHighlighter>
                             </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="prompt-detail-section">
-                        <h3>Explanation</h3>
-                        <p>{plainEnglishPromptDetail.explanation}</p>
-                      </div>
-                      <div className="prompt-detail-section">
-                        <h3>Brass-tacks</h3>
-                        <p>{plainEnglishPromptDetail.brassTacks}</p>
-                      </div>
-                      <div className="prompt-detail-section">
-                        <h3>Shows up as</h3>
-                        <ul>
-                          {plainEnglishPromptDetail.leetcodeExamples.map((example) => (
-                            <li key={example}>{example}</li>
-                          ))}
-                        </ul>
                       </div>
                     </div>
                   )}

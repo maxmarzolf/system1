@@ -1769,13 +1769,18 @@ button.link:hover {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  min-width: 0;
+  flex: 1 1 84%;
 }
 
-.card-header h2 {
+.card-header-main h3 {
   margin: 0;
-  font-size: 1.8rem;
+  font-size: 1.55rem;
+  line-height: 1.08;
   font-weight: 600;
   color: var(--hc-fg);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .card-header-side {
@@ -1783,6 +1788,7 @@ button.link:hover {
   flex-direction: column;
   align-items: flex-end;
   gap: 0.55rem;
+  flex: 0 0 auto;
 }
 
 .difficulty {
@@ -1920,18 +1926,64 @@ button.link:hover {
 
 .tags {
   display: flex;
-  gap: 0.35rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0.2rem;
   justify-content: flex-end;
+  align-items: flex-end;
+  width: 100%;
+  max-width: 100%;
+}
+
+.tags-toggle {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--hc-accent);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: lowercase;
+  align-self: flex-end;
+}
+
+.tags-toggle:hover,
+.tags-toggle.active {
+  color: var(--hc-fg);
+}
+
+.tags-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  align-items: flex-end;
+  width: 100%;
+  max-width: 100%;
 }
 
 .tag {
+  display: block;
   background: transparent;
   color: var(--hc-accent);
-  padding: 0.18rem 0.45rem;
+  padding: 0;
   font-size: 0.65rem;
   border-radius: 0;
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.tag-button {
+  border: 0;
+  line-height: 1.1;
+}
+
+.tag-button:hover,
+.tag-button.active {
+  color: var(--hc-fg);
 }
 
 @media (max-width: 720px) {
@@ -1947,6 +1999,11 @@ button.link:hover {
   .support-layer-control,
   .flow-mode-control,
   .tags {
+    justify-content: flex-start;
+    align-items: flex-start;
+  }
+
+  .tags-list {
     justify-content: flex-start;
   }
 

@@ -10,6 +10,8 @@ from app.models import (
     CoachPracticeHistoryRequest,
     CoachPracticeHistoryResponse,
     CoachProviderDefaultResponse,
+    CoachPromptToggleExplanationRequest,
+    CoachPromptToggleExplanationResponse,
     CoachSessionPlanRequest,
     CoachSessionPlanResponse,
     MultipleChoiceDrillsRequest,
@@ -45,6 +47,11 @@ async def coach_session_plan(body: CoachSessionPlanRequest):
     return await coach_service.coach_session_plan(body)
 
 
+@router.post("/prompt-toggle-explanation", response_model=CoachPromptToggleExplanationResponse)
+async def coach_prompt_toggle_explanation(body: CoachPromptToggleExplanationRequest):
+    return await coach_service.coach_prompt_toggle_explanation(body)
+
+
 @router.post("/history", response_model=CoachPracticeHistoryResponse)
 async def coach_practice_history(body: CoachPracticeHistoryRequest):
     return await coach_service.coach_practice_history(body)
@@ -61,7 +68,12 @@ async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
 
 
 @router.get("/static-function-drills", response_model=SkillMapDrillsResponse)
-async def coach_random_static_function_drills(count: int = Query(default=10, ge=1, le=30)):
+async def coach_random_static_function_drills(
+    count: int = Query(default=10, ge=1, le=30),
+    tag: str | None = Query(default=None),
+):
+    if tag and tag.strip():
+        return await static_practice_service.static_function_drills_for_tag(tag.strip(), count)
     return await static_practice_service.random_static_function_drills(count)
 
 

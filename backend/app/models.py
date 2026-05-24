@@ -136,6 +136,22 @@ class CoachSessionPlanResponse(BaseModel):
     llmUsed: bool = False
 
 
+class CoachPromptToggleExplanationRequest(BaseModel):
+    cardId: str = Field(min_length=1)
+    cardTitle: str = ""
+    prompt: str = ""
+    target: str = ""
+    tags: list[str] = []
+    llmProvider: str = "openai"
+
+
+class CoachPromptToggleExplanationResponse(BaseModel):
+    plainEnglish: str = ""
+    inputExample: str = ""
+    outputExample: str = ""
+    llmUsed: bool = False
+
+
 class CoachProviderDefaultResponse(BaseModel):
     provider: str = "openai"
 

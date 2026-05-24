@@ -73,6 +73,17 @@ async def static_function_drills_for_pattern(pattern_slug: str) -> dict[str, Any
     }
 
 
+async def static_function_drills_for_tag(tag_slug: str, count: int = 10) -> dict[str, Any]:
+    from app.repositories.static_functions_repository import fetch_static_function_practice_rows_by_tag
+
+    safe_count = max(1, min(int(count or 10), 30))
+    rows = await fetch_static_function_practice_rows_by_tag(tag_slug, safe_count)
+    return {
+        "drills": [build_static_function_drill(row) for row in rows],
+        "llmUsed": False,
+    }
+
+
 async def random_static_function_drills(count: int = 10) -> dict[str, Any]:
     from app.repositories.static_functions_repository import fetch_random_static_function_practice_rows
 
