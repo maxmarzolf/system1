@@ -1791,8 +1791,16 @@ button.link:hover {
   flex: 0 0 auto;
 }
 
-.difficulty {
+.card-header-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
   margin: 0.25rem 0 0;
+}
+
+.difficulty {
+  margin: 0;
   color: var(--hc-fg-dim);
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
   font-weight: 600;

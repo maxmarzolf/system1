@@ -2247,6 +2247,7 @@ function App() {
   const [sessionPlanLoading, setSessionPlanLoading] = useState(false)
   const [sessionPlanError, setSessionPlanError] = useState('')
   const mainInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const shouldFocusMainInputRef = useRef(false)
   const mainHighlightRef = useRef<HTMLDivElement | null>(null)
   const mainGhostRef = useRef<HTMLDivElement | null>(null)
   const previewCodeContainerRef = useRef<HTMLDivElement | null>(null)
@@ -2539,6 +2540,7 @@ function App() {
   const activeCardTitle = practiceMode === 'multiple-choice' ? multipleChoiceCard?.title ?? 'Multiple Choice' : card.title
   const activeCardDifficulty = practiceMode === 'multiple-choice' ? multipleChoiceCard?.difficulty ?? multipleChoiceDifficulty : card.difficulty
   const activeCardTags = practiceMode === 'multiple-choice' ? multipleChoiceCard?.tags ?? [] : card.tags
+  const isCoreAlgorithmCard = activeCardId.startsWith('core-algorithm-') || activeCardTags.includes('core-algorithm')
   const primaryPatternTag = useMemo(() => getPrimaryPatternTag(card.tags), [card.tags])
   const fullSolutionTarget = useMemo(
     () => normalizeTyping(card.solution.replace('{{missing}}', card.missing)),
@@ -3046,6 +3048,19 @@ function App() {
     resetPerCardInteraction()
   }, [activeCardId, practiceMode, sessionPosition])
 
+  useEffect(() => {
+    if (mainPhase !== 'typing' || !shouldFocusMainInputRef.current) return
+    shouldFocusMainInputRef.current = false
+    window.requestAnimationFrame(() => {
+      const input = mainInputRef.current
+      if (!input) return
+      input.focus()
+      const cursorPosition = input.value.length
+      input.selectionStart = cursorPosition
+      input.selectionEnd = cursorPosition
+    })
+  }, [mainPhase, mainInput])
+
   const startMainRecall = () => {
     if (!hasDeck || hasAnsweredCurrent || sessionFinished) return
     if (previewCodeContainerRef.current) {
@@ -3517,6 +3532,7 @@ function App() {
 
   const repeatGhostRep = () => {
     if (!hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'submitted') return
+    shouldFocusMainInputRef.current = true
     setMainPhase('typing')
     setMainInput('')
     setMainStartedAt(Date.now())
@@ -3796,14 +3812,29 @@ function App() {
   useEffect(() => {
     if (mainPhase !== 'submitted' || !latestSubmittedWasGhostRep) return
     const handler = (event: KeyboardEvent) => {
-      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      const modifierPressed = event.metaKey || event.ctrlKey
+      if (!modifierPressed) return
+
+      if (event.key === 'Enter') {
         event.preventDefault()
         repeatGhostRep()
+        return
+      }
+
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        if (canGoPrev) goPrev()
+        return
+      }
+
+      if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        if (canGoNext) goNext()
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [mainPhase, latestSubmittedWasGhostRep])
+  }, [canGoNext, canGoPrev, latestSubmittedWasGhostRep, mainPhase, sessionFinished, sessionOrder.length, sessionPosition])
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -4023,7 +4054,10 @@ function App() {
         <div className="card-header">
           <div className="card-header-main">
             <h3>{activeCardTitle}</h3>
-            <p className="difficulty">{activeCardDifficulty}</p>
+            <div className="card-header-meta">
+              <span className="difficulty">{activeCardDifficulty}</span>
+              {isCoreAlgorithmCard && <span className="difficulty">[core]</span>}
+            </div>
             {practiceMode === 'multiple-choice' ? (
               <div className="coach-metric-row card-header-metric-row">
                 <span className="coach-metric-chip">Algorithm anchors</span>
@@ -4708,7 +4742,7 @@ function App() {
                 </div>
                 <p className="typing-help">
                   {isGhostRepsEnabled
-                    ? <>Ghost Reps are saved as supported work · trace the faint target as many times as needed · <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter</kbd> to log</>
+                    ? <>Ghost Reps are saved as supported work · trace the faint target as many times as needed · <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter</kbd> to log · <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Left</kbd>/<kbd>Right</kbd> to move cards</>
                     : <>Tab inserts 4 spaces · Shift+Tab outdents · Enter auto-indents · <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter</kbd> to submit</>}
                 </p>
               </>

@@ -30,7 +30,7 @@ def build_core_algorithm_drill(row: dict[str, Any]) -> dict[str, Any]:
         tags.append(pattern_slug)
     description = str(row.get("description") or "").strip()
     title = str(row["title"])
-    prompt = f"{pattern_name}: memorize {name}."
+    prompt = f"{pattern_name}: memorize the core algorithm."
     examples = _examples(row.get("leetcode_examples"))
     return {
         "id": f"core-algorithm-{name}",

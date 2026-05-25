@@ -108,6 +108,8 @@ def test_core_algorithm_row_builds_skill_map_drill_card() -> None:
     card = build_core_algorithm_drill(row)
 
     assert card["id"] == "core-algorithm-binary_search"
+    assert card["prompt"] == "Binary Search: memorize the core algorithm."
+    assert card["templatePrompts"]["algorithm"] == card["prompt"]
     assert card["solution"] == row["code"]
     assert card["templateTargets"]["algorithm"] == row["code"]
     assert "binary-search" in card["tags"]
