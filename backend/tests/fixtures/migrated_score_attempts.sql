@@ -1,0 +1,121 @@
+INSERT INTO question (
+    id,
+    user_id,
+    question_text,
+    question_help_text,
+    recall_answer,
+    multiple_choice_correct_answer_text,
+    fingerprint,
+    created_date,
+    modified_date
+)
+VALUES (
+    'fx-parity-q1',
+    '0000',
+    'Given a sorted array, return the first index whose value is >= target.',
+    '',
+    NULL,
+    'Use binary search with left-bound checks.',
+    'fx-parity-fingerprint-q1',
+    '2026-05-24T00:00:00Z',
+    '2026-05-24T00:00:00Z'
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO answer (
+    id,
+    session_id,
+    user_id,
+    question_id,
+    answer,
+    question_type,
+    category_tags,
+    correct_answer,
+    is_correct,
+    accuracy,
+    exact,
+    elapsed_ms,
+    interaction_id,
+    generated_card_id,
+    generated_card,
+    template_mode,
+    support_layer,
+    live_coach_used,
+    coach_feedback,
+    submission_rubric,
+    migration_key,
+    created_at,
+    updated_at
+)
+VALUES (
+    910001,
+    'fx-parity-session-1',
+    '0000',
+    'fx-parity-q1',
+    'while left <= right: ...',
+    'skill-map',
+    ARRAY['skill-map', 'binary-search', 'fx-parity-tag'],
+    'Use binary search with left-bound checks.',
+    TRUE,
+    100,
+    TRUE,
+    3200,
+    'fx-parity-interaction-1',
+    'fx-parity-card-1',
+    '{"id":"fx-parity-card-1","title":"Binary Search Boundary","cardMode":"recall"}'::jsonb,
+    'algorithm',
+    'none',
+    TRUE,
+    '{"diagnosis":"Great work"}'::jsonb,
+    '{"verdict":"sound"}'::jsonb,
+    'fx-parity-migration-1',
+    '2026-05-24T00:00:00Z',
+    '2026-05-24T00:00:00Z'
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO coach_feedback_events (
+    id,
+    interaction_id,
+    card_id,
+    answer_id,
+    generated_card_id,
+    question_type,
+    feedback_stage,
+    live_mode,
+    prompt,
+    expected_answer,
+    user_answer,
+    accuracy,
+    exact,
+    elapsed_ms,
+    skill_tags,
+    previous_attempts,
+    live_milestones,
+    feedback,
+    llm_used,
+    created_at
+)
+VALUES (
+    910001,
+    'fx-parity-interaction-1',
+    'fx-parity-card-1',
+    910001,
+    'fx-parity-card-1',
+    'skill-map',
+    'live',
+    TRUE,
+    'Explain binary-search boundary update.',
+    'Use left boundary search.',
+    'while left <= right: ...',
+    100,
+    TRUE,
+    3200,
+    ARRAY['skill-map', 'binary-search', 'fx-parity-tag'],
+    '[]'::jsonb,
+    '{}'::jsonb,
+    '{"primaryFocus":"Keep left boundary invariant"}'::jsonb,
+    FALSE,
+    '2026-05-24T00:00:01Z'
+)
+ON CONFLICT (id) DO NOTHING;

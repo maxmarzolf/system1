@@ -52,6 +52,7 @@ from app.models import (
 )
 from app.readiness import READINESS_MODE_ORDER, summarize_readiness
 from app.repositories.coach_repository import (
+    fetch_latest_answer_id_for_feedback,
     fetch_practice_history_entries,
     insert_feedback_event_row,
     insert_generated_multiple_choice_question_rows,
@@ -1128,7 +1129,12 @@ def _progress_focus_note(progress: dict[str, Any]) -> str:
 async def _persist_feedback_event(
     body: CoachAttemptFeedbackRequest, feedback: dict[str, Any]
 ) -> None:
-    now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
+    now = datetime.now(tz=timezone.utc)
+    answer_id = await fetch_latest_answer_id_for_feedback(
+        interaction_id=body.interactionId or "",
+        card_id=body.cardId,
+        question_type=body.questionType,
+    )
 
     await insert_feedback_event_row(
         interaction_id=body.interactionId,
@@ -1149,6 +1155,7 @@ async def _persist_feedback_event(
         feedback_json=json.dumps(feedback),
         llm_used=bool(feedback.get("llmUsed")),
         created_at=now,
+        answer_id=answer_id,
     )
 
 

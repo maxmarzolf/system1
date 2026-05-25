@@ -19,6 +19,7 @@ async def connect() -> asyncpg.Pool:
     await _ensure_recall_history_schema(pool)
     await _ensure_generated_question_schema(pool)
     await _ensure_practice_history_schema(pool)
+    await _backfill_answer_attempts_from_score_attempts(pool)
     await _ensure_static_function_schema(pool)
     await _seed_static_functions(pool)
     return pool
@@ -40,34 +41,6 @@ async def _apply_storage_cleanup(db_pool: asyncpg.Pool) -> None:
     async with db_pool.acquire() as conn:
         await conn.execute(
             """
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1
-                    FROM information_schema.tables
-                    WHERE table_schema = 'public'
-                      AND table_name = 'score_attempts'
-                ) THEN
-                    EXECUTE $sql$
-                        DELETE FROM score_attempts
-                        WHERE mode <> 'main-recall'
-                    $sql$;
-
-                    EXECUTE $sql$
-                        ALTER TABLE score_attempts
-                        DROP CONSTRAINT IF EXISTS score_attempts_mode_check
-                    $sql$;
-
-                    EXECUTE $sql$
-                        ALTER TABLE score_attempts
-                        ADD CONSTRAINT score_attempts_mode_check
-                        CHECK (mode IN ('main-recall'))
-                    $sql$;
-                END IF;
-            EXCEPTION
-                WHEN duplicate_object THEN NULL;
-            END $$;
-
             DROP TABLE IF EXISTS submissions CASCADE;
             DROP TABLE IF EXISTS question_topics CASCADE;
             DROP TABLE IF EXISTS answers CASCADE;
@@ -81,69 +54,6 @@ async def _ensure_recall_history_schema(db_pool: asyncpg.Pool) -> None:
     async with db_pool.acquire() as conn:
         await conn.execute(
             """
-            ALTER TABLE score_attempts
-            ADD COLUMN IF NOT EXISTS question_type VARCHAR(50) NOT NULL DEFAULT '';
-
-            ALTER TABLE score_attempts
-            ADD COLUMN IF NOT EXISTS category_tags TEXT[] DEFAULT '{}';
-
-            ALTER TABLE score_attempts
-            DROP COLUMN IF EXISTS options;
-
-            ALTER TABLE score_attempts
-            ADD COLUMN IF NOT EXISTS accuracy REAL NOT NULL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100);
-
-            ALTER TABLE score_attempts
-            ADD COLUMN IF NOT EXISTS exact BOOLEAN NOT NULL DEFAULT FALSE;
-
-            ALTER TABLE score_attempts
-            ADD COLUMN IF NOT EXISTS elapsed_ms INTEGER NOT NULL DEFAULT 0 CHECK (elapsed_ms >= 0);
-
-            ALTER TABLE score_attempts
-            ADD COLUMN IF NOT EXISTS generated_card JSONB;
-
-            ALTER TABLE score_attempts
-            ADD COLUMN IF NOT EXISTS coach_feedback JSONB;
-
-            ALTER TABLE score_attempts
-            ADD COLUMN IF NOT EXISTS submission_rubric JSONB;
-
-            ALTER TABLE score_attempts
-            ADD COLUMN IF NOT EXISTS template_mode VARCHAR(20) NOT NULL DEFAULT 'algorithm';
-
-            ALTER TABLE score_attempts
-            ADD COLUMN IF NOT EXISTS support_layer VARCHAR(30) NOT NULL DEFAULT 'none';
-
-            ALTER TABLE score_attempts
-            ADD COLUMN IF NOT EXISTS hint_used BOOLEAN NOT NULL DEFAULT FALSE;
-
-            ALTER TABLE score_attempts
-            ADD COLUMN IF NOT EXISTS live_coach_used BOOLEAN NOT NULL DEFAULT FALSE;
-
-            ALTER TABLE score_attempts
-            DROP CONSTRAINT IF EXISTS score_attempts_template_mode_check;
-
-            UPDATE score_attempts
-            SET template_mode = 'algorithm'
-            WHERE template_mode IN ('pseudo', 'invariant', 'total');
-
-            ALTER TABLE score_attempts
-            ADD CONSTRAINT score_attempts_template_mode_check
-            CHECK (template_mode IN ('algorithm'));
-
-            ALTER TABLE score_attempts
-            DROP CONSTRAINT IF EXISTS score_attempts_support_layer_check;
-
-            ALTER TABLE score_attempts
-            ADD CONSTRAINT score_attempts_support_layer_check
-            CHECK (support_layer IN ('none', 'ghost-reps'));
-
-            CREATE INDEX IF NOT EXISTS idx_score_attempts_question_type
-                ON score_attempts(question_type);
-
-            CREATE INDEX IF NOT EXISTS idx_score_attempts_category_tags
-                ON score_attempts USING GIN(category_tags);
-
             CREATE TABLE IF NOT EXISTS generated_skill_map_cards (
                 id VARCHAR(80) PRIMARY KEY,
                 question_type VARCHAR(50) NOT NULL DEFAULT 'skill-map',
@@ -163,12 +73,6 @@ async def _ensure_recall_history_schema(db_pool: asyncpg.Pool) -> None:
 
             CREATE INDEX IF NOT EXISTS idx_generated_skill_map_cards_tags
                 ON generated_skill_map_cards USING GIN(tags);
-            """
-        )
-        await conn.execute(
-            """
-            ALTER TABLE score_attempts
-            DROP COLUMN IF EXISTS drill_down_used;
             """
         )
 
@@ -215,11 +119,141 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                 answer TEXT NOT NULL
             );
 
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS question_type VARCHAR(50) NOT NULL DEFAULT '';
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS category_tags TEXT[] NOT NULL DEFAULT '{}';
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS correct_answer TEXT;
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS is_correct BOOLEAN NOT NULL DEFAULT FALSE;
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS accuracy REAL NOT NULL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100);
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS exact BOOLEAN NOT NULL DEFAULT FALSE;
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS elapsed_ms INTEGER NOT NULL DEFAULT 0 CHECK (elapsed_ms >= 0);
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS interaction_id VARCHAR(80);
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS generated_card_id VARCHAR(80);
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS generated_card JSONB;
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS template_mode VARCHAR(20) NOT NULL DEFAULT 'algorithm';
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS support_layer VARCHAR(30) NOT NULL DEFAULT 'none';
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS live_coach_used BOOLEAN NOT NULL DEFAULT FALSE;
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS coach_feedback JSONB;
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS submission_rubric JSONB;
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS migration_key TEXT;
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+            ALTER TABLE answer
+            DROP CONSTRAINT IF EXISTS answer_template_mode_check;
+
+            ALTER TABLE answer
+            ADD CONSTRAINT answer_template_mode_check
+            CHECK (template_mode IN ('algorithm'));
+
+            ALTER TABLE answer
+            DROP CONSTRAINT IF EXISTS answer_support_layer_check;
+
+            ALTER TABLE answer
+            ADD CONSTRAINT answer_support_layer_check
+            CHECK (support_layer IN ('none', 'ghost-reps'));
+
             CREATE INDEX IF NOT EXISTS idx_answer_question_id
                 ON answer(question_id);
 
             CREATE INDEX IF NOT EXISTS idx_answer_session_user
                 ON answer(session_id, user_id);
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_answer_migration_key
+                ON answer(migration_key)
+                WHERE migration_key IS NOT NULL;
+
+            CREATE INDEX IF NOT EXISTS idx_answer_created_at
+                ON answer(created_at DESC);
+
+            CREATE INDEX IF NOT EXISTS idx_answer_question_type_created_at
+                ON answer(question_type, created_at DESC);
+
+            CREATE INDEX IF NOT EXISTS idx_answer_generated_card_id
+                ON answer(generated_card_id);
+
+            CREATE INDEX IF NOT EXISTS idx_answer_interaction_id
+                ON answer(interaction_id);
+
+            CREATE INDEX IF NOT EXISTS idx_answer_category_tags
+                ON answer USING GIN(category_tags);
+
+            CREATE INDEX IF NOT EXISTS idx_answer_template_support_created_at
+                ON answer(template_mode, support_layer, created_at DESC);
+
+            CREATE INDEX IF NOT EXISTS idx_answer_question_id_created_at
+                ON answer(question_id, created_at DESC);
+
+            CREATE INDEX IF NOT EXISTS idx_answer_session_id_created_at
+                ON answer(session_id, created_at DESC);
+            """
+        )
+        await conn.execute(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'answer'
+                      AND column_name = 'created_at'
+                      AND data_type = 'timestamp without time zone'
+                ) THEN
+                    EXECUTE $sql$
+                        ALTER TABLE answer
+                        ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE 'UTC'
+                    $sql$;
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'answer'
+                      AND column_name = 'updated_at'
+                      AND data_type = 'timestamp without time zone'
+                ) THEN
+                    EXECUTE $sql$
+                        ALTER TABLE answer
+                        ALTER COLUMN updated_at TYPE TIMESTAMPTZ USING updated_at AT TIME ZONE 'UTC'
+                    $sql$;
+                END IF;
+            END $$;
             """
         )
 
@@ -228,18 +262,6 @@ async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
     async with db_pool.acquire() as conn:
         await conn.execute(
             """
-            ALTER TABLE score_attempts
-            ADD COLUMN IF NOT EXISTS interaction_id VARCHAR(80);
-
-            ALTER TABLE score_attempts
-            ADD COLUMN IF NOT EXISTS generated_card_id VARCHAR(80);
-
-            CREATE INDEX IF NOT EXISTS idx_score_attempts_interaction_id
-                ON score_attempts(interaction_id);
-
-            CREATE INDEX IF NOT EXISTS idx_score_attempts_generated_card_id
-                ON score_attempts(generated_card_id);
-
             ALTER TABLE generated_skill_map_cards
             ADD COLUMN IF NOT EXISTS generation_context JSONB;
 
@@ -247,6 +269,7 @@ async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
                 id SERIAL PRIMARY KEY,
                 interaction_id VARCHAR(80),
                 card_id VARCHAR(80) NOT NULL,
+                answer_id BIGINT REFERENCES answer(id) ON DELETE SET NULL,
                 generated_card_id VARCHAR(80),
                 question_type VARCHAR(50) NOT NULL DEFAULT '',
                 feedback_stage VARCHAR(20) NOT NULL CHECK (feedback_stage IN ('live', 'submission')),
@@ -262,7 +285,7 @@ async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
                 live_milestones JSONB,
                 feedback JSONB NOT NULL DEFAULT '{}'::jsonb,
                 llm_used BOOLEAN NOT NULL DEFAULT FALSE,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
             ALTER TABLE coach_feedback_events
@@ -270,6 +293,9 @@ async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
 
             ALTER TABLE coach_feedback_events
             ADD COLUMN IF NOT EXISTS live_milestones JSONB;
+
+            ALTER TABLE coach_feedback_events
+            ADD COLUMN IF NOT EXISTS answer_id BIGINT REFERENCES answer(id) ON DELETE SET NULL;
 
             CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_interaction
                 ON coach_feedback_events(interaction_id);
@@ -280,11 +306,45 @@ async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
             CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_generated_card
                 ON coach_feedback_events(generated_card_id);
 
+            CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_answer_id
+                ON coach_feedback_events(answer_id);
+
             CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_stage_created
                 ON coach_feedback_events(feedback_stage, created_at DESC);
 
             CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_skill_tags
                 ON coach_feedback_events USING GIN(skill_tags);
+            """
+        )
+        await conn.execute(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'coach_feedback_events'
+                      AND column_name = 'created_at'
+                      AND data_type = 'timestamp without time zone'
+                ) THEN
+                    EXECUTE $sql$
+                        ALTER TABLE coach_feedback_events
+                        ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE 'UTC'
+                    $sql$;
+                END IF;
+            END $$;
+            """
+        )
+        await conn.execute(
+            """
+            UPDATE coach_feedback_events fe
+            SET answer_id = a.id
+            FROM answer a
+            WHERE fe.answer_id IS NULL
+              AND fe.interaction_id IS NOT NULL
+              AND fe.interaction_id <> ''
+              AND a.interaction_id = fe.interaction_id;
             """
         )
         await conn.execute(
@@ -324,6 +384,145 @@ async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
 
             ALTER TABLE coach_feedback_events
             DROP COLUMN IF EXISTS draft_milestones;
+            """
+        )
+
+
+async def _backfill_answer_attempts_from_score_attempts(db_pool: asyncpg.Pool) -> None:
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                      AND table_name = 'score_attempts'
+                ) THEN
+                    WITH source_attempts AS (
+                        SELECT
+                            sa.id AS legacy_attempt_id,
+                            COALESCE(NULLIF(sa.generated_card_id, ''), 'migration-q-' || sa.id::text) AS canonical_question_id,
+                            COALESCE(NULLIF(sa.question, ''), 'Migrated question from score_attempts id ' || sa.id::text) AS question_text_norm,
+                            COALESCE(sa.correct_answer, '') AS correct_answer_norm,
+                            md5(
+                                lower(trim(COALESCE(NULLIF(sa.question, ''), 'Migrated question from score_attempts id ' || sa.id::text))) || '|' ||
+                                lower(trim(COALESCE(sa.correct_answer, ''))) || '|' ||
+                                COALESCE(sa.question_type, '')
+                            ) AS fingerprint_norm,
+                            COALESCE(sa.created_at, NOW()) AS created_at_norm,
+                            COALESCE(sa.updated_at, sa.created_at, NOW()) AS updated_at_norm,
+                            sa.*
+                        FROM score_attempts sa
+                    ),
+                    source_questions AS (
+                        SELECT DISTINCT ON (s.fingerprint_norm)
+                            s.canonical_question_id,
+                            s.question_text_norm,
+                            s.correct_answer_norm,
+                            s.fingerprint_norm,
+                            s.created_at_norm,
+                            s.updated_at_norm
+                        FROM source_attempts s
+                        ORDER BY s.fingerprint_norm, s.updated_at_norm DESC, s.legacy_attempt_id DESC
+                    )
+                    INSERT INTO question (
+                        id,
+                        user_id,
+                        question_text,
+                        question_help_text,
+                        recall_answer,
+                        multiple_choice_correct_answer_text,
+                        fingerprint,
+                        created_date,
+                        modified_date
+                    )
+                    SELECT
+                        s.canonical_question_id,
+                        '0000',
+                        s.question_text_norm,
+                        '',
+                        NULL,
+                        NULLIF(s.correct_answer_norm, ''),
+                        s.fingerprint_norm,
+                        s.created_at_norm,
+                        s.updated_at_norm
+                    FROM source_questions s
+                    ON CONFLICT DO NOTHING;
+
+                    WITH source_attempts AS (
+                        SELECT
+                            sa.id AS legacy_attempt_id,
+                            COALESCE(NULLIF(sa.generated_card_id, ''), 'migration-q-' || sa.id::text) AS canonical_question_id,
+                            md5(
+                                lower(trim(COALESCE(NULLIF(sa.question, ''), 'Migrated question from score_attempts id ' || sa.id::text))) || '|' ||
+                                lower(trim(COALESCE(sa.correct_answer, ''))) || '|' ||
+                                COALESCE(sa.question_type, '')
+                            ) AS fingerprint_norm,
+                            COALESCE(sa.created_at, NOW()) AS created_at_norm,
+                            COALESCE(sa.updated_at, sa.created_at, NOW()) AS updated_at_norm,
+                            sa.*
+                        FROM score_attempts sa
+                    )
+                    INSERT INTO answer (
+                        session_id,
+                        user_id,
+                        question_id,
+                        answer,
+                        question_type,
+                        category_tags,
+                        correct_answer,
+                        is_correct,
+                        accuracy,
+                        exact,
+                        elapsed_ms,
+                        interaction_id,
+                        generated_card_id,
+                        generated_card,
+                        template_mode,
+                        support_layer,
+                        live_coach_used,
+                        coach_feedback,
+                        submission_rubric,
+                        migration_key,
+                        created_at,
+                        updated_at
+                    )
+                    SELECT
+                        COALESCE(NULLIF(s.interaction_id, ''), 'legacy-session-' || s.legacy_attempt_id::text),
+                        '0000',
+                        COALESCE(q.id, s.canonical_question_id),
+                        COALESCE(s.user_answer, ''),
+                        COALESCE(s.question_type, ''),
+                        COALESCE(s.category_tags, '{}'),
+                        s.correct_answer,
+                        COALESCE(s.correct, FALSE),
+                        COALESCE(s.accuracy, 0),
+                        COALESCE(s.exact, FALSE),
+                        COALESCE(s.elapsed_ms, 0),
+                        s.interaction_id,
+                        s.generated_card_id,
+                        s.generated_card,
+                        COALESCE(s.template_mode, 'algorithm'),
+                        COALESCE(s.support_layer, 'none'),
+                        COALESCE(s.live_coach_used, FALSE),
+                        s.coach_feedback,
+                        s.submission_rubric,
+                        'score_attempts:' || s.legacy_attempt_id::text,
+                        s.created_at_norm,
+                        s.updated_at_norm
+                    FROM source_attempts s
+                    LEFT JOIN question q ON q.fingerprint = s.fingerprint_norm
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM answer existing
+                        WHERE existing.migration_key = 'score_attempts:' || s.legacy_attempt_id::text
+                    );
+
+                    DROP TABLE IF EXISTS score_attempts CASCADE;
+                END IF;
+            END $$;
             """
         )
 

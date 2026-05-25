@@ -1,58 +1,7 @@
 -- ============================================================================
--- Score Attempts Table
+-- Legacy Score Attempts Table
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS score_attempts (
-    id SERIAL PRIMARY KEY,
-    card_id VARCHAR(50) NOT NULL,
-    card_title VARCHAR(255),
-    question TEXT,
-    question_type VARCHAR(50) NOT NULL DEFAULT '',
-    category_tags TEXT[] DEFAULT '{}',
-    correct_answer TEXT,
-    user_answer TEXT,
-    mode VARCHAR(50) NOT NULL CHECK (
-        mode IN ('main-recall')
-    ),
-    correct BOOLEAN NOT NULL,
-    accuracy REAL NOT NULL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100),
-    exact BOOLEAN NOT NULL DEFAULT FALSE,
-    elapsed_ms INTEGER NOT NULL DEFAULT 0 CHECK (elapsed_ms >= 0),
-    interaction_id VARCHAR(80),
-    generated_card_id VARCHAR(80),
-    generated_card JSONB,
-    template_mode VARCHAR(20) NOT NULL DEFAULT 'algorithm' CHECK (template_mode IN ('algorithm')),
-    support_layer VARCHAR(30) NOT NULL DEFAULT 'none' CHECK (support_layer IN ('none', 'ghost-reps')),
-    hint_used BOOLEAN NOT NULL DEFAULT FALSE,
-    live_coach_used BOOLEAN NOT NULL DEFAULT FALSE,
-    coach_feedback JSONB,
-    submission_rubric JSONB,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_score_attempts_card
-    ON score_attempts(card_id);
-
-CREATE INDEX IF NOT EXISTS idx_score_attempts_mode
-    ON score_attempts(mode);
-
-CREATE INDEX IF NOT EXISTS idx_score_attempts_question_type
-    ON score_attempts(question_type);
-
-CREATE INDEX IF NOT EXISTS idx_score_attempts_category_tags
-    ON score_attempts USING GIN(category_tags);
-
-CREATE INDEX IF NOT EXISTS idx_score_attempts_correct
-    ON score_attempts(correct);
-
-CREATE INDEX IF NOT EXISTS idx_score_attempts_created
-    ON score_attempts(created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_score_attempts_interaction_id
-    ON score_attempts(interaction_id);
-
-CREATE INDEX IF NOT EXISTS idx_score_attempts_generated_card_id
-    ON score_attempts(generated_card_id);
+-- score_attempts has been replaced by answer as the canonical attempt ledger.
 
 -- ============================================================================
 -- Generated Skill Map Cards
@@ -119,7 +68,25 @@ CREATE TABLE IF NOT EXISTS answer (
     session_id VARCHAR(80) NOT NULL DEFAULT '0000',
     user_id VARCHAR(80) NOT NULL DEFAULT '0000',
     question_id VARCHAR(80) NOT NULL REFERENCES question(id),
-    answer TEXT NOT NULL
+    answer TEXT NOT NULL,
+    question_type VARCHAR(50) NOT NULL DEFAULT '',
+    category_tags TEXT[] NOT NULL DEFAULT '{}',
+    correct_answer TEXT,
+    is_correct BOOLEAN NOT NULL DEFAULT FALSE,
+    accuracy REAL NOT NULL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100),
+    exact BOOLEAN NOT NULL DEFAULT FALSE,
+    elapsed_ms INTEGER NOT NULL DEFAULT 0 CHECK (elapsed_ms >= 0),
+    interaction_id VARCHAR(80),
+    generated_card_id VARCHAR(80),
+    generated_card JSONB,
+    template_mode VARCHAR(20) NOT NULL DEFAULT 'algorithm' CHECK (template_mode IN ('algorithm')),
+    support_layer VARCHAR(30) NOT NULL DEFAULT 'none' CHECK (support_layer IN ('none', 'ghost-reps')),
+    live_coach_used BOOLEAN NOT NULL DEFAULT FALSE,
+    coach_feedback JSONB,
+    submission_rubric JSONB,
+    migration_key TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_answer_question_id
@@ -127,6 +94,34 @@ CREATE INDEX IF NOT EXISTS idx_answer_question_id
 
 CREATE INDEX IF NOT EXISTS idx_answer_session_user
     ON answer(session_id, user_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_answer_migration_key
+    ON answer(migration_key)
+    WHERE migration_key IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_answer_created_at
+    ON answer(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_answer_question_type_created_at
+    ON answer(question_type, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_answer_generated_card_id
+    ON answer(generated_card_id);
+
+CREATE INDEX IF NOT EXISTS idx_answer_interaction_id
+    ON answer(interaction_id);
+
+CREATE INDEX IF NOT EXISTS idx_answer_category_tags
+    ON answer USING GIN(category_tags);
+
+CREATE INDEX IF NOT EXISTS idx_answer_template_support_created_at
+    ON answer(template_mode, support_layer, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_answer_question_id_created_at
+    ON answer(question_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_answer_session_id_created_at
+    ON answer(session_id, created_at DESC);
 
 -- ============================================================================
 -- Static Function Bank
@@ -183,6 +178,7 @@ CREATE TABLE IF NOT EXISTS coach_feedback_events (
     id SERIAL PRIMARY KEY,
     interaction_id VARCHAR(80),
     card_id VARCHAR(80) NOT NULL,
+    answer_id BIGINT REFERENCES answer(id) ON DELETE SET NULL,
     generated_card_id VARCHAR(80),
     question_type VARCHAR(50) NOT NULL DEFAULT '',
     feedback_stage VARCHAR(20) NOT NULL CHECK (feedback_stage IN ('live', 'submission')),
@@ -198,7 +194,7 @@ CREATE TABLE IF NOT EXISTS coach_feedback_events (
     live_milestones JSONB,
     feedback JSONB NOT NULL DEFAULT '{}'::jsonb,
     llm_used BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_interaction
@@ -209,6 +205,9 @@ CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_card
 
 CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_generated_card
     ON coach_feedback_events(generated_card_id);
+
+CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_answer_id
+    ON coach_feedback_events(answer_id);
 
 CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_stage_created
     ON coach_feedback_events(feedback_stage, created_at DESC);

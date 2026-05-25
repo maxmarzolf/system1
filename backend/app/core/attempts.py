@@ -10,19 +10,19 @@ from app.repositories.attempts_repository import (
     fetch_skill_map_overview_attempt_rows,
     fetch_skill_map_overview_generated_rows,
     fetch_skill_map_overview_pattern_rows,
-    insert_score_attempt_row,
+    insert_answer_attempt_row,
 )
 from app.submission_rubric import compact_submission_rubric
 from app.services.attempts_service import build_skill_map_nodes, build_skill_map_overview
 
 async def create_attempt(body: AttemptCreate):
-    now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
+    now = datetime.now(tz=timezone.utc)
     submission_rubric = compact_submission_rubric(
         body.submissionRubric
         or (body.coachFeedback or {}).get("submissionRubric")
     )
 
-    row = await insert_score_attempt_row(
+    row = await insert_answer_attempt_row(
         card_id=body.cardId,
         card_title=body.cardTitle,
         question=body.question,

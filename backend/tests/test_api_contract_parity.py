@@ -1,0 +1,163 @@
+from __future__ import annotations
+
+from fastapi.testclient import TestClient
+
+from app import main as app_main
+from app.core import attempts as attempts_service
+from app.core import coach as coach_service
+from app.main import create_app
+
+
+def test_attempts_endpoint_contract(monkeypatch) -> None:
+    async def _mock_create_attempt(_body):
+        return {"saved": True, "attemptId": 123}
+
+    async def _noop_connect():
+        return None
+
+    async def _noop_disconnect():
+        return None
+
+    monkeypatch.setattr(attempts_service, "create_attempt", _mock_create_attempt)
+    monkeypatch.setattr(app_main, "connect", _noop_connect)
+    monkeypatch.setattr(app_main, "disconnect", _noop_disconnect)
+
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/attempts",
+            json={
+                "cardId": "card-1",
+                "mode": "main-recall",
+                "correct": True,
+                "correctAnswer": "A",
+                "userAnswer": "A",
+            },
+        )
+
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    assert payload == {"saved": True, "attemptId": 123}
+
+
+def test_coach_history_endpoint_contract(monkeypatch) -> None:
+    async def _mock_history(_body):
+        return {
+            "summary": {
+                "attemptCount": 1,
+                "recentAvgAccuracy": 100.0,
+            },
+            "entries": [
+                {
+                    "attemptId": 42,
+                    "interactionId": "interaction-42",
+                    "cardId": "card-42",
+                    "cardTitle": "Card Title",
+                    "question": "What is X?",
+                    "questionType": "skill-map",
+                    "correctAnswer": "A",
+                    "userAnswer": "A",
+                    "accuracy": 100,
+                    "exact": True,
+                    "elapsedMs": 2500,
+                    "templateMode": "algorithm",
+                    "supportLayer": "none",
+                    "liveCoachUsed": False,
+                    "categoryTags": ["skill-map"],
+                    "generatedCard": {},
+                    "liveFeedbackCount": 0,
+                    "latestLiveFeedback": {},
+                    "submissionFeedback": {},
+                    "submissionRubric": {},
+                    "createdAt": "2026-05-24T00:00:00Z",
+                }
+            ],
+        }
+
+    async def _noop_connect():
+        return None
+
+    async def _noop_disconnect():
+        return None
+
+    monkeypatch.setattr(coach_service, "coach_practice_history", _mock_history)
+    monkeypatch.setattr(app_main, "connect", _noop_connect)
+    monkeypatch.setattr(app_main, "disconnect", _noop_disconnect)
+
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/coach/history",
+            json={
+                "cardId": "",
+                "questionType": "skill-map",
+                "skillTags": [],
+                "limit": 6,
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert "summary" in payload
+    assert "entries" in payload
+    assert payload["entries"][0]["attemptId"] == 42
+    assert payload["entries"][0]["questionType"] == "skill-map"
+
+
+def test_skill_map_overview_endpoint_contract(monkeypatch) -> None:
+    async def _mock_overview():
+        return {
+            "summary": {"workCount": 1},
+            "patterns": [
+                {
+                    "pattern": "Sliding Window",
+                    "slug": "sliding-window",
+                    "methods": ["expand / shrink rhythm"],
+                    "overallReadiness": 90,
+                    "overallAttemptCount": 1,
+                    "ghostRepCount": 0,
+                    "unsupportedAttemptCount": 1,
+                    "workCount": 1,
+                    "totalCards": 1,
+                    "practicedCards": 1,
+                    "untouchedCards": 0,
+                    "staleCards": 0,
+                    "dimensionSummary": {},
+                    "modes": {},
+                }
+            ],
+            "reviewQueue": [],
+            "ghostRepActivity": {
+                "windowStart": "2026-05-01",
+                "windowEnd": "2026-05-24",
+                "totalGhostReps": 0,
+                "totalMultipleChoice": 0,
+                "workCount": 1,
+                "activeDays": 1,
+                "peakDailyCount": 1,
+                "days": [],
+                "patterns": [],
+            },
+        }
+
+    async def _noop_connect():
+        return None
+
+    async def _noop_disconnect():
+        return None
+
+    monkeypatch.setattr(attempts_service, "get_skill_map_overview", _mock_overview)
+    monkeypatch.setattr(app_main, "connect", _noop_connect)
+    monkeypatch.setattr(app_main, "disconnect", _noop_disconnect)
+
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get("/api/skill-map-overview")
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert "summary" in payload
+    assert "patterns" in payload
+    assert "reviewQueue" in payload
+    assert "ghostRepActivity" in payload
+    assert payload["patterns"][0]["slug"] == "sliding-window"

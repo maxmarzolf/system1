@@ -12,39 +12,41 @@ from app.submission_rubric import compact_submission_rubric
 
 _PRACTICE_HISTORY_SELECT = """
     SELECT
-        sa.id AS "attemptId",
-        COALESCE(sa.interaction_id, '') AS "interactionId",
-        sa.card_id AS "cardId",
-        sa.card_title AS "cardTitle",
-        sa.question,
-        sa.question_type AS "questionType",
-        sa.correct_answer AS "correctAnswer",
-        sa.user_answer AS "userAnswer",
-        sa.accuracy,
-        sa.exact,
-        sa.elapsed_ms AS "elapsedMs",
-        sa.template_mode AS "templateMode",
-        sa.support_layer AS "supportLayer",
-        sa.live_coach_used AS "liveCoachUsed",
-        sa.category_tags AS "categoryTags",
-        sa.generated_card AS "generatedCard",
-        sa.coach_feedback AS "submissionFeedback",
-        sa.submission_rubric AS "submissionRubric",
-        sa.created_at,
+        a.id AS "attemptId",
+        COALESCE(a.interaction_id, '') AS "interactionId",
+        COALESCE(a.generated_card_id, a.question_id) AS "cardId",
+        COALESCE(NULLIF(a.generated_card->>'title', ''), q.question_text, a.question_id) AS "cardTitle",
+        COALESCE(q.question_text, '') AS question,
+        a.question_type AS "questionType",
+        a.correct_answer AS "correctAnswer",
+        a.answer AS "userAnswer",
+        a.accuracy,
+        a.exact,
+        a.elapsed_ms AS "elapsedMs",
+        a.template_mode AS "templateMode",
+        a.support_layer AS "supportLayer",
+        a.live_coach_used AS "liveCoachUsed",
+        a.category_tags AS "categoryTags",
+        a.generated_card AS "generatedCard",
+        a.coach_feedback AS "submissionFeedback",
+        a.submission_rubric AS "submissionRubric",
+        a.created_at,
         COALESCE(live.live_feedback_count, 0) AS "liveFeedbackCount",
         latest.feedback AS "latestLiveFeedback"
-    FROM score_attempts sa
+    FROM answer a
+    LEFT JOIN question q ON q.id = a.question_id
     LEFT JOIN LATERAL (
         SELECT COUNT(*)::int AS live_feedback_count
         FROM coach_feedback_events fe
         WHERE fe.feedback_stage = 'live'
           AND (
-            (sa.interaction_id IS NOT NULL AND fe.interaction_id = sa.interaction_id)
+            (fe.answer_id IS NOT NULL AND fe.answer_id = a.id)
+            OR (a.interaction_id IS NOT NULL AND fe.interaction_id = a.interaction_id)
             OR (
-                sa.interaction_id IS NULL
-                AND fe.card_id = sa.card_id
-                AND fe.question_type = sa.question_type
-                AND fe.created_at <= sa.created_at
+                a.interaction_id IS NULL
+                AND fe.card_id = COALESCE(a.generated_card_id, a.question_id)
+                AND fe.question_type = a.question_type
+                AND fe.created_at <= a.created_at
             )
           )
     ) live ON TRUE
@@ -53,18 +55,19 @@ _PRACTICE_HISTORY_SELECT = """
         FROM coach_feedback_events fe
         WHERE fe.feedback_stage = 'live'
           AND (
-            (sa.interaction_id IS NOT NULL AND fe.interaction_id = sa.interaction_id)
+                        (fe.answer_id IS NOT NULL AND fe.answer_id = a.id)
+                        OR (a.interaction_id IS NOT NULL AND fe.interaction_id = a.interaction_id)
             OR (
-                sa.interaction_id IS NULL
-                AND fe.card_id = sa.card_id
-                AND fe.question_type = sa.question_type
-                AND fe.created_at <= sa.created_at
+                                a.interaction_id IS NULL
+                                AND fe.card_id = COALESCE(a.generated_card_id, a.question_id)
+                                AND fe.question_type = a.question_type
+                                AND fe.created_at <= a.created_at
             )
           )
         ORDER BY fe.created_at DESC
         LIMIT 1
     ) latest ON TRUE
-    WHERE sa.mode = 'main-recall'
+        WHERE a.question_type <> ''
 """
 
 
@@ -79,9 +82,9 @@ async def fetch_practice_history_rows(
             rows = await conn.fetch(
                 f"""
                 {_PRACTICE_HISTORY_SELECT}
-                  AND sa.question_type = $2
-                  AND (sa.card_id = $1 OR sa.generated_card_id = $1 OR sa.category_tags && $3::text[])
-                ORDER BY sa.created_at DESC
+                                    AND a.question_type = $2
+                                    AND (COALESCE(a.generated_card_id, a.question_id) = $1 OR a.category_tags && $3::text[])
+                                ORDER BY a.created_at DESC
                 LIMIT $4
                 """,
                 card_id,
@@ -93,8 +96,8 @@ async def fetch_practice_history_rows(
             rows = await conn.fetch(
                 f"""
                 {_PRACTICE_HISTORY_SELECT}
-                  AND (sa.card_id = $1 OR sa.generated_card_id = $1 OR sa.category_tags && $2::text[])
-                ORDER BY sa.created_at DESC
+                                    AND (COALESCE(a.generated_card_id, a.question_id) = $1 OR a.category_tags && $2::text[])
+                                ORDER BY a.created_at DESC
                 LIMIT $3
                 """,
                 card_id,
@@ -105,8 +108,8 @@ async def fetch_practice_history_rows(
             rows = await conn.fetch(
                 f"""
                 {_PRACTICE_HISTORY_SELECT}
-                  AND (sa.card_id = $1 OR sa.generated_card_id = $1)
-                ORDER BY sa.created_at DESC
+                                    AND (COALESCE(a.generated_card_id, a.question_id) = $1)
+                                ORDER BY a.created_at DESC
                 LIMIT $2
                 """,
                 card_id,
@@ -200,6 +203,49 @@ async def fetch_practice_history_entries(
     return history
 
 
+async def fetch_latest_answer_id_for_feedback(
+    *,
+    interaction_id: str,
+    card_id: str,
+    question_type: str,
+) -> int | None:
+    normalized_interaction_id = str(interaction_id or "").strip()
+    normalized_card_id = str(card_id or "").strip()
+    normalized_question_type = str(question_type or "").strip()
+
+    async with acquire_connection() as conn:
+        if normalized_interaction_id:
+            row = await conn.fetchrow(
+                """
+                SELECT id
+                FROM answer
+                WHERE interaction_id = $1
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                normalized_interaction_id,
+            )
+            if row:
+                return int(row["id"])
+
+        row = await conn.fetchrow(
+            """
+            SELECT id
+            FROM answer
+            WHERE question_type = $2
+              AND (generated_card_id = $1 OR question_id = $1)
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            normalized_card_id,
+            normalized_question_type,
+        )
+        if row:
+            return int(row["id"])
+
+    return None
+
+
 async def insert_feedback_event_row(
     *,
     interaction_id: str,
@@ -220,18 +266,20 @@ async def insert_feedback_event_row(
     feedback_json: str,
     llm_used: bool,
     created_at: datetime,
+    answer_id: int | None = None,
 ) -> None:
     async with acquire_connection() as conn:
         await conn.execute(
             """
             INSERT INTO coach_feedback_events
-                (interaction_id, card_id, generated_card_id, question_type, feedback_stage, live_mode,
+                (interaction_id, card_id, answer_id, generated_card_id, question_type, feedback_stage, live_mode,
                  prompt, expected_answer, user_answer, accuracy, exact, elapsed_ms, skill_tags,
                  previous_attempts, live_milestones, feedback, llm_used, created_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
             """,
             interaction_id,
             card_id,
+            answer_id,
             generated_card_id,
             question_type,
             feedback_stage,
