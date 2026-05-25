@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vs, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useSearchParams } from 'react-router-dom'
@@ -2205,8 +2205,6 @@ function App() {
   const [promptToggleDetail, setPromptToggleDetail] = useState<PromptToggleExplanationResponse | null>(null)
   const [plainEnglishPromptLoading, setPlainEnglishPromptLoading] = useState(false)
   const [tagsExpanded, setTagsExpanded] = useState(false)
-  const tagsListRef = useRef<HTMLDivElement | null>(null)
-  const [tagsListHeight, setTagsListHeight] = useState(0)
   const [relatedDrawerOpen, setRelatedDrawerOpen] = useState(false)
 
   const [sessionOrder, setSessionOrder] = useState<number[]>([])
@@ -2651,23 +2649,6 @@ function App() {
     () => activeCardTags.filter((tag) => tag !== 'skill-map' && tag !== 'skill-map-mcq'),
     [activeCardTags]
   )
-
-  useLayoutEffect(() => {
-    const element = tagsListRef.current
-    if (!element) return
-
-    const updateTagsListHeight = () => {
-      setTagsListHeight(tagsExpanded ? element.scrollHeight : 0)
-    }
-
-    updateTagsListHeight()
-    if (!tagsExpanded || typeof ResizeObserver === 'undefined') return
-
-    const resizeObserver = new ResizeObserver(updateTagsListHeight)
-    resizeObserver.observe(element)
-
-    return () => resizeObserver.disconnect()
-  }, [tagsExpanded, visibleCardTags.length])
 
   currentCardIdRef.current = activeCardId
 
@@ -4048,21 +4029,41 @@ function App() {
       />
 
   <div className={relatedLeetCodeSet ? 'card-shell card-shell-has-drawer' : 'card-shell'}>
-      {relatedLeetCodeSet && (
-        <button
-          type="button"
-          className={relatedDrawerOpen ? 'card-side-drawer-toggle active' : 'card-side-drawer-toggle'}
-          aria-expanded={relatedDrawerOpen}
-          aria-controls="related-problems-drawer"
-          aria-label={relatedDrawerOpen ? 'Hide related LeetCode drawer' : 'Show related LeetCode drawer'}
-          title="Related LeetCode"
-          onClick={() => setRelatedDrawerOpen((open) => !open)}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
-          </svg>
-          <span className="sr-only">Related LeetCode</span>
-        </button>
+      {(relatedLeetCodeSet || visibleCardTags.length > 0) && (
+        <div className="card-side-drawer-actions" aria-label="Card side controls">
+          {relatedLeetCodeSet && (
+            <button
+              type="button"
+              className={relatedDrawerOpen ? 'card-side-drawer-toggle active' : 'card-side-drawer-toggle'}
+              aria-expanded={relatedDrawerOpen}
+              aria-controls="related-problems-drawer"
+              aria-label={relatedDrawerOpen ? 'Hide related LeetCode drawer' : 'Show related LeetCode drawer'}
+              title="Related LeetCode"
+              onClick={() => setRelatedDrawerOpen((open) => !open)}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
+              </svg>
+              <span className="sr-only">Related LeetCode</span>
+            </button>
+          )}
+          {visibleCardTags.length > 0 && (
+            <button
+              type="button"
+              className={tagsExpanded ? 'card-side-drawer-toggle card-tags-drawer-toggle active' : 'card-side-drawer-toggle card-tags-drawer-toggle'}
+              aria-expanded={tagsExpanded}
+              aria-controls={tagsListId}
+              aria-label={tagsExpanded ? 'Hide tags' : 'Show tags'}
+              title={tagsExpanded ? 'Hide tags' : 'Show tags'}
+              onClick={() => setTagsExpanded((current) => !current)}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m5.231 13.481L15 17.25m-4.5-15H5.625c-.621 0-1.125.504-1.125 1.125v16.5c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Zm3.75 11.625a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
+              </svg>
+              <span className="sr-only">Tags</span>
+            </button>
+          )}
+        </div>
       )}
       <section className="card">
         <div className="card-header">
@@ -4075,24 +4076,8 @@ function App() {
               {isMetaCard && <span className="card-badge-meta">meta</span>}
             </p>
             {visibleCardTags.length > 0 && (
-              <div className="tags">
-                <button
-                  type="button"
-                  className={tagsExpanded ? 'tags-toggle active' : 'tags-toggle'}
-                  onClick={() => setTagsExpanded((current) => !current)}
-                  aria-expanded={tagsExpanded}
-                  aria-controls={tagsListId}
-                  title={tagsExpanded ? 'Hide tags' : 'Show tags'}
-                >
-                  tags
-                </button>
-                <div
-                  ref={tagsListRef}
-                  className={tagsExpanded ? 'tags-list expanded' : 'tags-list'}
-                  id={tagsListId}
-                  aria-hidden={!tagsExpanded}
-                  style={{ '--tags-list-height': `${tagsListHeight}px` } as CSSProperties}
-                >
+              <div className={tagsExpanded ? 'tags expanded' : 'tags'}>
+                <div className={tagsExpanded ? 'tags-list expanded' : 'tags-list'} id={tagsListId} aria-hidden={!tagsExpanded}>
                   {visibleCardTags.map((tag) => (
                     <button
                       key={tag}
