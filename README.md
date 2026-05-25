@@ -1,394 +1,215 @@
 # System1 Recall Trainer
 
+System1 is a React + FastAPI learning app for deliberate recall practice, live coaching, and skill-map readiness tracking.
+
 ## Agent Guide
 
-Quick reference for AI agents working in this codebase.
+Quick-reference for coding agents and contributors.
 
-### Stack at a Glance
+### Stack
 
 | Layer | Technology | Port |
-|-------|-----------|------|
+|---|---|---|
 | Frontend | React + Vite + TypeScript | 5173 |
 | Backend API | Python 3.12 + FastAPI + asyncpg | 3001 |
 | Database | PostgreSQL 16 | 5432 |
-| Container runtime | Docker Compose | — |
+| Runtime | Docker Compose | n/a |
 
-Container names: `flashcard-postgres`, `flashcard-backend`, `flashcard-frontend`
+Default container names:
+- `flashcard-frontend`
+- `flashcard-backend`
+- `flashcard-postgres`
 
-### Layering Rules (non-negotiable)
+### Non-Negotiable Layering Rules
 
-- **SQL lives only in `backend/app/repositories/`** — never write raw SQL in a router or service.
-- **Services are pure Python** — `backend/app/services/` has no FastAPI, no asyncpg, no HTTP types.
-- **Routers are thin** — endpoint handlers call a repository or service function and return the result. No business logic, no data shaping.
-- **TypedDict contracts** — all DB row shapes are defined in `backend/app/repositories/types.py`. Add new row types there; don't use plain dicts.
-- **Frontend data contracts** — `src/data/skill-map.ts` holds the client-side skill-map type definitions. Keep them in sync with the API response shapes.
+- SQL only in `backend/app/repositories/`.
+- `backend/app/services/` contains pure Python only.
+- Endpoint handlers in `backend/app/endpoints/` stay thin.
+- Database row contracts live in `backend/app/repositories/types.py`.
 
-### Where to Add Things
+## Current Architecture
 
-| Task | Files to touch |
-|------|---------------|
-| New API endpoint | `backend/app/routers/<domain>.py` (handler), `backend/app/repositories/<domain>_repository.py` (SQL), `backend/app/repositories/types.py` (new row types if needed) |
-| New business logic | `backend/app/services/<domain>_service.py` |
-| New DB table | `backend/init-scripts/01-init.sql` (schema), seed data in `05-data-patterns.sql` / `06-data-methods.sql` |
-| New frontend page | `src/<PageName>Page.tsx`, register route in `src/App.tsx`, add nav link in `src/TopNav.tsx` |
-| New environment variable | `backend/app/config.py` (read + default), `backend/.env` (local value), README LLM/env section |
+Backend architecture is:
 
-### Verify Changes
+`endpoints -> core/services -> repositories -> database`
+
+Key backend modules:
+- `backend/app/endpoints/` FastAPI routes.
+- `backend/app/core/` orchestration and LLM pipelines.
+- `backend/app/repositories/` all SQL and row shaping.
+- `backend/app/database.py` startup schema ensures + compatibility migrations.
+
+Core algorithm naming is canonical throughout the app (`core_algorithm_*`, `core_algorithms`) and legacy `static_function*` names are migrated at startup.
+
+## Data Model (Current)
+
+Primary tables:
+- `question`: canonical prompt/MCQ stem records plus fingerprint.
+- `answer`: canonical attempt ledger (replaces `score_attempts`).
+- `coach_feedback_events`: live/submission feedback events, linked by `answer_id` when available.
+- `generated_skill_map_cards`: generated drill artifacts and context.
+- `core_algorithm_patterns`, `core_algorithm_methods`, `core_algorithms`, `core_algorithm_skill_map`: core algorithm bank and taxonomy.
+
+Important migration behavior in `backend/app/database.py`:
+- Backfills legacy `score_attempts` into `question` + `answer` when present.
+- Uses fingerprint-based question reconciliation for idempotency and duplicate tolerance.
+- Drops `score_attempts` after successful backfill.
+- Migrates legacy `static_function*` table naming and identifiers to `core_algorithm*` naming.
+
+## API Endpoints
+
+Core endpoints:
+- `GET /api/health`
+- `POST /api/attempts`
+- `GET /api/skill-map`
+- `GET /api/skill-map-overview`
+- `POST /api/coach/evaluate-attempt`
+- `POST /api/coach/attempt-feedback`
+- `POST /api/coach/history`
+- `POST /api/coach/session-plan`
+- `POST /api/coach/skill-map-drills`
+- `POST /api/coach/skill-map-drills-stream`
+- `GET /api/coach/core-algorithm-drills`
+- `GET /api/coach/core-algorithm-drills/{pattern_slug}`
+- `POST /api/coach/multiple-choice-drills`
+- `POST /api/coach/adaptive-variation`
+- `POST /api/coach/sequential-variation`
+- `POST /api/admin/reset-practice-history`
+
+## Development Workflow
+
+### Local Setup
 
 ```bash
-# Backend unit tests
-cd backend && pytest -v
+npm install
+pip install -r backend/requirements.txt
+```
 
-# Container health (all 3 should show healthy/running)
+### Start Services
+
+```bash
+docker compose up -d --build
 docker compose ps
-
-# Full rebuild and restart
-docker compose up -d --build
 ```
 
-The editor may show `Import "fastapi" could not be resolved` in backend files — this is a virtualenv path issue only, not a real error. `get_errors` on modified files should be clean otherwise.
-
-### Common Operations
+### Stop Services
 
 ```bash
-# Start all services (detached, rebuild images)
-docker compose up -d --build
-
-# Stop all services
 docker compose down
-
-# Reset practice history only (keeps seeded data)
-npm run reset:practice-history
-
-# Wipe DB and reinitialize from seed scripts
-docker compose down -v && docker compose up -d --build
-
-# Run backend tests with coverage
-cd backend && pytest tests/test_generator_*.py -v --cov=app.routers.generator --cov-report=term-missing
 ```
 
----
+### Reinitialize Database from Seed Scripts
 
-## Features
-
-- Main recall practice for pseudocode, skeleton, and full-answer templates
-- Live coaching while typing, with final LLM-only submission feedback
-- Readiness Overview by skill-map pattern and template mode
-- Practice history with stored attempts, live feedback snapshots, and final feedback
-- Skill-map drill generation backed by stored practice history
-- MCQ generation owned by generator core, with persisted MCQs in `question` and fingerprint dedupe
-
-## Development
-
-### Local Development
-
-- Install dependencies: `npm install`
-- Start frontend + backend: `npm run dev` (or `npm start`)
-- Build for production: `npm run build`
-
-Backend API runs on `http://localhost:3001` and persists data in PostgreSQL.
-
-### Backend Unit Tests
-
-The backend now has a focused pytest suite for generator-related behavior and incremental refactors.
-
-- Install backend dependencies: `pip install -r backend/requirements.txt`
-- Run all backend tests: `cd backend && pytest -v`
-- Run unit-focused backend tests only: `cd backend && pytest -v -m "not integration"`
-- Run integration tests only: `cd backend && pytest -v -m integration`
-- Run generator-focused tests with coverage: `cd backend && pytest tests/test_generator_*.py -v --cov=app.routers.generator --cov-report=term-missing`
-
-Test scope in this pass:
-- generator utility normalization and edge cases
-- core `SkillMapDrillGenerator` success + fallback paths
-- extraction parity checks that `coach.py` uses generator-owned helpers
-
-### Backend Architecture
-
-The backend follows a layered architecture: routers → services → repositories → database.
-
-```
-backend/app/
-├── routers/         # FastAPI endpoint handlers — thin orchestration only
-│   ├── attempts.py
-│   ├── coach.py
-│   ├── admin.py
-│   ├── generator.py
-│   ├── assessor.py
-│   └── narrator.py
-├── services/        # Pure business logic — no FastAPI or DB dependencies
-│   └── attempts_service.py   # build_skill_map_overview, build_skill_map_nodes
-├── repositories/    # All SQL — one module per domain
-│   ├── base.py                # acquire_connection() shared context manager
-│   ├── types.py               # TypedDict row/result contracts
-│   ├── attempts_repository.py # insert_score_attempt_row, fetch_skill_map_* rows
-│   ├── coach_repository.py    # fetch_practice_history_entries, insert_feedback_event_row
-│   └── admin_repository.py    # count/truncate practice history tables
-├── models.py        # Pydantic request/response models
-├── readiness.py     # Readiness score calculation
-└── submission_rubric.py  # Rubric compaction helpers
-```
-
-**Repositories** own all SQL constants and row-shaping logic. They return typed `TypedDict` results defined in `repositories/types.py`.
-
-**Services** receive typed rows from repositories and perform all aggregation, window math, and data transformation — no raw SQL, no FastAPI types.
-
-**Routers** call one or more repository/service functions and map results to HTTP responses. They retain only LLM calling logic and endpoint orchestration.
-
-### Docker Deployment
-
-The application can be deployed using Docker and Docker Compose with separate containers for the frontend, backend, and database.
-
-**Prerequisites:**
-- Docker and Docker Compose installed
-
-**Quick Start:**
-```bash
-docker-compose up --build
-```
-
-This will:
-- Build the frontend (React + Vite) container
-- Build the backend (Python + FastAPI) container
-- Start PostgreSQL, backend, and frontend services
-- Expose the frontend on `http://localhost:5173`
-- Expose the backend API on `http://localhost:3001`
-- Share a common network for inter-service communication
-
-**Service Details:**
-- **Frontend**: Built with multi-stage Docker build, serves optimized production build with Node.js serve
-- **Backend**: Python FastAPI server with Uvicorn
-- **PostgreSQL**: Transactional database exposed on local port `5432`
-- All services communicate over a shared Docker network
-- PostgreSQL data is persisted under `backend/data/postgres`
-
-**Database Configuration:**
-PostgreSQL is available to the backend at `postgresql://flashcard_user:flashcard_password@postgres:5432/flashcard_db`. The backend automatically connects to PostgreSQL and stores score attempts with full details.
-
-**Database Schema:**
-- **score_attempts**: Stores recall attempts, answers, accuracy, timing, template mode, generated card metadata, live-coach usage, and final feedback
-- **coach_feedback_events**: Stores live feedback events and final submission feedback events
-- **generated_skill_map_cards**: Stores generated drills and generation context
-- **question**: Stores generated question content (recall + MCQ shape), including MCQ labels/text and correct-label/correct-text
-- **answer**: Schema groundwork for future submitted answers (session/user placeholders retained for now)
-- **patterns** and **methods**: Store the skill-map taxonomy
-
-**API Endpoints:**
-- `POST /api/attempts` - Save a main-recall attempt
-- `GET /api/skill-map` - Load skill-map patterns and methods
-- `GET /api/skill-map-overview` - Compute Readiness Overview
-- `POST /api/coach/evaluate-attempt` - Score a submitted recall attempt
-- `POST /api/coach/attempt-feedback` - Generate live or final coach feedback
-- `POST /api/coach/history` - Load related practice history
-- `POST /api/coach/session-plan` - Generate an end-of-session plan
-- `POST /api/coach/skill-map-drills` - Generate and store skill-map practice cards
-
-The backend uses FastAPI with `asyncpg` to connect to PostgreSQL.
-
-**Stopping Services:**
-```bash
-docker-compose down
-```
-
-To remove the database volume:
-```bash
-docker-compose down -v
-```
-
-**Rebuilding After Code Changes:**
-```bash
-docker-compose up --build
-```
-
-### Database Initialization
-
-Rebuild containers and initialize a fresh database:
 ```bash
 docker compose down -v
 docker compose up -d --build
 ```
 
-The Postgres image loads scripts in this order:
+Initialization scripts run in order:
 - `backend/init-scripts/01-init.sql`
 - `backend/init-scripts/05-data-patterns.sql`
 - `backend/init-scripts/06-data-methods.sql`
 
-### LLM Coach Feedback
+## Testing
 
-The coach pipeline uses three distinct LLM roles, each with its own provider selection and token budget.
-Generator behavior is centered in `backend/app/core/generator.py` through `SkillMapDrillGenerator` and MCQ generation helpers, while `coach.py` acts as API orchestration.
-Provider resolution and shared JSON-call utilities are in `backend/app/core/llm.py` to avoid circular dependencies between coach and generator modules.
+Run all backend tests:
 
-| Role | Purpose | Provider selection | Max tokens |
-|------|---------|-------------------|------------|
-| **Signal Assessor** | Structural assessment of each attempt (replaces ~1500 lines of rule-based signals) | Fastest available: Gemma → Claude → OpenAI | 600 |
-| **Feedback Narrator** | Narrative coaching text for submission feedback | User-selected available provider | 1800 |
-| **Practice Generator** | Seeds skill-map practice decks and creates adaptive repair variations | User-selected available provider | 2000 |
-
-### MCQ Persistence Notes
-
-- Endpoint: `POST /api/coach/multiple-choice-drills`
-- Flow ownership: router -> `coach.py` delegator -> `generator.py` MCQ generation
-- Persistence: generated MCQs are written to `question` via repository SQL
-- Dedupe: `question.fingerprint` unique index prevents duplicate semantic MCQs
-- Fingerprint input is normalized semantic content (question text + canonicalized choice texts + correct answer text), not raw model output formatting
-- Persistence is fail-open: endpoint still returns generated drills if DB write fails, with server-side warning logs
-- Provider fallback: if the selected provider returns an empty/invalid JSON payload, MCQ generation now tries the next configured available provider before returning an error
-- Transient resilience: MCQ generation retries temporary provider failures with short backoff before failing or moving to the next provider
-
-Live feedback (`liveMode=true`) uses only the Signal Assessor — no Narrator call.
-Submission feedback (`liveMode=false`) runs Assessor → Narrator in sequence.
-
-**Assessor output schema (v1):**
-```json
-{
-  "v": 1,
-  "patternIdentified": "sliding-window",
-  "signals": {
-    "structure":       { "score": 60, "note": "..." },
-    "correctness":     { "score": 45, "note": "..." },
-    "completeness":    { "score": 50, "note": "..." },
-    "patternFidelity": { "score": 55, "note": "..." },
-    "syntax":          { "valid": true, "error": null },
-    "completionTime":  { "score": 70, "note": "..." }
-  },
-  "primaryBlocker": "...",
-  "blockerKey": "...",
-  "verdict": "needs-work",
-  "errorTags": [...],
-  "strengths": [...]
-}
-```
-
-Backend provider settings:
-- `LLM_DEFAULT` (default: `openai`; supported values: `openai`, `claude`, `gemma`)
-
-OpenAI variables:
-- `COACH_OPENAI_API_KEY` (preferred)
-- `OPENAI_API_KEY` (also supported)
-- `COACH_OPENAI_MODEL` (default: `gpt-5.2`)
-- `COACH_OPENAI_BASE_URL` (default: `https://api.openai.com/v1`)
-
-Claude variables:
-- `COACH_ANTHROPIC_API_KEY` (preferred)
-- `ANTHROPIC_API_KEY` (also supported)
-- `COACH_ANTHROPIC_MODEL` (default: `claude-sonnet-4-6`)
-- `COACH_ANTHROPIC_BASE_URL` (default: `https://api.anthropic.com/v1`)
-
-Gemma (local) variables:
-- `COACH_GEMMA_BASE_URL` (default: `http://localhost:11434/v1`)
-- `COACH_GEMMA_MODEL` (default: `gemma3:1b`)
-
-Generator tuning variables (environment-backed):
-- `COACH_GENERATOR_MAX_TOKENS` (default: `8000`)
-- `COACH_GENERATOR_TIMEOUT_SECONDS` (default: `90`)
-- `COACH_GENERATOR_TEMPERATURE` (default: `0.7`)
-- `COACH_GENERATOR_READINESS_THRESHOLD` (default: `90`)
-- `COACH_GENERATOR_PROMPT_WORDS` (default: `12`)
-- `COACH_GENERATOR_PROMPT_MAX_CHARS` (default: `80`)
-- `COACH_GENERATOR_PATTERN_HISTORY_LIMIT` (default: `0`, meaning unlimited)
-
-Local dev example (OpenAI):
 ```bash
-cd backend
-export LLM_DEFAULT="openai"
-export OPENAI_API_KEY="your_key_here"
-venv/bin/python main.py
+cd backend && pytest -v
 ```
 
-Local dev example (Claude):
+Run unit-only tests:
+
 ```bash
-cd backend
-export LLM_DEFAULT="claude"
-export ANTHROPIC_API_KEY="your_key_here"
-venv/bin/python main.py
+cd backend && pytest -v -m "not integration"
 ```
 
-Local dev example (Gemma via Ollama):
+Run integration-only tests:
+
 ```bash
-ollama serve  # in a separate terminal
-cd backend
-export LLM_DEFAULT="gemma"
-venv/bin/python main.py
+cd backend && pytest -v -m integration
 ```
 
-Practice-history reset example:
-```bash
-cd backend
-export ADMIN_RESET_TOKEN="reset-practice-history"
-venv/bin/python reset_practice_history.py
-```
+Recent test hardening includes:
+- API contract parity tests.
+- Migration idempotency guard tests.
+- Fixture-backed integration parity tests for migrated attempt data.
+- Query-plan performance guard tests using `EXPLAIN (FORMAT JSON)`.
 
-Docker Compose example (`backend/.env` is loaded by the backend service):
-```bash
-cat > backend/.env <<'EOF'
-PORT=3001
-DATABASE_URL=postgresql://flashcard_user:flashcard_password@postgres:5432/flashcard_db
-ADMIN_RESET_TOKEN=reset-practice-history
-LLM_DEFAULT=openai
-COACH_OPENAI_API_KEY=your_key_here
-COACH_OPENAI_MODEL=gpt-5.2
-COACH_OPENAI_BASE_URL=https://api.openai.com/v1
-COACH_ANTHROPIC_API_KEY=
-COACH_ANTHROPIC_MODEL=claude-sonnet-4-6
-COACH_ANTHROPIC_BASE_URL=https://api.anthropic.com/v1
-COACH_GEMMA_BASE_URL=http://localhost:11434/v1
-COACH_GEMMA_MODEL=gemma3:1b
-EOF
+Integration tests are designed to skip cleanly when Postgres/infrastructure is unavailable.
 
-docker-compose up --build
-```
+## LLM Provider Configuration
 
-Verification:
-- API response from `POST /api/coach/attempt-feedback` includes `"llmUsed": true` when the LLM response is used.
-- Live feedback returns a single Assessor call in server logs (no Narrator call).
-- Submission feedback logs two sequential calls: Assessor then Narrator.
-- During submit/revise, the Submission Feedback panel shows a waiting placeholder state and then renders pills/content only after the new response arrives.
+Environment defaults are loaded by `backend/app/config.py` from:
+- `backend/.env`
+- `.env`
 
-### Submission Feedback Behavior
+Key variables:
+- `LLM_DEFAULT` (alias supported: `COACH_LLM_PROVIDER`)
+- `COACH_OPENAI_API_KEY` or `OPENAI_API_KEY`
+- `COACH_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY`
+- `COACH_OPENAI_MODEL`, `COACH_ANTHROPIC_MODEL`
+- `COACH_OPENAI_BASE_URL`, `COACH_ANTHROPIC_BASE_URL`
+- `COACH_GEMMA_API_KEY`, `COACH_GEMMA_MODEL`, `COACH_GEMMA_BASE_URL`
 
-Submission feedback (`liveMode=false`) is LLM-only.
+Generator tuning:
+- `COACH_GENERATOR_MAX_TOKENS`
+- `COACH_GENERATOR_TIMEOUT_SECONDS`
+- `COACH_GENERATOR_TEMPERATURE`
+- `COACH_GENERATOR_READINESS_THRESHOLD`
+- `COACH_GENERATOR_PROMPT_WORDS`
+- `COACH_GENERATOR_PROMPT_MAX_CHARS`
+- `COACH_GENERATOR_PATTERN_HISTORY_LIMIT`
 
-- No rule-based local response is returned to users for submission grading/feedback.
-- Backend retries LLM submission generation up to 3 times before failure.
-- On failure, backend returns a structured error payload and frontend shows a modal with the provider-specific message.
+## Submission Feedback Behavior
 
-Error payload shape for failed submission feedback requests:
+- Submission feedback is LLM-backed.
+- If the selected provider fails (auth, credits, timeout, malformed response), the backend returns a structured failure payload and the frontend surfaces a fallback error state.
+- Recent real-world example: Anthropic can return `invalid_request_error` when account credits are exhausted, which presents as "No response from Claude".
 
-```json
-{
-   "detail": {
-      "code": "submission_feedback_no_response",
-      "message": "Claude API error: insufficient credits. Add credits in your provider billing and try again.",
-      "provider": "claude",
-      "providerLabel": "Claude",
-      "apiErrorCode": "provider_insufficient_credits"
-   }
-}
-```
+## Reset Practice History
 
-Common `apiErrorCode` values include:
-- `provider_auth_error`
-- `provider_insufficient_credits`
-- `provider_rate_limited`
-- `provider_model_error`
-- `provider_network_error`
-- `provider_timeout`
-
-### Reset Practice History
-
-To clear only generated practice history and coaching artifacts without touching seeded source data:
+Reset only generated practice artifacts (without wiping seeded taxonomy):
 
 ```bash
 npm run reset:practice-history
 ```
 
-This calls:
+Equivalent API call:
 - `POST /api/admin/reset-practice-history`
 
-It clears only:
-- `score_attempts`
+Current reset scope:
 - `coach_feedback_events`
+- `answer`
 - `generated_skill_map_cards`
 
-The request must include the confirmation token from `ADMIN_RESET_TOKEN`. By default the dev token is `reset-practice-history`.
+The request requires the token configured via `ADMIN_RESET_TOKEN`.
+
+## Common Troubleshooting
+
+### Backend unhealthy after restart
+
+1. Check logs:
+
+```bash
+docker compose logs backend --tail=300
+```
+
+2. Confirm health:
+
+```bash
+curl -i http://localhost:3001/api/health
+docker compose ps
+```
+
+3. If startup errors mention legacy table migrations, rebuild with latest backend image and allow startup migration to complete.
+
+### Submission feedback unavailable
+
+1. Check backend logs for provider errors (credits, auth, rate limits).
+2. Verify `LLM_DEFAULT` and corresponding API key variables.
+3. If using Anthropic, confirm billing/credits are active.
+
+### FastAPI import warning in editor
+
+`Import "fastapi" could not be resolved` can be a local interpreter path mismatch in the editor; verify with `pytest` and runtime logs before treating it as code failure.
