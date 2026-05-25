@@ -92,41 +92,6 @@ function SelectControl<T extends string>({ label, value, options, onChange, desc
   )
 }
 
-function RangeControl({
-  label,
-  value,
-  min,
-  max,
-  step,
-  suffix,
-  onChange,
-}: {
-  label: string
-  value: number
-  min: number
-  max: number
-  step: number
-  suffix: string
-  onChange: (value: number) => void
-}) {
-  return (
-    <label className="tune-control tune-range-control">
-      <span className="tune-control-row">
-        <span className="tune-control-label">{label}</span>
-        <strong>{value}{suffix}</strong>
-      </span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-    </label>
-  )
-}
-
 function ToggleControl({
   checked,
   onChange,
@@ -245,7 +210,7 @@ export default function TunePage() {
             <TuneSection
               eyebrow="02"
               title="Live Coach"
-              copy="Control how often the coach intervenes and how specific it can be while you type."
+              copy="Control on-demand coach feedback and how specific it can be while you type."
               action={(
                 <button className="secondary tune-reset" type="button" onClick={() => setLiveCoachTuning(defaultLiveCoachTuning)}>
                   Reset
@@ -283,16 +248,6 @@ export default function TunePage() {
                     ]}
                   />
                   <SelectControl
-                    label="Feedback frequency"
-                    value={liveCoachTuning.feedbackFrequency}
-                    onChange={(value) => updateLiveCoachTuning('feedbackFrequency', value)}
-                    options={[
-                      { value: 'more-often', label: 'More often' },
-                      { value: 'balanced', label: 'Balanced' },
-                      { value: 'less-often', label: 'Less often' },
-                    ]}
-                  />
-                  <SelectControl
                     label="Canonical answer reveal"
                     value={liveCoachTuning.canonicalAnswerStage}
                     onChange={(value) => updateLiveCoachTuning('canonicalAnswerStage', value)}
@@ -302,31 +257,13 @@ export default function TunePage() {
                       { value: 'very-late', label: 'Very late' },
                     ]}
                   />
-                  <RangeControl
-                    label="Repeated drift threshold"
-                    value={liveCoachTuning.driftThresholdAttempts}
-                    min={1}
-                    max={5}
-                    step={1}
-                    suffix=" attempts"
-                    onChange={(value) => updateLiveCoachTuning('driftThresholdAttempts', value)}
-                  />
-                  <RangeControl
-                    label="Drill-down stall threshold"
-                    value={liveCoachTuning.stallThresholdSeconds}
-                    min={15}
-                    max={120}
-                    step={5}
-                    suffix="s"
-                    onChange={(value) => updateLiveCoachTuning('stallThresholdSeconds', value)}
-                  />
                 </div>
 
                 <div className="tune-toggle-list" aria-label="Live coach toggles">
                   <ToggleControl
                     checked={liveCoachTuning.enabled}
                     onChange={(value) => updateLiveCoachTuning('enabled', value)}
-                    label="Enable live feedback requests"
+                    label="Enable on-demand live feedback"
                   />
                   <ToggleControl
                     checked={liveCoachTuning.singleIssue}

@@ -1134,6 +1134,7 @@ async def _persist_feedback_event(
         interaction_id=body.interactionId or "",
         card_id=body.cardId,
         question_type=body.questionType,
+        allow_card_fallback=not body.liveMode,
     )
 
     await insert_feedback_event_row(

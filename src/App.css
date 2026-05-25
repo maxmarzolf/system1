@@ -3161,6 +3161,12 @@ button.link:hover {
   min-height: 1.6em;
 }
 
+.inline-annotated-code .typing-highlight-line.inline-live-note-line {
+  position: relative;
+  isolation: isolate;
+  padding-right: min(46ch, 48%);
+}
+
 .inline-code-text {
   color: var(--hc-code-fg);
 }
@@ -3189,11 +3195,6 @@ button.link:hover {
 .typing-ghost-target .inline-decision-line,
 .typing-ghost-target .inline-decision-line * {
   font-weight: 900 !important;
-}
-
-.typing-highlight-line.inline-live-note-line .inline-note-text {
-  color: var(--hc-fg-dim);
-  opacity: 0.62;
 }
 
 .typing-highlight-line.live-target-source-line {
@@ -3230,12 +3231,12 @@ button.link:hover {
 }
 
 .typing-highlight-line.live-target-neutral {
-  color: rgba(31, 130, 192, 0.96);
+  color: var(--hc-code-fg);
 }
 
 .typing-highlight-line.live-target-neutral .inline-code-text,
 .typing-highlight-line.live-target-neutral span:not(.inline-note-text) {
-  color: rgba(31, 130, 192, 0.96);
+  color: inherit;
 }
 
 .typing-highlight-line.live-target-negative .inline-note-text {
@@ -3249,8 +3250,40 @@ button.link:hover {
 }
 
 .typing-highlight-line.live-target-neutral .inline-note-text {
-  color: var(--hc-accent);
-  opacity: 0.76;
+  color: var(--hc-fg-dim) !important;
+  opacity: 0.86;
+}
+
+.typing-highlight-line.inline-live-note-line .inline-note-text {
+  position: absolute;
+  top: 0;
+  right: 0.35rem;
+  left: min(50ch, 54%);
+  z-index: 2;
+  display: block;
+  box-sizing: border-box;
+  padding: 0.05rem 0.35rem 0.08rem;
+  border-left: 2px solid color-mix(in srgb, var(--hc-fg-dim) 42%, transparent);
+  background: color-mix(in srgb, var(--hc-editor-bg) 88%, var(--hc-bg));
+  color: var(--hc-fg-dim) !important;
+  font-style: normal;
+  font-weight: 700 !important;
+  line-height: 1.35;
+  opacity: 0.86;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.typing-highlight-line.inline-live-note-line .inline-note-gap {
+  display: none;
+}
+
+.typing-highlight-line.inline-live-note-line.live-target-positive .inline-note-text {
+  border-left-color: color-mix(in srgb, var(--hc-success) 58%, transparent);
+}
+
+.typing-highlight-line.inline-live-note-line.live-target-negative .inline-note-text {
+  border-left-color: color-mix(in srgb, var(--hc-error) 58%, transparent);
 }
 
 /* ─── Diff View ─── */

@@ -208,6 +208,7 @@ async def fetch_latest_answer_id_for_feedback(
     interaction_id: str,
     card_id: str,
     question_type: str,
+    allow_card_fallback: bool = True,
 ) -> int | None:
     normalized_interaction_id = str(interaction_id or "").strip()
     normalized_card_id = str(card_id or "").strip()
@@ -227,6 +228,9 @@ async def fetch_latest_answer_id_for_feedback(
             )
             if row:
                 return int(row["id"])
+
+        if not allow_card_fallback:
+            return None
 
         row = await conn.fetchrow(
             """

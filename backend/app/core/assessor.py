@@ -59,6 +59,10 @@ def assessor_system_prompt(live_mode: bool) -> str:
             "All narrative string fields must be 20 words or fewer. "
             "Focus on one structural blocker only. "
             "Leave affirmation empty unless something concrete is already correct. "
+            "When liveMilestones.trigger is 'hotkey-stuck', lead with concrete problem-solving moves already done right, "
+            "avoid exact edits or explicit next-step instructions, and make higher hintDepth values more conceptually specific without revealing the answer. "
+            "If liveMilestones.editContext.changedSinceLastHint is true, treat addedLines, changedLineText, and progressSignals as fresh evidence. "
+            "Credit a near-miss line that moves toward the missing structure before describing why it is not sufficient yet. "
             "Return only valid JSON. Do not include markdown."
         )
     return base + "}. Structural assessment only - no narrative fields. Return only valid JSON. Do not include markdown."
@@ -78,6 +82,8 @@ async def run_signal_assessor(
         "expectedAnswer": (body.expectedAnswer or "")[:800],
         "elapsedMs": body.elapsedMs,
         "precomputedAccuracy": body.accuracy,
+        "liveMilestones": body.liveMilestones if body.liveMode else {},
+        "liveCoachTuning": body.liveCoachTuning if body.liveMode else {},
     }
 
     result = await asyncio.to_thread(

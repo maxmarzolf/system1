@@ -6,7 +6,7 @@ import RelatedLeetCodeDrawer from './RelatedLeetCodeDrawer'
 import { skillMap, type SkillMapNode } from './data/skill-map'
 import { playlistQuestionsToSkillMap, practicePlaylists } from './data/playlists'
 import { resolveRelatedLeetCodeSet } from './data/related-leetcode'
-import { getLiveCoachFrequencyProfile, loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoachTuning'
+import { loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoachTuning'
 import { loadStoredSubmissionTuning } from './submissionTuning'
 import { loadStoredSpecimenTuning } from './specimenTuning'
 import type { SpecimenTuning } from './specimenTuning'
@@ -214,16 +214,33 @@ type AnnotatedDisplayLine = {
 }
 
 type LiveInlineTone = 'positive' | 'negative' | 'neutral'
+type LiveFeedbackTrigger = 'auto' | 'hotkey-stuck'
 
 type LiveInlineNote = {
   text: string
   sourceLineNumber: number | null
   tone: LiveInlineTone
+  maxWords?: number
 }
 
 type LiveLineAnnotation = {
   note: string
   tone: LiveInlineTone
+  maxWords?: number
+}
+
+type LiveFeedbackMeta = {
+  trigger: LiveFeedbackTrigger
+  hintDepth: number
+  cursorLineNumber: number | null
+}
+
+type HotkeyEditContext = {
+  changedSinceLastHint: boolean
+  changedLineNumber: number | null
+  changedLineText: string
+  addedLines: string[]
+  progressSignals: string[]
 }
 
 const findNearestWrittenLineIndex = (lines: string[], preferredIndex: number) => {
@@ -235,6 +252,16 @@ const findNearestWrittenLineIndex = (lines: string[], preferredIndex: number) =>
   }
   for (let index = boundedIndex + 1; index < lines.length; index += 1) {
     if (lines[index]?.trim()) return index
+  }
+  return -1
+}
+
+const firstChangedLineIndex = (previousText: string, nextText: string) => {
+  const previousLines = previousText.replace(/\r\n/g, '\n').split('\n')
+  const nextLines = nextText.replace(/\r\n/g, '\n').split('\n')
+  const maxLines = Math.max(previousLines.length, nextLines.length)
+  for (let index = 0; index < maxLines; index += 1) {
+    if ((previousLines[index] ?? '') !== (nextLines[index] ?? '')) return index
   }
   return -1
 }
@@ -271,11 +298,6 @@ type LiveCoachSnapshot = {
   changedLine: number
   sameLineEditCount: number
   lastMeaningfulProgressAt: number
-}
-
-type LiveCoachTimingDecision = {
-  reason: 'milestone' | 'stall' | 'churn' | 'drift'
-  delayMs: number
 }
 
 type FlowMode = 'sequential' | 'adaptive'
@@ -1147,13 +1169,14 @@ const mergeLiveLineAnnotation = (
   current: LiveLineAnnotation | undefined,
   incoming: LiveInlineNote,
 ): LiveLineAnnotation => {
-  const compactNote = shortenAnnotationNote(incoming.text)
+  const maxWords = incoming.maxWords ?? current?.maxWords
+  const compactNote = shortenAnnotationNote(incoming.text, maxWords)
   if (!compactNote) {
-    return current ?? { note: '', tone: incoming.tone }
+    return current ?? { note: '', tone: incoming.tone, maxWords }
   }
 
   if (!current || !current.note) {
-    return { note: compactNote, tone: incoming.tone }
+    return { note: compactNote, tone: incoming.tone, maxWords }
   }
 
   const currentParts = current.note.split(' / ').map((part) => part.trim().toLowerCase())
@@ -1161,12 +1184,14 @@ const mergeLiveLineAnnotation = (
     return {
       note: current.note,
       tone: mergeLiveTone(current.tone, incoming.tone),
+      maxWords,
     }
   }
 
   return {
     note: `${current.note} / ${compactNote}`,
     tone: mergeLiveTone(current.tone, incoming.tone),
+    maxWords,
   }
 }
 
@@ -1420,8 +1445,8 @@ const inlineNoteForLine = (trimmedLine: string, patternTag: string, lens: Inline
   return transformInlineNoteForLens(patternNote, lens)
 }
 
-const appendAlignedNote = (line: string, note: string) => {
-  const compactNote = shortenAnnotationNote(note)
+const appendAlignedNote = (line: string, note: string, maxWords?: number) => {
+  const compactNote = shortenAnnotationNote(note, maxWords)
   if (!compactNote) return line
   const trimmedRight = line.trimEnd()
   if (!trimmedRight) return `${' '.repeat(INLINE_NOTE_COLUMN)}${compactNote}`
@@ -1748,91 +1773,49 @@ const liveProgressKey = (structure: LiveStructure) =>
     structure.hasBookkeeping ? 'state' : 'no-state',
   ].join('|')
 
-const firstChangedLineIndex = (previousText: string, nextText: string) => {
-  const previousLines = previousText.replace(/\r\n/g, '\n').split('\n')
-  const nextLines = nextText.replace(/\r\n/g, '\n').split('\n')
-  const maxLines = Math.max(previousLines.length, nextLines.length)
-  for (let index = 0; index < maxLines; index += 1) {
-    if ((previousLines[index] ?? '') !== (nextLines[index] ?? '')) return index
-  }
-  return -1
-}
-
 const hasUsefulLiveStructure = (trimmedInput: string, structure: LiveStructure) =>
   trimmedInput.length >= 12 && structure.nonEmptyLines >= 2
 
-const chooseLiveCoachTiming = ({
-  trimmedInput,
-  structure,
-  previous,
-  accuracy,
-  now,
-  idleForMs,
-  stallMs,
-  debounceMs,
-  isGhostRepsEnabled,
-}: {
-  trimmedInput: string
-  structure: LiveStructure
-  previous: LiveCoachSnapshot | null
-  accuracy: number
-  now: number
-  idleForMs: number
-  stallMs: number
-  debounceMs: number
-  isGhostRepsEnabled: boolean
-}): { decision: LiveCoachTimingDecision | null; snapshot: LiveCoachSnapshot } => {
-  const progressKey = liveProgressKey(structure)
-  const changedLine = previous ? firstChangedLineIndex(previous.text, trimmedInput) : -1
-  const sameLineEditCount =
-    previous && changedLine >= 0 && changedLine === previous.changedLine
-      ? previous.sameLineEditCount + 1
-      : changedLine >= 0
-        ? 1
-        : 0
-  const madeMeaningfulProgress =
-    !previous ||
-    progressKey !== previous.progressKey ||
-    structure.nonEmptyLines > previous.nonEmptyLines ||
-    trimmedInput.length >= previous.text.length + 8 ||
-    accuracy >= previous.accuracy + 8
-  const lastMeaningfulProgressAt = madeMeaningfulProgress
-    ? now
-    : previous?.lastMeaningfulProgressAt ?? now
-  const snapshot: LiveCoachSnapshot = {
-    text: trimmedInput,
-    progressKey,
-    accuracy,
-    nonEmptyLines: structure.nonEmptyLines,
-    changedLine,
-    sameLineEditCount,
-    lastMeaningfulProgressAt,
+const codeLines = (value: string) => value.replace(/\r\n/g, '\n').split('\n')
+
+const inferProblemSolvingSignals = (code: string) => {
+  const lines = codeLines(code)
+  const lowerCode = code.toLowerCase()
+  const signals: string[] = []
+  if (/^\s*if\b.*\bnot\b/m.test(code) && /return\s+none/i.test(code)) {
+    signals.push('handled the empty-input guard')
   }
-
-  if (!previous) return { decision: null, snapshot }
-
-  const reachedStructuralMilestone =
-    progressKey !== previous.progressKey &&
-    (structure.hasLoop || structure.hasGuard || structure.hasBookkeeping || structure.nonEmptyLines >= 4)
-  if (reachedStructuralMilestone) {
-    return { decision: { reason: 'milestone', delayMs: debounceMs }, snapshot }
+  if (/\b(deque|queue|q)\s*=/.test(lowerCode) || /\bdeque\s*\(/.test(lowerCode)) {
+    signals.push('started a traversal frontier')
   }
-
-  const accuracyDrop = previous.accuracy - accuracy
-  if (!isGhostRepsEnabled && accuracyDrop >= 18 && structure.nonEmptyLines >= 3) {
-    return { decision: { reason: 'drift', delayMs: debounceMs }, snapshot }
+  if (/^\s*while\b.*\b(q|queue|stack|deque)\b/im.test(code)) {
+    signals.push('set up the traversal loop')
   }
-
-  if (!isGhostRepsEnabled && sameLineEditCount >= 4 && idleForMs >= 1_200) {
-    return { decision: { reason: 'churn', delayMs: 650 }, snapshot }
+  if (lines.some((line) => /\b(clone|copy|copies|visited|seen|map|mapping|old_to_new|node_to_clone)\b/i.test(line) && /=/.test(line))) {
+    signals.push('started tracking original-to-created state, even if the shape still needs repair')
   }
-
-  const stalledAfterProgress = idleForMs >= stallMs && now - lastMeaningfulProgressAt >= stallMs
-  if (stalledAfterProgress && structure.nonEmptyLines >= 3) {
-    return { decision: { reason: 'stall', delayMs: 0 }, snapshot }
+  if (/\b(node\.val|neighbors|neighbor|graph\.get)\b/i.test(code)) {
+    signals.push('is reasoning about node identity or neighbor expansion')
   }
+  return signals.slice(0, 4)
+}
 
-  return { decision: null, snapshot }
+const buildHotkeyEditContext = (previousText: string, nextText: string): HotkeyEditContext => {
+  const changedLineIndex = previousText ? firstChangedLineIndex(previousText, nextText) : -1
+  const nextLines = codeLines(nextText)
+  const previousLines = codeLines(previousText)
+  const addedLines = nextLines
+    .filter((line) => line.trim() && !previousLines.includes(line))
+    .slice(-3)
+    .map((line) => line.trim())
+
+  return {
+    changedSinceLastHint: Boolean(previousText && previousText !== nextText),
+    changedLineNumber: changedLineIndex >= 0 ? changedLineIndex + 1 : null,
+    changedLineText: changedLineIndex >= 0 ? (nextLines[changedLineIndex] ?? '').trim() : '',
+    addedLines,
+    progressSignals: inferProblemSolvingSignals(nextText),
+  }
 }
 
 const computeLineReview = (expectedCode: string, actualCode: string) => {
@@ -2037,7 +2020,8 @@ function LiveFeedbackCode({
           displayLine?.sourceLineNumber !== null && displayLine?.liveTone
             ? ' live-target-source-line'
             : ''
-        return `typing-highlight-line${status ? ` line-${status}` : ''}${inlineDecisionClass}${liveToneClass}${liveSourceClass}`
+        const liveNoteClass = displayLine?.liveTone ? ' inline-live-note-line' : ''
+        return `typing-highlight-line${status ? ` line-${status}` : ''}${inlineDecisionClass}${liveToneClass}${liveSourceClass}${liveNoteClass}`
       }}
     />
   )
@@ -2230,15 +2214,12 @@ function App() {
   const [currentInteractionId, setCurrentInteractionId] = useState('')
   const [mainRecallHistoryByCard, setMainRecallHistoryByCard] = useState<Record<string, RecallAttemptSnapshot[]>>({})
   const [liveCoachFeedback, setLiveCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
+  const [liveCoachFeedbackMeta, setLiveCoachFeedbackMeta] = useState<LiveFeedbackMeta>({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
   const [, setLiveCoachLoading] = useState(false)
   const [liveCoachError, setLiveCoachError] = useState('')
   const [liveCoachTuning, setLiveCoachTuning] = useState(() => loadStoredLiveCoachTuning())
   const [submissionTuning] = useState(() => loadStoredSubmissionTuning())
   const syntaxTheme = theme === 'light-high-contrast' ? vs : vscDarkPlus
-  const liveCoachFrequencyProfile = useMemo(
-    () => getLiveCoachFrequencyProfile(liveCoachTuning.feedbackFrequency),
-    [liveCoachTuning]
-  )
   const [coachFeedback, setCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
   const [coachLoading, setCoachLoading] = useState(false)
   const [coachError, setCoachError] = useState('')
@@ -2257,6 +2238,8 @@ function App() {
   const liveCoachRequestVersionRef = useRef(0)
   const liveCoachSnapshotRef = useRef<LiveCoachSnapshot | null>(null)
   const lastLiveCoachDecisionKeyRef = useRef('')
+  const stuckHintDepthRef = useRef(0)
+  const lastStuckHintInputRef = useRef('')
   const lastMainInputEditAtRef = useRef(0)
   const promptToggleExplanationRequestVersionRef = useRef(0)
   const coachRequestVersionRef = useRef(0)
@@ -2480,11 +2463,14 @@ function App() {
     setCurrentInteractionId('')
     setMainRecallHistoryByCard({})
     setLiveCoachFeedback(null)
+    setLiveCoachFeedbackMeta({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
     setLiveCoachLoading(false)
     setLiveCoachError('')
     liveCoachRequestVersionRef.current = 0
     liveCoachSnapshotRef.current = null
     lastLiveCoachDecisionKeyRef.current = ''
+    stuckHintDepthRef.current = 0
+    lastStuckHintInputRef.current = ''
     lastMainInputEditAtRef.current = 0
     setCoachFeedback(null)
     setCoachLoading(false)
@@ -2997,6 +2983,7 @@ function App() {
     setMultipleChoiceStartedAt(Date.now())
     setCurrentInteractionId('')
     setLiveCoachFeedback(null)
+    setLiveCoachFeedbackMeta({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
     setLiveCoachLoading(false)
     setLiveCoachError('')
     setLiveCoachUsedThisAttempt(false)
@@ -3012,6 +2999,8 @@ function App() {
     liveCoachRequestVersionRef.current = 0
     liveCoachSnapshotRef.current = null
     lastLiveCoachDecisionKeyRef.current = ''
+    stuckHintDepthRef.current = 0
+    lastStuckHintInputRef.current = ''
     lastMainInputEditAtRef.current = 0
     clearQueuedFlowState()
   }
@@ -3068,6 +3057,9 @@ function App() {
     lastMainInputEditAtRef.current = Date.now()
     liveCoachSnapshotRef.current = null
     lastLiveCoachDecisionKeyRef.current = ''
+    stuckHintDepthRef.current = 0
+    lastStuckHintInputRef.current = ''
+    setLiveCoachFeedbackMeta({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
   }
 
   const handleMainEditorScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
@@ -3173,8 +3165,15 @@ function App() {
     exact: boolean
     previousAttempts: RecallAttemptSnapshot[]
     liveStructure: LiveStructure
+    trigger?: LiveFeedbackTrigger
+    hintDepth?: number
+    cursorLineNumber?: number | null
+    editContext?: HotkeyEditContext
   }) => {
     if (!liveCoachTuning.enabled) return
+    const trigger = payload.trigger ?? 'auto'
+    const hintDepth = trigger === 'hotkey-stuck' ? Math.max(1, payload.hintDepth ?? 1) : 0
+    const cursorLineNumber = payload.cursorLineNumber ?? null
     const requestCardId = card.id
     liveCoachRequestVersionRef.current += 1
     const requestVersion = liveCoachRequestVersionRef.current
@@ -3214,6 +3213,10 @@ function App() {
             hasLoop: payload.liveStructure.hasLoop,
             hasPlaceholder: payload.liveStructure.hasPlaceholder,
             hasBookkeeping: payload.liveStructure.hasBookkeeping,
+            trigger,
+            hintDepth,
+            cursorLineNumber,
+            editContext: payload.editContext ?? null,
           },
           liveCoachTuning,
           submissionTuning,
@@ -3224,10 +3227,12 @@ function App() {
       const feedback = (await response.json()) as CoachAttemptFeedback
       if (currentCardIdRef.current !== requestCardId || liveCoachRequestVersionRef.current !== requestVersion) return
       setLiveCoachFeedback(feedback)
+      setLiveCoachFeedbackMeta({ trigger, hintDepth, cursorLineNumber })
       setLiveCoachUsedThisAttempt(true)
     } catch {
       if (currentCardIdRef.current !== requestCardId || liveCoachRequestVersionRef.current !== requestVersion) return
       setLiveCoachError('Live coach unavailable right now.')
+      setLiveCoachFeedbackMeta({ trigger, hintDepth, cursorLineNumber })
       setLiveCoachFeedback(null)
     } finally {
       if (currentCardIdRef.current === requestCardId && liveCoachRequestVersionRef.current === requestVersion) {
@@ -3592,7 +3597,10 @@ function App() {
   const inlineLiveNotes = useMemo(() => {
     if (mainPhase !== 'typing' || !liveCoachTuning.enabled) return []
     const sourceLines = (mainInput || '').split('\n')
-    const preferredIndex = liveCoachSnapshotRef.current?.changedLine ?? sourceLines.length - 1
+    const isStuckHint = liveCoachFeedbackMeta.trigger === 'hotkey-stuck'
+    const preferredIndex = isStuckHint && liveCoachFeedbackMeta.cursorLineNumber
+      ? liveCoachFeedbackMeta.cursorLineNumber - 1
+      : liveCoachSnapshotRef.current?.changedLine ?? sourceLines.length - 1
     const anchoredFallback = findNearestWrittenLineIndex(sourceLines, preferredIndex)
 
     if (liveCoachError) {
@@ -3600,41 +3608,69 @@ function App() {
         text: liveCoachError,
         sourceLineNumber: anchoredFallback >= 0 ? anchoredFallback + 1 : null,
         tone: 'negative',
+        maxWords: isStuckHint ? 14 : undefined,
       }] satisfies LiveInlineNote[]
     }
     if (!liveCoachFeedback) return []
 
-    const candidateNotes = [
-      { text: liveCoachFeedback.immediateCorrection, tone: 'negative' as const },
-      { text: liveCoachFeedback.nextMove, tone: 'negative' as const },
-      { text: liveCoachFeedback.primaryFocus, tone: 'negative' as const },
-      { text: liveCoachFeedback.why, tone: 'neutral' as const },
-      { text: liveCoachFeedback.diagnosis, tone: 'negative' as const },
-      { text: liveCoachFeedback.affirmation ?? '', tone: 'positive' as const },
-      ...liveCoachFeedback.strengths.map((text) => ({ text, tone: 'positive' as const })),
-    ]
+    const stuckDepth = Math.max(1, liveCoachFeedbackMeta.hintDepth)
+    const candidateNotes = isStuckHint
+      ? stuckDepth === 1
+        ? [
+            { text: liveCoachFeedback.affirmation ?? '', tone: 'positive' as const },
+            ...liveCoachFeedback.strengths.map((text) => ({ text, tone: 'positive' as const })),
+            { text: liveCoachFeedback.diagnosis, tone: 'neutral' as const },
+          ]
+        : stuckDepth === 2
+          ? [
+              { text: liveCoachFeedback.keepInMind ?? '', tone: 'neutral' as const },
+              { text: liveCoachFeedback.why ?? '', tone: 'neutral' as const },
+              { text: liveCoachFeedback.affirmation ?? '', tone: 'positive' as const },
+              ...liveCoachFeedback.strengths.map((text) => ({ text, tone: 'positive' as const })),
+              { text: liveCoachFeedback.diagnosis, tone: 'neutral' as const },
+            ]
+          : [
+              { text: liveCoachFeedback.why ?? '', tone: 'neutral' as const },
+              { text: liveCoachFeedback.diagnosis, tone: 'neutral' as const },
+              { text: liveCoachFeedback.keepInMind ?? '', tone: 'neutral' as const },
+              ...liveCoachFeedback.strengths.map((text) => ({ text, tone: 'positive' as const })),
+            ]
+      : [
+          { text: liveCoachFeedback.affirmation ?? '', tone: 'positive' as const },
+          ...liveCoachFeedback.strengths.map((text) => ({ text, tone: 'positive' as const })),
+          { text: liveCoachFeedback.why, tone: 'neutral' as const },
+          { text: liveCoachFeedback.diagnosis, tone: 'negative' as const },
+          { text: liveCoachFeedback.primaryFocus, tone: 'negative' as const },
+          { text: liveCoachFeedback.nextMove, tone: 'negative' as const },
+          { text: liveCoachFeedback.immediateCorrection, tone: 'negative' as const },
+        ]
 
     const seenNotes = new Set<string>()
     const notes: LiveInlineNote[] = []
     for (const candidate of candidateNotes) {
-      const note = shortenAnnotationNote(candidate.text ?? '')
+      const maxWords = isStuckHint ? 14 : undefined
+      const note = shortenAnnotationNote(candidate.text ?? '', maxWords)
       if (!note) continue
       const noteKey = note.toLowerCase()
       if (seenNotes.has(noteKey)) continue
       seenNotes.add(noteKey)
 
-      const anchoredIndex = findBestLiveNoteAnchorLine(sourceLines, note, preferredIndex)
+      const anchoredIndex = isStuckHint && candidate.tone !== 'positive'
+        ? anchoredFallback
+        : findBestLiveNoteAnchorLine(sourceLines, note, preferredIndex)
       notes.push({
         text: note,
         sourceLineNumber: anchoredIndex >= 0 ? anchoredIndex + 1 : null,
         tone: candidate.tone,
+        maxWords,
       })
 
-      if (notes.length >= 2) break
+      const maxLiveNotes = isStuckHint && stuckDepth === 1 ? 2 : isStuckHint ? 1 : 2
+      if (notes.length >= maxLiveNotes) break
     }
 
     return notes
-  }, [liveCoachError, liveCoachFeedback, liveCoachTuning.enabled, mainInput, mainPhase])
+  }, [liveCoachError, liveCoachFeedback, liveCoachFeedbackMeta, liveCoachTuning.enabled, mainInput, mainPhase])
   const displayLines = useMemo(() => {
     const source = mainPhase === 'submitted'
       ? (mainInput || '')
@@ -3674,7 +3710,7 @@ function App() {
 
       return {
         ...line,
-        text: appendAlignedNote(line.text, annotation.note),
+        text: appendAlignedNote(line.text, annotation.note, annotation.maxWords),
         liveTone: annotation.tone,
       }
     })
@@ -3690,7 +3726,15 @@ function App() {
     }
     return practiceTarget
   }, [inlineEnabled, isGhostRepsEnabled, liveCoachTuning.enabled, practiceTarget])
-  const triggerLiveCoachRefresh = useEffectEvent((trimmedInput: string) => {
+  const triggerLiveCoachRefresh = useEffectEvent((
+    trimmedInput: string,
+    options?: {
+      trigger?: LiveFeedbackTrigger
+      hintDepth?: number
+      cursorLineNumber?: number | null
+      editContext?: HotkeyEditContext
+    }
+  ) => {
     const interactionId = currentInteractionId || createInteractionId()
     if (!currentInteractionId) setCurrentInteractionId(interactionId)
     const target = practiceTarget
@@ -3705,6 +3749,45 @@ function App() {
       exact: trimmedInput === target,
       previousAttempts: currentCardRecallHistory,
       liveStructure: liveStructure,
+      trigger: options?.trigger,
+      hintDepth: options?.hintDepth,
+      cursorLineNumber: options?.cursorLineNumber,
+      editContext: options?.editContext,
+    })
+  })
+  const requestStuckHint = useEffectEvent(() => {
+    if (!liveCoachTuning.enabled) return
+    if (practiceMode !== 'recall') return
+    if (!hasDeck || mainPhase !== 'typing' || sessionFinished || hasAnsweredCurrent) return
+
+    const trimmedInput = normalizeTyping(mainInput)
+    if (!hasUsefulLiveStructure(trimmedInput, liveStructure)) return
+
+    const input = mainInputRef.current
+    const cursorPosition = input?.selectionStart ?? mainInput.length
+    const cursorLineNumber = mainInput.slice(0, cursorPosition).split('\n').length
+    const editContext = buildHotkeyEditContext(lastStuckHintInputRef.current, trimmedInput)
+    const nextDepth = editContext.changedSinceLastHint ? 1 : stuckHintDepthRef.current + 1
+    stuckHintDepthRef.current = nextDepth
+    lastStuckHintInputRef.current = trimmedInput
+    liveCoachSnapshotRef.current = {
+      text: trimmedInput,
+      progressKey: liveProgressKey(liveStructure),
+      accuracy: estimateTemplateAccuracy(practiceTarget, trimmedInput),
+      nonEmptyLines: liveStructure.nonEmptyLines,
+      changedLine: cursorLineNumber - 1,
+      sameLineEditCount: 0,
+      lastMeaningfulProgressAt: Date.now(),
+    }
+    lastLiveCoachDecisionKeyRef.current = `hotkey-stuck|${card.id}|${currentTemplateMode}|${nextDepth}|${cursorLineNumber}|${Math.floor(trimmedInput.length / 20)}`
+    setLiveCoachFeedback(null)
+    setLiveCoachFeedbackMeta({ trigger: 'hotkey-stuck', hintDepth: nextDepth, cursorLineNumber })
+    setLiveCoachError('')
+    triggerLiveCoachRefresh(trimmedInput, {
+      trigger: 'hotkey-stuck',
+      hintDepth: nextDepth,
+      cursorLineNumber,
+      editContext,
     })
   })
   const latestSubmittedAttempt =
@@ -3834,22 +3917,28 @@ function App() {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (practiceMode !== 'recall') return
-      if (event.key === 'g' && (event.metaKey || event.ctrlKey)) {
+      const key = event.key.toLowerCase()
+      if (key === 'h' && event.metaKey && event.shiftKey) {
+        event.preventDefault()
+        requestStuckHint()
+        return
+      }
+      if (key === 'g' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
         setSupportLayer((prev) => (prev === 'ghost-reps' ? 'none' : 'ghost-reps'))
       }
-      if (event.key === 'l' && (event.metaKey || event.ctrlKey)) {
+      if (key === 'l' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
         setLiveCoachTuning((prev) => ({ ...prev, enabled: !prev.enabled }))
       }
-      if (event.key === 'i' && (event.metaKey || event.ctrlKey)) {
+      if (key === 'i' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
         toggleInlineHelper()
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [practiceMode, toggleInlineHelper])
+  }, [practiceMode, requestStuckHint, toggleInlineHelper])
 
   const submissionFeedbackNextStep =
     coachFeedback?.immediateCorrection || coachFeedback?.primaryFocus || 'Review the drifted step, then rewrite the recall target once more.'
@@ -3894,107 +3983,8 @@ function App() {
     setLiveCoachLoading(false)
     setLiveCoachError('')
     setLiveCoachFeedback(null)
+    setLiveCoachFeedbackMeta({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
   }, [liveCoachTuning.enabled])
-
-  useEffect(() => {
-    if (!liveCoachTuning.enabled) return
-    if (practiceMode !== 'recall') return
-    if (!hasDeck || mainPhase !== 'typing' || sessionFinished || hasAnsweredCurrent) return
-
-    const trimmedInput = normalizeTyping(mainInput)
-    if (!hasUsefulLiveStructure(trimmedInput, liveStructure)) {
-      setLiveCoachFeedback(null)
-      setLiveCoachLoading(false)
-      setLiveCoachError('')
-      liveCoachSnapshotRef.current = null
-      lastLiveCoachDecisionKeyRef.current = ''
-      return
-    }
-
-    const now = Date.now()
-    const accuracy = estimateTemplateAccuracy(practiceTarget, trimmedInput)
-    const stallMs = Math.max(
-      8_000,
-      Math.min(liveCoachTuning.stallThresholdSeconds * 1000, liveCoachFrequencyProfile.idleRefreshMs)
-    )
-    const { decision, snapshot } = chooseLiveCoachTiming({
-      trimmedInput,
-      structure: liveStructure,
-      previous: liveCoachSnapshotRef.current,
-      accuracy,
-      now,
-      idleForMs: now - (lastMainInputEditAtRef.current || now),
-      stallMs,
-      debounceMs: liveCoachFrequencyProfile.debounceMs,
-      isGhostRepsEnabled,
-    })
-    liveCoachSnapshotRef.current = snapshot
-
-    const scheduleDecision = (decisionKey: string, delayMs: number) => {
-      if (lastLiveCoachDecisionKeyRef.current === decisionKey) return undefined
-      const timeoutId = window.setTimeout(() => {
-        if (lastLiveCoachDecisionKeyRef.current === decisionKey) return
-        lastLiveCoachDecisionKeyRef.current = decisionKey
-        triggerLiveCoachRefresh(trimmedInput)
-      }, delayMs)
-      return () => window.clearTimeout(timeoutId)
-    }
-
-    if (decision) {
-      const decisionKey = [
-        card.id,
-        currentTemplateMode,
-        decision.reason,
-        snapshot.progressKey,
-        snapshot.changedLine,
-        Math.floor(snapshot.text.length / 20),
-      ].join('|')
-      return scheduleDecision(decisionKey, decision.delayMs)
-    }
-
-    if (snapshot.nonEmptyLines >= 3) {
-      const remainingStallMs = Math.max(stallMs - (now - (lastMainInputEditAtRef.current || now)), 0)
-      const decisionKey = [
-        card.id,
-        currentTemplateMode,
-        'stall',
-        snapshot.progressKey,
-        snapshot.changedLine,
-        Math.floor(snapshot.text.length / 20),
-      ].join('|')
-      const timeoutId = window.setTimeout(() => {
-        if (lastLiveCoachDecisionKeyRef.current === decisionKey) return
-        if (normalizeTyping(mainInput) !== trimmedInput) return
-        if (Date.now() - (lastMainInputEditAtRef.current || Date.now()) < stallMs) return
-        lastLiveCoachDecisionKeyRef.current = decisionKey
-        triggerLiveCoachRefresh(trimmedInput)
-      }, remainingStallMs)
-      return () => window.clearTimeout(timeoutId)
-    }
-  }, [
-    liveStructure,
-    liveStructure.nonEmptyLines,
-    liveStructure.hasSignature,
-    liveStructure.hasGuard,
-    liveStructure.hasLoop,
-    liveStructure.hasPlaceholder,
-    liveStructure.hasBookkeeping,
-    liveStructure.traversalKind,
-    card.id,
-    currentTemplateMode,
-    hasDeck,
-    hasAnsweredCurrent,
-    isGhostRepsEnabled,
-    liveCoachFrequencyProfile.debounceMs,
-    liveCoachFrequencyProfile.idleRefreshMs,
-    liveCoachTuning.enabled,
-    liveCoachTuning.stallThresholdSeconds,
-    mainInput,
-    mainPhase,
-    practiceTarget,
-    practiceMode,
-    sessionFinished,
-  ])
 
   return (
     <div className={relatedDrawerOpen && relatedLeetCodeSet ? 'app app-related-drawer-open' : 'app'}>
