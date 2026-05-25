@@ -6,8 +6,8 @@ import json
 import asyncpg
 
 from app.config import settings
-from app.core import core_algorithms
-from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG
+from app.core import core_algorithms, core_meta
+from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG, CORE_META_CATALOG
 
 pool: asyncpg.Pool | None = None
 
@@ -701,15 +701,23 @@ async def _seed_core_algorithms(db_pool: asyncpg.Pool) -> None:
     function_rows: list[tuple[str, dict, str, int]] = []
     mapping_rows: list[tuple[str, str, str, int]] = []
 
-    for function_index, (function_name, meta) in enumerate(CORE_ALGORITHM_CATALOG.items(), 1):
-        code = inspect.getsource(getattr(core_algorithms, function_name)).strip()
-        function_rows.append((function_name, meta, code, function_index))
-        for pattern_slug in meta["patterns"]:
-            pattern_order.setdefault(pattern_slug, len(pattern_order) + 1)
-            for method_slug in meta["methods"]:
-                method_key = (pattern_slug, method_slug)
-                method_order.setdefault(method_key, len(method_order) + 1)
-                mapping_rows.append((function_name, pattern_slug, method_slug, function_index))
+    catalog_sources = (
+        (core_algorithms, CORE_ALGORITHM_CATALOG),
+        (core_meta, CORE_META_CATALOG),
+    )
+    function_index = 0
+    for source_module, catalog in catalog_sources:
+        for function_name, meta in catalog.items():
+            function_index += 1
+            source_name = str(meta.get("sourceName") or function_name)
+            code = inspect.getsource(getattr(source_module, source_name)).strip()
+            function_rows.append((function_name, meta, code, function_index))
+            for pattern_slug in meta["patterns"]:
+                pattern_order.setdefault(pattern_slug, len(pattern_order) + 1)
+                for method_slug in meta["methods"]:
+                    method_key = (pattern_slug, method_slug)
+                    method_order.setdefault(method_key, len(method_order) + 1)
+                    mapping_rows.append((function_name, pattern_slug, method_slug, function_index))
 
     async with db_pool.acquire() as conn:
         async with conn.transaction():

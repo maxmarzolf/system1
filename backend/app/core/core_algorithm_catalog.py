@@ -39,6 +39,21 @@ def _entry(
     }
 
 
+def _meta_entry(
+    title: str,
+    methods: tuple[str, ...],
+    difficulty: str,
+    description: str,
+    examples: tuple[str, ...],
+    source_name: str,
+) -> dict[str, Any]:
+    entry = _entry(title, ("meta",), methods, difficulty, description, examples)
+    shared_core_tag = ("core-algorithm",) if source_name in CORE_ALGORITHM_CATALOG else ()
+    entry["tags"] = tuple(dict.fromkeys(("skill-map", *shared_core_tag, "core-meta", "meta", *methods)))
+    entry["sourceName"] = source_name
+    return entry
+
+
 CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "fixed_window_sum": _entry(
         "Fixed Window Sum",
@@ -763,18 +778,180 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
 }
 
 
+CORE_META_CATALOG: dict[str, dict[str, Any]] = {
+    "meta_clone_graph": _meta_entry(
+        "Clone Graph",
+        ("graph-cloning", "visited-map", "neighbor-wiring"),
+        "Med.",
+        "Copy each graph node once, then wire cloned neighbors from the visited map.",
+        ("Clone Graph",),
+        "clone_graph",
+    ),
+    "meta_nested_list_weight_sum": _meta_entry(
+        "Nested List Weight Sum",
+        ("nested-traversal", "depth-tracking", "weighted-accumulation"),
+        "Med.",
+        "Traverse nested values level by level while carrying the current depth.",
+        ("Nested List Weight Sum",),
+        "nested_list_weight_sum",
+    ),
+    "MetaValidWordAbbr": _meta_entry(
+        "Unique Word Abbreviation",
+        ("string-encoding", "collision-detection", "uniqueness-lookup"),
+        "Med.",
+        "Map each abbreviation to the set of original words that can produce it.",
+        ("Unique Word Abbreviation",),
+        "ValidWordAbbr",
+    ),
+    "meta_destination_city": _meta_entry(
+        "Destination City",
+        ("set-difference", "terminal-node", "directed-path"),
+        "Easy",
+        "Track outgoing cities, then find the city that never appears as a start.",
+        ("Destination City",),
+        "dest_city",
+    ),
+    "MetaParentPointerLCA": _meta_entry(
+        "LCA With Parent Pointers",
+        ("parent-pointers", "depth-alignment", "ancestor-walk"),
+        "Med.",
+        "Align node depths with parent pointers, then climb together to the meeting node.",
+        ("Lowest Common Ancestor of a Binary Tree III",),
+        "ParentPointerLCA",
+    ),
+    "MetaNextPermutation": _meta_entry(
+        "Next Permutation",
+        ("pivot-search", "suffix-reversal", "next-greater-swap"),
+        "Med.",
+        "Find the rightmost rising pivot, swap with the next greater suffix value, then reverse the suffix.",
+        ("Next Permutation",),
+        "NextPermutation",
+    ),
+    "meta_lowest_common_ancestor_bst": _meta_entry(
+        "BST Lowest Common Ancestor",
+        ("bst-pruning", "split-detection", "ordered-branching"),
+        "Easy",
+        "Use BST ordering to recurse toward both targets until their paths split.",
+        ("Lowest Common Ancestor of a Binary Search Tree",),
+        "lowest_common_ancestor_bst",
+    ),
+    "meta_top_k_frequent": _meta_entry(
+        "Top K Frequent Elements",
+        ("frequency-map", "top-k-selection", "heap-or-quickselect"),
+        "Med.",
+        "Count values, then select the k keys with the highest frequencies.",
+        ("Top K Frequent Elements",),
+        "top_k_frequent",
+    ),
+    "MetaMovingAverage": _meta_entry(
+        "Moving Average From Data Stream",
+        ("fixed-window-queue", "running-sum", "stream-processing"),
+        "Easy",
+        "Keep the most recent values in a fixed-size stream window and average that window.",
+        ("Moving Average from Data Stream",),
+        "MovingAverage",
+    ),
+    "meta_merge_intervals": _meta_entry(
+        "Merge Intervals",
+        ("sort-by-start", "merge-overlap", "boundary-comparison"),
+        "Med.",
+        "Sort intervals by start and extend the previous merged interval when boundaries overlap.",
+        ("Merge Intervals",),
+        "merge_intervals",
+    ),
+    "meta_valid_parentheses": _meta_entry(
+        "Valid Parentheses",
+        ("stack-matching", "open-close-pairs", "invalid-close-guard"),
+        "Easy",
+        "Push opens and require each close to match the latest unmatched open.",
+        ("Valid Parentheses",),
+        "valid_parentheses",
+    ),
+    "meta_top_k_heap": _meta_entry(
+        "Kth Largest Element",
+        ("min-heap-of-size-k", "candidate-pruning", "order-statistic"),
+        "Med.",
+        "Maintain a min-heap of the k largest seen values so the root is the answer.",
+        ("Kth Largest Element in an Array",),
+        "kth_largest_heap",
+    ),
+    "meta_custom_sort_string": _meta_entry(
+        "Custom Sort String",
+        ("rank-map", "custom-ordering", "stable-tail"),
+        "Med.",
+        "Sort characters by their custom alphabet rank while leaving unknown characters after ranked ones.",
+        ("Custom Sort String",),
+        "custom_sort_string",
+    ),
+    "meta_simplify_path": _meta_entry(
+        "Simplify Path",
+        ("path-normalization", "folder-stack", "root-boundary"),
+        "Med.",
+        "Treat path segments as stack operations and rebuild the canonical absolute path.",
+        ("Simplify Path",),
+        "simplify_path",
+    ),
+    "meta_vertical_order_traversal": _meta_entry(
+        "Vertical Order Traversal",
+        ("column-indexing", "level-order-traversal", "ordered-grouping"),
+        "Hard",
+        "Collect tree nodes by column and row, then return values in sorted vertical order.",
+        ("Vertical Order Traversal of a Binary Tree",),
+        "vertical_order_traversal",
+    ),
+    "meta_valid_palindrome": _meta_entry(
+        "Valid Palindrome",
+        ("opposing-pointers", "alphanumeric-filter", "case-folded-compare"),
+        "Easy",
+        "Move inward over non-alphanumeric characters and compare normalized characters.",
+        ("Valid Palindrome",),
+        "valid_palindrome",
+    ),
+    "meta_range_sum_bst": _meta_entry(
+        "Range Sum of BST",
+        ("tree-dfs", "range-bounds", "sum-accumulation"),
+        "Easy",
+        "Traverse the tree and accumulate node values that fall inside the target range.",
+        ("Range Sum of BST",),
+        "range_sum_bst",
+    ),
+    "MetaStockPrice": _meta_entry(
+        "Stock Price Fluctuation",
+        ("timestamp-map", "frequency-bookkeeping", "current-min-max"),
+        "Med.",
+        "Track timestamp corrections separately from price frequencies and the latest timestamp.",
+        ("Stock Price Fluctuation",),
+        "StockPrice",
+    ),
+    "meta_unique_paths_dp": _meta_entry(
+        "Unique Paths",
+        ("grid-dp", "state-transition", "base-row-column"),
+        "Med.",
+        "Fill each grid cell with the number of ways to reach it from top or left.",
+        ("Unique Paths",),
+        "unique_paths_dp",
+    ),
+}
+
+
+CORE_PRACTICE_CATALOG: dict[str, dict[str, Any]] = {
+    **CORE_ALGORITHM_CATALOG,
+    **CORE_META_CATALOG,
+}
+
+
 def function_names_for_skill(pattern: str, method: str) -> tuple[str, ...]:
     pattern_key = pattern_slug(pattern)
     method_key = method_slug(method)
     exact = [
         name
-        for name, meta in CORE_ALGORITHM_CATALOG.items()
+        for name, meta in CORE_PRACTICE_CATALOG.items()
         if pattern_key in meta["patterns"] and method_key in meta["methods"]
     ]
     if exact:
         return tuple(exact)
     return tuple(
         name
-        for name, meta in CORE_ALGORITHM_CATALOG.items()
+        for name, meta in CORE_PRACTICE_CATALOG.items()
         if pattern_key in meta["patterns"] or method_key in meta["methods"]
     )

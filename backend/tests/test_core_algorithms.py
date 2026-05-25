@@ -3,7 +3,8 @@ from __future__ import annotations
 import inspect
 
 from app.core import core_algorithms as sf
-from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG, function_names_for_skill
+from app.core import core_meta
+from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG, CORE_META_CATALOG, function_names_for_skill
 from app.core.core_algorithm_practice import build_core_algorithm_drill
 
 
@@ -37,6 +38,24 @@ def test_core_algorithm_catalog_references_real_functions() -> None:
     assert 75 <= len(names) <= 100
     assert set(CORE_ALGORITHM_CATALOG) == names
     assert "core_algorithm_cards_refine" not in names
+
+
+def test_core_meta_catalog_references_real_members() -> None:
+    names = {
+        name
+        for name, obj in inspect.getmembers(core_meta)
+        if getattr(obj, "__module__", "") == core_meta.__name__ and (inspect.isfunction(obj) or inspect.isclass(obj))
+    }
+    source_names = {str(meta["sourceName"]) for meta in CORE_META_CATALOG.values()}
+
+    assert len(CORE_META_CATALOG) == 19
+    assert source_names <= names
+    assert "clone_graph" in source_names
+    assert "GraphNode" in names
+    assert "meta_clone_graph" not in names
+    assert "core-algorithm" not in CORE_META_CATALOG["meta_clone_graph"]["tags"]
+    assert "core-algorithm" in CORE_META_CATALOG["meta_merge_intervals"]["tags"]
+    assert set(function_names_for_skill("Meta", "graph cloning")) == {"meta_clone_graph"}
 
 
 def test_core_algorithm_catalog_has_required_metadata() -> None:

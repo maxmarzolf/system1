@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vs, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useSearchParams } from 'react-router-dom'
@@ -2205,6 +2205,8 @@ function App() {
   const [promptToggleDetail, setPromptToggleDetail] = useState<PromptToggleExplanationResponse | null>(null)
   const [plainEnglishPromptLoading, setPlainEnglishPromptLoading] = useState(false)
   const [tagsExpanded, setTagsExpanded] = useState(false)
+  const tagsListRef = useRef<HTMLDivElement | null>(null)
+  const [tagsListHeight, setTagsListHeight] = useState(0)
   const [relatedDrawerOpen, setRelatedDrawerOpen] = useState(false)
 
   const [sessionOrder, setSessionOrder] = useState<number[]>([])
@@ -2336,14 +2338,6 @@ function App() {
       ? 'skill-map-core-algorithm'
       : questionType
   const focusedPatternLabel = focusedPatternNode?.pattern ?? patternLabelFromSlug(focusedPatternSlug)
-  const targetedDeckLabel = requestedPlaylist
-    ? `${requestedPlaylist.title} • ${requestedPlaylist.questions.length} questions`
-    : focusedTagSlug
-      ? `Tag: ${patternLabelFromSlug(focusedTagSlug)}`
-    : focusedPatternSlug
-    ? `${focusedPatternLabel} • Core algorithms`
-    : ''
-
   const filteredDeck = useMemo(() => skillMapDeck, [skillMapDeck])
   const activeTemplateModes = useMemo(() => ensureTemplateModes(enabledTemplateModes), [enabledTemplateModes])
   const currentTemplateMode: TemplateMode = 'algorithm'
@@ -2539,8 +2533,10 @@ function App() {
   const activeCardId = practiceMode === 'multiple-choice' ? multipleChoiceCard?.id ?? '' : card.id
   const activeCardTitle = practiceMode === 'multiple-choice' ? multipleChoiceCard?.title ?? 'Multiple Choice' : card.title
   const activeCardDifficulty = practiceMode === 'multiple-choice' ? multipleChoiceCard?.difficulty ?? multipleChoiceDifficulty : card.difficulty
+  const activeCardDifficultyLabel = activeCardDifficulty === 'Med.' ? 'Medium' : activeCardDifficulty
   const activeCardTags = practiceMode === 'multiple-choice' ? multipleChoiceCard?.tags ?? [] : card.tags
-  const isCoreAlgorithmCard = activeCardId.startsWith('core-algorithm-') || activeCardTags.includes('core-algorithm')
+  const isCoreAlgorithmCard = activeCardTags.includes('core-algorithm')
+  const isMetaCard = activeCardTags.includes('core-meta') || activeCardTags.includes('meta')
   const primaryPatternTag = useMemo(() => getPrimaryPatternTag(card.tags), [card.tags])
   const fullSolutionTarget = useMemo(
     () => normalizeTyping(card.solution.replace('{{missing}}', card.missing)),
@@ -2655,6 +2651,24 @@ function App() {
     () => activeCardTags.filter((tag) => tag !== 'skill-map' && tag !== 'skill-map-mcq'),
     [activeCardTags]
   )
+
+  useLayoutEffect(() => {
+    const element = tagsListRef.current
+    if (!element) return
+
+    const updateTagsListHeight = () => {
+      setTagsListHeight(tagsExpanded ? element.scrollHeight : 0)
+    }
+
+    updateTagsListHeight()
+    if (!tagsExpanded || typeof ResizeObserver === 'undefined') return
+
+    const resizeObserver = new ResizeObserver(updateTagsListHeight)
+    resizeObserver.observe(element)
+
+    return () => resizeObserver.disconnect()
+  }, [tagsExpanded, visibleCardTags.length])
+
   currentCardIdRef.current = activeCardId
 
   const handleTagClick = (tag: string) => {
@@ -4054,26 +4068,57 @@ function App() {
         <div className="card-header">
           <div className="card-header-main">
             <h3>{activeCardTitle}</h3>
-            <div className="card-header-meta">
-              <span className="difficulty">{activeCardDifficulty}</span>
-              {isCoreAlgorithmCard && <span className="difficulty">[core]</span>}
-            </div>
+            <p className="card-badges">
+              <span>{activeCardDifficultyLabel}</span>
+              {(isCoreAlgorithmCard || isMetaCard) && <span aria-hidden="true">•</span>}
+              {isCoreAlgorithmCard && <span className="card-badge-core">core</span>}
+              {isMetaCard && <span className="card-badge-meta">meta</span>}
+            </p>
+            {visibleCardTags.length > 0 && (
+              <div className="tags">
+                <button
+                  type="button"
+                  className={tagsExpanded ? 'tags-toggle active' : 'tags-toggle'}
+                  onClick={() => setTagsExpanded((current) => !current)}
+                  aria-expanded={tagsExpanded}
+                  aria-controls={tagsListId}
+                  title={tagsExpanded ? 'Hide tags' : 'Show tags'}
+                >
+                  tags
+                </button>
+                <div
+                  ref={tagsListRef}
+                  className={tagsExpanded ? 'tags-list expanded' : 'tags-list'}
+                  id={tagsListId}
+                  aria-hidden={!tagsExpanded}
+                  style={{ '--tags-list-height': `${tagsListHeight}px` } as CSSProperties}
+                >
+                  {visibleCardTags.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      className={focusedTagSlug === tag ? 'tag tag-button active' : 'tag tag-button'}
+                      onClick={() => handleTagClick(tag)}
+                      aria-pressed={focusedTagSlug === tag}
+                      disabled={!tagsExpanded}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {practiceMode === 'multiple-choice' ? (
               <div className="coach-metric-row card-header-metric-row">
                 <span className="coach-metric-chip">Algorithm anchors</span>
                 <span className="coach-metric-chip">{multipleChoiceQuestionCount} questions</span>
-                <span className="coach-metric-chip">{multipleChoiceDifficulty}</span>
                 {(focusedPatternSlug || requestedPlaylist) && (
                   <span className="coach-metric-chip">
                     {requestedPlaylist ? 'Playlist bias' : `Focus ${focusedPatternLabel}`}
                   </span>
                 )}
               </div>
-            ) : (focusedPatternSlug || requestedPlaylist) && (
-              <p className="card-template-summary">
-                {requestedPlaylist ? 'Playlist' : 'Core algorithm deck'}: {targetedDeckLabel}
-              </p>
-            )}
+            ) : null}
           </div>
           <div className="card-header-side">
             <div className="flow-mode-control" role="group" aria-label="Practice mode">
@@ -4200,35 +4245,6 @@ function App() {
               </button>
                 </div>
               </>
-            )}
-            {visibleCardTags.length > 0 && (
-              <div className="tags">
-                <button
-                  type="button"
-                  className={tagsExpanded ? 'tags-toggle active' : 'tags-toggle'}
-                  onClick={() => setTagsExpanded((current) => !current)}
-                  aria-expanded={tagsExpanded}
-                  aria-controls={tagsListId}
-                  title={tagsExpanded ? 'Hide tags' : 'Show tags'}
-                >
-                  tags
-                </button>
-                {tagsExpanded && (
-                  <div className="tags-list" id={tagsListId}>
-                    {visibleCardTags.map((tag) => (
-                      <button
-                        key={tag}
-                        type="button"
-                        className={focusedTagSlug === tag ? 'tag tag-button active' : 'tag tag-button'}
-                        onClick={() => handleTagClick(tag)}
-                        aria-pressed={focusedTagSlug === tag}
-                      >
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
             )}
           </div>
         </div>

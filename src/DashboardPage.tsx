@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiUrl } from './api'
-import { practicePlaylists } from './data/playlists'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 
@@ -291,6 +290,21 @@ function SkillAlgorithmIllustration({ slug, pattern }: { slug: string; pattern: 
     )
   }
 
+  if (patternKey === 'meta') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <path className="skill-svg-line" d="M38 23h84M38 43h84M38 63h84" />
+          <path className="skill-svg-line skill-svg-accent" d="M38 23h36M38 43h58M38 63h44" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="126" cy="23" r="5" />
+          <circle className="skill-svg-node" cx="112" cy="43" r="5" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="92" cy="63" r="5" />
+          <path className="skill-svg-line skill-svg-dashed" d="M126 23c15 10 15 30-14 20" />
+        </svg>
+      </div>
+    )
+  }
+
   return (
     <div className="skill-map-illustration" aria-hidden="true">
       <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
@@ -340,10 +354,6 @@ export default function DashboardPage() {
     })
     navigate(`/?${nextParams.toString()}`)
   }
-  const launchPlaylist = (playlistSlug: string) => {
-    const nextParams = new URLSearchParams({ playlist: playlistSlug })
-    navigate(`/?${nextParams.toString()}`)
-  }
 
   return (
     <div className="app app-dashboard">
@@ -352,55 +362,10 @@ export default function DashboardPage() {
       <section className="dashboard">
         {error && <p className="skill-map-intro">{error}</p>}
 
-        <section className="dashboard-playlists" aria-label="Playlists">
-          <div className="dashboard-playlists-header">
-            <div>
-              <p className="dashboard-activity-eyebrow">Playlists</p>
-              <h2>Question sets</h2>
-            </div>
-          </div>
-          <div className="dashboard-playlist-grid">
-            {practicePlaylists.map((playlist) => {
-              const coreShapes = Array.from(new Set(playlist.questions.map((question) => question.coreShape)))
-              return (
-                <article key={playlist.slug} className="dashboard-playlist-card">
-                  <div className="dashboard-playlist-main">
-                    <div>
-                      <h3>{playlist.title}</h3>
-                      <p className="dashboard-mode-meta">{playlist.description}</p>
-                    </div>
-                    <button
-                      type="button"
-                      className="dashboard-playlist-start"
-                      onClick={() => launchPlaylist(playlist.slug)}
-                    >
-                      Start playlist
-                    </button>
-                  </div>
-                  <div className="dashboard-summary">
-                    <span className="coach-metric-chip">{playlist.questions.length} questions</span>
-                    <span className="coach-metric-chip">{coreShapes.length} core shapes</span>
-                    <span className="coach-metric-chip">Inline</span>
-                    <span className="coach-metric-chip">Ghost Reps</span>
-                    <span className="coach-metric-chip">Plain English</span>
-                  </div>
-                  <div className="dashboard-playlist-questions">
-                    {playlist.questions.map((question) => (
-                      <div key={question.title} className="dashboard-playlist-question">
-                        <span>{question.title}</span>
-                        <strong>{question.coreShape}</strong>
-                      </div>
-                    ))}
-                  </div>
-                </article>
-              )
-            })}
-          </div>
-        </section>
-
         <div className="skill-map-grid">
           {loading && !error && <p className="skill-map-intro">Loading readiness overview...</p>}
           {patterns.map((node) => {
+            const isMeta = node.slug === 'meta'
             return (
               <article key={node.slug} className="skill-map-card">
                 <div className="skill-map-header">
@@ -410,7 +375,7 @@ export default function DashboardPage() {
                   </span>
                 </div>
                 <div className="dashboard-summary skill-map-card-stats">
-                  <span className="coach-metric-chip">{node.totalCards} core algorithms</span>
+                  <span className="coach-metric-chip">{node.totalCards} {isMeta ? 'meta questions' : 'core algorithms'}</span>
                   <span className="coach-metric-chip">{node.staleCards} stale</span>
                   <span className="coach-metric-chip">{node.ghostRepCount} Ghost Reps</span>
                 </div>
@@ -421,7 +386,7 @@ export default function DashboardPage() {
                     className="dashboard-mode-tab dashboard-mode-tab-actionable"
                     onClick={() => launchFocusedPractice(node.slug)}
                   >
-                    <span className="dashboard-mode-tab-label">Start practice</span>
+                    <span className="dashboard-mode-tab-label">{isMeta ? 'Start playlist' : 'Start practice'}</span>
                   </button>
                 </div>
               </article>
