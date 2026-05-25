@@ -179,7 +179,12 @@ def call_openai_json(
         return None
 
 
-def call_claude_json(system_prompt: str, user_payload: dict[str, Any], max_tokens: int = 1800) -> dict[str, Any] | None:
+def call_claude_json(
+    system_prompt: str,
+    user_payload: dict[str, Any],
+    max_tokens: int = 1800,
+    timeout_seconds: int = 60,
+) -> dict[str, Any] | None:
     if not settings.coach_anthropic_api_key:
         return None
 
@@ -211,7 +216,7 @@ def call_claude_json(system_prompt: str, user_payload: dict[str, Any], max_token
             },
         )
         try:
-            with _urlopen(request, timeout=30) as response:
+            with _urlopen(request, timeout=timeout_seconds) as response:
                 raw = response.read().decode("utf-8")
                 payload = json.loads(raw)
                 content = payload.get("content", [])
@@ -237,7 +242,15 @@ def call_claude_json(system_prompt: str, user_payload: dict[str, Any], max_token
                 continue
             logger.warning("Anthropic request failed (%s): %s", error.code, details[:400])
             return None
+        except TimeoutError as error:
+            logger.warning("Anthropic request timed out for model '%s': %s", model, error)
+            continue
         except (urllib.error.URLError, KeyError, IndexError, ValueError, TypeError, TimeoutError) as error:
+            if isinstance(error, urllib.error.URLError):
+                details = str(getattr(error, "reason", "") or error).lower()
+                if "timed out" in details:
+                    logger.warning("Anthropic request timed out for model '%s': %s", model, error)
+                    continue
             logger.warning("Anthropic request failed for model '%s': %s", model, error)
             return None
 
@@ -245,7 +258,12 @@ def call_claude_json(system_prompt: str, user_payload: dict[str, Any], max_token
     return None
 
 
-def call_gemma_json(system_prompt: str, user_payload: dict[str, Any], max_tokens: int = 1800) -> dict[str, Any] | None:
+def call_gemma_json(
+    system_prompt: str,
+    user_payload: dict[str, Any],
+    max_tokens: int = 1800,
+    timeout_seconds: int = 60,
+) -> dict[str, Any] | None:
     if not settings.coach_gemma_api_key:
         return None
 
@@ -263,7 +281,7 @@ def call_gemma_json(system_prompt: str, user_payload: dict[str, Any], max_tokens
         headers={"Content-Type": "application/json"},
     )
     try:
-        with _urlopen(request, timeout=60) as response:
+        with _urlopen(request, timeout=timeout_seconds) as response:
             raw = response.read().decode("utf-8")
             payload = json.loads(raw)
             candidates = payload.get("candidates", [])
@@ -287,7 +305,7 @@ def call_llm_json(
     temperature: float = 0.2,
 ) -> dict[str, Any] | None:
     if provider == "claude":
-        return call_claude_json(system_prompt, user_payload, max_tokens)
+        return call_claude_json(system_prompt, user_payload, max_tokens, timeout_seconds)
     if provider == "gemma":
-        return call_gemma_json(system_prompt, user_payload, max_tokens)
+        return call_gemma_json(system_prompt, user_payload, max_tokens, timeout_seconds)
     return call_openai_json(system_prompt, user_payload, max_tokens, timeout_seconds, temperature)

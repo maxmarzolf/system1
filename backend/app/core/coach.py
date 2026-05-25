@@ -1923,6 +1923,7 @@ async def coach_multiple_choice_drills(body: MultipleChoiceDrillsRequest) -> Mul
             provider_available=_llm_provider_available(provider),
             call_llm_json=_call_llm_json,
             fallback_providers=fallback_providers,
+            provider_timeout_seconds=int(getattr(settings, "coach_generator_timeout_seconds", 90)),
             persist_generated_questions=persist_generated_questions,
             logger=logger,
         )

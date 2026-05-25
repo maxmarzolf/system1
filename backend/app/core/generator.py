@@ -525,6 +525,7 @@ async def generate_multiple_choice_drills_response(
     provider_available: bool,
     call_llm_json: Callable[[str, dict[str, Any], str, int, int, float], dict[str, Any] | None],
     fallback_providers: list[tuple[str, str, bool]] | None = None,
+    provider_timeout_seconds: int = 60,
     retry_delays_seconds: tuple[float, ...] = (0.4, 0.8),
     persist_generated_questions: Callable[[list[dict[str, Any]]], Awaitable[None]] | None = None,
     logger: logging.Logger | None = None,
@@ -610,7 +611,7 @@ async def generate_multiple_choice_drills_response(
                 llm_payload,
                 candidate_provider,
                 5000,
-                60,
+                provider_timeout_seconds,
                 0.7,
             )
             if candidate_response and isinstance(candidate_response.get("drills"), list):
