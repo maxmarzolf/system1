@@ -79,7 +79,7 @@ class SkillMapOverviewGeneratedRow(TypedDict):
     tags: list[str] | None
 
 
-class StaticFunctionPracticeRow(TypedDict):
+class CoreAlgorithmPracticeRow(TypedDict):
     name: str
     title: str
     difficulty: str

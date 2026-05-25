@@ -410,7 +410,7 @@ export default function DashboardPage() {
                   </span>
                 </div>
                 <div className="dashboard-summary skill-map-card-stats">
-                  <span className="coach-metric-chip">{node.totalCards} static functions</span>
+                  <span className="coach-metric-chip">{node.totalCards} core algorithms</span>
                   <span className="coach-metric-chip">{node.staleCards} stale</span>
                   <span className="coach-metric-chip">{node.ghostRepCount} Ghost Reps</span>
                 </div>

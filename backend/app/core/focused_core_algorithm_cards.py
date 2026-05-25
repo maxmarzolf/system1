@@ -1399,7 +1399,7 @@ def area_from_span(heights):
 }
 
 
-def _static_skeleton(family: str, method: str, function_name: str) -> str:
+def _core_algorithm_skeleton(family: str, method: str, function_name: str) -> str:
     if function_name in SPECIFIC_SKELETONS:
         return SPECIFIC_SKELETONS[function_name]
     if family == "binary-search":
@@ -1626,7 +1626,7 @@ def _generic_profile(family: str, method: str) -> dict[str, Any]:
             catalog["brass"],
             pattern_examples(family)[:3],
             (function_name,),
-            _static_skeleton(family, method, function_name),
+            _core_algorithm_skeleton(family, method, function_name),
         )
     title = {
         "binary-search": "Search Insert Position",

@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import cast
 
 from app.repositories.base import acquire_connection
-from app.repositories.types import StaticFunctionPracticeRow
+from app.repositories.types import CoreAlgorithmPracticeRow
 
 
-async def fetch_static_function_practice_rows(pattern_slug: str) -> list[StaticFunctionPracticeRow]:
+async def fetch_core_algorithm_practice_rows(pattern_slug: str) -> list[CoreAlgorithmPracticeRow]:
     async with acquire_connection() as conn:
         rows = await conn.fetch(
             """
@@ -23,10 +23,10 @@ async def fetch_static_function_practice_rows(pattern_slug: str) -> list[StaticF
                     sfm.pattern_slug,
                     sfp.name AS pattern_name,
                     sf.display_order
-                FROM static_functions sf
-                JOIN static_function_skill_map sfm
+                FROM core_algorithms sf
+                JOIN core_algorithm_skill_map sfm
                     ON sfm.function_name = sf.name
-                JOIN static_function_patterns sfp
+                JOIN core_algorithm_patterns sfp
                     ON sfp.pattern_slug = sfm.pattern_slug
                 WHERE sfm.pattern_slug = $1
                 ORDER BY sf.name, sfm.display_order ASC
@@ -35,10 +35,10 @@ async def fetch_static_function_practice_rows(pattern_slug: str) -> list[StaticF
             """,
             pattern_slug,
         )
-    return [cast(StaticFunctionPracticeRow, dict(row)) for row in rows]
+    return [cast(CoreAlgorithmPracticeRow, dict(row)) for row in rows]
 
 
-async def fetch_static_function_practice_rows_by_tag(tag_slug: str, count: int) -> list[StaticFunctionPracticeRow]:
+async def fetch_core_algorithm_practice_rows_by_tag(tag_slug: str, count: int) -> list[CoreAlgorithmPracticeRow]:
     async with acquire_connection() as conn:
         rows = await conn.fetch(
             """
@@ -55,10 +55,10 @@ async def fetch_static_function_practice_rows_by_tag(tag_slug: str, count: int) 
                     sfm.pattern_slug,
                     sfp.name AS pattern_name,
                     sf.display_order
-                FROM static_functions sf
-                JOIN static_function_skill_map sfm
+                FROM core_algorithms sf
+                JOIN core_algorithm_skill_map sfm
                     ON sfm.function_name = sf.name
-                JOIN static_function_patterns sfp
+                JOIN core_algorithm_patterns sfp
                     ON sfp.pattern_slug = sfm.pattern_slug
                 WHERE sf.tags && ARRAY[$1]::text[]
                 ORDER BY sf.name, sfm.display_order ASC
@@ -69,10 +69,10 @@ async def fetch_static_function_practice_rows_by_tag(tag_slug: str, count: int) 
             tag_slug,
             count,
         )
-    return [cast(StaticFunctionPracticeRow, dict(row)) for row in rows]
+    return [cast(CoreAlgorithmPracticeRow, dict(row)) for row in rows]
 
 
-async def fetch_random_static_function_practice_rows(count: int) -> list[StaticFunctionPracticeRow]:
+async def fetch_random_core_algorithm_practice_rows(count: int) -> list[CoreAlgorithmPracticeRow]:
     async with acquire_connection() as conn:
         rows = await conn.fetch(
             """
@@ -89,10 +89,10 @@ async def fetch_random_static_function_practice_rows(count: int) -> list[StaticF
                     sfm.pattern_slug,
                     sfp.name AS pattern_name,
                     sf.display_order
-                FROM static_functions sf
-                JOIN static_function_skill_map sfm
+                FROM core_algorithms sf
+                JOIN core_algorithm_skill_map sfm
                     ON sfm.function_name = sf.name
-                JOIN static_function_patterns sfp
+                JOIN core_algorithm_patterns sfp
                     ON sfp.pattern_slug = sfm.pattern_slug
                 ORDER BY sf.name, sfm.display_order ASC
             ) rows
@@ -101,4 +101,4 @@ async def fetch_random_static_function_practice_rows(count: int) -> list[StaticF
             """,
             count,
         )
-    return [cast(StaticFunctionPracticeRow, dict(row)) for row in rows]
+    return [cast(CoreAlgorithmPracticeRow, dict(row)) for row in rows]

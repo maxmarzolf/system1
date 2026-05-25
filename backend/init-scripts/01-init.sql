@@ -124,9 +124,9 @@ CREATE INDEX IF NOT EXISTS idx_answer_session_id_created_at
     ON answer(session_id, created_at DESC);
 
 -- ============================================================================
--- Static Function Bank
+-- Core Algorithm Bank
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS static_function_patterns (
+CREATE TABLE IF NOT EXISTS core_algorithm_patterns (
     pattern_slug VARCHAR(80) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     display_order INTEGER NOT NULL DEFAULT 0,
@@ -134,8 +134,8 @@ CREATE TABLE IF NOT EXISTS static_function_patterns (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS static_function_methods (
-    pattern_slug VARCHAR(80) NOT NULL REFERENCES static_function_patterns(pattern_slug) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS core_algorithm_methods (
+    pattern_slug VARCHAR(80) NOT NULL REFERENCES core_algorithm_patterns(pattern_slug) ON DELETE CASCADE,
     method_slug VARCHAR(120) NOT NULL,
     name VARCHAR(255) NOT NULL,
     display_order INTEGER NOT NULL DEFAULT 0,
@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS static_function_methods (
     PRIMARY KEY (pattern_slug, method_slug)
 );
 
-CREATE TABLE IF NOT EXISTS static_functions (
+CREATE TABLE IF NOT EXISTS core_algorithms (
     name VARCHAR(120) PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     difficulty VARCHAR(20) NOT NULL CHECK (difficulty IN ('Easy', 'Med.', 'Hard')),
@@ -157,19 +157,19 @@ CREATE TABLE IF NOT EXISTS static_functions (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS static_function_skill_map (
-    function_name VARCHAR(120) NOT NULL REFERENCES static_functions(name) ON DELETE CASCADE,
-    pattern_slug VARCHAR(80) NOT NULL REFERENCES static_function_patterns(pattern_slug) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS core_algorithm_skill_map (
+    function_name VARCHAR(120) NOT NULL REFERENCES core_algorithms(name) ON DELETE CASCADE,
+    pattern_slug VARCHAR(80) NOT NULL REFERENCES core_algorithm_patterns(pattern_slug) ON DELETE CASCADE,
     method_slug VARCHAR(120) NOT NULL,
     display_order INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (function_name, pattern_slug, method_slug)
 );
 
-CREATE INDEX IF NOT EXISTS idx_static_function_skill_map_pattern
-    ON static_function_skill_map(pattern_slug, display_order);
+CREATE INDEX IF NOT EXISTS idx_core_algorithm_skill_map_pattern
+    ON core_algorithm_skill_map(pattern_slug, display_order);
 
-CREATE INDEX IF NOT EXISTS idx_static_functions_tags
-    ON static_functions USING GIN(tags);
+CREATE INDEX IF NOT EXISTS idx_core_algorithms_tags
+    ON core_algorithms USING GIN(tags);
 
 -- ============================================================================
 -- Coach Feedback Events Table

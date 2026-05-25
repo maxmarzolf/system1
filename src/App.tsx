@@ -355,15 +355,15 @@ const requestSkillMapDrills = (body: SkillMapDrillsRequest) => {
   return request
 }
 
-const requestStaticFunctionDrills = (patternSlug: string) => {
-  const requestKey = `static:${patternSlug}`
+const requestCoreAlgorithmDrills = (patternSlug: string) => {
+  const requestKey = `core-algorithm:${patternSlug}`
   const existingRequest = skillMapDeckRequestCache.get(requestKey)
   if (existingRequest) return existingRequest
 
-  const request = fetch(apiUrl(`/api/coach/static-function-drills/${encodeURIComponent(patternSlug)}`))
+  const request = fetch(apiUrl(`/api/coach/core-algorithm-drills/${encodeURIComponent(patternSlug)}`))
     .then(async (response) => {
       if (!response.ok) {
-        throw new Error('Unable to load static functions')
+        throw new Error('Unable to load core algorithms')
       }
       return (await response.json()) as SkillMapDrillsResponse
     })
@@ -377,15 +377,15 @@ const requestStaticFunctionDrills = (patternSlug: string) => {
   return request
 }
 
-const requestRandomStaticFunctionDrills = (count = 10) => {
-  const requestKey = `static-random:${count}`
+const requestRandomCoreAlgorithmDrills = (count = 10) => {
+  const requestKey = `core-algorithm-random:${count}`
   const existingRequest = skillMapDeckRequestCache.get(requestKey)
   if (existingRequest) return existingRequest
 
-  const request = fetch(apiUrl(`/api/coach/static-function-drills?count=${count}`))
+  const request = fetch(apiUrl(`/api/coach/core-algorithm-drills?count=${count}`))
     .then(async (response) => {
       if (!response.ok) {
-        throw new Error('Unable to load static functions')
+        throw new Error('Unable to load core algorithms')
       }
       return (await response.json()) as SkillMapDrillsResponse
     })
@@ -399,15 +399,15 @@ const requestRandomStaticFunctionDrills = (count = 10) => {
   return request
 }
 
-const requestStaticFunctionDrillsByTag = (tagSlug: string, count = 10) => {
-  const requestKey = `static-tag:${tagSlug}:${count}`
+const requestCoreAlgorithmDrillsByTag = (tagSlug: string, count = 10) => {
+  const requestKey = `core-algorithm-tag:${tagSlug}:${count}`
   const existingRequest = skillMapDeckRequestCache.get(requestKey)
   if (existingRequest) return existingRequest
 
-  const request = fetch(apiUrl(`/api/coach/static-function-drills?tag=${encodeURIComponent(tagSlug)}&count=${count}`))
+  const request = fetch(apiUrl(`/api/coach/core-algorithm-drills?tag=${encodeURIComponent(tagSlug)}&count=${count}`))
     .then(async (response) => {
       if (!response.ok) {
-        throw new Error('Unable to load tagged static functions')
+        throw new Error('Unable to load tagged core algorithms')
       }
       return (await response.json()) as SkillMapDrillsResponse
     })
@@ -2332,7 +2332,7 @@ function App() {
     : focusedTagSlug
       ? `tag:${focusedTagSlug}`
     : focusedPatternSlug
-      ? 'skill-map-static'
+      ? 'skill-map-core-algorithm'
       : questionType
   const focusedPatternLabel = focusedPatternNode?.pattern ?? patternLabelFromSlug(focusedPatternSlug)
   const targetedDeckLabel = requestedPlaylist
@@ -2340,7 +2340,7 @@ function App() {
     : focusedTagSlug
       ? `Tag: ${patternLabelFromSlug(focusedTagSlug)}`
     : focusedPatternSlug
-    ? `${focusedPatternLabel} • Static functions`
+    ? `${focusedPatternLabel} • Core algorithms`
     : ''
 
   const filteredDeck = useMemo(() => skillMapDeck, [skillMapDeck])
@@ -2374,7 +2374,7 @@ function App() {
 
     try {
       if (focusedTagSlug && !requestedPlaylist) {
-        const payload = await requestStaticFunctionDrillsByTag(focusedTagSlug, 10)
+        const payload = await requestCoreAlgorithmDrillsByTag(focusedTagSlug, 10)
         if (skillMapDeckRequestVersionRef.current !== requestVersion) return
         setSkillMapDeck(payload.drills)
         setSkillMapSessionVersion((prev) => prev + 1)
@@ -2382,7 +2382,7 @@ function App() {
       }
 
       if (focusedPatternSlug && !requestedPlaylist) {
-        const payload = await requestStaticFunctionDrills(focusedPatternSlug)
+        const payload = await requestCoreAlgorithmDrills(focusedPatternSlug)
         if (skillMapDeckRequestVersionRef.current !== requestVersion) return
         setSkillMapDeck(payload.drills)
         setSkillMapSessionVersion((prev) => prev + 1)
@@ -2390,7 +2390,7 @@ function App() {
       }
 
       if (!requestedPlaylist) {
-        const payload = await requestRandomStaticFunctionDrills(10)
+        const payload = await requestRandomCoreAlgorithmDrills(10)
         if (skillMapDeckRequestVersionRef.current !== requestVersion) return
         setSkillMapDeck(payload.drills)
         setSkillMapSessionVersion((prev) => prev + 1)
@@ -4037,7 +4037,7 @@ function App() {
               </div>
             ) : (focusedPatternSlug || requestedPlaylist) && (
               <p className="card-template-summary">
-                {requestedPlaylist ? 'Playlist' : 'Static deck'}: {targetedDeckLabel}
+                {requestedPlaylist ? 'Playlist' : 'Core algorithm deck'}: {targetedDeckLabel}
               </p>
             )}
           </div>

@@ -3,11 +3,11 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from app import main as app_main
-from app.core import static_practice as static_practice_service
+from app.core import core_algorithm_practice as core_algorithm_practice_service
 from app.main import create_app
 
 
-def test_static_function_drills_route_filters_by_tag(monkeypatch) -> None:
+def test_core_algorithm_drills_route_filters_by_tag(monkeypatch) -> None:
     async def _noop_connect():
         return None
 
@@ -20,14 +20,14 @@ def test_static_function_drills_route_filters_by_tag(monkeypatch) -> None:
         return {
             'drills': [
                 {
-                    'id': 'static-function-max_area',
+                    'id': 'core-algorithm-max_area',
                     'title': 'Container With Most Water',
                     'difficulty': 'Med.',
                     'prompt': 'Two Pointers: discard the limiting side.',
                     'solution': 'def max_area(height):\n    return 0',
-                    'missing': '# static function complete',
+                    'missing': '# core algorithm complete',
                     'hint': 'Move the limiting side.',
-                    'tags': ['skill-map', 'static-function', 'two-pointers', 'sorted-array-leverage'],
+                    'tags': ['skill-map', 'core-algorithm', 'two-pointers', 'sorted-array-leverage'],
                 }
             ],
             'llmUsed': False,
@@ -35,11 +35,11 @@ def test_static_function_drills_route_filters_by_tag(monkeypatch) -> None:
 
     monkeypatch.setattr(app_main, 'connect', _noop_connect)
     monkeypatch.setattr(app_main, 'disconnect', _noop_disconnect)
-    monkeypatch.setattr(static_practice_service, 'static_function_drills_for_tag', _stub_tagged_drills)
+    monkeypatch.setattr(core_algorithm_practice_service, 'core_algorithm_drills_for_tag', _stub_tagged_drills)
 
     app = create_app()
     with TestClient(app) as client:
-        response = client.get('/api/coach/static-function-drills', params={'tag': 'sorted-array-leverage'})
+        response = client.get('/api/coach/core-algorithm-drills', params={'tag': 'sorted-array-leverage'})
 
     assert response.status_code == 200, response.text
     payload = response.json()

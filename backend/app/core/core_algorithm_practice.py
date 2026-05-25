@@ -16,7 +16,7 @@ def _examples(value: Any) -> list[str]:
     return []
 
 
-def build_static_function_drill(row: dict[str, Any]) -> dict[str, Any]:
+def build_core_algorithm_drill(row: dict[str, Any]) -> dict[str, Any]:
     name = str(row["name"])
     code = str(row["code"]).strip()
     pattern_slug = str(row["pattern_slug"])
@@ -24,8 +24,8 @@ def build_static_function_drill(row: dict[str, Any]) -> dict[str, Any]:
     tags = [str(tag) for tag in (row.get("tags") or []) if str(tag).strip()]
     if "skill-map" not in tags:
         tags.insert(0, "skill-map")
-    if "static-function" not in tags:
-        tags.insert(1, "static-function")
+    if "core-algorithm" not in tags:
+        tags.insert(1, "core-algorithm")
     if pattern_slug not in tags:
         tags.append(pattern_slug)
     description = str(row.get("description") or "").strip()
@@ -33,7 +33,7 @@ def build_static_function_drill(row: dict[str, Any]) -> dict[str, Any]:
     prompt = f"{pattern_name}: memorize {name}."
     examples = _examples(row.get("leetcode_examples"))
     return {
-        "id": f"static-function-{name}",
+        "id": f"core-algorithm-{name}",
         "title": title,
         "difficulty": str(row["difficulty"]),
         "prompt": prompt,
@@ -48,12 +48,12 @@ def build_static_function_drill(row: dict[str, Any]) -> dict[str, Any]:
             "inline": code,
         },
         "solution": code,
-        "missing": "# static function complete",
+        "missing": "# core algorithm complete",
         "hint": description or f"Recall the reusable {pattern_name} function shape.",
         "tags": tags,
         "plainEnglishPromptDetail": {
             "plainEnglish": f"What is the reusable move in {name}?",
-            "interviewQuestion": description or f"Recreate the {title} static function.",
+            "interviewQuestion": description or f"Recreate the {title} core algorithm.",
             "inputExample": f"{name}(...)",
             "outputExample": "the function's return value",
             "explanation": description,
@@ -63,33 +63,33 @@ def build_static_function_drill(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def static_function_drills_for_pattern(pattern_slug: str) -> dict[str, Any]:
-    from app.repositories.static_functions_repository import fetch_static_function_practice_rows
+async def core_algorithm_drills_for_pattern(pattern_slug: str) -> dict[str, Any]:
+    from app.repositories.core_algorithms_repository import fetch_core_algorithm_practice_rows
 
-    rows = await fetch_static_function_practice_rows(pattern_slug)
+    rows = await fetch_core_algorithm_practice_rows(pattern_slug)
     return {
-        "drills": [build_static_function_drill(row) for row in rows],
+        "drills": [build_core_algorithm_drill(row) for row in rows],
         "llmUsed": False,
     }
 
 
-async def static_function_drills_for_tag(tag_slug: str, count: int = 10) -> dict[str, Any]:
-    from app.repositories.static_functions_repository import fetch_static_function_practice_rows_by_tag
+async def core_algorithm_drills_for_tag(tag_slug: str, count: int = 10) -> dict[str, Any]:
+    from app.repositories.core_algorithms_repository import fetch_core_algorithm_practice_rows_by_tag
 
     safe_count = max(1, min(int(count or 10), 30))
-    rows = await fetch_static_function_practice_rows_by_tag(tag_slug, safe_count)
+    rows = await fetch_core_algorithm_practice_rows_by_tag(tag_slug, safe_count)
     return {
-        "drills": [build_static_function_drill(row) for row in rows],
+        "drills": [build_core_algorithm_drill(row) for row in rows],
         "llmUsed": False,
     }
 
 
-async def random_static_function_drills(count: int = 10) -> dict[str, Any]:
-    from app.repositories.static_functions_repository import fetch_random_static_function_practice_rows
+async def random_core_algorithm_drills(count: int = 10) -> dict[str, Any]:
+    from app.repositories.core_algorithms_repository import fetch_random_core_algorithm_practice_rows
 
     safe_count = max(1, min(int(count or 10), 30))
-    rows = await fetch_random_static_function_practice_rows(safe_count)
+    rows = await fetch_random_core_algorithm_practice_rows(safe_count)
     return {
-        "drills": [build_static_function_drill(row) for row in rows],
+        "drills": [build_core_algorithm_drill(row) for row in rows],
         "llmUsed": False,
     }

@@ -6,8 +6,8 @@ import json
 import asyncpg
 
 from app.config import settings
-from app.core import static_functions
-from app.core.static_function_catalog import STATIC_FUNCTION_CATALOG
+from app.core import core_algorithms
+from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG
 
 pool: asyncpg.Pool | None = None
 
@@ -20,8 +20,9 @@ async def connect() -> asyncpg.Pool:
     await _ensure_generated_question_schema(pool)
     await _ensure_practice_history_schema(pool)
     await _backfill_answer_attempts_from_score_attempts(pool)
-    await _ensure_static_function_schema(pool)
-    await _seed_static_functions(pool)
+    await _apply_core_algorithm_naming_migration(pool)
+    await _ensure_core_algorithm_schema(pool)
+    await _seed_core_algorithms(pool)
     return pool
 
 
@@ -527,6 +528,101 @@ async def _backfill_answer_attempts_from_score_attempts(db_pool: asyncpg.Pool) -
         )
 
 
+async def _apply_core_algorithm_naming_migration(db_pool: asyncpg.Pool) -> None:
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            """
+            DO $$
+            BEGIN
+                IF to_regclass('public.static_function_patterns') IS NOT NULL
+                   AND to_regclass('public.core_algorithm_patterns') IS NULL THEN
+                    ALTER TABLE static_function_patterns RENAME TO core_algorithm_patterns;
+                END IF;
+
+                IF to_regclass('public.static_function_methods') IS NOT NULL
+                   AND to_regclass('public.core_algorithm_methods') IS NULL THEN
+                    ALTER TABLE static_function_methods RENAME TO core_algorithm_methods;
+                END IF;
+
+                IF to_regclass('public.static_functions') IS NOT NULL
+                   AND to_regclass('public.core_algorithms') IS NULL THEN
+                    ALTER TABLE static_functions RENAME TO core_algorithms;
+                END IF;
+
+                IF to_regclass('public.static_function_skill_map') IS NOT NULL
+                   AND to_regclass('public.core_algorithm_skill_map') IS NULL THEN
+                    ALTER TABLE static_function_skill_map RENAME TO core_algorithm_skill_map;
+                END IF;
+            END $$;
+
+            DROP TABLE IF EXISTS static_function_skill_map CASCADE;
+            DROP TABLE IF EXISTS static_function_methods CASCADE;
+            DROP TABLE IF EXISTS static_functions CASCADE;
+            DROP TABLE IF EXISTS static_function_patterns CASCADE;
+
+            DO $$
+            BEGIN
+                IF to_regclass('public.score_attempts') IS NOT NULL THEN
+                    UPDATE score_attempts
+                    SET
+                        card_id = regexp_replace(card_id, '^static-function-', 'core-algorithm-'),
+                        generated_card_id = CASE
+                            WHEN generated_card_id LIKE 'static-function-%'
+                                THEN regexp_replace(generated_card_id, '^static-function-', 'core-algorithm-')
+                            ELSE generated_card_id
+                        END,
+                        question_type = replace(question_type, 'skill-map-static', 'skill-map-core-algorithm'),
+                        category_tags = array_replace(category_tags, 'static-function', 'core-algorithm')
+                    WHERE card_id LIKE 'static-function-%'
+                       OR generated_card_id LIKE 'static-function-%'
+                       OR question_type LIKE '%skill-map-static%'
+                       OR category_tags @> ARRAY['static-function']::text[];
+
+                    UPDATE score_attempts
+                    SET generated_card = jsonb_set(
+                        generated_card,
+                        '{id}',
+                        to_jsonb(regexp_replace(generated_card->>'id', '^static-function-', 'core-algorithm-'))
+                    )
+                    WHERE generated_card IS NOT NULL
+                      AND generated_card ? 'id'
+                      AND generated_card->>'id' LIKE 'static-function-%';
+
+                    UPDATE score_attempts
+                    SET generated_card = jsonb_set(
+                        generated_card,
+                        '{tags}',
+                        (
+                            SELECT jsonb_agg(to_jsonb(CASE tag WHEN 'static-function' THEN 'core-algorithm' ELSE tag END))
+                            FROM jsonb_array_elements_text(generated_card->'tags') AS tags(tag)
+                        )
+                    )
+                    WHERE generated_card IS NOT NULL
+                      AND jsonb_typeof(generated_card->'tags') = 'array'
+                      AND generated_card->'tags' ? 'static-function';
+                END IF;
+
+                IF to_regclass('public.coach_feedback_events') IS NOT NULL THEN
+                    UPDATE coach_feedback_events
+                    SET
+                        card_id = regexp_replace(card_id, '^static-function-', 'core-algorithm-'),
+                        generated_card_id = CASE
+                            WHEN generated_card_id LIKE 'static-function-%'
+                                THEN regexp_replace(generated_card_id, '^static-function-', 'core-algorithm-')
+                            ELSE generated_card_id
+                        END,
+                        question_type = replace(question_type, 'skill-map-static', 'skill-map-core-algorithm'),
+                        skill_tags = array_replace(skill_tags, 'static-function', 'core-algorithm')
+                    WHERE card_id LIKE 'static-function-%'
+                       OR generated_card_id LIKE 'static-function-%'
+                       OR question_type LIKE '%skill-map-static%'
+                       OR skill_tags @> ARRAY['static-function']::text[];
+                END IF;
+            END $$;
+            """
+        )
+
+
 def _display_label(slug: str) -> str:
     overrides = {
         "dfs-bfs": "DFS / BFS",
@@ -547,11 +643,11 @@ def _display_label(slug: str) -> str:
     return " ".join(part.capitalize() for part in slug.split("-") if part)
 
 
-async def _ensure_static_function_schema(db_pool: asyncpg.Pool) -> None:
+async def _ensure_core_algorithm_schema(db_pool: asyncpg.Pool) -> None:
     async with db_pool.acquire() as conn:
         await conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS static_function_patterns (
+            CREATE TABLE IF NOT EXISTS core_algorithm_patterns (
                 pattern_slug VARCHAR(80) PRIMARY KEY,
                 name VARCHAR(255) NOT NULL,
                 display_order INTEGER NOT NULL DEFAULT 0,
@@ -559,8 +655,8 @@ async def _ensure_static_function_schema(db_pool: asyncpg.Pool) -> None:
                 updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
-            CREATE TABLE IF NOT EXISTS static_function_methods (
-                pattern_slug VARCHAR(80) NOT NULL REFERENCES static_function_patterns(pattern_slug) ON DELETE CASCADE,
+            CREATE TABLE IF NOT EXISTS core_algorithm_methods (
+                pattern_slug VARCHAR(80) NOT NULL REFERENCES core_algorithm_patterns(pattern_slug) ON DELETE CASCADE,
                 method_slug VARCHAR(120) NOT NULL,
                 name VARCHAR(255) NOT NULL,
                 display_order INTEGER NOT NULL DEFAULT 0,
@@ -569,7 +665,7 @@ async def _ensure_static_function_schema(db_pool: asyncpg.Pool) -> None:
                 PRIMARY KEY (pattern_slug, method_slug)
             );
 
-            CREATE TABLE IF NOT EXISTS static_functions (
+            CREATE TABLE IF NOT EXISTS core_algorithms (
                 name VARCHAR(120) PRIMARY KEY,
                 title VARCHAR(255) NOT NULL,
                 difficulty VARCHAR(20) NOT NULL CHECK (difficulty IN ('Easy', 'Med.', 'Hard')),
@@ -582,31 +678,31 @@ async def _ensure_static_function_schema(db_pool: asyncpg.Pool) -> None:
                 updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
-            CREATE TABLE IF NOT EXISTS static_function_skill_map (
-                function_name VARCHAR(120) NOT NULL REFERENCES static_functions(name) ON DELETE CASCADE,
-                pattern_slug VARCHAR(80) NOT NULL REFERENCES static_function_patterns(pattern_slug) ON DELETE CASCADE,
+            CREATE TABLE IF NOT EXISTS core_algorithm_skill_map (
+                function_name VARCHAR(120) NOT NULL REFERENCES core_algorithms(name) ON DELETE CASCADE,
+                pattern_slug VARCHAR(80) NOT NULL REFERENCES core_algorithm_patterns(pattern_slug) ON DELETE CASCADE,
                 method_slug VARCHAR(120) NOT NULL,
                 display_order INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (function_name, pattern_slug, method_slug)
             );
 
-            CREATE INDEX IF NOT EXISTS idx_static_function_skill_map_pattern
-                ON static_function_skill_map(pattern_slug, display_order);
+            CREATE INDEX IF NOT EXISTS idx_core_algorithm_skill_map_pattern
+                ON core_algorithm_skill_map(pattern_slug, display_order);
 
-            CREATE INDEX IF NOT EXISTS idx_static_functions_tags
-                ON static_functions USING GIN(tags);
+            CREATE INDEX IF NOT EXISTS idx_core_algorithms_tags
+                ON core_algorithms USING GIN(tags);
             """
         )
 
 
-async def _seed_static_functions(db_pool: asyncpg.Pool) -> None:
+async def _seed_core_algorithms(db_pool: asyncpg.Pool) -> None:
     pattern_order: dict[str, int] = {}
     method_order: dict[tuple[str, str], int] = {}
     function_rows: list[tuple[str, dict, str, int]] = []
     mapping_rows: list[tuple[str, str, str, int]] = []
 
-    for function_index, (function_name, meta) in enumerate(STATIC_FUNCTION_CATALOG.items(), 1):
-        code = inspect.getsource(getattr(static_functions, function_name)).strip()
+    for function_index, (function_name, meta) in enumerate(CORE_ALGORITHM_CATALOG.items(), 1):
+        code = inspect.getsource(getattr(core_algorithms, function_name)).strip()
         function_rows.append((function_name, meta, code, function_index))
         for pattern_slug in meta["patterns"]:
             pattern_order.setdefault(pattern_slug, len(pattern_order) + 1)
@@ -620,7 +716,7 @@ async def _seed_static_functions(db_pool: asyncpg.Pool) -> None:
             for pattern_slug, display_order in pattern_order.items():
                 await conn.execute(
                     """
-                    INSERT INTO static_function_patterns (pattern_slug, name, display_order, updated_at)
+                    INSERT INTO core_algorithm_patterns (pattern_slug, name, display_order, updated_at)
                     VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
                     ON CONFLICT (pattern_slug) DO UPDATE SET
                         name = EXCLUDED.name,
@@ -635,7 +731,7 @@ async def _seed_static_functions(db_pool: asyncpg.Pool) -> None:
             for (pattern_slug, method_slug), display_order in method_order.items():
                 await conn.execute(
                     """
-                    INSERT INTO static_function_methods (pattern_slug, method_slug, name, display_order, updated_at)
+                    INSERT INTO core_algorithm_methods (pattern_slug, method_slug, name, display_order, updated_at)
                     VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
                     ON CONFLICT (pattern_slug, method_slug) DO UPDATE SET
                         name = EXCLUDED.name,
@@ -651,7 +747,7 @@ async def _seed_static_functions(db_pool: asyncpg.Pool) -> None:
             for function_name, meta, code, display_order in function_rows:
                 await conn.execute(
                     """
-                    INSERT INTO static_functions
+                    INSERT INTO core_algorithms
                         (name, title, difficulty, description, code, tags, leetcode_examples, display_order, updated_at)
                     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, CURRENT_TIMESTAMP)
                     ON CONFLICT (name) DO UPDATE SET
@@ -674,11 +770,11 @@ async def _seed_static_functions(db_pool: asyncpg.Pool) -> None:
                     display_order,
                 )
 
-            await conn.execute("DELETE FROM static_function_skill_map")
+            await conn.execute("DELETE FROM core_algorithm_skill_map")
             for function_name, pattern_slug, method_slug, display_order in mapping_rows:
                 await conn.execute(
                     """
-                    INSERT INTO static_function_skill_map
+                    INSERT INTO core_algorithm_skill_map
                         (function_name, pattern_slug, method_slug, display_order)
                     VALUES ($1, $2, $3, $4)
                     ON CONFLICT (function_name, pattern_slug, method_slug) DO UPDATE SET
