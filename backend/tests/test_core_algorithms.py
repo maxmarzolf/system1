@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import inspect
 
-from app.core import static_functions as sf
-from app.core.static_function_catalog import STATIC_FUNCTION_CATALOG, function_names_for_skill
-from app.core.static_practice import build_static_function_drill
+from app.core import core_algorithms as sf
+from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG, function_names_for_skill
+from app.core.core_algorithm_practice import build_core_algorithm_drill
 
 
 SKILL_MAP_METHODS = [
@@ -23,7 +23,7 @@ SKILL_MAP_METHODS = [
 ]
 
 
-def static_function_names() -> set[str]:
+def core_algorithm_names() -> set[str]:
     return {
         name
         for name, obj in inspect.getmembers(sf, inspect.isfunction)
@@ -31,18 +31,18 @@ def static_function_names() -> set[str]:
     }
 
 
-def test_static_function_catalog_references_real_functions() -> None:
-    names = static_function_names()
+def test_core_algorithm_catalog_references_real_functions() -> None:
+    names = core_algorithm_names()
 
     assert 75 <= len(names) <= 100
-    assert set(STATIC_FUNCTION_CATALOG) == names
-    assert "static_cards_refine" not in names
+    assert set(CORE_ALGORITHM_CATALOG) == names
+    assert "core_algorithm_cards_refine" not in names
 
 
-def test_static_function_catalog_has_required_metadata() -> None:
+def test_core_algorithm_catalog_has_required_metadata() -> None:
     forbidden_patterns = {"arrays", "hashmaps", "arrays-hashmaps", "hash-maps"}
 
-    for name, meta in STATIC_FUNCTION_CATALOG.items():
+    for name, meta in CORE_ALGORITHM_CATALOG.items():
         assert meta["title"]
         assert meta["difficulty"] in {"Easy", "Med.", "Hard"}
         assert meta["description"]
@@ -53,8 +53,8 @@ def test_static_function_catalog_has_required_metadata() -> None:
         assert not (set(meta["patterns"]) & forbidden_patterns)
 
 
-def test_current_skill_map_resolves_to_static_functions() -> None:
-    names = static_function_names()
+def test_current_skill_map_resolves_to_core_algorithms() -> None:
+    names = core_algorithm_names()
 
     for pattern, methods in SKILL_MAP_METHODS:
         for method in methods:
@@ -63,7 +63,7 @@ def test_current_skill_map_resolves_to_static_functions() -> None:
             assert set(matches) <= names
 
 
-def test_representative_static_functions_behave_correctly() -> None:
+def test_representative_core_algorithms_behave_correctly() -> None:
     assert sf.max_fixed_window_sum([1, 4, 2, 10, 3], 3) == 16
     assert sf.permutation_window_match("eidbaooo", "ab") is True
     assert sf.two_sum_sorted([2, 7, 11, 15], 9) == [0, 1]
@@ -82,7 +82,7 @@ def test_representative_static_functions_behave_correctly() -> None:
     assert sf.topo_order({0: [1], 1: []}) == [0, 1]
 
 
-def test_trie_static_functions_share_plain_dict_shape() -> None:
+def test_trie_core_algorithms_share_plain_dict_shape() -> None:
     root = {}
     sf.trie_insert(root, "code")
 
@@ -92,22 +92,22 @@ def test_trie_static_functions_share_plain_dict_shape() -> None:
     assert sf.word_dictionary_search(root, "c.de") is True
 
 
-def test_static_function_row_builds_skill_map_drill_card() -> None:
+def test_core_algorithm_row_builds_skill_map_drill_card() -> None:
     row = {
         "name": "binary_search",
         "title": "Closed-Interval Binary Search",
         "difficulty": "Easy",
         "description": "Probe the middle and discard one half.",
         "code": "def binary_search(nums, target):\n    return -1",
-        "tags": ["skill-map", "static-function", "binary-search"],
+        "tags": ["skill-map", "core-algorithm", "binary-search"],
         "leetcode_examples": ["Binary Search"],
         "pattern_slug": "binary-search",
         "pattern_name": "Binary Search",
     }
 
-    card = build_static_function_drill(row)
+    card = build_core_algorithm_drill(row)
 
-    assert card["id"] == "static-function-binary_search"
+    assert card["id"] == "core-algorithm-binary_search"
     assert card["solution"] == row["code"]
     assert card["templateTargets"]["algorithm"] == row["code"]
     assert "binary-search" in card["tags"]

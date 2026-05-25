@@ -84,8 +84,8 @@ async def fetch_patterns_with_methods_rows() -> list[PatternMethodRow]:
                 p.name AS pattern_name,
                 (ROW_NUMBER() OVER (ORDER BY p.display_order ASC, m.display_order ASC, m.method_slug ASC))::int AS method_id,
                 m.name AS method_name
-            FROM static_function_patterns p
-            LEFT JOIN static_function_methods m ON m.pattern_slug = p.pattern_slug
+            FROM core_algorithm_patterns p
+            LEFT JOIN core_algorithm_methods m ON m.pattern_slug = p.pattern_slug
             ORDER BY p.display_order ASC, m.display_order ASC, m.method_slug ASC
             """
         )
@@ -100,8 +100,8 @@ async def fetch_skill_map_overview_pattern_rows() -> list[SkillMapOverviewPatter
                 (DENSE_RANK() OVER (ORDER BY p.display_order ASC, p.pattern_slug ASC))::int AS pattern_id,
                 p.name AS pattern_name,
                 m.name AS method_name
-            FROM static_function_patterns p
-            LEFT JOIN static_function_methods m ON m.pattern_slug = p.pattern_slug
+            FROM core_algorithm_patterns p
+            LEFT JOIN core_algorithm_methods m ON m.pattern_slug = p.pattern_slug
             ORDER BY p.display_order ASC, m.display_order ASC, m.method_slug ASC
             """
         )
@@ -115,11 +115,11 @@ async def fetch_skill_map_overview_generated_rows() -> list[SkillMapOverviewGene
             SELECT id, title, tags
             FROM (
                 SELECT
-                    'static-function-' || name AS id,
+                    'core-algorithm-' || name AS id,
                     title,
                     tags,
                     display_order
-                FROM static_functions
+                FROM core_algorithms
             ) rows
             ORDER BY display_order ASC
             """

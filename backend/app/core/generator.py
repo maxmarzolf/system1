@@ -18,7 +18,7 @@ from typing import Any
 from fastapi.responses import StreamingResponse
 
 from app.config import settings
-from app.core.focused_static_cards import (
+from app.core.focused_core_algorithm_cards import (
     focused_difficulty as _focused_difficulty,
     focused_hint as _focused_hint,
     focused_profile as _focused_profile,
@@ -558,7 +558,7 @@ async def generate_multiple_choice_drills_response(
         "Prefer code-centered questions: show a compact Python snippet, loop condition, state update, return line, or one-line mutation when that makes the algorithm idea concrete. "
         "Roughly three out of four drills should include a short code snippet in the question or choices; the rest may be purely conceptual. "
         "Any Python snippets must be fenced as ```python blocks and must follow PEP 8: 4-space indentation, snake_case names, spaces around binary operators, spaces after commas, and no cramped one-letter soup except conventional indexes. "
-        "Questions must test the broader algorithm pattern, invariant, tradeoff, state choice, boundary condition, or debugging insight, not a specific static memorized fact. "
+        "Questions must test the broader algorithm pattern, invariant, tradeoff, state choice, boundary condition, or debugging insight, not a specific core algorithm memorized fact. "
         "Keep snippets compact: at most 4 short lines in the question, and at most one short line per choice. "
         "Make distractors plausible for adjacent patterns or common code-level mistakes. "
         "Use the requested difficulty for every drill. "

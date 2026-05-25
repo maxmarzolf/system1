@@ -15,7 +15,7 @@ from app.core.generator import (
     build_generator_context,
     runtime_with_tuning,
 )
-from app.core.focused_static_cards import (
+from app.core.focused_core_algorithm_cards import (
     focused_difficulty,
     focused_hint,
     focused_prompt,
@@ -208,7 +208,7 @@ def test_focused_generator_context_preserves_dashboard_method_order(progress_sum
     assert "target-locked" in context.system_prompt
 
 
-def test_focused_static_catalog_covers_dashboard_methods() -> None:
+def test_focused_core_algorithm_catalog_covers_dashboard_methods() -> None:
     dashboard_skill_map = [
         ("Sliding Window", ["fixed vs variable window", "expand / shrink rhythm", "frequency maps", "valid window rule", "window score updates"]),
         ("Two Pointers", ["same-direction scan", "opposing pointers", "sorted-array leverage", "dedupe rules", "pointer move rule"]),

@@ -33,13 +33,13 @@ def _entry(
         "patterns": patterns,
         "methods": methods,
         "difficulty": difficulty,
-        "tags": tuple(dict.fromkeys(("skill-map", "static-function", *patterns, *methods))),
+        "tags": tuple(dict.fromkeys(("skill-map", "core-algorithm", *patterns, *methods))),
         "description": description,
         "leetcodeExamples": examples,
     }
 
 
-STATIC_FUNCTION_CATALOG: dict[str, dict[str, Any]] = {
+CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "fixed_window_sum": _entry(
         "Fixed Window Sum",
         ("sliding-window",),
@@ -768,13 +768,13 @@ def function_names_for_skill(pattern: str, method: str) -> tuple[str, ...]:
     method_key = method_slug(method)
     exact = [
         name
-        for name, meta in STATIC_FUNCTION_CATALOG.items()
+        for name, meta in CORE_ALGORITHM_CATALOG.items()
         if pattern_key in meta["patterns"] and method_key in meta["methods"]
     ]
     if exact:
         return tuple(exact)
     return tuple(
         name
-        for name, meta in STATIC_FUNCTION_CATALOG.items()
+        for name, meta in CORE_ALGORITHM_CATALOG.items()
         if pattern_key in meta["patterns"] or method_key in meta["methods"]
     )
