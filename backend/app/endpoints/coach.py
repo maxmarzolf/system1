@@ -14,6 +14,8 @@ from app.models import (
     CoachPromptToggleExplanationResponse,
     CoachSessionPlanRequest,
     CoachSessionPlanResponse,
+    FoundationFlowNextRequest,
+    FoundationFlowNextResponse,
     MultipleChoiceDrillsRequest,
     MultipleChoiceDrillsResponse,
     SequentialVariationRequest,
@@ -95,3 +97,8 @@ async def coach_adaptive_variation(body: AdaptiveVariationRequest):
 @router.post("/sequential-variation", response_model=SequentialVariationResponse)
 async def coach_sequential_variation(body: SequentialVariationRequest):
     return await coach_service.coach_sequential_variation(body)
+
+
+@router.post("/foundation-flow-next", response_model=FoundationFlowNextResponse)
+async def coach_foundation_flow_next(body: FoundationFlowNextRequest):
+    return await coach_service.coach_foundation_flow_next(body)

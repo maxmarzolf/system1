@@ -39,7 +39,13 @@ def test_process_multiple_choice_card_normalizes_tags_and_choices() -> None:
     assert [choice["id"] for choice in processed["choices"]] == ["A", "B", "C", "D"]
     correct_choice = next(choice for choice in processed["choices"] if choice["id"] == processed["correctChoiceId"])
     assert correct_choice["text"] == "The answer space is monotonic."
-    assert processed["tags"] == ["skill-map", "skill-map-mcq", "binary-search"]
+    assert processed["tags"] == [
+        "skill-map",
+        "skill-map-mcq",
+        "binary-search",
+        "source-algorithm",
+        "flow-random",
+    ]
 
 
 def test_process_multiple_choice_card_normalizes_python_code_blocks() -> None:
@@ -156,6 +162,66 @@ async def test_generate_multiple_choice_drills_response_calls_persist_callback()
         "count": 1,
         "question": "What makes binary search safe?",
     }
+
+
+@pytest.mark.asyncio
+async def test_generate_multiple_choice_drills_response_sends_card_progressive_context() -> None:
+    request = MultipleChoiceDrillsRequest(
+        count=1,
+        skillMap=[SkillMapNode(pattern="Sliding Window", methods=["current specimen"])],
+        difficulty="Med.",
+        sourceMode="card",
+        flowMode="progressive",
+        specimen={
+            "cardId": "card-1",
+            "cardTitle": "Longest Window",
+            "pattern": "Sliding Window",
+            "prompt": "Return the longest valid window.",
+            "target": "def solve(nums):\n    left = 0\n    return left",
+            "tags": ["skill-map", "sliding-window"],
+        },
+    )
+    captured: dict[str, object] = {}
+
+    def call_llm_json(system_prompt, payload, *_args, **_kwargs):
+        captured["system_prompt"] = system_prompt
+        captured["payload"] = payload
+        return {
+            "drills": [
+                {
+                    "title": "Sliding Window Invariant",
+                    "pattern": "Sliding Window",
+                    "difficulty": "Med.",
+                    "question": "What does `left` preserve in this specimen?",
+                    "choices": [
+                        {"id": "A", "text": "The first valid window boundary."},
+                        {"id": "B", "text": "The sorted insertion point."},
+                        {"id": "C", "text": "The heap root."},
+                        {"id": "D", "text": "The recursion depth."},
+                    ],
+                    "correctChoiceId": "A",
+                    "explanation": "The specimen moves left to keep the window valid.",
+                    "tags": ["sliding-window"],
+                }
+            ]
+        }
+
+    response = await generate_multiple_choice_drills_response(
+        request,
+        provider="openai",
+        provider_label="ChatGPT",
+        provider_available=True,
+        call_llm_json=call_llm_json,
+    )
+
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["sourceMode"] == "card"
+    assert payload["flowMode"] == "progressive"
+    assert payload["specimenContext"]["target"].startswith("def solve")
+    assert "provided specimenContext" in captured["system_prompt"]
+    assert "immediately previous drill" in captured["system_prompt"]
+    assert response.drills[0].tags[-2:] == ["source-card", "flow-progressive"]
 
 
 @pytest.mark.asyncio

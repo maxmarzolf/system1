@@ -310,6 +310,9 @@ def merge_intervals(intervals):
     return merged
 
 
+merge = merge_intervals
+
+
 def valid_parentheses(s):
     stack = []
     mapping = {")": "(", "}": "{", "]": "["}
@@ -328,6 +331,9 @@ def custom_sort_string(order, s):
     return "".join(sorted_s)
 
 
+custom = custom_sort_string
+
+
 def simplify_path(path):
     stack = []
     for portion in path.split("/"):
@@ -339,6 +345,9 @@ def simplify_path(path):
         else:
             stack.append(portion)
     return "/" + "/".join(stack)
+
+
+simplify = simplify_path
 
 
 class TreeNode:
@@ -372,6 +381,9 @@ def vertical_order_traversal(root):
     return ret.values()
 
 
+vertical_traversal = vertical_order_traversal
+
+
 def valid_palindrome(s):
     left = 0
     right = len(s) - 1
@@ -400,6 +412,9 @@ def range_sum_bst(root, low, high):
 
     dfs(root)
     return sum(ans)
+
+
+range_sum = range_sum_bst
 
 
 class StockPrice:
@@ -432,11 +447,14 @@ class StockPrice:
 def unique_paths_dp(m, n):
     grid = [[1] * n for _ in range(m)]
 
-    for col in range(1, m):
-        for row in range(1, n):
-            grid[col][row] = grid[col - 1][row] + grid[col][row - 1]
+    for c in range(1, m):
+        for r in range(1, n):
+            grid[c][r] = grid[c - 1][r] + grid[c][r - 1]
 
     return grid[m - 1][n - 1]
+
+
+unique_paths = unique_paths_dp
 
 
 class BSTNode:
@@ -452,3 +470,6 @@ def lowest_common_ancestor_bst(root: BSTNode, p: BSTNode, q: BSTNode):
     if p.val < root.val and q.val < root.val:
         return lowest_common_ancestor_bst(root.left, p, q)
     return root
+
+
+lca = lowest_common_ancestor_bst

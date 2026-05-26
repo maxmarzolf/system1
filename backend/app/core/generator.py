@@ -137,6 +137,10 @@ def _is_focused_request(body: SkillMapDrillsRequest) -> bool:
     return str(body.questionType or "").strip() == "skill-map-targeted"
 
 
+def _is_foundation_flow_request(body: SkillMapDrillsRequest) -> bool:
+    return str(body.questionType or "").strip() == "skill-map-foundation-flow"
+
+
 def _template_mode_value(value: TemplateMode | str | None) -> str:
     if isinstance(value, TemplateMode):
         return value.value
@@ -499,7 +503,9 @@ def _process_multiple_choice_card(raw: Any, index: int, body: MultipleChoiceDril
 
     raw_tags = [str(tag).strip() for tag in raw.get("tags", []) if str(tag).strip()] if isinstance(raw.get("tags"), list) else []
     tags: list[str] = []
-    for tag in ["skill-map", "skill-map-mcq", pattern_slug, *raw_tags]:
+    source_tag = f"source-{body.sourceMode}"
+    flow_tag = f"flow-{body.flowMode}"
+    for tag in ["skill-map", "skill-map-mcq", pattern_slug, source_tag, flow_tag, *raw_tags]:
         if tag and tag not in tags:
             tags.append(tag)
 
@@ -549,26 +555,50 @@ async def generate_multiple_choice_drills_response(
     while len(skill_map) < body.count:
         skill_map.extend(skill_map[: body.count - len(skill_map)])
 
+    source_instruction = (
+        "Anchor each drill on the named algorithm pattern itself, not on an individual LeetCode problem. "
+        "Questions must test the broader algorithm pattern, invariant, tradeoff, state choice, boundary condition, or debugging insight, not a specific core algorithm memorized fact. "
+    )
+    if body.sourceMode == "card":
+        source_instruction = (
+            "Anchor every drill on the provided specimenContext. The specimen prompt and target code are the source of truth. "
+            "Questions should test why that exact specimen works: its invariant, state variables, loop or branch decisions, boundary handling, and likely implementation mistakes. "
+            "Do not drift into unrelated LeetCode problems or generic pattern trivia unless it directly explains the specimen. "
+        )
+
+    flow_instruction = (
+        "Create a varied but balanced set across the requested patterns or specimen facets. "
+        "Avoid near-duplicates while keeping coverage even. "
+    )
+    if body.flowMode == "progressive":
+        flow_instruction = (
+            "Order the drills as a Socratic chain. Drill 1 should establish the key idea. "
+            "Each later drill must build directly on the immediately previous drill by deepening, challenging, or applying that prior concept. "
+            "The set should still be answerable one question at a time, but the sequence must feel intentionally cumulative. "
+        )
+
     system_prompt = (
         "You generate multiple-choice cards for algorithm pattern recognition and reasoning. "
         "Return only a top-level JSON object shaped exactly like {\"drills\": [...]}. "
         "The drills array must contain exactly the requested count. "
         "Each drill must have id, title, pattern, difficulty, question, choices, correctChoiceId, explanation, and tags. "
         "Each choices array must contain exactly four objects with ids A, B, C, and D and concise answer text. "
-        "Anchor each drill on the named algorithm pattern itself, not on an individual LeetCode problem. "
+        f"{source_instruction}"
+        f"{flow_instruction}"
         "Prefer code-centered questions: show a compact Python snippet, loop condition, state update, return line, or one-line mutation when that makes the algorithm idea concrete. "
         "Roughly three out of four drills should include a short code snippet in the question or choices; the rest may be purely conceptual. "
         "Any Python snippets must be fenced as ```python blocks and must follow PEP 8: 4-space indentation, snake_case names, spaces around binary operators, spaces after commas, and no cramped one-letter soup except conventional indexes. "
-        "Questions must test the broader algorithm pattern, invariant, tradeoff, state choice, boundary condition, or debugging insight, not a specific core algorithm memorized fact. "
         "Keep snippets compact: at most 4 short lines in the question, and at most one short line per choice. "
         "Make distractors plausible for adjacent patterns or common code-level mistakes. "
         "Use the requested difficulty for every drill. "
-        "Tags must include skill-map, skill-map-mcq, and the slug for the algorithm pattern."
+        "Tags must include skill-map, skill-map-mcq, the slug for the algorithm pattern, source mode, and flow mode."
     )
     llm_payload = {
         "questionType": body.questionType,
         "count": body.count,
         "difficulty": difficulty,
+        "sourceMode": body.sourceMode,
+        "flowMode": body.flowMode,
         "generationSeed": generation_seed,
         "skillMap": [
             {
@@ -578,6 +608,7 @@ async def generate_multiple_choice_drills_response(
             }
             for node in skill_map[: body.count]
         ],
+        "specimenContext": body.specimen.model_dump() if body.sourceMode == "card" and body.specimen else None,
         "schema": {
             "drill": {
                 "id": "temporary id from model; server will replace it",
@@ -1357,6 +1388,269 @@ def attach_plain_english_prompt_detail(
     }
 
 
+def _foundation_flow_steps(pattern_slug: str) -> list[dict[str, str]]:
+    steps_by_pattern = {
+        "dfs-bfs": [
+            {
+                "title": "Graph traversal: seed frontier and visited",
+                "prompt": "What state does graph traversal need before it starts?",
+                "specimen": "from collections import deque\nq = deque([start])\nvisited = {start}",
+                "hint": "Put start in the queue and mark it seen immediately.",
+                "reason": "Before graph traversal, you need a frontier of nodes to process and a seen set to prevent revisits.",
+            },
+            {
+                "title": "BFS: take the next node",
+                "prompt": "How does BFS take the next frontier node?",
+                "specimen": "node = q.popleft()",
+                "hint": "BFS removes from the left side of the queue.",
+                "reason": "The next step is retrieving the oldest queued node.",
+            },
+            {
+                "title": "BFS: read neighbors",
+                "prompt": "How does graph traversal inspect one node's neighbors?",
+                "specimen": "for nei in graph.get(node, []):",
+                "hint": "Ask the graph for node's neighbors, with an empty fallback.",
+                "reason": "Traversal expands from the current node into its neighbors.",
+            },
+            {
+                "title": "BFS: skip visited neighbors",
+                "prompt": "How do you prevent revisiting a graph node?",
+                "specimen": "if nei not in visited:",
+                "hint": "Only new nodes should enter the queue.",
+                "reason": "The visited guard prevents cycles and repeated work.",
+            },
+            {
+                "title": "BFS: mark and enqueue",
+                "prompt": "How does BFS add a newly discovered neighbor?",
+                "specimen": "visited.add(nei)\nq.append(nei)",
+                "hint": "Mark before enqueueing so duplicates cannot pile up.",
+                "reason": "A newly discovered neighbor becomes future frontier work.",
+            },
+        ],
+        "graph-traversal": [
+            {
+                "title": "Graph traversal: seed frontier",
+                "prompt": "What state does graph traversal need first?",
+                "specimen": "frontier = [start]\nvisited = {start}",
+                "hint": "Start with one node to process and one node marked seen.",
+                "reason": "Traversal begins by naming what is ready and what is already known.",
+            },
+        ],
+        "binary-search": [
+            {
+                "title": "Binary search: seed bounds",
+                "prompt": "What state names the current binary-search range?",
+                "specimen": "left = 0\nright = len(nums) - 1",
+                "hint": "The possible answer starts inside the whole array.",
+                "reason": "Binary search starts by naming the current search interval.",
+            },
+            {
+                "title": "Binary search: compute mid",
+                "prompt": "How do you probe the middle of the range?",
+                "specimen": "mid = (left + right) // 2",
+                "hint": "Probe the middle of the active interval.",
+                "reason": "The midpoint is the single position used to discard a side.",
+            },
+        ],
+        "sliding-window": [
+            {
+                "title": "Sliding window: seed left edge",
+                "prompt": "What state does a sliding window need first?",
+                "specimen": "left = 0\nwindow_sum = 0",
+                "hint": "Start with an empty window at the left edge.",
+                "reason": "A window needs a boundary and a value to update.",
+            },
+        ],
+        "two-pointers": [
+            {
+                "title": "Two pointers: seed ends",
+                "prompt": "What state names the active two-pointer range?",
+                "specimen": "left = 0\nright = len(nums) - 1",
+                "hint": "Start at the two edges of the searchable range.",
+                "reason": "Two pointers begins by naming the active left and right choices.",
+            },
+        ],
+        "backtracking": [
+            {
+                "title": "Backtracking: seed path",
+                "prompt": "What state does backtracking need before choices?",
+                "specimen": "path = []\nresult = []",
+                "hint": "Keep one current path and one place to collect answers.",
+                "reason": "Backtracking needs separate state for the branch and completed answers.",
+            },
+        ],
+        "heap-priority-queue": [
+            {
+                "title": "Heap: seed heap",
+                "prompt": "What state stores prioritized candidates?",
+                "specimen": "import heapq\nheap = []",
+                "hint": "Use a list as the heap container.",
+                "reason": "Heap work starts with the priority container.",
+            },
+        ],
+        "heap": [
+            {
+                "title": "Heap: seed heap",
+                "prompt": "What state stores prioritized candidates?",
+                "specimen": "import heapq\nheap = []",
+                "hint": "Use a list as the heap container.",
+                "reason": "Heap work starts with the priority container.",
+            },
+        ],
+        "union-find": [
+            {
+                "title": "Union find: seed parents",
+                "prompt": "What state says each node starts alone?",
+                "specimen": "parent = {x: x for x in nodes}",
+                "hint": "At first, every node is its own root.",
+                "reason": "Union find begins with each item labeling itself.",
+            },
+        ],
+        "dynamic-programming": [
+            {
+                "title": "DP: seed base state",
+                "prompt": "What state stores the first known DP answer?",
+                "specimen": "dp = [0] * (n + 1)\ndp[0] = 1",
+                "hint": "Create the table and set the known starting answer.",
+                "reason": "DP starts from a base case before any transition.",
+            },
+        ],
+        "intervals": [
+            {
+                "title": "Intervals: sort before scanning",
+                "prompt": "What setup makes interval overlap local?",
+                "specimen": "intervals.sort()\nmerged = []",
+                "hint": "Make overlap local before collecting merged ranges.",
+                "reason": "Interval logic usually starts by ordering boundaries.",
+            },
+        ],
+        "prefix-sums": [
+            {
+                "title": "Prefix sums: seed prefix",
+                "prompt": "What state exists before reading any values?",
+                "specimen": "prefix = 0\nseen = {0: 1}",
+                "hint": "The zero prefix exists before reading any values.",
+                "reason": "Prefix-sum counting needs the starting prefix available.",
+            },
+        ],
+        "monotonic-stack": [
+            {
+                "title": "Monotonic stack: seed stack",
+                "prompt": "What state stores unresolved candidates?",
+                "specimen": "stack = []",
+                "hint": "The stack starts empty before values arrive.",
+                "reason": "Monotonic stack logic begins with unresolved candidates.",
+            },
+        ],
+    }
+    return steps_by_pattern.get(pattern_slug, steps_by_pattern.get(_pattern_family_slug(pattern_slug), []))
+
+
+def _clean_foundation_flow_tags(
+    tags: list[str],
+    *,
+    pattern_slug: str,
+    flow_action: str = "start",
+    flow_level: int = 0,
+    flow_step: int = 0,
+) -> list[str]:
+    cleaned = [
+        str(tag).strip()
+        for tag in tags
+        if str(tag).strip()
+        and not re.match(r"^flow-(action|level|step)-", str(tag).strip())
+    ]
+    for tag in (
+        "skill-map",
+        pattern_slug,
+        "foundation-flow",
+        "socratic-flow",
+        f"flow-action-{flow_action}",
+        f"flow-level-{flow_level}",
+        f"flow-step-{flow_step}",
+    ):
+        if tag and tag not in cleaned:
+            cleaned.append(tag)
+    return cleaned
+
+
+def foundation_flow_micro_drill(
+    *,
+    pattern: str,
+    pattern_slug: str,
+    body: SkillMapDrillsRequest,
+    index: int = 0,
+    flow_step: int = 0,
+    flow_action: str = "start",
+    base_tags: list[str] | None = None,
+    reason: str = "",
+) -> dict[str, Any]:
+    steps = _foundation_flow_steps(pattern_slug) or [
+        {
+            "title": f"{pattern.title()}: seed state",
+            "prompt": "Seed the first state",
+            "specimen": "state = {}",
+            "hint": "Start by naming the smallest state container.",
+            "reason": "Every algorithm begins by initializing the state it will update.",
+        }
+    ]
+    step = max(0, min(flow_step, len(steps) - 1))
+    level = max(0, min(step // 3, 4))
+    selected = steps[step]
+    specimen = apply_specimen_tuning_to_target(str(selected["specimen"]), body.specimenTuning)
+    tags = _clean_foundation_flow_tags(
+        base_tags or [],
+        pattern_slug=pattern_slug,
+        flow_action=flow_action,
+        flow_level=level,
+        flow_step=step,
+    )
+    core_shape = _apply_core_shape_tuning_to_target(
+        _core_shape_template_target(_pattern_family_slug(pattern_slug), specimen),
+        body.specimenTuning,
+    )
+    prompt = _clean_concise_prompt(str(selected["prompt"]), 80)
+    explanation = str(selected["reason"])
+    plain_detail = {
+        "plainEnglish": explanation,
+        "interviewQuestion": prompt,
+        "inputExample": specimen,
+        "outputExample": "code state ready for the next step",
+        "explanation": explanation,
+        "brassTacks": "Answer with the smallest code state that makes the algorithm possible.",
+        "leetcodeExamples": [],
+    }
+    return attach_plain_english_prompt_detail(
+        {
+            "id": f"foundation-{pattern_slug or 'algorithm'}-{flow_action}-{index + 1}",
+            "title": str(selected["title"]),
+            "difficulty": "Easy",
+            "prompt": prompt,
+            "conceptQuestion": prompt,
+            "explanation": explanation,
+            "templatePrompts": {
+                TemplateMode.algorithm.value: prompt,
+                CORE_SHAPE_TEMPLATE_KEY: prompt,
+                INLINE_TEMPLATE_KEY: _limit_words(f"{pattern}: add notes", 8),
+            },
+            "templateTargets": {
+                TemplateMode.algorithm.value: specimen,
+                CORE_SHAPE_TEMPLATE_KEY: core_shape,
+                INLINE_TEMPLATE_KEY: specimen,
+            },
+            "solution": f"{specimen}\n{{{{missing}}}}",
+            "missing": "# foundation step complete",
+            "hint": str(selected["hint"]),
+            "tags": tags,
+            "questionType": "skill-map-foundation-flow",
+            "foundationReason": reason or explanation,
+            "plainEnglishPromptDetail": plain_detail,
+        },
+        pattern=pattern,
+        method=f"level {level} step {step}",
+    )
+
+
 def _focused_source_method(source_node: Any) -> str:
     methods = list(getattr(source_node, "methods", []) or []) if source_node else []
     return str(methods[0]).strip() if methods else "core method"
@@ -1560,6 +1854,16 @@ def _process_raw_drill(
     method = _focused_source_method(source_node)
     question_title = str(getattr(source_node, "questionTitle", "") or "").strip() if source_node else ""
     playlist_slug = str(getattr(source_node, "playlistSlug", "") or "").strip() if source_node else ""
+    if _is_foundation_flow_request(body):
+        return foundation_flow_micro_drill(
+            pattern=pattern,
+            pattern_slug=pattern_slug,
+            body=body,
+            index=index,
+            flow_step=0,
+            flow_action="start",
+            base_tags=tags,
+        )
     if pattern_slug and pattern_slug not in tags:
         tags.append(pattern_slug)
     if _is_focused_request(body):
@@ -1665,11 +1969,22 @@ def build_generator_context(
     active_tuning = tuning or GeneratorTuning()
     playlist_request = _is_playlist_request(body)
     focused_request = _is_focused_request(body)
+    foundation_flow_request = _is_foundation_flow_request(body)
     focused_rule = (
         "For questionType skill-map-targeted, treat each skillMap entry as target-locked: "
         "preserve order, use exactly the provided pattern and first method, keep prompt <= 8 words, "
         "hint <= 12 words, and make the target a reusable 4-8 line skeleton rather than a story problem. "
         if focused_request
+        else ""
+    )
+    foundation_flow_rule = (
+        "For questionType skill-map-foundation-flow, generate the first Level 0 card in a Socratic foundation flow. "
+        "The learner's answer must be Python code, never plain text. Ask for exactly one atomic code move, usually 1-3 non-empty lines. "
+        "The prompt must be a general concept diagnostic question about the algorithm, not a command to reproduce a snippet. "
+        "Do not generate a full function, full algorithm skeleton, while loop, neighbor loop, or story problem for step 0. "
+        "For DFS/BFS step 0, only seed traversal state, such as deque([start]) and visited = {start}; do not pop or iterate neighbors yet. "
+        "Use Easy difficulty. Tags must include skill-map, foundation-flow, socratic-flow, flow-action-start, flow-level-0, flow-step-0, and the pattern slug. "
+        if foundation_flow_request
         else ""
     )
     system_prompt = (
@@ -1681,6 +1996,7 @@ def build_generator_context(
         "Generate exactly one drill for each skillMap entry, in the same order as the skillMap array. "
         "Do not generate a second drill for any pattern until every provided skillMap entry has one drill. "
         f"{focused_rule}"
+        f"{foundation_flow_rule}"
         "Each drill must teach one reusable LeetCode move from the provided skill map, not a story problem. "
         "If a skillMap entry has questionTitle, generate for that exact question title and keep the returned title exactly equal to questionTitle. "
         "For those playlist entries, treat pattern as the core algorithm shape and methods as implementation hints. "
@@ -1716,7 +2032,7 @@ def build_generator_context(
     rng = random.SystemRandom()
     generation_seed = f"{datetime.now(tz=timezone.utc).strftime('%Y%m%d%H%M%S%f')}-{rng.randrange(1_000_000)}"
     generation_skill_map = list(body.skillMap[: body.count])
-    if not playlist_request and not focused_request:
+    if not playlist_request and not focused_request and not foundation_flow_request:
         rng.shuffle(generation_skill_map)
     trimmed_skill_map = [
         {
@@ -1841,6 +2157,19 @@ def fallback_skill_map_drills(context: GeneratorContext) -> dict[str, Any]:
                 )
             )
             continue
+        if _is_foundation_flow_request(context.body):
+            drills.append(
+                foundation_flow_micro_drill(
+                    pattern=pattern,
+                    pattern_slug=_pattern_slug(pattern),
+                    body=context.body,
+                    index=index,
+                    flow_step=0,
+                    flow_action="start",
+                    base_tags=["skill-map", _pattern_slug(pattern)],
+                )
+            )
+            continue
         base = _fallback_template_for_pattern(pattern, method_hint, context.output_tuning.prompt_max_chars)
         slug = _pattern_slug(pattern)
         progress = progress_by_pattern.get(slug, {}) if slug else {}
@@ -1877,6 +2206,7 @@ def fallback_skill_map_drills(context: GeneratorContext) -> dict[str, Any]:
                 "hint": base["hint"],
                 "tags": [
                     *base["tags"],
+                    *(["foundation-flow", "socratic-flow", "flow-level-0", "flow-step-0"] if _is_foundation_flow_request(context.body) else []),
                     *([playlist_slug] if playlist_slug else []),
                     *([_question_slug(question_title)] if question_title else []),
                 ],

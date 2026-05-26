@@ -23,6 +23,7 @@ from app.core.focused_core_algorithm_cards import (
     focused_target_terms,
     focused_title,
 )
+from app.core.coach import _evaluate_attempt_by_template_mode
 
 
 def _test_word_count(value: str) -> int:
@@ -206,6 +207,88 @@ def test_focused_generator_context_preserves_dashboard_method_order(progress_sum
         "first / last occurrence",
     ]
     assert "target-locked" in context.system_prompt
+
+
+@pytest.mark.asyncio
+async def test_foundation_flow_rewrites_overbroad_level_zero_to_micro_step(progress_summary) -> None:
+    request = SkillMapDrillsRequest(
+        questionType="skill-map-foundation-flow",
+        count=1,
+        templateMode=TemplateMode.algorithm,
+        skillMap=[SkillMapNode(pattern="DFS / BFS", methods=["queue frontier management"])],
+    )
+    persisted: dict = {}
+
+    def call_llm_json(*_args, **_kwargs):
+        return {
+            "drills": [
+                {
+                    "id": "too-large",
+                    "title": "Full BFS",
+                    "difficulty": "Easy",
+                    "prompt": "Write BFS",
+                    "templatePrompts": {},
+                    "templateTargets": {},
+                    "solution": (
+                        "from collections import deque\n"
+                        "def bfs(start, graph):\n"
+                        "    q = deque([start])\n"
+                        "    visited = {start}\n"
+                        "    while q:\n"
+                        "        node = q.popleft()\n"
+                        "        {{missing}}"
+                    ),
+                    "missing": "pass",
+                    "hint": "Use a queue.",
+                    "tags": ["skill-map", "dfs-bfs"],
+                }
+            ]
+        }
+
+    async def persist(drills, llm_used, _summary):
+        persisted["drills"] = drills
+        persisted["llm_used"] = llm_used
+
+    runtime = GeneratorRuntime(
+        call_llm_json=call_llm_json,
+        persist_skill_map_drills=persist,
+        drill_gen_max_tokens=8000,
+        drill_gen_openai_timeout_seconds=90,
+        drill_gen_temperature=0.7,
+    )
+
+    result = await SkillMapDrillGenerator(runtime=runtime).generate_response(
+        body=request,
+        progress_summary=progress_summary,
+        provider="openai",
+        provider_label="ChatGPT",
+        provider_available=True,
+    )
+
+    drill = result["drills"][0]
+    target = drill["templateTargets"]["algorithm"]
+    assert target == "from collections import deque\nq = deque([start])\nvisited = {start}"
+    assert drill["conceptQuestion"] == "What state does graph traversal need before it starts?"
+    assert drill["explanation"] == "Before graph traversal, you need a frontier of nodes to process and a seen set to prevent revisits."
+    assert len([line for line in target.splitlines() if line.strip()]) == 3
+    assert "while q" not in target
+    assert "def bfs" not in target
+    assert "flow-step-0" in drill["tags"]
+    assert "flow-action-start" in drill["tags"]
+    assert persisted["llm_used"] is True
+
+
+def test_foundation_flow_evaluation_accepts_equivalent_frontier_and_seen_names() -> None:
+    result = _evaluate_attempt_by_template_mode(
+        "from collections import deque\nq = deque([start])\nvisited = {start}",
+        "from collections import deque\nfrontier = deque([start])\nseen = {start}",
+        ["skill-map", "foundation-flow", "dfs-bfs", "flow-step-0"],
+        TemplateMode.algorithm.value,
+        {},
+    )
+
+    assert result["sound"] is True
+    assert result["accuracy"] == 100.0
 
 
 def test_focused_core_algorithm_catalog_covers_dashboard_methods() -> None:

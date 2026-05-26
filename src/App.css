@@ -551,7 +551,7 @@
   position: relative;
   z-index: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(5rem, 1fr) auto;
+  grid-template-rows: auto auto minmax(5rem, 1fr) auto auto;
   align-content: stretch;
   gap: 0.45rem;
   aspect-ratio: 1 / 0.86;
@@ -584,6 +584,62 @@
 .skill-map-card-stats {
   margin: 0;
   gap: 0.35rem;
+}
+
+.skill-map-flow-row {
+  display: flex;
+  justify-content: center;
+  min-height: 1.75rem;
+}
+
+.skill-map-flow-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  min-height: 1.65rem;
+  padding: 0.22rem 0.56rem;
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-card-surface-soft);
+  color: var(--hc-fg-dim);
+  font-size: 0.72rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.skill-map-flow-toggle:hover {
+  border-color: var(--hc-accent);
+  color: var(--hc-fg);
+}
+
+.skill-map-flow-toggle.active {
+  border-color: var(--hc-accent);
+  color: var(--hc-fg);
+  background: var(--hc-option-hover-bg);
+}
+
+.skill-map-flow-toggle-track {
+  position: relative;
+  display: inline-flex;
+  width: 1.65rem;
+  height: 0.9rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  opacity: 0.75;
+}
+
+.skill-map-flow-toggle-thumb {
+  position: absolute;
+  top: 0.12rem;
+  left: 0.13rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: currentColor;
+  transition: transform 150ms ease;
+}
+
+.skill-map-flow-toggle.active .skill-map-flow-toggle-thumb {
+  transform: translateX(0.72rem);
 }
 
 .skill-method-list {
@@ -1768,52 +1824,6 @@ button.link:hover {
   color: var(--hc-accent);
   border-color: var(--hc-accent);
   background: var(--hc-picker-active-bg);
-}
-
-.multiple-choice-set-control {
-  display: inline-flex;
-  align-items: center;
-  min-height: 1.8rem;
-  border: 1px solid var(--hc-border-dim);
-  background: var(--hc-picker-bg);
-  color: var(--hc-fg);
-  font-size: 0.6rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
-.multiple-choice-set-control:focus-within {
-  border-color: var(--hc-accent);
-  box-shadow: 0 0 0 1px var(--hc-accent);
-}
-
-.multiple-choice-set-control label {
-  display: inline-flex;
-  align-items: center;
-  min-height: 1.8rem;
-  padding: 0 0.38rem;
-  border-right: 1px solid var(--hc-border-dim);
-  color: var(--hc-fg-dim);
-  background: var(--hc-toggle-idle-bg);
-}
-
-.multiple-choice-set-control input {
-  width: 3.1rem;
-  min-height: 1.8rem;
-  padding: 0 0.25rem;
-  border: 0;
-  background: transparent;
-  color: var(--hc-accent);
-  font: inherit;
-  font-size: 0.7rem;
-  font-weight: 800;
-  text-align: center;
-}
-
-.multiple-choice-set-control input:focus-visible {
-  outline: none;
 }
 
 .flow-mode-button svg {
@@ -3668,7 +3678,8 @@ button.tune-reset {
   line-height: 1.2;
 }
 
-.tune-control select {
+.tune-control select,
+.tune-control input[type='number'] {
   width: 100%;
   min-height: 2.05rem;
   padding: 0.35rem 0.5rem;
@@ -3680,6 +3691,7 @@ button.tune-reset {
 }
 
 .tune-control select:focus-visible,
+.tune-control input[type='number']:focus-visible,
 .tune-control input[type='range']:focus-visible {
   outline: 2px solid var(--hc-accent);
   outline-offset: 1px;

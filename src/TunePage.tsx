@@ -13,6 +13,15 @@ import {
   saveStoredSpecimenTuning,
 } from './specimenTuning'
 import type { SpecimenTuning } from './specimenTuning'
+import {
+  MCQ_MAX_QUESTION_COUNT,
+  MCQ_MIN_QUESTION_COUNT,
+  clampMcqQuestionCount,
+  defaultMcqTuning,
+  loadStoredMcqTuning,
+  saveStoredMcqTuning,
+} from './mcqTuning'
+import type { McqTuning } from './mcqTuning'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 
@@ -109,11 +118,46 @@ function ToggleControl({
   )
 }
 
+function NumberControl({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+  description,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  onChange: (value: number) => void
+  description?: string
+}) {
+  return (
+    <label className="tune-control">
+      <span className="tune-control-label">{label}</span>
+      <input
+        type="number"
+        min={min}
+        max={max}
+        step="1"
+        value={value}
+        onChange={(event) => {
+          const nextValue = Number.parseInt(event.currentTarget.value, 10)
+          onChange(Number.isNaN(nextValue) ? min : nextValue)
+        }}
+      />
+      {description ? <span className="tune-control-description">{description}</span> : null}
+    </label>
+  )
+}
+
 export default function TunePage() {
   const configuredProviderLabel = useConfiguredProviderLabel()
   const [liveCoachTuning, setLiveCoachTuning] = useState<LiveCoachTuning>(() => loadStoredLiveCoachTuning())
   const [submissionTuning, setSubmissionTuning] = useState<SubmissionTuning>(() => loadStoredSubmissionTuning())
   const [specimenTuning, setSpecimenTuning] = useState<SpecimenTuning>(() => loadStoredSpecimenTuning())
+  const [mcqTuning, setMcqTuning] = useState<McqTuning>(() => loadStoredMcqTuning())
 
   useEffect(() => {
     saveStoredLiveCoachTuning(liveCoachTuning)
@@ -127,6 +171,10 @@ export default function TunePage() {
     saveStoredSpecimenTuning(specimenTuning)
   }, [specimenTuning])
 
+  useEffect(() => {
+    saveStoredMcqTuning(mcqTuning)
+  }, [mcqTuning])
+
   const updateLiveCoachTuning = <K extends keyof LiveCoachTuning>(key: K, value: LiveCoachTuning[K]) => {
     setLiveCoachTuning((prev) => ({ ...prev, [key]: value }))
   }
@@ -137,6 +185,10 @@ export default function TunePage() {
 
   const updateSpecimenTuning = <K extends keyof SpecimenTuning>(key: K, value: SpecimenTuning[K]) => {
     setSpecimenTuning((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const updateMcqTuning = <K extends keyof McqTuning>(key: K, value: McqTuning[K]) => {
+    setMcqTuning((prev) => ({ ...prev, [key]: value }))
   }
 
   return (
@@ -158,6 +210,7 @@ export default function TunePage() {
         <div className="tune-layout">
           <aside className="tune-rail" aria-label="Tune sections">
             <a href="#specimen">Specimen</a>
+            <a href="#mcq">MCQ</a>
             <a href="#live-coach">Live coach</a>
             <a href="#submission">Submission</a>
             <a href="#dimensions">Dimensions</a>
@@ -209,6 +262,48 @@ export default function TunePage() {
 
             <TuneSection
               eyebrow="02"
+              title="MCQ"
+              copy="Choose where multiple-choice questions come from and how the set should move from one question to the next."
+              action={(
+                <button className="secondary tune-reset" type="button" onClick={() => setMcqTuning(defaultMcqTuning)}>
+                  Reset
+                </button>
+              )}
+            >
+              <div className="tune-control-grid" id="mcq">
+                <SelectControl
+                  label="Question source"
+                  value={mcqTuning.sourceMode}
+                  onChange={(value) => updateMcqTuning('sourceMode', value)}
+                  description="Card based uses the exact current specimen prompt and target code."
+                  options={[
+                    { value: 'algorithm', label: 'Algorithm based' },
+                    { value: 'card', label: 'Card based' },
+                  ]}
+                />
+                <SelectControl
+                  label="Question flow"
+                  value={mcqTuning.flowMode}
+                  onChange={(value) => updateMcqTuning('flowMode', value)}
+                  description="Progressive creates a Socratic chain where each question builds on the previous one."
+                  options={[
+                    { value: 'random', label: 'Varied balanced random' },
+                    { value: 'progressive', label: 'Socratic chain' },
+                  ]}
+                />
+                <NumberControl
+                  label="Set size"
+                  value={mcqTuning.questionCount}
+                  min={MCQ_MIN_QUESTION_COUNT}
+                  max={MCQ_MAX_QUESTION_COUNT}
+                  onChange={(value) => updateMcqTuning('questionCount', clampMcqQuestionCount(value))}
+                  description="How many MCQ questions to generate for each new set."
+                />
+              </div>
+            </TuneSection>
+
+            <TuneSection
+              eyebrow="03"
               title="Live Coach"
               copy="Control on-demand coach feedback and how specific it can be while you type."
               action={(
@@ -290,7 +385,7 @@ export default function TunePage() {
             </TuneSection>
 
             <TuneSection
-              eyebrow="03"
+              eyebrow="04"
               title="Submission"
               copy="Preserve the algorithm first, then tighten contract drift and wording as secondary signals."
               action={(
@@ -343,7 +438,7 @@ export default function TunePage() {
             </TuneSection>
 
             <TuneSection
-              eyebrow="04"
+              eyebrow="05"
               title="Tracked Dimensions"
               copy="Signals the Signal Assessor checks for submitted attempts."
             >

@@ -10,6 +10,7 @@ import { loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoac
 import { loadStoredSubmissionTuning } from './submissionTuning'
 import { loadStoredSpecimenTuning } from './specimenTuning'
 import type { SpecimenTuning } from './specimenTuning'
+import { loadStoredMcqTuning, type McqFlowMode, type McqSourceMode } from './mcqTuning'
 import { apiUrl } from './api'
 import { providerDisplayLabel, useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
@@ -20,6 +21,8 @@ type Flashcard = {
   title: string
   difficulty: 'Easy' | 'Med.' | 'Hard'
   prompt: string
+  conceptQuestion?: string
+  explanation?: string
   templatePrompts?: Partial<Record<TemplateMode | HelperLayer | CoreShapeLayer, string>>
   templateTargets?: Partial<Record<TemplateMode | HelperLayer | CoreShapeLayer, string>>
   solution: string
@@ -150,7 +153,19 @@ type MultipleChoiceDrillsRequest = {
   count: number
   skillMap: SkillMapNode[]
   difficulty: MultipleChoiceDifficulty
+  sourceMode: McqSourceMode
+  flowMode: McqFlowMode
+  specimen?: MultipleChoiceSpecimenContext
   llmProvider: string
+}
+
+type MultipleChoiceSpecimenContext = {
+  cardId: string
+  cardTitle: string
+  pattern: string
+  prompt: string
+  target: string
+  tags: string[]
 }
 
 type PromptToggleExplanationRequest = {
@@ -179,6 +194,15 @@ type AdaptiveVariationResponse = {
 type SequentialVariationResponse = {
   drill: Flashcard
   progressionReason: string
+  llmUsed: boolean
+}
+
+type FoundationFlowNextResponse = {
+  drill: Flashcard
+  flowAction: 'advance' | 'reinforce'
+  flowLevel: number
+  flowStep: number
+  reason: string
   llmUsed: boolean
 }
 
@@ -308,9 +332,6 @@ type LlmProviderSelection = 'auto' | LlmProvider
 const skillMapDeckRequestCache = new Map<string, Promise<SkillMapDrillsResponse>>()
 const multipleChoiceDeckRequestCache = new Map<string, Promise<MultipleChoiceDrillsResponse>>()
 const promptToggleExplanationRequestCache = new Map<string, Promise<PromptToggleExplanationResponse>>()
-const MULTIPLE_CHOICE_MIN_COUNT = 1
-const MULTIPLE_CHOICE_MAX_COUNT = 30
-const DEFAULT_MULTIPLE_CHOICE_COUNT = 5
 const MCQ_CORE_ALGORITHM_ANCHORS: SkillMapNode[] = [
   { pattern: 'Sliding Window', methods: ['fixed vs variable window', 'expand / shrink rhythm', 'frequency maps'] },
   { pattern: 'Two Pointers', methods: ['same-direction scan', 'opposing pointers', 'sorted-array leverage'] },
@@ -585,6 +606,7 @@ const patternToSlug = (pattern: string) =>
 const patternLabelFromSlug = (slug: string) => {
   const overrides: Record<string, string> = {
     'dfs-bfs': 'DFS / BFS',
+    'heap-priority-queue': 'Heap / Priority Queue',
     heap: 'Heap / Priority Queue',
     'dynamic-programming': 'Dynamic Programming',
     'prefix-sums': 'Prefix Sums',
@@ -600,9 +622,6 @@ const patternLabelFromSlug = (slug: string) => {
   return overrides[slug] ?? slug.split('-').filter(Boolean).map((part) => part[0]?.toUpperCase() + part.slice(1)).join(' ')
 }
 
-const clampMultipleChoiceQuestionCount = (count: number) =>
-  Math.min(MULTIPLE_CHOICE_MAX_COUNT, Math.max(MULTIPLE_CHOICE_MIN_COUNT, count))
-
 const ensureTemplateModes = (modes: TemplateMode[]) => {
   const next = TEMPLATE_MODE_ORDER.filter((mode) => modes.includes(mode))
   return next.length > 0 ? next : [...DEFAULT_TEMPLATE_MODES]
@@ -616,6 +635,7 @@ const getPrimaryPatternTag = (tags: string[]) => {
     'dfs-bfs',
     'graph-traversal',
     'backtracking',
+    'heap-priority-queue',
     'heap',
     'union-find',
     'dynamic-programming',
@@ -2162,7 +2182,6 @@ function App() {
   const questionType = 'skill-map' as const
   const [practiceMode, setPracticeMode] = useState<PracticeMode>('recall')
   const [multipleChoiceDifficulty, setMultipleChoiceDifficulty] = useState<MultipleChoiceDifficulty>('Med.')
-  const [multipleChoiceQuestionCount, setMultipleChoiceQuestionCount] = useState(DEFAULT_MULTIPLE_CHOICE_COUNT)
   const [enabledTemplateModes, setEnabledTemplateModes] = useState<TemplateMode[]>(() => [...DEFAULT_TEMPLATE_MODES])
   const [supportLayer, setSupportLayer] = useState<SupportLayer>('none')
   const [skillMapDeck, setSkillMapDeck] = useState<Flashcard[]>([])
@@ -2183,6 +2202,9 @@ function App() {
   const [sequentialVariationLoading, setSequentialVariationLoading] = useState(false)
   const [sequentialVariationError, setSequentialVariationError] = useState('')
   const [sequentialVariationNote, setSequentialVariationNote] = useState('')
+  const [foundationFlowLoading, setFoundationFlowLoading] = useState(false)
+  const [foundationFlowError, setFoundationFlowError] = useState('')
+  const [foundationFlowNote, setFoundationFlowNote] = useState('')
   const [inlineEnabled, setInlineEnabled] = useState(false)
   const [inlineLens, setInlineLens] = useState<InlineLens>('pattern')
   const [plainEnglishPromptOpen, setPlainEnglishPromptOpen] = useState(false)
@@ -2227,6 +2249,8 @@ function App() {
   const [sessionPlan, setSessionPlan] = useState<CoachSessionPlan | null>(null)
   const [sessionPlanLoading, setSessionPlanLoading] = useState(false)
   const [sessionPlanError, setSessionPlanError] = useState('')
+  const mcqTuning = useMemo(() => loadStoredMcqTuning(), [])
+  const multipleChoiceQuestionCount = mcqTuning.questionCount
   const mainInputRef = useRef<HTMLTextAreaElement | null>(null)
   const shouldFocusMainInputRef = useRef(false)
   const mainHighlightRef = useRef<HTMLDivElement | null>(null)
@@ -2247,9 +2271,11 @@ function App() {
   const multipleChoiceDeckRequestVersionRef = useRef(0)
   const adaptiveVariationRequestKeyRef = useRef('')
   const sequentialVariationRequestKeyRef = useRef('')
+  const foundationFlowRequestKeyRef = useRef('')
   const focusedPatternSlug = searchParams.get('focusPattern')?.trim() || ''
   const focusedTagSlug = searchParams.get('focusTag')?.trim() || ''
   const focusedModeParam = searchParams.get('focusMode')?.trim() || ''
+  const foundationFlowEnabled = searchParams.get('foundationFlow') === '1'
   const requestedPlaylistSlug = searchParams.get('playlist')?.trim() || ''
   const focusedMethodParams = searchParams.getAll('focusMethod').map((method) => method.trim()).filter(Boolean)
   const requestedPlaylist = useMemo(
@@ -2269,6 +2295,12 @@ function App() {
   const requestedSkillMap = useMemo<SkillMapNode[]>(() => {
     if (requestedPlaylist) return playlistQuestionsToSkillMap(requestedPlaylist)
     if (!focusedPatternNode) return skillMap
+    if (foundationFlowEnabled) {
+      return [{
+        pattern: focusedPatternNode.pattern,
+        methods: focusedPatternNode.methods,
+      }]
+    }
     const focusedMethodSet = new Set(focusedMethodParams)
     const focusedMethods = focusedMethodSet.size > 0
       ? focusedPatternNode.methods.filter((method) => focusedMethodSet.has(method))
@@ -2278,7 +2310,7 @@ function App() {
       pattern: focusedPatternNode.pattern,
       methods: [method],
     }))
-  }, [focusedMethodParams, focusedPatternNode, requestedPlaylist])
+  }, [focusedMethodParams, focusedPatternNode, foundationFlowEnabled, requestedPlaylist])
   const requestedSkillMapSignature = useMemo(
     () => JSON.stringify(requestedSkillMap),
     [requestedSkillMap]
@@ -2313,6 +2345,8 @@ function App() {
   }, [requestedSkillMap])
   const requestedQuestionType = requestedPlaylist
     ? `playlist:${requestedPlaylist.slug}`
+    : foundationFlowEnabled && focusedPatternSlug
+      ? 'skill-map-foundation-flow'
     : focusedTagSlug
       ? `tag:${focusedTagSlug}`
     : focusedPatternSlug
@@ -2349,6 +2383,14 @@ function App() {
     }
 
     try {
+      if (foundationFlowEnabled && focusedPatternSlug && !requestedPlaylist) {
+        const payload = await requestSkillMapDrills(requestBody)
+        if (skillMapDeckRequestVersionRef.current !== requestVersion) return
+        setSkillMapDeck(payload.drills)
+        setSkillMapSessionVersion((prev) => prev + 1)
+        return
+      }
+
       if (focusedTagSlug && !requestedPlaylist) {
         const payload = await requestCoreAlgorithmDrillsByTag(focusedTagSlug, 10)
         if (skillMapDeckRequestVersionRef.current !== requestVersion) return
@@ -2414,11 +2456,31 @@ function App() {
     setMultipleChoiceError('')
     setMultipleChoiceDeck([])
 
+    const cardPatternSlug = getPrimaryPatternTag(card.tags)
+    const specimenPattern = cardPatternSlug ? patternLabelFromSlug(cardPatternSlug) : card.title
+    const cardBasedSkillMap: SkillMapNode[] = [{
+      pattern: specimenPattern || 'Algorithm',
+      methods: [card.title, ...card.tags.filter((tag) => tag !== 'skill-map').slice(0, 4)],
+    }]
+    const specimenContext: MultipleChoiceSpecimenContext = {
+      cardId: card.id,
+      cardTitle: card.title,
+      pattern: specimenPattern || 'Algorithm',
+      prompt: practicePrompt,
+      target: practiceTarget,
+      tags: card.tags,
+    }
+    const sourceMode = mcqTuning.sourceMode
+    const flowMode = mcqTuning.flowMode
+
     const requestBody: MultipleChoiceDrillsRequest = {
-      questionType: 'skill-map-mcq',
+      questionType: `skill-map-mcq:${sourceMode}:${flowMode}`,
       count: multipleChoiceQuestionCount,
-      skillMap: multipleChoiceSkillMap,
+      skillMap: sourceMode === 'card' ? cardBasedSkillMap : multipleChoiceSkillMap,
       difficulty: multipleChoiceDifficulty,
+      sourceMode,
+      flowMode,
+      ...(sourceMode === 'card' ? { specimen: specimenContext } : {}),
       llmProvider: requestLlmProvider,
     }
 
@@ -2489,9 +2551,10 @@ function App() {
 
   useEffect(() => {
     if (practiceMode !== 'multiple-choice') return
+    if (mcqTuning.sourceMode === 'card' && skillMapLoading) return
     void fetchMultipleChoiceDeck()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [practiceMode, llmProvider, requestedQuestionType, multipleChoiceSkillMapSignature, multipleChoiceDifficulty, multipleChoiceQuestionCount, multipleChoiceRefreshToken])
+  }, [practiceMode, llmProvider, requestedQuestionType, multipleChoiceSkillMapSignature, multipleChoiceDifficulty, multipleChoiceQuestionCount, multipleChoiceRefreshToken, mcqTuning.sourceMode, mcqTuning.flowMode, skillMapLoading, skillMapSessionVersion])
 
   useEffect(() => {
     saveStoredLiveCoachTuning(liveCoachTuning)
@@ -2558,9 +2621,10 @@ function App() {
   const generatedPracticePrompt =
     (recallTargetMode === 'coreShape' ? card.templatePrompts?.coreShape?.trim() : card.templatePrompts?.algorithm?.trim())
     || card.prompt.trim()
+  const foundationConceptQuestion = foundationFlowEnabled ? card.conceptQuestion?.trim() || card.prompt.trim() : ''
   const practicePrompt = useMemo(
-    () => generatedPracticePrompt || buildPracticePrompt(currentTemplateMode, primaryPatternTag),
-    [currentTemplateMode, generatedPracticePrompt, primaryPatternTag]
+    () => foundationConceptQuestion || generatedPracticePrompt || buildPracticePrompt(currentTemplateMode, primaryPatternTag),
+    [currentTemplateMode, foundationConceptQuestion, generatedPracticePrompt, primaryPatternTag]
   )
   const fallbackPlainEnglishPromptDetail = useMemo(
     () => card.plainEnglishPromptDetail ?? getPlainEnglishPromptDetail(practicePrompt, card.tags, card.title, plainPracticeTarget),
@@ -2612,24 +2676,27 @@ function App() {
   }, [promptToggleRequestKey])
 
   const currentQuestionType = `${requestedQuestionType}:${recallTargetMode}${inlineEnabled ? `:${inlineLens}` : ''}`
-  const currentMultipleChoiceQuestionType = 'skill-map-mcq'
+  const currentMultipleChoiceQuestionType = `skill-map-mcq:${mcqTuning.sourceMode}:${mcqTuning.flowMode}`
   const currentSkillTags = useMemo(
     () => [
       ...card.tags,
       `template-${currentTemplateMode}`,
       `target-${recallTargetMode}`,
+      ...(foundationFlowEnabled ? ['foundation-flow-session', 'mode-foundation-flow'] : []),
       ...(inlineEnabled ? [`inline-${inlineLens}`] : []),
     ],
-    [card.tags, currentTemplateMode, inlineEnabled, inlineLens, recallTargetMode]
+    [card.tags, currentTemplateMode, foundationFlowEnabled, inlineEnabled, inlineLens, recallTargetMode]
   )
   const currentRecallHistoryKey = `${card.id}:${currentTemplateMode}:${recallTargetMode}:${inlineEnabled ? inlineLens : 'plain'}`
   const currentMultipleChoiceSkillTags = useMemo(
     () => [
       ...(multipleChoiceCard?.tags ?? []),
       'mode-multiple-choice',
+      `source-${mcqTuning.sourceMode}`,
+      `flow-${mcqTuning.flowMode}`,
       `difficulty-${multipleChoiceDifficulty === 'Hard' ? 'hard' : 'med'}`,
     ],
-    [multipleChoiceCard?.tags, multipleChoiceDifficulty]
+    [mcqTuning.flowMode, mcqTuning.sourceMode, multipleChoiceCard?.tags, multipleChoiceDifficulty]
   )
   const visibleCardTags = useMemo(
     () => activeCardTags.filter((tag) => tag !== 'skill-map' && tag !== 'skill-map-mcq'),
@@ -2718,11 +2785,19 @@ function App() {
   const supportedStartRecallLabel = isGhostRepsEnabled
     ? `Start Ghost Reps for ${activeRecallLabel}`
     : startRecallLabel
-  const queuedFlowLoading = flowMode === 'adaptive' ? adaptiveVariationLoading : sequentialVariationLoading
-  const queuedFlowNote = flowMode === 'adaptive' ? adaptiveVariationNote : sequentialVariationNote
-  const queuedFlowError = flowMode === 'adaptive' ? adaptiveVariationError : sequentialVariationError
+  const queuedFlowLoading = foundationFlowEnabled
+    ? foundationFlowLoading
+    : flowMode === 'adaptive' ? adaptiveVariationLoading : sequentialVariationLoading
+  const queuedFlowNote = foundationFlowEnabled
+    ? foundationFlowNote
+    : flowMode === 'adaptive' ? adaptiveVariationNote : sequentialVariationNote
+  const queuedFlowError = foundationFlowEnabled
+    ? foundationFlowError
+    : flowMode === 'adaptive' ? adaptiveVariationError : sequentialVariationError
   const queuedFlowLoadingMessage =
-    flowMode === 'adaptive'
+    foundationFlowEnabled
+      ? 'Building the next foundation step...'
+      : flowMode === 'adaptive'
       ? 'Building a targeted repair variation...'
       : 'Building the next sequential step...'
   const relatedLeetCodeSet = useMemo(
@@ -2862,6 +2937,7 @@ function App() {
   const enqueueGeneratedFollowup = (drill: Flashcard) => {
     if (skillMapDeck.some((item) => item.id === drill.id)) return
     const nextDeckIndex = skillMapDeck.length
+    setSessionFinished(false)
     setSkillMapDeck((prevDeck) => {
       if (prevDeck.some((item) => item.id === drill.id)) return prevDeck
       return [...prevDeck, drill]
@@ -2962,6 +3038,55 @@ function App() {
     }
   }
 
+  const requestFoundationFlowNext = async (payload: {
+    interactionId: string
+    expectedAnswer: string
+    userAnswer: string
+    correct: boolean
+    accuracy: number
+    submissionRubric?: Record<string, unknown> | null
+  }) => {
+    const requestKey = `${card.id}:${currentTemplateMode}:${payload.interactionId}:${payload.correct ? 'advance' : 'reinforce'}`
+    if (foundationFlowRequestKeyRef.current === requestKey) return
+    foundationFlowRequestKeyRef.current = requestKey
+    setFoundationFlowLoading(true)
+    setFoundationFlowError('')
+    setFoundationFlowNote('')
+
+    try {
+      const response = await fetch(apiUrl('/api/coach/foundation-flow-next'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cardId: card.id,
+          cardTitle: card.title,
+          prompt: practicePrompt,
+          expectedAnswer: payload.expectedAnswer,
+          userAnswer: payload.userAnswer,
+          correct: payload.correct,
+          accuracy: payload.accuracy,
+          templateMode: currentTemplateMode,
+          skillTags: currentSkillTags,
+          submissionRubric: payload.submissionRubric ?? {},
+          specimenTuning: loadStoredSpecimenTuning(),
+          llmProvider: requestLlmProvider,
+        }),
+      })
+      if (!response.ok) throw new Error('Unable to generate foundation flow step')
+      const next = (await response.json()) as FoundationFlowNextResponse
+      if (foundationFlowRequestKeyRef.current !== requestKey || currentCardIdRef.current !== card.id) return
+      enqueueGeneratedFollowup(next.drill)
+      setFoundationFlowNote(next.reason || (next.flowAction === 'advance' ? 'Next foundation step queued.' : 'Reinforcement step queued.'))
+    } catch {
+      if (foundationFlowRequestKeyRef.current !== requestKey || currentCardIdRef.current !== card.id) return
+      setFoundationFlowError('Foundation flow step unavailable right now.')
+    } finally {
+      if (foundationFlowRequestKeyRef.current === requestKey && currentCardIdRef.current === card.id) {
+        setFoundationFlowLoading(false)
+      }
+    }
+  }
+
   const clearQueuedFlowState = () => {
     setAdaptiveVariationLoading(false)
     setAdaptiveVariationError('')
@@ -2969,8 +3094,12 @@ function App() {
     setSequentialVariationLoading(false)
     setSequentialVariationError('')
     setSequentialVariationNote('')
+    setFoundationFlowLoading(false)
+    setFoundationFlowError('')
+    setFoundationFlowNote('')
     adaptiveVariationRequestKeyRef.current = ''
     sequentialVariationRequestKeyRef.current = ''
+    foundationFlowRequestKeyRef.current = ''
   }
 
   const resetPerCardInteraction = () => {
@@ -3464,6 +3593,19 @@ function App() {
       submissionRubric: feedback?.submissionRubric ?? null,
     })
 
+    if (!isGhostRep && foundationFlowEnabled) {
+      completeCardInSession(sound, accuracy, elapsedMs)
+      void requestFoundationFlowNext({
+        interactionId,
+        expectedAnswer: normalizedTarget,
+        userAnswer: normalizedInput,
+        correct: sound,
+        accuracy,
+        submissionRubric: feedback?.submissionRubric ?? null,
+      })
+      return
+    }
+
     if (!isGhostRep && flowMode === 'adaptive' && !sound && feedback?.submissionRubric) {
       void requestAdaptiveVariation({
         interactionId,
@@ -3871,6 +4013,10 @@ function App() {
       }
     }
 
+    if (!mainCloseEnough && foundationFlowEnabled) {
+      return null
+    }
+
     if (!mainCloseEnough) {
       return {
         label: 'Revise and resubmit',
@@ -3971,9 +4117,13 @@ function App() {
             : 'LLM'
       : 'Rules'
   const submissionAttemptStatusText = mainCloseEnough
-    ? `${activeRecallLabel} recall recorded.`
+    ? foundationFlowEnabled
+      ? `${activeRecallLabel} recall recorded. Advancing the foundation flow.`
+      : `${activeRecallLabel} recall recorded.`
     : latestSubmittedWasGhostRep
       ? `Ghost rep logged for ${activeRecallLabel}. Repeat it until the shape starts to stick.`
+    : foundationFlowEnabled
+      ? 'This step needs reinforcement. A smaller code step is being queued next.'
     : `This recall attempt is not sound yet. Revise the logic and submit again.`
   const showSubmittedLineReview = mainPhase === 'submitted' && !mainCloseEnough && !latestSubmittedWasGhostRep
 
@@ -4085,13 +4235,24 @@ function App() {
             )}
             {practiceMode === 'multiple-choice' ? (
               <div className="coach-metric-row card-header-metric-row">
-                <span className="coach-metric-chip">Algorithm anchors</span>
+                <span className="coach-metric-chip">
+                  {mcqTuning.sourceMode === 'card' ? 'Card specimen' : 'Algorithm anchors'}
+                </span>
+                <span className="coach-metric-chip">
+                  {mcqTuning.flowMode === 'progressive' ? 'Socratic chain' : 'Balanced random'}
+                </span>
                 <span className="coach-metric-chip">{multipleChoiceQuestionCount} questions</span>
                 {(focusedPatternSlug || requestedPlaylist) && (
                   <span className="coach-metric-chip">
                     {requestedPlaylist ? 'Playlist bias' : `Focus ${focusedPatternLabel}`}
                   </span>
                 )}
+              </div>
+            ) : foundationFlowEnabled ? (
+              <div className="coach-metric-row card-header-metric-row">
+                <span className="coach-metric-chip">Foundation flow</span>
+                <span className="coach-metric-chip">Level 0</span>
+                <span className="coach-metric-chip">{focusedPatternLabel}</span>
               </div>
             ) : null}
           </div>
@@ -4135,22 +4296,6 @@ function App() {
                   >
                     Hard
                   </button>
-                </div>
-                <div className="multiple-choice-set-control">
-                  <label htmlFor="multiple-choice-question-count">Set</label>
-                  <input
-                    id="multiple-choice-question-count"
-                    type="number"
-                    min={MULTIPLE_CHOICE_MIN_COUNT}
-                    max={MULTIPLE_CHOICE_MAX_COUNT}
-                    step="1"
-                    value={multipleChoiceQuestionCount}
-                    onChange={(event) => {
-                      const nextCount = Number.parseInt(event.currentTarget.value, 10)
-                      setMultipleChoiceQuestionCount(clampMultipleChoiceQuestionCount(Number.isNaN(nextCount) ? MULTIPLE_CHOICE_MIN_COUNT : nextCount))
-                    }}
-                    aria-label="MCQ set size"
-                  />
                 </div>
               </>
             ) : (

@@ -41,6 +41,8 @@ from app.models import (
     CoachPromptToggleExplanationResponse,
     CoachSessionPlanRequest,
     CoachSessionPlanResponse,
+    FoundationFlowNextRequest,
+    FoundationFlowNextResponse,
     MultipleChoiceDrillsRequest,
     MultipleChoiceDrillsResponse,
     SequentialVariationRequest,
@@ -74,6 +76,7 @@ from app.core.generator import (
     attach_plain_english_prompt_detail,
     apply_specimen_tuning_to_target,
     build_plain_english_prompt_detail,
+    foundation_flow_micro_drill,
     generate_multiple_choice_drills_response,
     GeneratorRuntime,
     GeneratorUnavailableError,
@@ -504,6 +507,59 @@ def _evaluate_attempt_soundness(expected_answer: str, user_answer: str) -> dict[
     }
 
 
+def _code_has_start_frontier(code: str) -> bool:
+    normalized = str(code or "").replace("\r\n", "\n")
+    assignment_patterns = (
+        r"^\s*[A-Za-z_]\w*\s*=\s*deque\s*\(\s*\[\s*start\s*\]\s*\)",
+        r"^\s*[A-Za-z_]\w*\s*=\s*\[\s*start\s*\]",
+        r"^\s*[A-Za-z_]\w*\s*=\s*list\s*\(\s*\[\s*start\s*\]\s*\)",
+    )
+    return any(re.search(pattern, normalized, re.MULTILINE) for pattern in assignment_patterns)
+
+
+def _code_has_seen_start_set(code: str) -> bool:
+    normalized = str(code or "").replace("\r\n", "\n")
+    assignment_patterns = (
+        r"^\s*[A-Za-z_]\w*\s*=\s*\{\s*start\s*\}",
+        r"^\s*[A-Za-z_]\w*\s*=\s*set\s*\(\s*\[\s*start\s*\]\s*\)",
+        r"^\s*[A-Za-z_]\w*\s*=\s*set\s*\(\s*\(\s*start\s*,?\s*\)\s*\)",
+    )
+    return any(re.search(pattern, normalized, re.MULTILINE) for pattern in assignment_patterns)
+
+
+def _evaluate_foundation_flow_attempt(expected_answer: str, user_answer: str, skill_tags: list[str]) -> dict[str, Any]:
+    base = _evaluate_attempt_soundness(expected_answer, user_answer)
+    tags = {str(tag) for tag in skill_tags}
+    step = _flow_step_from_tags(skill_tags)
+    pattern = _primary_pattern_tag(skill_tags)
+    syntax_valid = not _has_syntax_error(user_answer) if user_answer.strip() else False
+
+    if not syntax_valid:
+        return {**base, "syntaxValid": False}
+
+    if step == 0 and pattern in {"dfs-bfs", "graph-traversal"}:
+        has_frontier = _code_has_start_frontier(user_answer)
+        has_seen = _code_has_seen_start_set(user_answer)
+        accuracy = 100.0 if has_frontier and has_seen else 55.0 if has_frontier or has_seen else base["accuracy"]
+        return {
+            "accuracy": accuracy,
+            "sound": has_frontier and has_seen,
+            "syntaxValid": True,
+            "matchedLabels": [
+                label
+                for label, matched in (("frontier seeded with start", has_frontier), ("seen set seeded with start", has_seen))
+                if matched
+            ],
+            "missingLabels": [
+                label
+                for label, matched in (("frontier seeded with start", has_frontier), ("seen set seeded with start", has_seen))
+                if not matched
+            ],
+        }
+
+    return base
+
+
 def _evaluate_attempt_by_template_mode(
     expected_answer: str,
     user_answer: str,
@@ -511,6 +567,8 @@ def _evaluate_attempt_by_template_mode(
     template_mode: str,
     submission_tuning: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if "foundation-flow" in skill_tags or "mode-foundation-flow" in skill_tags:
+        return _evaluate_foundation_flow_attempt(expected_answer, user_answer, skill_tags)
     if template_mode == TemplateMode.algorithm.value:
         return _evaluate_attempt_soundness(expected_answer, user_answer)
     return _analyze_template_attempt(user_answer, skill_tags, template_mode, submission_tuning, expected_answer)
@@ -1168,6 +1226,7 @@ def _primary_pattern_tag(skill_tags: list[str]) -> str:
         "dfs-bfs",
         "graph-traversal",
         "backtracking",
+        "heap-priority-queue",
         "heap",
         "union-find",
         "dynamic-programming",
@@ -1191,6 +1250,7 @@ def _pattern_display_name(skill_tags: list[str]) -> str:
         "dfs-bfs": "DFS/BFS",
         "graph-traversal": "graph traversal",
         "backtracking": "backtracking",
+        "heap-priority-queue": "heap",
         "heap": "heap",
         "union-find": "union find",
         "dynamic-programming": "dynamic programming",
@@ -1570,6 +1630,211 @@ async def _sequential_variation_with_llm(body: SequentialVariationRequest) -> di
     }
 
 
+def _flow_step_from_tags(tags: list[str]) -> int:
+    for tag in tags:
+        match = re.match(r"^flow-step-(\d+)$", str(tag).strip())
+        if match:
+            return int(match.group(1))
+    return 0
+
+
+def _flow_level_for_step(step: int) -> int:
+    return max(0, min(step // 3, 4))
+
+
+def _foundation_specimen_too_broad(specimen: str, flow_step: int) -> bool:
+    lines = [line for line in str(specimen or "").splitlines() if line.strip()]
+    if len(lines) > 3:
+        return True
+    if re.search(r"^\s*def\s+", specimen, re.MULTILINE):
+        return True
+    if flow_step == 0 and re.search(r"^\s*(while|for)\b", specimen, re.MULTILINE):
+        return True
+    return False
+
+
+async def _foundation_flow_next_with_llm(body: FoundationFlowNextRequest) -> dict[str, Any]:
+    provider = _resolve_available_llm_provider(body.llmProvider)
+    if not _llm_provider_available(provider):
+        raise SubmissionFeedbackUnavailableError(
+            code="coach_llm_missing_api_key",
+            message="Update backend .env with at least one coach LLM API key.",
+            provider=provider,
+            api_error_code="provider_auth_error",
+        )
+
+    template_mode = _template_mode_value(body.templateMode)
+    pattern_name = _pattern_display_name(body.skillTags) or "algorithm"
+    pattern_slug = _pattern_slug(pattern_name)
+    current_step = _flow_step_from_tags(body.skillTags)
+    flow_action = "advance" if body.correct else "reinforce"
+    next_step = current_step + 1 if body.correct else current_step
+    flow_level = _flow_level_for_step(next_step)
+    system_prompt = (
+        "Generate one Socratic foundation-flow recall card for a coding interview trainer. "
+        "Return strict JSON with keys prompt, specimen, hint, title, reason. "
+        "The learner's answer must be code, never plain text. The specimen is the exact Python code target the learner should recall next. "
+        "Ask for exactly one atomic code move, usually 1-3 non-empty lines. "
+        "If flowAction is advance, build directly on the prior target with one tiny new code idea. "
+        "If flowAction is reinforce, make an easier or narrower code target that repairs the same prerequisite idea. "
+        "Level 0 means basic code mechanics needed before the full algorithm: initialization, one pop, one loop header, one guard, or one update. "
+        "Do not generate a full function, full algorithm skeleton, or story problem. "
+        "Prompt must be 10 words or fewer and name the code move. "
+        f"{specimen_style_prompt(body.specimenTuning)} "
+        "Do not include markdown. Do not include '{{missing}}'."
+    )
+    llm_payload = {
+        "pattern": pattern_name,
+        "templateMode": template_mode,
+        "flowAction": flow_action,
+        "flowLevel": flow_level,
+        "flowStep": next_step,
+        "previousCard": {
+            "id": body.cardId,
+            "title": body.cardTitle,
+            "prompt": body.prompt,
+            "target": body.expectedAnswer,
+        },
+        "userAttempt": {
+            "answer": body.userAnswer,
+            "correct": body.correct,
+            "accuracy": body.accuracy,
+            "submissionRubric": body.submissionRubric,
+        },
+        "skillTags": body.skillTags,
+        "specimenTuning": body.specimenTuning,
+    }
+    llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)
+    if not isinstance(llm_response, dict):
+        raise SubmissionFeedbackUnavailableError(
+            code="coach_llm_no_response",
+            message=f"Foundation flow cannot be generated at this time. No response from {_llm_provider_label(provider)}.",
+            provider=provider,
+            api_error_code="provider_empty_response",
+        )
+
+    specimen = apply_specimen_tuning_to_target(
+        str(llm_response.get("specimen", "")).replace("\r\n", "\n").replace("{{missing}}", "").strip(),
+        body.specimenTuning,
+    )
+    prompt = _clean_concise_prompt(str(llm_response.get("prompt", "")).strip())
+    title = str(llm_response.get("title", "")).strip()
+    hint = str(llm_response.get("hint", "")).strip()
+    reason = str(llm_response.get("reason", "")).strip()
+    if not all([specimen, prompt, title, hint, reason]):
+        raise SubmissionFeedbackUnavailableError(
+            code="coach_llm_invalid_response",
+            message=f"Foundation flow cannot be generated at this time. Invalid response from {_llm_provider_label(provider)}.",
+            provider=provider,
+            api_error_code="provider_invalid_json",
+        )
+
+    base_tags = [
+        str(tag)
+        for tag in body.skillTags
+        if str(tag).strip() and not re.match(r"^flow-(action|level|step)-", str(tag).strip())
+    ]
+    if _foundation_specimen_too_broad(specimen, next_step):
+        drill = foundation_flow_micro_drill(
+            pattern=pattern_name,
+            pattern_slug=pattern_slug,
+            body=SkillMapDrillsRequest(
+                questionType="skill-map-foundation-flow",
+                count=1,
+                skillMap=[SkillMapNode(pattern=pattern_name, methods=[])],
+                templateMode=body.templateMode,
+                specimenTuning=body.specimenTuning,
+                llmProvider=body.llmProvider,
+            ),
+            flow_step=next_step,
+            flow_action=flow_action,
+            base_tags=base_tags,
+            reason=reason,
+        )
+        drill["id"] = f"foundation-{pattern_slug or 'algorithm'}-{flow_action}-{datetime.now(tz=timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+    else:
+        tags = foundation_flow_micro_drill(
+            pattern=pattern_name,
+            pattern_slug=pattern_slug,
+            body=SkillMapDrillsRequest(
+                questionType="skill-map-foundation-flow",
+                count=1,
+                skillMap=[SkillMapNode(pattern=pattern_name, methods=[])],
+                templateMode=body.templateMode,
+                specimenTuning=body.specimenTuning,
+                llmProvider=body.llmProvider,
+            ),
+            flow_step=next_step,
+            flow_action=flow_action,
+            base_tags=base_tags,
+        )["tags"]
+
+        core_shape = _core_shape_template_target(pattern_slug, specimen)
+        stamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S%f")
+        drill = attach_plain_english_prompt_detail(
+            {
+                "id": f"foundation-{pattern_slug or 'algorithm'}-{flow_action}-{stamp}",
+                "title": title,
+                "difficulty": "Easy",
+                "prompt": prompt,
+                "conceptQuestion": prompt,
+                "explanation": reason,
+                "templatePrompts": {
+                    template_mode: prompt,
+                    TemplateMode.algorithm.value: prompt,
+                    "coreShape": f"{pattern_name}: recall this foundation shape.",
+                    "inline": f"{pattern_name}: add sparse inline notes.",
+                },
+                "templateTargets": {
+                    template_mode: specimen,
+                    TemplateMode.algorithm.value: specimen,
+                    "coreShape": core_shape,
+                    "inline": specimen,
+                },
+                "solution": f"{specimen}\n{{{{missing}}}}",
+                "missing": "# foundation step complete",
+                "hint": hint,
+                "tags": tags,
+                "questionType": "skill-map-foundation-flow",
+                "foundationReason": reason,
+                "plainEnglishPromptDetail": {
+                    "plainEnglish": reason,
+                    "interviewQuestion": prompt,
+                    "inputExample": specimen,
+                    "outputExample": "code state ready for the next step",
+                    "explanation": reason,
+                    "brassTacks": "Answer with the smallest code state that makes the algorithm possible.",
+                    "leetcodeExamples": [],
+                },
+            },
+            pattern=pattern_name,
+            method=f"level {flow_level} step {next_step}",
+        )
+    await _persist_skill_map_drills(
+        [drill],
+        True,
+        {
+            "overall": {"flowAction": flow_action, "flowLevel": flow_level, "flowStep": next_step},
+            "patterns": {
+                pattern_slug: {
+                    "flowAction": flow_action,
+                    "flowLevel": flow_level,
+                    "flowStep": next_step,
+                    "reason": reason,
+                }
+            },
+        },
+    )
+    return {
+        "drill": drill,
+        "flowAction": flow_action,
+        "flowLevel": flow_level,
+        "flowStep": next_step,
+        "reason": reason,
+        "llmUsed": True,
+    }
+
+
 async def coach_provider_default() -> CoachProviderDefaultResponse:
     configured = _resolve_llm_provider("")
     return CoachProviderDefaultResponse(provider=configured)
@@ -1747,6 +2012,9 @@ async def _persist_skill_map_drills(
             "llmUsed": llm_used,
             "historySummary": progress_summary.get("overall", {}),
             "patternProgress": progress_summary.get("patterns", {}).get(pattern_slug, {}),
+            "conceptQuestion": str(drill.get("conceptQuestion", "") or ""),
+            "explanation": str(drill.get("explanation", "") or ""),
+            "foundationReason": str(drill.get("foundationReason", "") or ""),
         }
         await insert_generated_skill_map_card_row(
             card_id=drill["id"],
@@ -1950,5 +2218,12 @@ async def coach_adaptive_variation(body: AdaptiveVariationRequest):
 async def coach_sequential_variation(body: SequentialVariationRequest):
     try:
         return await _sequential_variation_with_llm(body)
+    except SubmissionFeedbackUnavailableError as error:
+        raise _coach_llm_http_exception(error) from error
+
+
+async def coach_foundation_flow_next(body: FoundationFlowNextRequest):
+    try:
+        return await _foundation_flow_next_with_llm(body)
     except SubmissionFeedbackUnavailableError as error:
         raise _coach_llm_http_exception(error) from error

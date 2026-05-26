@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -178,6 +178,8 @@ class SkillMapDrillCard(BaseModel):
     title: str = Field(min_length=1)
     difficulty: str = Field(default="Med.")
     prompt: str = Field(min_length=1)
+    conceptQuestion: str = ""
+    explanation: str = ""
     templatePrompts: dict[str, str] = Field(default_factory=dict)
     templateTargets: dict[str, str] = Field(default_factory=dict)
     solution: str = Field(min_length=1)
@@ -219,11 +221,23 @@ class MultipleChoiceCard(BaseModel):
     tags: list[str] = []
 
 
+class MultipleChoiceSpecimenContext(BaseModel):
+    cardId: str = ""
+    cardTitle: str = ""
+    pattern: str = ""
+    prompt: str = ""
+    target: str = ""
+    tags: list[str] = []
+
+
 class MultipleChoiceDrillsRequest(BaseModel):
     questionType: str = "skill-map-mcq"
     count: int = Field(default=12, ge=1, le=30)
     skillMap: list[SkillMapNode] = []
     difficulty: str = Field(default="Med.")
+    sourceMode: Literal["algorithm", "card"] = "algorithm"
+    flowMode: Literal["random", "progressive"] = "random"
+    specimen: MultipleChoiceSpecimenContext | None = None
     llmProvider: str = "openai"
 
 
@@ -266,6 +280,30 @@ class SequentialVariationRequest(BaseModel):
 class SequentialVariationResponse(BaseModel):
     drill: SkillMapDrillCard
     progressionReason: str = ""
+    llmUsed: bool = False
+
+
+class FoundationFlowNextRequest(BaseModel):
+    cardId: str = Field(min_length=1)
+    cardTitle: str = ""
+    prompt: str = ""
+    expectedAnswer: str = Field(min_length=1)
+    userAnswer: str = ""
+    correct: bool = False
+    accuracy: float = Field(default=0, ge=0, le=100)
+    templateMode: TemplateMode = TemplateMode.algorithm
+    skillTags: list[str] = []
+    submissionRubric: dict[str, Any] = Field(default_factory=dict)
+    specimenTuning: dict[str, Any] = Field(default_factory=dict)
+    llmProvider: str = "openai"
+
+
+class FoundationFlowNextResponse(BaseModel):
+    drill: SkillMapDrillCard
+    flowAction: Literal["advance", "reinforce"] = "advance"
+    flowLevel: int = Field(default=0, ge=0)
+    flowStep: int = Field(default=0, ge=0)
+    reason: str = ""
     llmUsed: bool = False
 
 
