@@ -178,7 +178,6 @@ class SkillMapDrillCard(BaseModel):
     title: str = Field(min_length=1)
     difficulty: str = Field(default="Med.")
     prompt: str = Field(min_length=1)
-    conceptQuestion: str = ""
     explanation: str = ""
     templatePrompts: dict[str, str] = Field(default_factory=dict)
     templateTargets: dict[str, str] = Field(default_factory=dict)
@@ -280,30 +279,6 @@ class SequentialVariationRequest(BaseModel):
 class SequentialVariationResponse(BaseModel):
     drill: SkillMapDrillCard
     progressionReason: str = ""
-    llmUsed: bool = False
-
-
-class FoundationFlowNextRequest(BaseModel):
-    cardId: str = Field(min_length=1)
-    cardTitle: str = ""
-    prompt: str = ""
-    expectedAnswer: str = Field(min_length=1)
-    userAnswer: str = ""
-    correct: bool = False
-    accuracy: float = Field(default=0, ge=0, le=100)
-    templateMode: TemplateMode = TemplateMode.algorithm
-    skillTags: list[str] = []
-    submissionRubric: dict[str, Any] = Field(default_factory=dict)
-    specimenTuning: dict[str, Any] = Field(default_factory=dict)
-    llmProvider: str = "openai"
-
-
-class FoundationFlowNextResponse(BaseModel):
-    drill: SkillMapDrillCard
-    flowAction: Literal["advance", "reinforce"] = "advance"
-    flowLevel: int = Field(default=0, ge=0)
-    flowStep: int = Field(default=0, ge=0)
-    reason: str = ""
     llmUsed: bool = False
 
 

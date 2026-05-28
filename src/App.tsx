@@ -21,7 +21,6 @@ type Flashcard = {
   title: string
   difficulty: 'Easy' | 'Med.' | 'Hard'
   prompt: string
-  conceptQuestion?: string
   explanation?: string
   templatePrompts?: Partial<Record<TemplateMode | HelperLayer | CoreShapeLayer, string>>
   templateTargets?: Partial<Record<TemplateMode | HelperLayer | CoreShapeLayer, string>>
@@ -194,15 +193,6 @@ type AdaptiveVariationResponse = {
 type SequentialVariationResponse = {
   drill: Flashcard
   progressionReason: string
-  llmUsed: boolean
-}
-
-type FoundationFlowNextResponse = {
-  drill: Flashcard
-  flowAction: 'advance' | 'reinforce'
-  flowLevel: number
-  flowStep: number
-  reason: string
   llmUsed: boolean
 }
 
@@ -2202,9 +2192,6 @@ function App() {
   const [sequentialVariationLoading, setSequentialVariationLoading] = useState(false)
   const [sequentialVariationError, setSequentialVariationError] = useState('')
   const [sequentialVariationNote, setSequentialVariationNote] = useState('')
-  const [foundationFlowLoading, setFoundationFlowLoading] = useState(false)
-  const [foundationFlowError, setFoundationFlowError] = useState('')
-  const [foundationFlowNote, setFoundationFlowNote] = useState('')
   const [inlineEnabled, setInlineEnabled] = useState(false)
   const [inlineLens, setInlineLens] = useState<InlineLens>('pattern')
   const [plainEnglishPromptOpen, setPlainEnglishPromptOpen] = useState(false)
@@ -2271,11 +2258,9 @@ function App() {
   const multipleChoiceDeckRequestVersionRef = useRef(0)
   const adaptiveVariationRequestKeyRef = useRef('')
   const sequentialVariationRequestKeyRef = useRef('')
-  const foundationFlowRequestKeyRef = useRef('')
   const focusedPatternSlug = searchParams.get('focusPattern')?.trim() || ''
   const focusedTagSlug = searchParams.get('focusTag')?.trim() || ''
   const focusedModeParam = searchParams.get('focusMode')?.trim() || ''
-  const foundationFlowEnabled = searchParams.get('foundationFlow') === '1'
   const requestedPlaylistSlug = searchParams.get('playlist')?.trim() || ''
   const focusedMethodParams = searchParams.getAll('focusMethod').map((method) => method.trim()).filter(Boolean)
   const requestedPlaylist = useMemo(
@@ -2295,12 +2280,6 @@ function App() {
   const requestedSkillMap = useMemo<SkillMapNode[]>(() => {
     if (requestedPlaylist) return playlistQuestionsToSkillMap(requestedPlaylist)
     if (!focusedPatternNode) return skillMap
-    if (foundationFlowEnabled) {
-      return [{
-        pattern: focusedPatternNode.pattern,
-        methods: focusedPatternNode.methods,
-      }]
-    }
     const focusedMethodSet = new Set(focusedMethodParams)
     const focusedMethods = focusedMethodSet.size > 0
       ? focusedPatternNode.methods.filter((method) => focusedMethodSet.has(method))
@@ -2310,7 +2289,7 @@ function App() {
       pattern: focusedPatternNode.pattern,
       methods: [method],
     }))
-  }, [focusedMethodParams, focusedPatternNode, foundationFlowEnabled, requestedPlaylist])
+  }, [focusedMethodParams, focusedPatternNode, requestedPlaylist])
   const requestedSkillMapSignature = useMemo(
     () => JSON.stringify(requestedSkillMap),
     [requestedSkillMap]
@@ -2345,8 +2324,6 @@ function App() {
   }, [requestedSkillMap])
   const requestedQuestionType = requestedPlaylist
     ? `playlist:${requestedPlaylist.slug}`
-    : foundationFlowEnabled && focusedPatternSlug
-      ? 'skill-map-foundation-flow'
     : focusedTagSlug
       ? `tag:${focusedTagSlug}`
     : focusedPatternSlug
@@ -2383,14 +2360,6 @@ function App() {
     }
 
     try {
-      if (foundationFlowEnabled && focusedPatternSlug && !requestedPlaylist) {
-        const payload = await requestSkillMapDrills(requestBody)
-        if (skillMapDeckRequestVersionRef.current !== requestVersion) return
-        setSkillMapDeck(payload.drills)
-        setSkillMapSessionVersion((prev) => prev + 1)
-        return
-      }
-
       if (focusedTagSlug && !requestedPlaylist) {
         const payload = await requestCoreAlgorithmDrillsByTag(focusedTagSlug, 10)
         if (skillMapDeckRequestVersionRef.current !== requestVersion) return
@@ -2621,10 +2590,9 @@ function App() {
   const generatedPracticePrompt =
     (recallTargetMode === 'coreShape' ? card.templatePrompts?.coreShape?.trim() : card.templatePrompts?.algorithm?.trim())
     || card.prompt.trim()
-  const foundationConceptQuestion = foundationFlowEnabled ? card.conceptQuestion?.trim() || card.prompt.trim() : ''
   const practicePrompt = useMemo(
-    () => foundationConceptQuestion || generatedPracticePrompt || buildPracticePrompt(currentTemplateMode, primaryPatternTag),
-    [currentTemplateMode, foundationConceptQuestion, generatedPracticePrompt, primaryPatternTag]
+    () => generatedPracticePrompt || buildPracticePrompt(currentTemplateMode, primaryPatternTag),
+    [currentTemplateMode, generatedPracticePrompt, primaryPatternTag]
   )
   const fallbackPlainEnglishPromptDetail = useMemo(
     () => card.plainEnglishPromptDetail ?? getPlainEnglishPromptDetail(practicePrompt, card.tags, card.title, plainPracticeTarget),
@@ -2682,10 +2650,9 @@ function App() {
       ...card.tags,
       `template-${currentTemplateMode}`,
       `target-${recallTargetMode}`,
-      ...(foundationFlowEnabled ? ['foundation-flow-session', 'mode-foundation-flow'] : []),
       ...(inlineEnabled ? [`inline-${inlineLens}`] : []),
     ],
-    [card.tags, currentTemplateMode, foundationFlowEnabled, inlineEnabled, inlineLens, recallTargetMode]
+    [card.tags, currentTemplateMode, inlineEnabled, inlineLens, recallTargetMode]
   )
   const currentRecallHistoryKey = `${card.id}:${currentTemplateMode}:${recallTargetMode}:${inlineEnabled ? inlineLens : 'plain'}`
   const currentMultipleChoiceSkillTags = useMemo(
@@ -2785,19 +2752,11 @@ function App() {
   const supportedStartRecallLabel = isGhostRepsEnabled
     ? `Start Ghost Reps for ${activeRecallLabel}`
     : startRecallLabel
-  const queuedFlowLoading = foundationFlowEnabled
-    ? foundationFlowLoading
-    : flowMode === 'adaptive' ? adaptiveVariationLoading : sequentialVariationLoading
-  const queuedFlowNote = foundationFlowEnabled
-    ? foundationFlowNote
-    : flowMode === 'adaptive' ? adaptiveVariationNote : sequentialVariationNote
-  const queuedFlowError = foundationFlowEnabled
-    ? foundationFlowError
-    : flowMode === 'adaptive' ? adaptiveVariationError : sequentialVariationError
+  const queuedFlowLoading = flowMode === 'adaptive' ? adaptiveVariationLoading : sequentialVariationLoading
+  const queuedFlowNote = flowMode === 'adaptive' ? adaptiveVariationNote : sequentialVariationNote
+  const queuedFlowError = flowMode === 'adaptive' ? adaptiveVariationError : sequentialVariationError
   const queuedFlowLoadingMessage =
-    foundationFlowEnabled
-      ? 'Building the next foundation step...'
-      : flowMode === 'adaptive'
+    flowMode === 'adaptive'
       ? 'Building a targeted repair variation...'
       : 'Building the next sequential step...'
   const relatedLeetCodeSet = useMemo(
@@ -3038,55 +2997,6 @@ function App() {
     }
   }
 
-  const requestFoundationFlowNext = async (payload: {
-    interactionId: string
-    expectedAnswer: string
-    userAnswer: string
-    correct: boolean
-    accuracy: number
-    submissionRubric?: Record<string, unknown> | null
-  }) => {
-    const requestKey = `${card.id}:${currentTemplateMode}:${payload.interactionId}:${payload.correct ? 'advance' : 'reinforce'}`
-    if (foundationFlowRequestKeyRef.current === requestKey) return
-    foundationFlowRequestKeyRef.current = requestKey
-    setFoundationFlowLoading(true)
-    setFoundationFlowError('')
-    setFoundationFlowNote('')
-
-    try {
-      const response = await fetch(apiUrl('/api/coach/foundation-flow-next'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cardId: card.id,
-          cardTitle: card.title,
-          prompt: practicePrompt,
-          expectedAnswer: payload.expectedAnswer,
-          userAnswer: payload.userAnswer,
-          correct: payload.correct,
-          accuracy: payload.accuracy,
-          templateMode: currentTemplateMode,
-          skillTags: currentSkillTags,
-          submissionRubric: payload.submissionRubric ?? {},
-          specimenTuning: loadStoredSpecimenTuning(),
-          llmProvider: requestLlmProvider,
-        }),
-      })
-      if (!response.ok) throw new Error('Unable to generate foundation flow step')
-      const next = (await response.json()) as FoundationFlowNextResponse
-      if (foundationFlowRequestKeyRef.current !== requestKey || currentCardIdRef.current !== card.id) return
-      enqueueGeneratedFollowup(next.drill)
-      setFoundationFlowNote(next.reason || (next.flowAction === 'advance' ? 'Next foundation step queued.' : 'Reinforcement step queued.'))
-    } catch {
-      if (foundationFlowRequestKeyRef.current !== requestKey || currentCardIdRef.current !== card.id) return
-      setFoundationFlowError('Foundation flow step unavailable right now.')
-    } finally {
-      if (foundationFlowRequestKeyRef.current === requestKey && currentCardIdRef.current === card.id) {
-        setFoundationFlowLoading(false)
-      }
-    }
-  }
-
   const clearQueuedFlowState = () => {
     setAdaptiveVariationLoading(false)
     setAdaptiveVariationError('')
@@ -3094,12 +3004,8 @@ function App() {
     setSequentialVariationLoading(false)
     setSequentialVariationError('')
     setSequentialVariationNote('')
-    setFoundationFlowLoading(false)
-    setFoundationFlowError('')
-    setFoundationFlowNote('')
     adaptiveVariationRequestKeyRef.current = ''
     sequentialVariationRequestKeyRef.current = ''
-    foundationFlowRequestKeyRef.current = ''
   }
 
   const resetPerCardInteraction = () => {
@@ -3593,19 +3499,6 @@ function App() {
       submissionRubric: feedback?.submissionRubric ?? null,
     })
 
-    if (!isGhostRep && foundationFlowEnabled) {
-      completeCardInSession(sound, accuracy, elapsedMs)
-      void requestFoundationFlowNext({
-        interactionId,
-        expectedAnswer: normalizedTarget,
-        userAnswer: normalizedInput,
-        correct: sound,
-        accuracy,
-        submissionRubric: feedback?.submissionRubric ?? null,
-      })
-      return
-    }
-
     if (!isGhostRep && flowMode === 'adaptive' && !sound && feedback?.submissionRubric) {
       void requestAdaptiveVariation({
         interactionId,
@@ -4013,10 +3906,6 @@ function App() {
       }
     }
 
-    if (!mainCloseEnough && foundationFlowEnabled) {
-      return null
-    }
-
     if (!mainCloseEnough) {
       return {
         label: 'Revise and resubmit',
@@ -4117,13 +4006,9 @@ function App() {
             : 'LLM'
       : 'Rules'
   const submissionAttemptStatusText = mainCloseEnough
-    ? foundationFlowEnabled
-      ? `${activeRecallLabel} recall recorded. Advancing the foundation flow.`
-      : `${activeRecallLabel} recall recorded.`
+    ? `${activeRecallLabel} recall recorded.`
     : latestSubmittedWasGhostRep
       ? `Ghost rep logged for ${activeRecallLabel}. Repeat it until the shape starts to stick.`
-    : foundationFlowEnabled
-      ? 'This step needs reinforcement. A smaller code step is being queued next.'
     : `This recall attempt is not sound yet. Revise the logic and submit again.`
   const showSubmittedLineReview = mainPhase === 'submitted' && !mainCloseEnough && !latestSubmittedWasGhostRep
 
@@ -4247,12 +4132,6 @@ function App() {
                     {requestedPlaylist ? 'Playlist bias' : `Focus ${focusedPatternLabel}`}
                   </span>
                 )}
-              </div>
-            ) : foundationFlowEnabled ? (
-              <div className="coach-metric-row card-header-metric-row">
-                <span className="coach-metric-chip">Foundation flow</span>
-                <span className="coach-metric-chip">Level 0</span>
-                <span className="coach-metric-chip">{focusedPatternLabel}</span>
               </div>
             ) : null}
           </div>

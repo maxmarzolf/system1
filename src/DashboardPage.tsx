@@ -323,7 +323,6 @@ export default function DashboardPage() {
   const configuredProviderLabel = useConfiguredProviderLabel()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [foundationFlowByPattern, setFoundationFlowByPattern] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     const loadOverview = async () => {
@@ -353,9 +352,6 @@ export default function DashboardPage() {
     const nextParams = new URLSearchParams({
       focusPattern: patternSlug,
     })
-    if (foundationFlowByPattern[patternSlug]) {
-      nextParams.set('foundationFlow', '1')
-    }
     navigate(`/?${nextParams.toString()}`)
   }
 
@@ -384,26 +380,6 @@ export default function DashboardPage() {
                   <span className="coach-metric-chip">{node.ghostRepCount} Ghost Reps</span>
                 </div>
                 <SkillAlgorithmIllustration slug={node.slug} pattern={node.pattern} />
-                {!isMeta && (
-                  <div className="skill-map-flow-row">
-                    <button
-                      type="button"
-                      className={foundationFlowByPattern[node.slug] ? 'skill-map-flow-toggle active' : 'skill-map-flow-toggle'}
-                      onClick={() => {
-                        setFoundationFlowByPattern((prev) => ({
-                          ...prev,
-                          [node.slug]: !prev[node.slug],
-                        }))
-                      }}
-                      aria-pressed={Boolean(foundationFlowByPattern[node.slug])}
-                    >
-                      <span className="skill-map-flow-toggle-track" aria-hidden="true">
-                        <span className="skill-map-flow-toggle-thumb" />
-                      </span>
-                      <span>Foundation flow</span>
-                    </button>
-                  </div>
-                )}
                 <div className="dashboard-mode-tabs">
                   <button
                     type="button"
