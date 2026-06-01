@@ -3829,12 +3829,6 @@ function App() {
   const submissionFeedbackNextStep =
     coachFeedback?.immediateCorrection || coachFeedback?.primaryFocus || 'Review the drifted step, then rewrite the recall target once more.'
   const showGeneratingSubmissionFeedback = coachLoading && !coachFeedback
-  const submissionFeedbackText = (coachFeedback?.fullFeedback || '').trim()
-  const submissionFeedbackParagraphs = submissionFeedbackText
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean)
-  const submissionCorrectedVersion = (coachFeedback?.correctedVersion || '').trim()
   const submissionResultLabel = latestSubmittedWasGhostRep
     ? 'Ghost Rep'
     : latestSubmittedAttempt?.exact
@@ -3862,6 +3856,101 @@ function App() {
       ? `Ghost rep logged for ${activeRecallLabel}. Repeat it until the shape starts to stick.`
     : `This recall attempt is not sound yet. Revise the logic and submit again.`
   const showSubmittedLineReview = mainPhase === 'submitted' && !mainCloseEnough && !latestSubmittedWasGhostRep
+  const submittedFeedbackInlineNotes = useMemo<LiveInlineNote[]>(() => {
+    if (mainPhase !== 'submitted' || latestSubmittedWasGhostRep) return []
+
+    const sourceLines = (mainInput || '').split('\n')
+    const fallbackIndex = findNearestWrittenLineIndex(sourceLines, sourceLines.length - 1)
+    const fallbackLineNumber = fallbackIndex >= 0 ? fallbackIndex + 1 : 1
+    const seenNotes = new Set<string>()
+    const notes: LiveInlineNote[] = []
+
+    const addNote = (
+      text: string | undefined,
+      tone: LiveInlineTone,
+      options: { maxWords?: number, fallbackOnly?: boolean } = {}
+    ) => {
+      const compactNote = shortenAnnotationNote(text ?? '', options.maxWords)
+      if (!compactNote) return
+      const noteKey = compactNote.toLowerCase()
+      if (seenNotes.has(noteKey)) return
+      seenNotes.add(noteKey)
+      const sourceIndex = options.fallbackOnly
+        ? fallbackIndex
+        : findBestLiveNoteAnchorLine(sourceLines, compactNote, fallbackIndex)
+      notes.push({
+        text: compactNote,
+        sourceLineNumber: sourceIndex >= 0 ? sourceIndex + 1 : fallbackLineNumber,
+        tone,
+        maxWords: options.maxWords,
+      })
+    }
+
+    if (showGeneratingSubmissionFeedback) {
+      addNote('Waiting for submission feedback', 'neutral', { maxWords: 8, fallbackOnly: true })
+      return notes
+    }
+
+    if (coachError) {
+      addNote(coachError, 'negative', { maxWords: 12, fallbackOnly: true })
+    }
+
+    if (coachFeedback) {
+      if (mainCloseEnough) {
+        addNote(coachFeedback.affirmation || submissionAttemptStatusText, 'positive', { maxWords: 10 })
+        addNote(coachFeedback.nextMove || submissionFeedbackNextStep, 'neutral', { maxWords: 12, fallbackOnly: true })
+      } else {
+        addNote(coachFeedback.primaryFocus, 'negative', { maxWords: 12 })
+        addNote(coachFeedback.immediateCorrection, 'negative', { maxWords: 12 })
+        addNote(coachFeedback.diagnosis, 'negative', { maxWords: 12 })
+        addNote(submissionFeedbackNextStep, 'neutral', { maxWords: 12, fallbackOnly: true })
+      }
+    } else if (!coachLoading) {
+      addNote(submissionAttemptStatusText, mainCloseEnough ? 'positive' : 'negative', {
+        maxWords: 12,
+        fallbackOnly: true,
+      })
+    }
+
+    if (coachLoading && coachFeedback) {
+      addNote('Refining submission feedback', 'neutral', { maxWords: 8, fallbackOnly: true })
+    }
+    if (queuedFlowLoading) {
+      addNote(queuedFlowLoadingMessage, 'neutral', { maxWords: 12, fallbackOnly: true })
+    }
+    if (queuedFlowNote) {
+      addNote(`Queued next: ${queuedFlowNote}`, 'neutral', { maxWords: 12, fallbackOnly: true })
+    }
+    if (queuedFlowError) {
+      addNote(queuedFlowError, 'negative', { maxWords: 12, fallbackOnly: true })
+    }
+
+    return notes.slice(0, 5)
+  }, [
+    coachError,
+    coachFeedback,
+    coachLoading,
+    latestSubmittedWasGhostRep,
+    mainCloseEnough,
+    mainInput,
+    mainPhase,
+    queuedFlowError,
+    queuedFlowLoading,
+    queuedFlowLoadingMessage,
+    queuedFlowNote,
+    showGeneratingSubmissionFeedback,
+    submissionAttemptStatusText,
+    submissionFeedbackNextStep,
+  ])
+  const submittedFeedbackAnnotationsBySourceLine = useMemo(() => {
+    const annotations = new Map<number, LiveLineAnnotation>()
+    submittedFeedbackInlineNotes.forEach((note) => {
+      const sourceIndex = note.sourceLineNumber ? note.sourceLineNumber - 1 : null
+      if (sourceIndex === null || sourceIndex < 0) return
+      annotations.set(sourceIndex, mergeLiveLineAnnotation(annotations.get(sourceIndex), note))
+    })
+    return annotations
+  }, [submittedFeedbackInlineNotes])
   const recallEditorLineMeta = useMemo<RecallEditorLineMeta[]>(() => {
     const lineCount = Math.max((mainInput || '').split('\n').length, displayLines.length, 1)
 
@@ -3873,16 +3962,29 @@ function App() {
         showSubmittedLineReview && sourceLineNumber
           ? lineReview.actualStatuses[sourceLineNumber - 1] ?? 'match'
           : null
+      const submittedAnnotation = sourceLineNumber
+        ? submittedFeedbackAnnotationsBySourceLine.get(sourceLineNumber - 1)
+        : undefined
+      const inlineNotes = [parts?.note.trim(), submittedAnnotation?.note].filter(Boolean)
 
       return {
         sourceLineNumber,
         status,
-        liveTone: displayLine?.liveTone ?? null,
+        liveTone: submittedAnnotation
+          ? mergeLiveTone(displayLine?.liveTone, submittedAnnotation.tone)
+          : displayLine?.liveTone ?? null,
         inlineDecision: Boolean(displayLine && shouldHighlightInlineDecision && isInlineDecisionLine(displayLine.text)),
-        inlineNote: parts?.note.trim() || undefined,
+        inlineNote: inlineNotes.length > 0 ? inlineNotes.join(' / ') : undefined,
       }
     })
-  }, [displayLines, lineReview.actualStatuses, mainInput, shouldHighlightInlineDecision, showSubmittedLineReview])
+  }, [
+    displayLines,
+    lineReview.actualStatuses,
+    mainInput,
+    shouldHighlightInlineDecision,
+    showSubmittedLineReview,
+    submittedFeedbackAnnotationsBySourceLine,
+  ])
 
   const handleRecallEditorSubmitHotkey = () => {
     if (mainPhase === 'submitted' && latestSubmittedWasGhostRep) {
@@ -4435,12 +4537,23 @@ function App() {
                   <div className="typing-editor-shell">
                     {inlineLensTabs}
                     <div className="recall-editor-code-wrap">
-                      {latestSubmittedWasGhostRep && latestSubmittedAttempt && (
-                        <div className="ghost-submit-summary" aria-live="polite">
-                          <span>Accuracy {latestSubmittedAttempt.accuracy}%</span>
-                          <span>Time {(latestSubmittedAttempt.elapsedMs / 1000).toFixed(1)}s</span>
-                        </div>
-                      )}
+                      <div className="recall-submit-summary-slot" aria-live="polite">
+                        {mainPhase === 'submitted' && latestSubmittedAttempt && (
+                          <div
+                            className={[
+                              'recall-submit-summary',
+                              latestSubmittedWasGhostRep
+                                ? 'recall-submit-summary-ghost'
+                                : `recall-submit-summary-${submissionResultTone}`,
+                            ].join(' ')}
+                          >
+                            <span>{submissionResultLabel}</span>
+                            <span>Accuracy {latestSubmittedAttempt.accuracy}%</span>
+                            <span>Time {(latestSubmittedAttempt.elapsedMs / 1000).toFixed(1)}s</span>
+                            {!latestSubmittedWasGhostRep && <span>Coach {submissionCoachLabel}</span>}
+                          </div>
+                        )}
+                      </div>
                       <RecallCodeEditor
                         ref={mainInputRef}
                         value={mainInput}
@@ -4456,84 +4569,6 @@ function App() {
                         onSubmitHotkey={handleRecallEditorSubmitHotkey}
                       />
                     </div>
-                    {mainPhase === 'submitted' && !latestSubmittedWasGhostRep && (
-                      <div className="coach-docked-panel">
-                        <div className="coach-docked-card">
-                          <div className="coach-card-header">
-                            <h4>Submission Feedback</h4>
-                            {!showGeneratingSubmissionFeedback && (
-                              <span className={`coach-status-chip coach-status-chip-${submissionResultTone}`}>
-                                {submissionResultLabel}
-                              </span>
-                            )}
-                          </div>
-                          {showGeneratingSubmissionFeedback ? (
-                            <p className="coach-muted coach-waiting-placeholder">Waiting for submission feedback</p>
-                          ) : (
-                            <>
-                              {latestSubmittedAttempt && (
-                                <div className="coach-metric-row">
-                                  <span className="coach-metric-chip">Accuracy {latestSubmittedAttempt.accuracy}%</span>
-                                  <span className="coach-metric-chip">Time {(latestSubmittedAttempt.elapsedMs / 1000).toFixed(1)}s</span>
-                                  {latestSubmittedWasGhostRep ? (
-                                    <span className="coach-metric-chip">Support Ghost Reps</span>
-                                  ) : (
-                                    <span className="coach-metric-chip">
-                                      Coach {submissionCoachLabel}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                              <p className={mainCloseEnough || latestSubmittedWasGhostRep ? 'status success' : 'status error'}>
-                                {submissionAttemptStatusText}
-                              </p>
-                              {coachLoading && coachFeedback && <p className="coach-muted">Refining submission feedback...</p>}
-                              {coachError && <p className="coach-error">{coachError}</p>}
-                              {latestSubmittedWasGhostRep ? (
-                                <p className="coach-panel-copy">
-                                  This counts as supported work. It is saved separately from unsupported recall so you can build fluency without pretending it was cold recall.
-                                </p>
-                              ) : (
-                                submissionFeedbackParagraphs.map((paragraph, index) => (
-                                  <p key={index} className="coach-panel-copy">
-                                    {paragraph}
-                                  </p>
-                                ))
-                              )}
-                              {submissionCorrectedVersion && (
-                                <div className="coach-code-review">
-                                  <p className="coach-code-label">Corrected version</p>
-                                  <div className="code-container">
-                                    <SyntaxHighlighter
-                                      language={practiceLanguage}
-                                      style={syntaxTheme}
-                                      customStyle={{ margin: 0, padding: 0, background: 'transparent', border: 'none' }}
-                                      codeTagProps={{ style: { background: 'transparent' } }}
-                                    >
-                                      {submissionCorrectedVersion}
-                                    </SyntaxHighlighter>
-                                  </div>
-                                </div>
-                              )}
-                              {!latestSubmittedWasGhostRep && (
-                                <p className="coach-muted">
-                                  <strong>Next step:</strong> {submissionFeedbackNextStep}
-                                </p>
-                              )}
-                              {queuedFlowLoading && (
-                                <p className="coach-muted">{queuedFlowLoadingMessage}</p>
-                              )}
-                              {queuedFlowNote && (
-                                <p className="coach-muted">
-                                  <strong>Queued next:</strong> {queuedFlowNote}
-                                </p>
-                              )}
-                              {queuedFlowError && <p className="coach-error">{queuedFlowError}</p>}
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
                 <p className="typing-help">

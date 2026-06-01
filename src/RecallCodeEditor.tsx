@@ -1,14 +1,31 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
-import { basicSetup, EditorView } from 'codemirror'
 import { Compartment, EditorSelection, EditorState, Prec, RangeSetBuilder, type Extension } from '@codemirror/state'
 import {
+  crosshairCursor,
   Decoration,
+  drawSelection,
+  dropCursor,
+  EditorView,
+  highlightSpecialChars,
   WidgetType,
   keymap,
+  lineNumbers,
   placeholder as editorPlaceholder,
+  rectangularSelection,
   type DecorationSet,
 } from '@codemirror/view'
-import { indentWithTab } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import {
+  bracketMatching,
+  defaultHighlightStyle,
+  foldGutter,
+  foldKeymap,
+  indentOnInput,
+  indentUnit,
+  syntaxHighlighting,
+} from '@codemirror/language'
+import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
+import { lintKeymap } from '@codemirror/lint'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { python } from '@codemirror/lang-python'
 import { javascript } from '@codemirror/lang-javascript'
@@ -75,21 +92,56 @@ const resolveLanguageExtension = (language: string): Extension => {
   return python()
 }
 
+const resolveIndentationExtension = (language: string): Extension => {
+  const normalized = language.trim().toLowerCase()
+  if (normalized === 'python' || normalized === 'py') {
+    return [EditorState.tabSize.of(4), indentUnit.of('    ')]
+  }
+  return EditorState.tabSize.of(4)
+}
+
+const recallBaseSetup = [
+  lineNumbers(),
+  highlightSpecialChars(),
+  history(),
+  foldGutter(),
+  drawSelection(),
+  dropCursor(),
+  EditorState.allowMultipleSelections.of(true),
+  indentOnInput(),
+  syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+  bracketMatching(),
+  rectangularSelection(),
+  crosshairCursor(),
+  highlightSelectionMatches(),
+  keymap.of([
+    ...defaultKeymap,
+    ...searchKeymap,
+    ...historyKeymap,
+    ...foldKeymap,
+    ...lintKeymap,
+  ]),
+]
+
 class InlineNoteWidget extends WidgetType {
   readonly note: string
+  readonly tone?: RecallEditorLiveTone | null
 
-  constructor(note: string) {
+  constructor(note: string, tone?: RecallEditorLiveTone | null) {
     super()
     this.note = note
+    this.tone = tone
   }
 
   eq(widget: InlineNoteWidget) {
-    return widget.note === this.note
+    return widget.note === this.note && widget.tone === this.tone
   }
 
   toDOM() {
     const element = document.createElement('span')
-    element.className = 'cm-recall-inline-note'
+    element.className = ['cm-recall-inline-note', this.tone ? `cm-recall-inline-note-${this.tone}` : '']
+      .filter(Boolean)
+      .join(' ')
     element.textContent = this.note
     return element
   }
@@ -130,7 +182,7 @@ class GhostBlockWidget extends WidgetType {
   toDOM() {
     const element = document.createElement('span')
     element.className = 'cm-recall-ghost-block'
-    element.textContent = this.text
+    element.textContent = `\n${this.text}`
     return element
   }
 }
@@ -183,7 +235,7 @@ const buildRecallDecorations = (
       builder.add(
         line.to,
         line.to,
-        Decoration.widget({ widget: new InlineNoteWidget(meta.inlineNote), side: 2 })
+        Decoration.widget({ widget: new InlineNoteWidget(meta.inlineNote, meta.liveTone), side: 2 })
       )
     }
   }
@@ -232,7 +284,7 @@ const recallTheme = (theme: AppTheme) => [
       borderRight: '1px solid var(--hc-border-dim)',
     },
     '.cm-activeLineGutter, .cm-activeLine': {
-      backgroundColor: 'color-mix(in srgb, var(--hc-accent) 9%, transparent)',
+      backgroundColor: 'transparent',
     },
     '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
       backgroundColor: 'color-mix(in srgb, var(--hc-accent) 32%, transparent)',
@@ -282,6 +334,7 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
   const onChangeRef = useRef(onChange)
   const onSubmitHotkeyRef = useRef(onSubmitHotkey)
   const languageCompartment = useMemo(() => new Compartment(), [])
+  const indentationCompartment = useMemo(() => new Compartment(), [])
   const themeCompartment = useMemo(() => new Compartment(), [])
   const editableCompartment = useMemo(() => new Compartment(), [])
   const decorationsCompartment = useMemo(() => new Compartment(), [])
@@ -326,8 +379,9 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
           },
           indentWithTab,
         ])),
-        basicSetup,
+        recallBaseSetup,
         languageCompartment.of(resolveLanguageExtension(language)),
+        indentationCompartment.of(resolveIndentationExtension(language)),
         themeCompartment.of(recallTheme(theme)),
         editableCompartment.of(editableExtension(editable, disabled)),
         decorationsCompartment.of(recallDecorations(lineMeta, ghostTarget)),
@@ -369,6 +423,12 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
       effects: languageCompartment.reconfigure(resolveLanguageExtension(language)),
     })
   }, [language, languageCompartment])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: indentationCompartment.reconfigure(resolveIndentationExtension(language)),
+    })
+  }, [indentationCompartment, language])
 
   useEffect(() => {
     viewRef.current?.dispatch({
