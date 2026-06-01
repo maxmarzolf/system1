@@ -15,6 +15,7 @@ import { apiUrl } from './api'
 import { providerDisplayLabel, useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 import { useTheme } from './theme'
+import RecallCodeEditor, { type RecallCodeEditorHandle, type RecallEditorLineMeta } from './RecallCodeEditor'
 
 type Flashcard = {
   id: string
@@ -1991,52 +1992,6 @@ function InlineDecisionCode({
   )
 }
 
-function LiveFeedbackCode({
-  code,
-  language,
-  syntaxTheme,
-  displayLines,
-  lineReviewStatuses,
-  showSubmittedLineReview,
-  shouldHighlightInlineDecision,
-}: {
-  code: string
-  language: string
-  syntaxTheme: Record<string, CSSProperties>
-  displayLines: AnnotatedDisplayLine[]
-  lineReviewStatuses: LineReviewStatus[]
-  showSubmittedLineReview: boolean
-  shouldHighlightInlineDecision: boolean
-}) {
-  return (
-    <InlineAnnotatedCode
-      code={code}
-      language={language}
-      syntaxTheme={syntaxTheme}
-      lineClassName={(line, lineNumber) => {
-        const displayLine = displayLines[lineNumber - 1]
-        const status =
-          displayLine &&
-          showSubmittedLineReview &&
-          displayLine.sourceLineNumber
-            ? lineReviewStatuses[displayLine.sourceLineNumber - 1] ?? 'match'
-            : null
-        const inlineDecisionClass =
-          shouldHighlightInlineDecision && isInlineDecisionLine(line)
-            ? ' inline-decision-line'
-            : ''
-        const liveToneClass = displayLine?.liveTone ? ` live-target-${displayLine.liveTone}` : ''
-        const liveSourceClass =
-          displayLine?.sourceLineNumber !== null && displayLine?.liveTone
-            ? ' live-target-source-line'
-            : ''
-        const liveNoteClass = displayLine?.liveTone ? ' inline-live-note-line' : ''
-        return `typing-highlight-line${status ? ` line-${status}` : ''}${inlineDecisionClass}${liveToneClass}${liveSourceClass}${liveNoteClass}`
-      }}
-    />
-  )
-}
-
 type MarkdownCodeSegment =
   | { type: 'text'; text: string }
   | { type: 'code'; code: string; language: string }
@@ -2238,13 +2193,10 @@ function App() {
   const [sessionPlanError, setSessionPlanError] = useState('')
   const mcqTuning = useMemo(() => loadStoredMcqTuning(), [])
   const multipleChoiceQuestionCount = mcqTuning.questionCount
-  const mainInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const mainInputRef = useRef<RecallCodeEditorHandle | null>(null)
   const shouldFocusMainInputRef = useRef(false)
-  const mainHighlightRef = useRef<HTMLDivElement | null>(null)
-  const mainGhostRef = useRef<HTMLDivElement | null>(null)
   const previewCodeContainerRef = useRef<HTMLDivElement | null>(null)
   const [recallMinHeight, setRecallMinHeight] = useState<number | undefined>(undefined)
-  const mainGutterRef = useRef<HTMLDivElement | null>(null)
   const currentCardIdRef = useRef('')
   const liveCoachRequestVersionRef = useRef(0)
   const liveCoachSnapshotRef = useRef<LiveCoachSnapshot | null>(null)
@@ -2634,8 +2586,6 @@ function App() {
       }
     }
   }
-
-  const requestPlainEnglishPromptExplanation = useEffectEvent(fetchPlainEnglishPromptExplanation)
 
   useEffect(() => {
     setPromptToggleDetail(null)
@@ -3071,12 +3021,7 @@ function App() {
     if (mainPhase !== 'typing' || !shouldFocusMainInputRef.current) return
     shouldFocusMainInputRef.current = false
     window.requestAnimationFrame(() => {
-      const input = mainInputRef.current
-      if (!input) return
-      input.focus()
-      const cursorPosition = input.value.length
-      input.selectionStart = cursorPosition
-      input.selectionEnd = cursorPosition
+      mainInputRef.current?.focusEnd()
     })
   }, [mainPhase, mainInput])
 
@@ -3097,98 +3042,10 @@ function App() {
     setLiveCoachFeedbackMeta({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
   }
 
-  const handleMainEditorScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
-    if (mainHighlightRef.current) {
-      mainHighlightRef.current.scrollTop = e.currentTarget.scrollTop
-      mainHighlightRef.current.scrollLeft = e.currentTarget.scrollLeft
-    }
-    if (mainGhostRef.current) {
-      mainGhostRef.current.scrollTop = e.currentTarget.scrollTop
-      mainGhostRef.current.scrollLeft = e.currentTarget.scrollLeft
-    }
-    if (mainGutterRef.current) {
-      mainGutterRef.current.scrollTop = e.currentTarget.scrollTop
-    }
-  }
-
-  const applyMainEdit = (nextValue: string, cursorPosition: number) => {
-    setMainInput(nextValue)
-    lastMainInputEditAtRef.current = Date.now()
-    window.requestAnimationFrame(() => {
-      if (!mainInputRef.current) return
-      mainInputRef.current.selectionStart = cursorPosition
-      mainInputRef.current.selectionEnd = cursorPosition
-    })
-  }
-
   const handleMainInputChange = (nextValue: string) => {
     if (mainPhase !== 'typing') return
     setMainInput(nextValue)
     lastMainInputEditAtRef.current = Date.now()
-  }
-
-  const handleMainKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-      event.preventDefault()
-      if (mainPhase === 'submitted' && latestSubmittedWasGhostRep) {
-        repeatGhostRep()
-        return
-      }
-      if (mainPhase === 'typing' && mainInput.trim().length > 0) submitMainRecall()
-      return
-    }
-
-    if (mainPhase !== 'typing') return
-
-    const inputElement = event.currentTarget
-    const start = inputElement.selectionStart
-    const end = inputElement.selectionEnd
-
-    if (event.key === 'Tab') {
-      event.preventDefault()
-      if (event.shiftKey) {
-        const lineStart = mainInput.lastIndexOf('\n', Math.max(0, start - 1)) + 1
-        const leading = mainInput.slice(lineStart).match(/^ +/)?.[0].length ?? 0
-        const removeCount = Math.min(4, leading, Math.max(start - lineStart, 0))
-        if (removeCount > 0) {
-          const nextValue = mainInput.slice(0, lineStart) + mainInput.slice(lineStart + removeCount)
-          applyMainEdit(nextValue, start - removeCount)
-        }
-      } else {
-        const spaces = '    '
-        const nextValue = `${mainInput.slice(0, start)}${spaces}${mainInput.slice(end)}`
-        applyMainEdit(nextValue, start + 4)
-      }
-      return
-    }
-
-    if (event.key === 'Backspace') {
-      if (start === end && start > 0) {
-        const lineStart = mainInput.lastIndexOf('\n', Math.max(0, start - 1)) + 1
-        const beforeCursor = mainInput.slice(lineStart, start)
-        const leading = beforeCursor.match(/^ +/)?.[0] ?? ''
-        const cursorInLeading = beforeCursor.length <= leading.length
-        if (cursorInLeading && beforeCursor.length > 0) {
-          event.preventDefault()
-          const currentIndent = beforeCursor.length
-          const nextIndent = Math.max(0, Math.floor((currentIndent - 1) / 4) * 4)
-          const nextValue = `${mainInput.slice(0, lineStart)}${' '.repeat(nextIndent)}${mainInput.slice(start)}`
-          applyMainEdit(nextValue, lineStart + nextIndent)
-        }
-      }
-      return
-    }
-
-    if (event.key === 'Enter') {
-      event.preventDefault()
-      const lineStart = mainInput.lastIndexOf('\n', Math.max(0, start - 1)) + 1
-      const currentLine = mainInput.slice(lineStart, start)
-      const indent = currentLine.match(/^\s*/)?.[0] ?? ''
-      const extraIndent = currentLine.trimEnd().endsWith(':') ? '    ' : ''
-      const insertion = `\n${indent}${extraIndent}`
-      const nextValue = `${mainInput.slice(0, start)}${insertion}${mainInput.slice(end)}`
-      applyMainEdit(nextValue, start + insertion.length)
-    }
   }
 
   const fetchLiveCoachFeedback = async (payload: {
@@ -3750,11 +3607,6 @@ function App() {
       }
     })
   }, [inlineLiveNotes, isGhostRepsEnabled, mainInput, mainPhase, practicePlaceholder])
-  const displayCode = useMemo(
-    () => displayLines.map((line) => line.text).join('\n'),
-    [displayLines]
-  )
-  const shouldUseAnnotatedDisplay = shouldHighlightInlineDecision || inlineLiveNotes.length > 0
   const ghostTargetCode = useMemo(() => {
     if (inlineEnabled && isGhostRepsEnabled && liveCoachTuning.enabled) {
       return stripInlineAnnotationNotes(practiceTarget)
@@ -3798,8 +3650,7 @@ function App() {
     const trimmedInput = normalizeTyping(mainInput)
     if (!hasUsefulLiveStructure(trimmedInput, liveStructure)) return
 
-    const input = mainInputRef.current
-    const cursorPosition = input?.selectionStart ?? mainInput.length
+    const cursorPosition = mainInputRef.current?.getCursorPosition() ?? mainInput.length
     const cursorLineNumber = mainInput.slice(0, cursorPosition).split('\n').length
     const editContext = buildHotkeyEditContext(lastStuckHintInputRef.current, trimmedInput)
     const nextDepth = editContext.changedSinceLastHint ? 1 : stuckHintDepthRef.current + 1
@@ -4011,6 +3862,38 @@ function App() {
       ? `Ghost rep logged for ${activeRecallLabel}. Repeat it until the shape starts to stick.`
     : `This recall attempt is not sound yet. Revise the logic and submit again.`
   const showSubmittedLineReview = mainPhase === 'submitted' && !mainCloseEnough && !latestSubmittedWasGhostRep
+  const recallEditorLineMeta = useMemo<RecallEditorLineMeta[]>(() => {
+    const lineCount = Math.max((mainInput || '').split('\n').length, displayLines.length, 1)
+
+    return Array.from({ length: lineCount }, (_, index) => {
+      const displayLine = displayLines[index]
+      const parts = displayLine ? splitInlineAnnotationLine(displayLine.text) : null
+      const sourceLineNumber = displayLine?.sourceLineNumber ?? index + 1
+      const status =
+        showSubmittedLineReview && sourceLineNumber
+          ? lineReview.actualStatuses[sourceLineNumber - 1] ?? 'match'
+          : null
+
+      return {
+        sourceLineNumber,
+        status,
+        liveTone: displayLine?.liveTone ?? null,
+        inlineDecision: Boolean(displayLine && shouldHighlightInlineDecision && isInlineDecisionLine(displayLine.text)),
+        inlineNote: parts?.note.trim() || undefined,
+      }
+    })
+  }, [displayLines, lineReview.actualStatuses, mainInput, shouldHighlightInlineDecision, showSubmittedLineReview])
+
+  const handleRecallEditorSubmitHotkey = () => {
+    if (mainPhase === 'submitted' && latestSubmittedWasGhostRep) {
+      repeatGhostRep()
+      return
+    }
+
+    if (mainPhase === 'typing' && mainInput.trim().length > 0) {
+      void submitMainRecall()
+    }
+  }
 
   useEffect(() => {
     if (liveCoachTuning.enabled) return
@@ -4319,7 +4202,7 @@ function App() {
                         className={isPlainEnglishPromptOpen ? 'prompt-toggle-button active' : 'prompt-toggle-button'}
                         onClick={() => {
                           if (!plainEnglishPromptOpen && !promptToggleDetail && !plainEnglishPromptLoading) {
-                            void requestPlainEnglishPromptExplanation()
+                            void fetchPlainEnglishPromptExplanation()
                           }
                           setPlainEnglishPromptOpen((current) => !current)
                         }}
@@ -4551,129 +4434,27 @@ function App() {
                 >
                   <div className="typing-editor-shell">
                     {inlineLensTabs}
-                    <div className="typing-editor no-gutter">
-                      <div className="typing-code-area">
-                        {latestSubmittedWasGhostRep && latestSubmittedAttempt && (
-                          <div className="ghost-submit-summary" aria-live="polite">
-                            <span>Accuracy {latestSubmittedAttempt.accuracy}%</span>
-                            <span>Time {(latestSubmittedAttempt.elapsedMs / 1000).toFixed(1)}s</span>
-                          </div>
-                        )}
-                        {mainPhase === 'typing' && isGhostRepsEnabled && (
-                          <div className="typing-ghost-target" aria-hidden="true" ref={mainGhostRef}>
-                            {shouldHighlightInlineDecision ? (
-                              <InlineDecisionCode
-                                code={ghostTargetCode}
-                                language={practiceLanguage}
-                                syntaxTheme={syntaxTheme}
-                              />
-                            ) : (
-                              <SyntaxHighlighter
-                                language={practiceLanguage}
-                                style={syntaxTheme}
-                                customStyle={{
-                                  margin: 0,
-                                  padding: 0,
-                                  background: 'transparent',
-                                  border: 'none',
-                                  fontFamily: 'inherit',
-                                  fontSize: 'inherit',
-                                  lineHeight: 'inherit',
-                                  whiteSpace: 'pre',
-                                }}
-                                codeTagProps={{
-                                  style: {
-                                    background: 'transparent',
-                                    fontFamily: 'inherit',
-                                    fontSize: 'inherit',
-                                    lineHeight: 'inherit',
-                                    whiteSpace: 'pre',
-                                  },
-                                }}
-                              >
-                                {practiceTarget}
-                              </SyntaxHighlighter>
-                            )}
-                          </div>
-                        )}
-                        <div className="typing-highlight" aria-hidden="true" ref={mainHighlightRef}>
-                          {shouldUseAnnotatedDisplay ? (
-                            <LiveFeedbackCode
-                              code={displayCode}
-                              language={practiceLanguage}
-                              syntaxTheme={syntaxTheme}
-                              displayLines={displayLines}
-                              lineReviewStatuses={lineReview.actualStatuses}
-                              showSubmittedLineReview={showSubmittedLineReview}
-                              shouldHighlightInlineDecision={shouldHighlightInlineDecision}
-                            />
-                          ) : (
-                            <SyntaxHighlighter
-                              language={practiceLanguage}
-                              style={syntaxTheme}
-                              wrapLines
-                              lineProps={(lineNumber) => {
-                                const line = displayLines[lineNumber - 1]
-                                if (!line) {
-                                  return { className: 'typing-highlight-line' }
-                                }
-
-                                const status =
-                                  showSubmittedLineReview && line.sourceLineNumber
-                                    ? lineReview.actualStatuses[line.sourceLineNumber - 1] ?? 'match'
-                                    : null
-                                const liveToneClass = line.liveTone ? ` live-target-${line.liveTone}` : ''
-                                const liveSourceClass =
-                                  line.sourceLineNumber !== null && line.liveTone
-                                    ? ' live-target-source-line'
-                                    : ''
-                                return {
-                                  className: `typing-highlight-line${status ? ` line-${status}` : ''}${liveToneClass}${liveSourceClass}`,
-                                }
-                              }}
-                              customStyle={{
-                                margin: 0,
-                                padding: 0,
-                                background: 'transparent',
-                                border: 'none',
-                                fontFamily: 'inherit',
-                                fontSize: 'inherit',
-                                lineHeight: 'inherit',
-                                whiteSpace: 'pre',
-                              }}
-                              codeTagProps={{
-                                style: {
-                                  background: 'transparent',
-                                  fontFamily: 'inherit',
-                                  fontSize: 'inherit',
-                                  lineHeight: 'inherit',
-                                  whiteSpace: 'pre',
-                                },
-                              }}
-                            >
-                              {displayCode}
-                            </SyntaxHighlighter>
-                          )}
+                    <div className="recall-editor-code-wrap">
+                      {latestSubmittedWasGhostRep && latestSubmittedAttempt && (
+                        <div className="ghost-submit-summary" aria-live="polite">
+                          <span>Accuracy {latestSubmittedAttempt.accuracy}%</span>
+                          <span>Time {(latestSubmittedAttempt.elapsedMs / 1000).toFixed(1)}s</span>
                         </div>
-                        {mainPhase === 'typing' && (
-                          <textarea
-                            id="main-recall-input"
-                            ref={mainInputRef}
-                            className="typing-answer-overlay"
-                            rows={12}
-                            value={mainInput}
-                            onChange={(event) => handleMainInputChange(event.target.value)}
-                            onKeyDown={handleMainKeyDown}
-                            onScroll={handleMainEditorScroll}
-                            disabled={hasAnsweredCurrent || sessionFinished}
-                            spellCheck={false}
-                            autoCapitalize="off"
-                            autoCorrect="off"
-                            autoComplete="off"
-                            placeholder={supportedPracticePlaceholder}
-                          />
-                        )}
-                      </div>
+                      )}
+                      <RecallCodeEditor
+                        ref={mainInputRef}
+                        value={mainInput}
+                        language={practiceLanguage}
+                        theme={theme}
+                        editable={mainPhase === 'typing'}
+                        disabled={hasAnsweredCurrent || sessionFinished}
+                        placeholder={mainPhase === 'typing' && isGhostRepsEnabled ? '' : supportedPracticePlaceholder}
+                        ghostTarget={mainPhase === 'typing' && isGhostRepsEnabled ? ghostTargetCode : undefined}
+                        lineMeta={recallEditorLineMeta}
+                        minHeight={recallMinHeight}
+                        onChange={handleMainInputChange}
+                        onSubmitHotkey={handleRecallEditorSubmitHotkey}
+                      />
                     </div>
                     {mainPhase === 'submitted' && !latestSubmittedWasGhostRep && (
                       <div className="coach-docked-panel">

@@ -2318,6 +2318,114 @@ button.link:hover {
   background: transparent;
 }
 
+.recall-editor-code-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.recall-code-editor {
+  min-height: 12rem;
+  background: var(--hc-editor-bg);
+}
+
+.recall-code-editor .cm-editor {
+  min-height: inherit;
+  background: var(--hc-editor-bg);
+}
+
+.recall-code-editor .cm-scroller {
+  min-height: inherit;
+  overflow: auto;
+}
+
+.recall-code-editor .cm-content {
+  min-height: inherit;
+}
+
+.recall-code-editor .cm-line {
+  min-height: 1.6em;
+}
+
+.recall-code-editor .cm-recall-line.line-match {
+  background: var(--hc-line-match-bg);
+}
+
+.recall-code-editor .cm-recall-line.line-mismatch {
+  background: var(--hc-line-mismatch-bg);
+}
+
+.recall-code-editor .cm-recall-line.line-extra {
+  background: var(--hc-line-extra-bg);
+}
+
+.recall-code-editor .cm-recall-line.inline-decision-line,
+.recall-code-editor .cm-recall-line.inline-decision-line * {
+  font-weight: 700 !important;
+}
+
+.recall-code-editor .cm-recall-line.live-target-source-line {
+  position: relative;
+  isolation: isolate;
+}
+
+.recall-code-editor .cm-recall-line.live-target-source-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transform: translateX(-110%);
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.05) 35%, rgba(255, 255, 255, 0.22) 50%, rgba(255, 255, 255, 0.05) 65%, transparent 100%);
+  animation: live-line-shimmer 1.9s ease-in-out infinite;
+}
+
+.recall-code-editor .cm-recall-line.live-target-negative {
+  color: rgba(180, 35, 24, 0.96);
+}
+
+.recall-code-editor .cm-recall-line.live-target-positive {
+  color: rgba(17, 99, 41, 0.96);
+}
+
+.recall-code-editor .cm-recall-line.live-target-neutral {
+  color: var(--hc-code-fg);
+}
+
+.cm-recall-inline-note {
+  display: inline-block;
+  max-width: min(42ch, 45%);
+  margin-left: 2ch;
+  padding: 0.05rem 0.35rem 0.08rem;
+  border-left: 2px solid color-mix(in srgb, var(--hc-fg-dim) 42%, transparent);
+  background: color-mix(in srgb, var(--hc-editor-bg) 88%, var(--hc-bg));
+  color: var(--hc-fg-dim);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.cm-recall-ghost-text,
+.cm-recall-ghost-block {
+  color: var(--hc-fg-dim);
+  opacity: 0.28;
+  filter: grayscale(0.5);
+  pointer-events: none;
+}
+
+.cm-recall-ghost-block {
+  padding-left: 1.5rem;
+  white-space: pre;
+}
+
+.cm-recall-placeholder {
+  margin: 0;
+  color: var(--hc-fg-dim);
+  font: inherit;
+  white-space: pre-wrap;
+}
+
 .recall-editor-container .typing-editor.no-gutter {
   min-height: 12rem;
 }
@@ -2608,13 +2716,13 @@ button.link:hover {
 }
 
 .ghost-submit-summary {
-  position: absolute;
-  top: 0.65rem;
-  right: 0.75rem;
-  z-index: 4;
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+  width: fit-content;
+  margin: 0.65rem 0.75rem 0.35rem auto;
   padding: 0.32rem 0.45rem;
   border: 1px solid color-mix(in srgb, var(--hc-success) 62%, var(--hc-border-dim));
   background: color-mix(in srgb, var(--hc-editor-bg) 88%, var(--hc-success));
