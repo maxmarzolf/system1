@@ -14,6 +14,12 @@ import {
 } from './specimenTuning'
 import type { SpecimenTuning } from './specimenTuning'
 import {
+  defaultCodeEditorTuning,
+  loadStoredCodeEditorTuning,
+  saveStoredCodeEditorTuning,
+} from './codeEditorTuning'
+import type { CodeEditorTuning } from './codeEditorTuning'
+import {
   MCQ_MAX_QUESTION_COUNT,
   MCQ_MIN_QUESTION_COUNT,
   clampMcqQuestionCount,
@@ -157,6 +163,7 @@ export default function TunePage() {
   const [liveCoachTuning, setLiveCoachTuning] = useState<LiveCoachTuning>(() => loadStoredLiveCoachTuning())
   const [submissionTuning, setSubmissionTuning] = useState<SubmissionTuning>(() => loadStoredSubmissionTuning())
   const [specimenTuning, setSpecimenTuning] = useState<SpecimenTuning>(() => loadStoredSpecimenTuning())
+  const [codeEditorTuning, setCodeEditorTuning] = useState<CodeEditorTuning>(() => loadStoredCodeEditorTuning())
   const [mcqTuning, setMcqTuning] = useState<McqTuning>(() => loadStoredMcqTuning())
 
   useEffect(() => {
@@ -170,6 +177,10 @@ export default function TunePage() {
   useEffect(() => {
     saveStoredSpecimenTuning(specimenTuning)
   }, [specimenTuning])
+
+  useEffect(() => {
+    saveStoredCodeEditorTuning(codeEditorTuning)
+  }, [codeEditorTuning])
 
   useEffect(() => {
     saveStoredMcqTuning(mcqTuning)
@@ -187,6 +198,10 @@ export default function TunePage() {
     setSpecimenTuning((prev) => ({ ...prev, [key]: value }))
   }
 
+  const updateCodeEditorTuning = <K extends keyof CodeEditorTuning>(key: K, value: CodeEditorTuning[K]) => {
+    setCodeEditorTuning((prev) => ({ ...prev, [key]: value }))
+  }
+
   const updateMcqTuning = <K extends keyof McqTuning>(key: K, value: McqTuning[K]) => {
     setMcqTuning((prev) => ({ ...prev, [key]: value }))
   }
@@ -199,7 +214,7 @@ export default function TunePage() {
         <div className="tune-hero">
           <div>
             <h2>Tune</h2>
-            <p>Persistent settings for generated specimens, live feedback, and submission grading.</p>
+            <p>Persistent settings for generated specimens, the code editor, live feedback, and submission grading.</p>
           </div>
           <div className="tune-hero-meta" aria-label="Tune page behavior">
             <span>Auto-saves</span>
@@ -210,6 +225,7 @@ export default function TunePage() {
         <div className="tune-layout">
           <aside className="tune-rail" aria-label="Tune sections">
             <a href="#specimen">Specimen</a>
+            <a href="#code-editor">Code editor</a>
             <a href="#mcq">MCQ</a>
             <a href="#live-coach">Live coach</a>
             <a href="#submission">Submission</a>
@@ -262,6 +278,60 @@ export default function TunePage() {
 
             <TuneSection
               eyebrow="02"
+              title="Code Editor"
+              copy="Tune the recall editor itself: syntax mode, completion help, and lightweight style guides."
+              action={(
+                <button className="secondary tune-reset" type="button" onClick={() => setCodeEditorTuning(defaultCodeEditorTuning)}>
+                  Reset
+                </button>
+              )}
+            >
+              <div className="tune-split" id="code-editor">
+                <div className="tune-control-grid tune-control-grid-compact">
+                  <SelectControl
+                    label="Language mode"
+                    value={codeEditorTuning.language}
+                    onChange={(value) => updateCodeEditorTuning('language', value)}
+                    description="Controls editor syntax, indentation, and completions. Generated specimens remain controlled by Specimen tuning."
+                    options={[
+                      { value: 'python', label: 'Python' },
+                      { value: 'javascript', label: 'JavaScript' },
+                      { value: 'typescript', label: 'TypeScript' },
+                      { value: 'java', label: 'Java' },
+                      { value: 'cpp', label: 'C / C++' },
+                      { value: 'go', label: 'Go' },
+                      { value: 'sql', label: 'SQL' },
+                      { value: 'rust', label: 'Rust' },
+                    ]}
+                  />
+                  <SelectControl
+                    label="Style guide"
+                    value={codeEditorTuning.styleGuide}
+                    onChange={(value) => updateCodeEditorTuning('styleGuide', value)}
+                    description="PEP 8 adds a Python-oriented column guide and keeps 4-space indentation."
+                    options={[
+                      { value: 'python-pep8', label: 'Python PEP 8' },
+                      { value: 'none', label: 'No guide' },
+                    ]}
+                  />
+                </div>
+                <div className="tune-toggle-list" aria-label="Code editor toggles">
+                  <ToggleControl
+                    checked={codeEditorTuning.intellisense}
+                    onChange={(value) => updateCodeEditorTuning('intellisense', value)}
+                    label="Enable IntelliSense completions"
+                  />
+                  <ToggleControl
+                    checked={codeEditorTuning.commonPatterns}
+                    onChange={(value) => updateCodeEditorTuning('commonPatterns', value)}
+                    label="Include common Python and algorithm pattern snippets"
+                  />
+                </div>
+              </div>
+            </TuneSection>
+
+            <TuneSection
+              eyebrow="03"
               title="MCQ"
               copy="Choose where multiple-choice questions come from and how the set should move from one question to the next."
               action={(
@@ -303,7 +373,7 @@ export default function TunePage() {
             </TuneSection>
 
             <TuneSection
-              eyebrow="03"
+              eyebrow="04"
               title="Live Coach"
               copy="Control on-demand coach feedback and how specific it can be while you type."
               action={(
@@ -385,7 +455,7 @@ export default function TunePage() {
             </TuneSection>
 
             <TuneSection
-              eyebrow="04"
+              eyebrow="05"
               title="Submission"
               copy="Preserve the algorithm first, then tighten contract drift and wording as secondary signals."
               action={(
@@ -438,7 +508,7 @@ export default function TunePage() {
             </TuneSection>
 
             <TuneSection
-              eyebrow="05"
+              eyebrow="06"
               title="Tracked Dimensions"
               copy="Signals the Signal Assessor checks for submitted attempts."
             >

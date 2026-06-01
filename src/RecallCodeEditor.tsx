@@ -16,6 +16,14 @@ import {
 } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import {
+  autocompletion,
+  closeBrackets,
+  closeBracketsKeymap,
+  completeFromList,
+  completionKeymap,
+  type Completion,
+} from '@codemirror/autocomplete'
+import {
   bracketMatching,
   defaultHighlightStyle,
   foldGutter,
@@ -39,6 +47,7 @@ import { json } from '@codemirror/lang-json'
 import { markdown } from '@codemirror/lang-markdown'
 import { rust } from '@codemirror/lang-rust'
 import type { AppTheme } from './theme'
+import type { CodeEditorStyleGuide } from './codeEditorTuning'
 
 export type RecallEditorLineStatus = 'match' | 'mismatch' | 'missing' | 'extra'
 export type RecallEditorLiveTone = 'positive' | 'negative' | 'neutral'
@@ -67,6 +76,9 @@ type RecallCodeEditorProps = {
   ghostTarget?: string
   lineMeta: RecallEditorLineMeta[]
   minHeight?: number
+  intellisense?: boolean
+  styleGuide?: CodeEditorStyleGuide
+  commonPatterns?: boolean
   onChange: (nextValue: string) => void
   onSubmitHotkey: () => void
 }
@@ -98,6 +110,124 @@ const resolveIndentationExtension = (language: string): Extension => {
     return [EditorState.tabSize.of(4), indentUnit.of('    ')]
   }
   return EditorState.tabSize.of(4)
+}
+
+const normalizedLanguage = (language: string) => language.trim().toLowerCase()
+
+const pythonBaseCompletions: Completion[] = [
+  { label: 'def', type: 'keyword', detail: 'function' },
+  { label: 'return', type: 'keyword' },
+  { label: 'for', type: 'keyword' },
+  { label: 'while', type: 'keyword' },
+  { label: 'if', type: 'keyword' },
+  { label: 'elif', type: 'keyword' },
+  { label: 'else', type: 'keyword' },
+  { label: 'enumerate', type: 'function' },
+  { label: 'range', type: 'function' },
+  { label: 'len', type: 'function' },
+  { label: 'sorted', type: 'function' },
+  { label: 'set', type: 'type' },
+  { label: 'dict', type: 'type' },
+  { label: 'list', type: 'type' },
+]
+
+const pythonPatternCompletions: Completion[] = [
+  {
+    label: 'def solve',
+    type: 'function',
+    detail: 'PEP 8 function skeleton',
+    apply: 'def solve(nums):\n    \n    return',
+  },
+  {
+    label: 'two pointers',
+    type: 'text',
+    detail: 'left/right scan',
+    apply: 'left, right = 0, len(nums) - 1\nwhile left < right:\n    ',
+  },
+  {
+    label: 'sliding window',
+    type: 'text',
+    detail: 'expand/shrink',
+    apply: 'left = 0\nfor right, value in enumerate(nums):\n    while False:\n        left += 1',
+  },
+  {
+    label: 'frequency map',
+    type: 'text',
+    detail: 'counts dictionary',
+    apply: 'counts = {}\nfor value in nums:\n    counts[value] = counts.get(value, 0) + 1',
+  },
+  {
+    label: 'heap',
+    type: 'text',
+    detail: 'priority queue import',
+    apply: 'import heapq\nheap = []\nheapq.heappush(heap, item)',
+  },
+]
+
+const javascriptCompletions: Completion[] = [
+  { label: 'function', type: 'keyword' },
+  { label: 'const', type: 'keyword' },
+  { label: 'let', type: 'keyword' },
+  { label: 'return', type: 'keyword' },
+  { label: 'for', type: 'keyword' },
+  { label: 'while', type: 'keyword' },
+  { label: 'Map', type: 'type' },
+  { label: 'Set', type: 'type' },
+]
+
+const sqlCompletions: Completion[] = [
+  { label: 'SELECT', type: 'keyword' },
+  { label: 'FROM', type: 'keyword' },
+  { label: 'WHERE', type: 'keyword' },
+  { label: 'GROUP BY', type: 'keyword' },
+  { label: 'ORDER BY', type: 'keyword' },
+  { label: 'JOIN', type: 'keyword' },
+]
+
+const completionsForLanguage = (language: string, commonPatterns: boolean) => {
+  const normalized = normalizedLanguage(language)
+  if (normalized === 'python' || normalized === 'py') {
+    return [...pythonBaseCompletions, ...(commonPatterns ? pythonPatternCompletions : [])]
+  }
+  if (['javascript', 'js', 'typescript', 'ts', 'jsx', 'tsx'].includes(normalized)) {
+    return javascriptCompletions
+  }
+  if (normalized === 'sql') return sqlCompletions
+  return []
+}
+
+const editorAssistanceExtension = (
+  language: string,
+  intellisense: boolean,
+  commonPatterns: boolean
+): Extension => {
+  if (!intellisense) return []
+  const completions = completionsForLanguage(language, commonPatterns)
+  return [
+    closeBrackets(),
+    autocompletion(completions.length > 0 ? { override: [completeFromList(completions)] } : undefined),
+    keymap.of([...completionKeymap, ...closeBracketsKeymap]),
+  ]
+}
+
+const editorStyleGuideExtension = (language: string, styleGuide: CodeEditorStyleGuide): Extension => {
+  const normalized = normalizedLanguage(language)
+  if (styleGuide !== 'python-pep8' || (normalized !== 'python' && normalized !== 'py')) return []
+
+  return EditorView.theme({
+    '.cm-content': {
+      position: 'relative',
+    },
+    '.cm-content::after': {
+      content: '""',
+      position: 'absolute',
+      top: '0',
+      bottom: '0',
+      left: 'calc(1.5rem + 79ch)',
+      borderLeft: '1px dotted color-mix(in srgb, var(--hc-border-dim) 72%, transparent)',
+      pointerEvents: 'none',
+    },
+  })
 }
 
 const recallBaseSetup = [
@@ -275,7 +405,7 @@ const recallTheme = (theme: AppTheme) => [
       minHeight: '12rem',
       caretColor: 'var(--hc-fg)',
     },
-    '.cm-focused': {
+    '&.cm-focused': {
       outline: 'none',
     },
     '.cm-gutters': {
@@ -324,6 +454,9 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
     ghostTarget,
     lineMeta,
     minHeight,
+    intellisense = true,
+    styleGuide = 'python-pep8',
+    commonPatterns = true,
     onChange,
     onSubmitHotkey,
   },
@@ -339,6 +472,8 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
   const editableCompartment = useMemo(() => new Compartment(), [])
   const decorationsCompartment = useMemo(() => new Compartment(), [])
   const placeholderCompartment = useMemo(() => new Compartment(), [])
+  const assistanceCompartment = useMemo(() => new Compartment(), [])
+  const styleGuideCompartment = useMemo(() => new Compartment(), [])
 
   useEffect(() => {
     onChangeRef.current = onChange
@@ -386,6 +521,8 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
         editableCompartment.of(editableExtension(editable, disabled)),
         decorationsCompartment.of(recallDecorations(lineMeta, ghostTarget)),
         placeholderCompartment.of(createPlaceholderExtension(placeholder)),
+        assistanceCompartment.of(editorAssistanceExtension(language, intellisense, commonPatterns)),
+        styleGuideCompartment.of(editorStyleGuideExtension(language, styleGuide)),
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return
@@ -453,6 +590,18 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
       effects: placeholderCompartment.reconfigure(createPlaceholderExtension(placeholder)),
     })
   }, [placeholder, placeholderCompartment])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: assistanceCompartment.reconfigure(editorAssistanceExtension(language, intellisense, commonPatterns)),
+    })
+  }, [assistanceCompartment, commonPatterns, intellisense, language])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: styleGuideCompartment.reconfigure(editorStyleGuideExtension(language, styleGuide)),
+    })
+  }, [language, styleGuide, styleGuideCompartment])
 
   return (
     <div

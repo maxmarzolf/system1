@@ -10,6 +10,7 @@ import { loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoac
 import { loadStoredSubmissionTuning } from './submissionTuning'
 import { loadStoredSpecimenTuning } from './specimenTuning'
 import type { SpecimenTuning } from './specimenTuning'
+import { loadStoredCodeEditorTuning } from './codeEditorTuning'
 import { loadStoredMcqTuning, type McqFlowMode, type McqSourceMode } from './mcqTuning'
 import { apiUrl } from './api'
 import { providerDisplayLabel, useConfiguredProviderLabel } from './llmProviderDefault'
@@ -1911,87 +1912,6 @@ const inlineDisplayLines = (code: string) => {
   return displayLines
 }
 
-function InlineAnnotatedCode({
-  code,
-  language,
-  syntaxTheme,
-  lineClassName,
-}: {
-  code: string
-  language: string
-  syntaxTheme: Record<string, CSSProperties>
-  lineClassName?: (line: string, lineNumber: number) => string
-}) {
-  const lines = inlineDisplayLines(code)
-  const inlineSyntaxStyle = {
-    margin: 0,
-    padding: 0,
-    background: 'transparent',
-    border: 'none',
-    display: 'inline',
-    fontFamily: 'inherit',
-    fontSize: 'inherit',
-    lineHeight: 'inherit',
-    whiteSpace: 'pre',
-  } as const
-
-  return (
-    <pre className="inline-annotated-code">
-      <code>
-        {lines.map(({ line, sourceLineNumber, absorbedDecision }) => {
-          const parts = splitInlineAnnotationLine(line)
-          const baseClassName = lineClassName?.(line, sourceLineNumber) ?? 'typing-highlight-line'
-          const className = absorbedDecision && !baseClassName.includes('inline-decision-line')
-            ? `${baseClassName} inline-decision-line`
-            : baseClassName
-          return (
-            <span key={`${sourceLineNumber}-${line}`} className={className}>
-              {parts.code && (
-                <SyntaxHighlighter
-                  language={language}
-                  style={syntaxTheme}
-                  PreTag="span"
-                  CodeTag="span"
-                  customStyle={inlineSyntaxStyle}
-                  codeTagProps={{ style: inlineSyntaxStyle }}
-                >
-                  {parts.code}
-                </SyntaxHighlighter>
-              )}
-              {parts.gap && <span className="inline-note-gap">{parts.gap}</span>}
-              {parts.note && <span className="inline-note-text">{parts.note}</span>}
-              {!parts.code && !parts.gap && !parts.note ? ' ' : null}
-            </span>
-          )
-        })}
-      </code>
-    </pre>
-  )
-}
-
-function InlineDecisionCode({
-  code,
-  language,
-  syntaxTheme,
-}: {
-  code: string
-  language: string
-  syntaxTheme: Record<string, CSSProperties>
-}) {
-  return (
-    <InlineAnnotatedCode
-      code={code}
-      language={language}
-      syntaxTheme={syntaxTheme}
-      lineClassName={(line) =>
-        isInlineDecisionLine(line)
-          ? 'typing-highlight-line inline-decision-line'
-          : 'typing-highlight-line'
-      }
-    />
-  )
-}
-
 type MarkdownCodeSegment =
   | { type: 'text'; text: string }
   | { type: 'code'; code: string; language: string }
@@ -2183,6 +2103,7 @@ function App() {
   const [liveCoachError, setLiveCoachError] = useState('')
   const [liveCoachTuning, setLiveCoachTuning] = useState(() => loadStoredLiveCoachTuning())
   const [submissionTuning] = useState(() => loadStoredSubmissionTuning())
+  const [codeEditorTuning] = useState(() => loadStoredCodeEditorTuning())
   const syntaxTheme = theme === 'light-high-contrast' ? vs : vscDarkPlus
   const [coachFeedback, setCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
   const [coachLoading, setCoachLoading] = useState(false)
@@ -2680,7 +2601,7 @@ function App() {
   ])
   const currentTemplateLabel = TEMPLATE_MODE_LABELS[currentTemplateMode]
   const activeRecallLabel = recallTargetMode === 'coreShape' ? 'Core shape' : currentTemplateLabel
-  const practiceLanguage = 'python'
+  const practiceLanguage = codeEditorTuning.language
   const shouldHighlightInlineDecision = inlineEnabled
   const practiceInputLabel = inlineEnabled
     ? `Type the ${activeRecallLabel.toLowerCase()} with inline notes from memory`
@@ -3613,6 +3534,14 @@ function App() {
     }
     return practiceTarget
   }, [inlineEnabled, isGhostRepsEnabled, liveCoachTuning.enabled, practiceTarget])
+  const previewDisplayLines = useMemo(() => inlineDisplayLines(practiceTarget), [practiceTarget])
+  const previewEditorValue = useMemo(
+    () => previewDisplayLines
+      .map(({ line }) => splitInlineAnnotationLine(line).code)
+      .join('\n')
+      .trimEnd(),
+    [previewDisplayLines]
+  )
   const triggerLiveCoachRefresh = useEffectEvent((
     trimmedInput: string,
     options?: {
@@ -3985,6 +3914,20 @@ function App() {
     showSubmittedLineReview,
     submittedFeedbackAnnotationsBySourceLine,
   ])
+  const previewEditorLineMeta = useMemo<RecallEditorLineMeta[]>(() => (
+    previewDisplayLines.map(({ line, sourceLineNumber, absorbedDecision }) => {
+      const parts = splitInlineAnnotationLine(line)
+      const inlineDecision = shouldHighlightInlineDecision && (
+        isInlineDecisionLine(line) || absorbedDecision
+      )
+
+      return {
+        sourceLineNumber,
+        inlineDecision,
+        inlineNote: parts.note.trim() ? parts.note.trim() : undefined,
+      }
+    })
+  ), [previewDisplayLines, shouldHighlightInlineDecision])
 
   const handleRecallEditorSubmitHotkey = () => {
     if (mainPhase === 'submitted' && latestSubmittedWasGhostRep) {
@@ -4485,39 +4428,26 @@ function App() {
               )
             ) : mainPhase === 'preview' && (
               <div className="drill-fade-in">
-                {inlineLensTabs}
-                <div className="code-container" ref={previewCodeContainerRef}>
-                  {shouldHighlightInlineDecision ? (
-                    <InlineDecisionCode
-                      code={practiceTarget}
-                      language={practiceLanguage}
-                      syntaxTheme={syntaxTheme}
-                    />
-                  ) : (
-                    <SyntaxHighlighter
-                      language={practiceLanguage}
-                      style={syntaxTheme}
-                      customStyle={{
-                        margin: 0,
-                        padding: 0,
-                        background: 'transparent',
-                        border: 'none',
-                        fontFamily: 'inherit',
-                        fontSize: 'inherit',
-                        lineHeight: 'inherit',
-                      }}
-                      codeTagProps={{
-                        style: {
-                          background: 'transparent',
-                          fontFamily: 'inherit',
-                          fontSize: 'inherit',
-                          lineHeight: 'inherit',
-                        },
-                      }}
-                    >
-                      {practiceTarget}
-                    </SyntaxHighlighter>
-                  )}
+                <div className="code-container recall-editor-container" ref={previewCodeContainerRef}>
+                  <div className="typing-editor-shell">
+                    {inlineLensTabs}
+                    <div className="recall-editor-code-wrap">
+                      <div className="recall-submit-summary-slot" aria-live="polite" />
+                      <RecallCodeEditor
+                        value={previewEditorValue}
+                        language={practiceLanguage}
+                        theme={theme}
+                        editable={false}
+                        placeholder=""
+                        lineMeta={previewEditorLineMeta}
+                        intellisense={codeEditorTuning.intellisense}
+                        styleGuide={codeEditorTuning.styleGuide}
+                        commonPatterns={codeEditorTuning.commonPatterns}
+                        onChange={() => {}}
+                        onSubmitHotkey={startMainRecall}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -4565,6 +4495,9 @@ function App() {
                         ghostTarget={mainPhase === 'typing' && isGhostRepsEnabled ? ghostTargetCode : undefined}
                         lineMeta={recallEditorLineMeta}
                         minHeight={recallMinHeight}
+                        intellisense={codeEditorTuning.intellisense}
+                        styleGuide={codeEditorTuning.styleGuide}
+                        commonPatterns={codeEditorTuning.commonPatterns}
                         onChange={handleMainInputChange}
                         onSubmitHotkey={handleRecallEditorSubmitHotkey}
                       />

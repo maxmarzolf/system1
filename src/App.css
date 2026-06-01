@@ -2735,6 +2735,7 @@ button.link:hover {
   align-items: flex-start;
   min-height: 1.65rem;
   margin-bottom: 0.35rem;
+  border-bottom: 1px dotted color-mix(in srgb, var(--hc-border-dim) 82%, transparent);
   pointer-events: none;
 }
 
@@ -2828,9 +2829,7 @@ button.link:hover {
 .typing-highlight pre,
 .typing-highlight code,
 .typing-ghost-target pre,
-.typing-ghost-target code,
-.inline-annotated-code,
-.inline-annotated-code code {
+.typing-ghost-target code {
   font-family: inherit !important;
   font-size: inherit !important;
   line-height: inherit !important;
@@ -3245,30 +3244,6 @@ button.link:hover {
 
 .typing-highlight-line.line-extra {
   background: var(--hc-line-extra-bg);
-}
-
-.inline-annotated-code {
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  border: none;
-  color: var(--hc-code-fg);
-}
-
-.inline-annotated-code code {
-  display: block;
-  background: transparent;
-}
-
-.inline-annotated-code .typing-highlight-line {
-  display: block;
-  min-height: 1.6em;
-}
-
-.inline-annotated-code .typing-highlight-line.inline-live-note-line {
-  position: relative;
-  isolation: isolate;
-  padding-right: min(46ch, 48%);
 }
 
 .inline-code-text {
