@@ -185,19 +185,6 @@ type PromptToggleExplanationResponse = {
   llmUsed: boolean
 }
 
-type AdaptiveVariationResponse = {
-  drill: Flashcard
-  targetDimension: string
-  variationReason: string
-  llmUsed: boolean
-}
-
-type SequentialVariationResponse = {
-  drill: Flashcard
-  progressionReason: string
-  llmUsed: boolean
-}
-
 type AttemptEvaluationResponse = {
   accuracy: number
   sound: boolean
@@ -315,8 +302,6 @@ type LiveCoachSnapshot = {
   sameLineEditCount: number
   lastMeaningfulProgressAt: number
 }
-
-type FlowMode = 'sequential' | 'adaptive'
 
 type LlmProvider = 'openai' | 'claude' | 'gemma'
 type LlmProviderSelection = 'auto' | LlmProvider
@@ -2046,7 +2031,7 @@ function App() {
   const [searchParams, setSearchParams] = useSearchParams()
   const questionType = 'skill-map' as const
   const [practiceMode, setPracticeMode] = useState<PracticeMode>('recall')
-  const [multipleChoiceDifficulty, setMultipleChoiceDifficulty] = useState<MultipleChoiceDifficulty>('Med.')
+  const [multipleChoiceDifficulty] = useState<MultipleChoiceDifficulty>('Med.')
   const [enabledTemplateModes, setEnabledTemplateModes] = useState<TemplateMode[]>(() => [...DEFAULT_TEMPLATE_MODES])
   const [supportLayer, setSupportLayer] = useState<SupportLayer>('none')
   const [skillMapDeck, setSkillMapDeck] = useState<Flashcard[]>([])
@@ -2059,14 +2044,7 @@ function App() {
   const [multipleChoiceError, setMultipleChoiceError] = useState('')
   const [multipleChoiceRefreshToken, setMultipleChoiceRefreshToken] = useState(0)
   const [multipleChoiceSessionVersion, setMultipleChoiceSessionVersion] = useState(0)
-  const [flowMode] = useState<FlowMode>('sequential')
-  const [recallTargetMode, setRecallTargetMode] = useState<RecallTargetMode>('algorithm')
-  const [adaptiveVariationLoading, setAdaptiveVariationLoading] = useState(false)
-  const [adaptiveVariationError, setAdaptiveVariationError] = useState('')
-  const [adaptiveVariationNote, setAdaptiveVariationNote] = useState('')
-  const [sequentialVariationLoading, setSequentialVariationLoading] = useState(false)
-  const [sequentialVariationError, setSequentialVariationError] = useState('')
-  const [sequentialVariationNote, setSequentialVariationNote] = useState('')
+  const [recallTargetMode] = useState<RecallTargetMode>('algorithm')
   const [inlineEnabled, setInlineEnabled] = useState(false)
   const [inlineLens, setInlineLens] = useState<InlineLens>('pattern')
   const [plainEnglishPromptOpen, setPlainEnglishPromptOpen] = useState(false)
@@ -2129,8 +2107,6 @@ function App() {
   const coachRequestVersionRef = useRef(0)
   const skillMapDeckRequestVersionRef = useRef(0)
   const multipleChoiceDeckRequestVersionRef = useRef(0)
-  const adaptiveVariationRequestKeyRef = useRef('')
-  const sequentialVariationRequestKeyRef = useRef('')
   const focusedPatternSlug = searchParams.get('focusPattern')?.trim() || ''
   const focusedTagSlug = searchParams.get('focusTag')?.trim() || ''
   const focusedModeParam = searchParams.get('focusMode')?.trim() || ''
@@ -2383,7 +2359,6 @@ function App() {
     setSessionPlan(null)
     setSessionPlanLoading(false)
     setSessionPlanError('')
-    clearQueuedFlowState()
   }
 
   useEffect(() => {
@@ -2544,7 +2519,6 @@ function App() {
   currentCardIdRef.current = activeCardId
 
   const handleTagClick = (tag: string) => {
-    setPracticeMode('recall')
     setTagsExpanded(false)
     setSearchParams(tag === focusedTagSlug ? {} : { focusTag: tag })
   }
@@ -2623,13 +2597,6 @@ function App() {
   const supportedStartRecallLabel = isGhostRepsEnabled
     ? `Start Ghost Reps for ${activeRecallLabel}`
     : startRecallLabel
-  const queuedFlowLoading = flowMode === 'adaptive' ? adaptiveVariationLoading : sequentialVariationLoading
-  const queuedFlowNote = flowMode === 'adaptive' ? adaptiveVariationNote : sequentialVariationNote
-  const queuedFlowError = flowMode === 'adaptive' ? adaptiveVariationError : sequentialVariationError
-  const queuedFlowLoadingMessage =
-    flowMode === 'adaptive'
-      ? 'Building a targeted repair variation...'
-      : 'Building the next sequential step...'
   const relatedLeetCodeSet = useMemo(
     () => practiceMode === 'recall'
       ? resolveRelatedLeetCodeSet({
@@ -2764,121 +2731,6 @@ function App() {
     }
   }
 
-  const enqueueGeneratedFollowup = (drill: Flashcard) => {
-    if (skillMapDeck.some((item) => item.id === drill.id)) return
-    const nextDeckIndex = skillMapDeck.length
-    setSessionFinished(false)
-    setSkillMapDeck((prevDeck) => {
-      if (prevDeck.some((item) => item.id === drill.id)) return prevDeck
-      return [...prevDeck, drill]
-    })
-    setSessionOrder((prevOrder) => {
-      if (prevOrder.includes(nextDeckIndex)) return prevOrder
-      return [
-        ...prevOrder.slice(0, sessionPosition + 1),
-        nextDeckIndex,
-        ...prevOrder.slice(sessionPosition + 1),
-      ]
-    })
-  }
-
-  const requestAdaptiveVariation = async (payload: {
-    interactionId: string
-    expectedAnswer: string
-    userAnswer: string
-    submissionRubric: Record<string, unknown>
-  }) => {
-    const requestKey = `${card.id}:${currentTemplateMode}:${payload.interactionId}`
-    if (adaptiveVariationRequestKeyRef.current === requestKey) return
-    adaptiveVariationRequestKeyRef.current = requestKey
-    setAdaptiveVariationLoading(true)
-    setAdaptiveVariationError('')
-    setAdaptiveVariationNote('')
-
-    try {
-      const response = await fetch(apiUrl('/api/coach/adaptive-variation'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cardId: card.id,
-          cardTitle: card.title,
-          prompt: practicePrompt,
-          expectedAnswer: payload.expectedAnswer,
-          userAnswer: payload.userAnswer,
-          templateMode: currentTemplateMode,
-          skillTags: currentSkillTags,
-          submissionRubric: payload.submissionRubric,
-          specimenTuning: loadStoredSpecimenTuning(),
-          llmProvider: requestLlmProvider,
-        }),
-      })
-      if (!response.ok) throw new Error('Unable to generate adaptive variation')
-      const variation = (await response.json()) as AdaptiveVariationResponse
-      if (adaptiveVariationRequestKeyRef.current !== requestKey || currentCardIdRef.current !== card.id) return
-      enqueueGeneratedFollowup(variation.drill)
-      setAdaptiveVariationNote(variation.variationReason || 'Targeted repair variation queued next.')
-    } catch {
-      if (adaptiveVariationRequestKeyRef.current !== requestKey || currentCardIdRef.current !== card.id) return
-      setAdaptiveVariationError('Targeted variation unavailable right now.')
-    } finally {
-      if (adaptiveVariationRequestKeyRef.current === requestKey && currentCardIdRef.current === card.id) {
-        setAdaptiveVariationLoading(false)
-      }
-    }
-  }
-
-  const requestSequentialVariation = async (payload: {
-    interactionId: string
-    expectedAnswer: string
-  }) => {
-    const requestKey = `${card.id}:${currentTemplateMode}:${payload.interactionId}`
-    if (sequentialVariationRequestKeyRef.current === requestKey) return
-    sequentialVariationRequestKeyRef.current = requestKey
-    setSequentialVariationLoading(true)
-    setSequentialVariationError('')
-    setSequentialVariationNote('')
-
-    try {
-      const response = await fetch(apiUrl('/api/coach/sequential-variation'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cardId: card.id,
-          cardTitle: card.title,
-          prompt: practicePrompt,
-          expectedAnswer: payload.expectedAnswer,
-          templateMode: currentTemplateMode,
-          skillTags: currentSkillTags,
-          specimenTuning: loadStoredSpecimenTuning(),
-          llmProvider: requestLlmProvider,
-        }),
-      })
-      if (!response.ok) throw new Error('Unable to generate sequential variation')
-      const variation = (await response.json()) as SequentialVariationResponse
-      if (sequentialVariationRequestKeyRef.current !== requestKey || currentCardIdRef.current !== card.id) return
-      enqueueGeneratedFollowup(variation.drill)
-      setSequentialVariationNote(variation.progressionReason || 'Smallest next-step variation queued next.')
-    } catch {
-      if (sequentialVariationRequestKeyRef.current !== requestKey || currentCardIdRef.current !== card.id) return
-      setSequentialVariationError('Sequential next step unavailable right now.')
-    } finally {
-      if (sequentialVariationRequestKeyRef.current === requestKey && currentCardIdRef.current === card.id) {
-        setSequentialVariationLoading(false)
-      }
-    }
-  }
-
-  const clearQueuedFlowState = () => {
-    setAdaptiveVariationLoading(false)
-    setAdaptiveVariationError('')
-    setAdaptiveVariationNote('')
-    setSequentialVariationLoading(false)
-    setSequentialVariationError('')
-    setSequentialVariationNote('')
-    adaptiveVariationRequestKeyRef.current = ''
-    sequentialVariationRequestKeyRef.current = ''
-  }
-
   const resetPerCardInteraction = () => {
     setMainPhase('preview')
     setRecallMinHeight(undefined)
@@ -2908,19 +2760,10 @@ function App() {
     stuckHintDepthRef.current = 0
     lastStuckHintInputRef.current = ''
     lastMainInputEditAtRef.current = 0
-    clearQueuedFlowState()
   }
 
   const toggleInlineHelper = () => {
     setInlineEnabled((prev) => !prev)
-    if (mainPhase !== 'preview') {
-      resetPerCardInteraction()
-    }
-  }
-
-  const selectRecallTargetMode = (nextMode: RecallTargetMode) => {
-    if (recallTargetMode === nextMode) return
-    setRecallTargetMode(nextMode)
     if (mainPhase !== 'preview') {
       resetPerCardInteraction()
     }
@@ -3277,23 +3120,8 @@ function App() {
       submissionRubric: feedback?.submissionRubric ?? null,
     })
 
-    if (!isGhostRep && flowMode === 'adaptive' && !sound && feedback?.submissionRubric) {
-      void requestAdaptiveVariation({
-        interactionId,
-        expectedAnswer: normalizedTarget,
-        userAnswer: normalizedInput,
-        submissionRubric: feedback.submissionRubric,
-      })
-    }
-
     if (!isGhostRep && closeEnough) {
       completeCardInSession(sound, accuracy, elapsedMs)
-      if (flowMode === 'sequential') {
-        void requestSequentialVariation({
-          interactionId,
-          expectedAnswer: normalizedTarget,
-        })
-      }
     }
   }
 
@@ -3844,16 +3672,6 @@ function App() {
     if (coachLoading && coachFeedback) {
       addNote('Refining submission feedback', 'neutral', { maxWords: 8, fallbackOnly: true })
     }
-    if (queuedFlowLoading) {
-      addNote(queuedFlowLoadingMessage, 'neutral', { maxWords: 12, fallbackOnly: true })
-    }
-    if (queuedFlowNote) {
-      addNote(`Queued next: ${queuedFlowNote}`, 'neutral', { maxWords: 12, fallbackOnly: true })
-    }
-    if (queuedFlowError) {
-      addNote(queuedFlowError, 'negative', { maxWords: 12, fallbackOnly: true })
-    }
-
     return notes.slice(0, 5)
   }, [
     coachError,
@@ -3863,10 +3681,6 @@ function App() {
     mainCloseEnough,
     mainInput,
     mainPhase,
-    queuedFlowError,
-    queuedFlowLoading,
-    queuedFlowLoadingMessage,
-    queuedFlowNote,
     showGeneratingSubmissionFeedback,
     submissionAttemptStatusText,
     submissionFeedbackNextStep,
@@ -4064,10 +3878,10 @@ function App() {
             ) : null}
           </div>
           <div className="card-header-side">
-            <div className="flow-mode-control" role="group" aria-label="Practice mode">
+            <div className="practice-mode-control" role="group" aria-label="Practice mode">
               <button
                 type="button"
-                className={practiceMode === 'recall' ? 'flow-mode-button active' : 'flow-mode-button'}
+                className={practiceMode === 'recall' ? 'practice-mode-button active' : 'practice-mode-button'}
                 onClick={() => setPracticeMode('recall')}
                 aria-pressed={practiceMode === 'recall'}
                 title="Recall"
@@ -4076,7 +3890,7 @@ function App() {
               </button>
               <button
                 type="button"
-                className={practiceMode === 'multiple-choice' ? 'flow-mode-button active' : 'flow-mode-button'}
+                className={practiceMode === 'multiple-choice' ? 'practice-mode-button active' : 'practice-mode-button'}
                 onClick={() => setPracticeMode('multiple-choice')}
                 aria-pressed={practiceMode === 'multiple-choice'}
                 title="Multiple Choice"
@@ -4084,95 +3898,48 @@ function App() {
                 MCQ
               </button>
             </div>
-            {practiceMode === 'multiple-choice' ? (
-              <>
-                <div className="flow-mode-control" role="group" aria-label="Multiple choice difficulty">
-                  <button
-                    type="button"
-                    className={multipleChoiceDifficulty === 'Med.' ? 'flow-mode-button active' : 'flow-mode-button'}
-                    onClick={() => setMultipleChoiceDifficulty('Med.')}
-                    aria-pressed={multipleChoiceDifficulty === 'Med.'}
-                  >
-                    Med.
-                  </button>
-                  <button
-                    type="button"
-                    className={multipleChoiceDifficulty === 'Hard' ? 'flow-mode-button active' : 'flow-mode-button'}
-                    onClick={() => setMultipleChoiceDifficulty('Hard')}
-                    aria-pressed={multipleChoiceDifficulty === 'Hard'}
-                  >
-                    Hard
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="support-layer-control" aria-label="Practice support controls">
-                  <button
-                    type="button"
-                    className={inlineEnabled ? 'navbar-toggle active' : 'navbar-toggle'}
-                    onClick={toggleInlineHelper}
-                    aria-pressed={inlineEnabled}
-                    aria-label={inlineEnabled ? 'Turn Inline off' : 'Turn Inline on'}
-                    title="Inline"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className={isGhostRepsEnabled ? 'navbar-toggle active' : 'navbar-toggle'}
-                    onClick={() => setSupportLayer(isGhostRepsEnabled ? 'none' : 'ghost-reps')}
-                    aria-pressed={isGhostRepsEnabled}
-                    aria-label={isGhostRepsEnabled ? 'Turn Ghost Reps off' : 'Turn Ghost Reps on'}
-                    title="Ghost Reps"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M2 12.5V6.5a5 5 0 0 1 10 0v6l-1.5-1.5-1.5 1.5-1.5-1.5-1.5 1.5-1.5-1.5-1.5 1.5Z"/>
-                      <circle cx="5.5" cy="6.5" r="0.75" fill="currentColor" stroke="none"/>
-                      <circle cx="8.5" cy="6.5" r="0.75" fill="currentColor" stroke="none"/>
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className={liveCoachTuning.enabled ? 'navbar-toggle active' : 'navbar-toggle'}
-                    onClick={toggleLiveFeedback}
-                    aria-pressed={liveCoachTuning.enabled}
-                    aria-label={liveCoachTuning.enabled ? 'Turn live feedback off' : 'Turn live feedback on'}
-                    title="Live"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
-                    </svg>
-                  </button>
-                </div>
-                <div className="flow-mode-control" role="group" aria-label="Recall target mode">
-              <button
-                type="button"
-                className={recallTargetMode === 'algorithm' ? 'flow-mode-button active' : 'flow-mode-button'}
-                onClick={() => selectRecallTargetMode('algorithm')}
-                aria-pressed={recallTargetMode === 'algorithm'}
-                title="Algorithm"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M17.25 8.25 21 12m0 0-3.75 3.75M21 12H3" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                className={recallTargetMode === 'coreShape' ? 'flow-mode-button active' : 'flow-mode-button'}
-                onClick={() => selectRecallTargetMode('coreShape')}
-                aria-pressed={recallTargetMode === 'coreShape'}
-                title="Core shape"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" />
-                </svg>
-              </button>
-                </div>
-              </>
-            )}
+            {practiceMode === 'recall' ? (
+              <div className="support-layer-control" aria-label="Practice support controls">
+                <button
+                  type="button"
+                  className={inlineEnabled ? 'navbar-toggle active' : 'navbar-toggle'}
+                  onClick={toggleInlineHelper}
+                  aria-pressed={inlineEnabled}
+                  aria-label={inlineEnabled ? 'Turn Inline off' : 'Turn Inline on'}
+                  title="Inline"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={isGhostRepsEnabled ? 'navbar-toggle active' : 'navbar-toggle'}
+                  onClick={() => setSupportLayer(isGhostRepsEnabled ? 'none' : 'ghost-reps')}
+                  aria-pressed={isGhostRepsEnabled}
+                  aria-label={isGhostRepsEnabled ? 'Turn Ghost Reps off' : 'Turn Ghost Reps on'}
+                  title="Ghost Reps"
+                >
+                  <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M2 12.5V6.5a5 5 0 0 1 10 0v6l-1.5-1.5-1.5 1.5-1.5-1.5-1.5 1.5-1.5-1.5-1.5 1.5Z"/>
+                    <circle cx="5.5" cy="6.5" r="0.75" fill="currentColor" stroke="none"/>
+                    <circle cx="8.5" cy="6.5" r="0.75" fill="currentColor" stroke="none"/>
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={liveCoachTuning.enabled ? 'navbar-toggle active' : 'navbar-toggle'}
+                  onClick={toggleLiveFeedback}
+                  aria-pressed={liveCoachTuning.enabled}
+                  aria-label={liveCoachTuning.enabled ? 'Turn live feedback off' : 'Turn live feedback on'}
+                  title="Live"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                  </svg>
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
 
