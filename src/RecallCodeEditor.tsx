@@ -63,7 +63,9 @@ export type RecallEditorLineMeta = {
 export type RecallCodeEditorHandle = {
   focus: () => void
   focusEnd: () => void
+  focusLine: (lineNumber: number) => void
   getCursorPosition: () => number
+  getCursorLineNumber: () => number
 }
 
 type RecallCodeEditorProps = {
@@ -81,6 +83,7 @@ type RecallCodeEditorProps = {
   commonPatterns?: boolean
   onChange: (nextValue: string) => void
   onSubmitHotkey: () => void
+  onEnterKey?: (context: { value: string, cursorLineNumber: number }) => boolean
 }
 
 const resolveLanguageExtension = (language: string): Extension => {
@@ -459,6 +462,7 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
     commonPatterns = true,
     onChange,
     onSubmitHotkey,
+    onEnterKey,
   },
   ref
 ) {
@@ -466,6 +470,7 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
   const viewRef = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
   const onSubmitHotkeyRef = useRef(onSubmitHotkey)
+  const onEnterKeyRef = useRef(onEnterKey)
   const languageCompartment = useMemo(() => new Compartment(), [])
   const indentationCompartment = useMemo(() => new Compartment(), [])
   const themeCompartment = useMemo(() => new Compartment(), [])
@@ -483,6 +488,10 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
     onSubmitHotkeyRef.current = onSubmitHotkey
   }, [onSubmitHotkey])
 
+  useEffect(() => {
+    onEnterKeyRef.current = onEnterKey
+  }, [onEnterKey])
+
   useImperativeHandle(ref, () => ({
     focus: () => viewRef.current?.focus(),
     focusEnd: () => {
@@ -495,7 +504,23 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
       })
       view.focus()
     },
+    focusLine: (lineNumber: number) => {
+      const view = viewRef.current
+      if (!view) return
+      const safeLineNumber = Math.max(1, Math.min(lineNumber, view.state.doc.lines))
+      const line = view.state.doc.line(safeLineNumber)
+      view.dispatch({
+        selection: EditorSelection.cursor(line.to),
+        scrollIntoView: true,
+      })
+      view.focus()
+    },
     getCursorPosition: () => viewRef.current?.state.selection.main.head ?? value.length,
+    getCursorLineNumber: () => {
+      const view = viewRef.current
+      if (!view) return Math.max(value.split('\n').length, 1)
+      return view.state.doc.lineAt(view.state.selection.main.head).number
+    },
   }), [value.length])
 
   useEffect(() => {
@@ -505,6 +530,13 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
       doc: value,
       extensions: [
         Prec.highest(keymap.of([
+          {
+            key: 'Enter',
+            run: (view) => onEnterKeyRef.current?.({
+              value: valueFromEditor(view),
+              cursorLineNumber: view.state.doc.lineAt(view.state.selection.main.head).number,
+            }) ?? false,
+          },
           {
             key: 'Mod-Enter',
             run: () => {

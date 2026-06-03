@@ -220,13 +220,27 @@ class MultipleChoiceCard(BaseModel):
     tags: list[str] = []
 
 
+class MultipleChoiceSpecimenFocusLine(BaseModel):
+    lineNumber: int = Field(default=1, ge=1)
+    expected: str = ""
+    actual: str = ""
+    status: Literal["mismatch", "missing", "extra"] = "mismatch"
+
+
+class MultipleChoiceSpecimenFocus(BaseModel):
+    sequenceStage: Literal["recall", "ghost", "multiple-choice"] = "multiple-choice"
+    focusSummary: str = ""
+    missedLines: list[MultipleChoiceSpecimenFocusLine] = Field(default_factory=list)
+
+
 class MultipleChoiceSpecimenContext(BaseModel):
     cardId: str = ""
     cardTitle: str = ""
     pattern: str = ""
     prompt: str = ""
     target: str = ""
-    tags: list[str] = []
+    tags: list[str] = Field(default_factory=list)
+    focus: MultipleChoiceSpecimenFocus | None = None
 
 
 class MultipleChoiceDrillsRequest(BaseModel):

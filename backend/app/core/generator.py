@@ -562,6 +562,15 @@ async def generate_multiple_choice_drills_response(
             "Do not drift into unrelated LeetCode problems or generic pattern trivia unless it directly explains the specimen. "
         )
 
+    focus_instruction = ""
+    if body.sourceMode == "card" and body.specimen and body.specimen.focus and body.specimen.focus.missedLines:
+        focus_instruction = (
+            "The provided specimenContext also includes missed lines from the learner's prior recall attempt. "
+            "Treat those missed lines as the remediation target for this sequence. "
+            "Most drills should directly test why a missed line exists, what bug the learner's drift would cause, how to repair it, or what invariant that line protects. "
+            "Do not ignore the missed lines in favor of generic specimen trivia. "
+        )
+
     flow_instruction = (
         "Create a varied but balanced set across the requested patterns or specimen facets. "
         "Avoid near-duplicates while keeping coverage even. "
@@ -580,6 +589,7 @@ async def generate_multiple_choice_drills_response(
         "Each drill must have id, title, pattern, difficulty, question, choices, correctChoiceId, explanation, and tags. "
         "Each choices array must contain exactly four objects with ids A, B, C, and D and concise answer text. "
         f"{source_instruction}"
+        f"{focus_instruction}"
         f"{flow_instruction}"
         "Prefer code-centered questions: show a compact Python snippet, loop condition, state update, return line, or one-line mutation when that makes the algorithm idea concrete. "
         "Roughly three out of four drills should include a short code snippet in the question or choices; the rest may be purely conceptual. "

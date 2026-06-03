@@ -53,6 +53,39 @@ type MultipleChoiceCard = {
   tags: string[]
 }
 
+type MultipleChoiceSpecimenFocusLine = {
+  lineNumber: number
+  expected: string
+  actual: string
+  status: 'mismatch' | 'missing' | 'extra'
+}
+
+type MultipleChoiceSpecimenFocus = {
+  sequenceStage: 'recall' | 'ghost' | 'multiple-choice'
+  focusSummary: string
+  missedLines: MultipleChoiceSpecimenFocusLine[]
+}
+
+type PracticeFlowStage = 'recall' | 'ghost' | 'multiple-choice'
+
+type PracticeFlowState = {
+  anchorCardId: string
+  anchorTitle: string
+  cycle: number
+  stage: PracticeFlowStage
+  focus: MultipleChoiceSpecimenFocus
+  ghostCompleted: number
+  ghostTarget: number
+  mcqCompleted: number
+  mcqTarget: number
+}
+
+const FLOW_GHOST_REP_TARGET = 5
+const FLOW_MCQ_TARGET = 5
+const SUBMISSION_FEEDBACK_ENABLED = false
+const INLINE_FEEDBACK_ENABLED = false
+const LIVE_FEEDBACK_ENABLED = false
+
 const emptySkillMapCard: Flashcard = {
   id: 'skill-map-loading',
   title: 'Skill Map Card',
@@ -167,6 +200,7 @@ type MultipleChoiceSpecimenContext = {
   prompt: string
   target: string
   tags: string[]
+  focus?: MultipleChoiceSpecimenFocus
 }
 
 type PromptToggleExplanationRequest = {
@@ -1836,6 +1870,96 @@ const computeLineReview = (expectedCode: string, actualCode: string) => {
   return { reviews, actualStatuses: reviews.slice(0, actualLines.length).map((line) => line.status) }
 }
 
+const summarizeFlowFocusLine = (line: MultipleChoiceSpecimenFocusLine) => {
+  const source = line.expected.trim() || line.actual.trim() || `line ${line.lineNumber}`
+  return source.length > 44 ? `${source.slice(0, 41).trimEnd()}...` : source
+}
+
+const toMultipleChoiceFocusLines = (reviews: LineReview[]): MultipleChoiceSpecimenFocusLine[] => (
+  reviews
+    .filter((line): line is LineReview & { status: 'mismatch' | 'missing' | 'extra' } => line.status !== 'match')
+    .filter((line) => line.expected.trim().length > 0 || line.actual.trim().length > 0)
+    .map((line) => ({
+      lineNumber: line.lineNumber,
+      expected: line.expected,
+      actual: line.actual,
+      status: line.status,
+    }))
+)
+
+const buildFlowGhostTarget = (missedLines: MultipleChoiceSpecimenFocusLine[]) => {
+  const targetLines = missedLines
+    .map((line) => line.expected)
+    .filter((line) => line.trim().length > 0)
+
+  return normalizeTyping(targetLines.join('\n'))
+}
+
+const buildFlowGhostScaffold = (fullTarget: string, missedLines: MultipleChoiceSpecimenFocusLine[]) => {
+  const fullTargetLines = fullTarget.replace(/\r\n/g, '\n').split('\n')
+  const missedLineNumbers = new Set(
+    missedLines
+      .filter((line) => line.expected.trim().length > 0)
+      .map((line) => line.lineNumber)
+  )
+
+  return fullTargetLines
+    .map((line, index) => {
+      if (!missedLineNumbers.has(index + 1)) return line.trimEnd()
+      const indentation = line.match(/^\s*/)?.[0] ?? ''
+      return indentation
+    })
+    .join('\n')
+}
+
+const extractFlowGhostFocusedInput = (fullInput: string, missedLines: MultipleChoiceSpecimenFocusLine[]) => {
+  const inputLines = fullInput.replace(/\r\n/g, '\n').split('\n')
+  const focusedLines = missedLines
+    .filter((line) => line.expected.trim().length > 0)
+    .map((line) => inputLines[line.lineNumber - 1] ?? '')
+
+  return normalizeTyping(focusedLines.join('\n'))
+}
+
+const firstIncompleteGhostLineNumber = (fullInput: string, missedLines: MultipleChoiceSpecimenFocusLine[]) => {
+  const inputLines = fullInput.replace(/\r\n/g, '\n').split('\n')
+  return missedLines
+    .filter((line) => line.expected.trim().length > 0)
+    .map((line) => line.lineNumber)
+    .find((lineNumber) => (inputLines[lineNumber - 1] ?? '').trim().length === 0) ?? null
+}
+
+const nextGhostLineNumber = (
+  currentLineNumber: number,
+  fullInput: string,
+  missedLines: MultipleChoiceSpecimenFocusLine[]
+) => {
+  const inputLines = fullInput.replace(/\r\n/g, '\n').split('\n')
+  const targetLineNumbers = missedLines
+    .filter((line) => line.expected.trim().length > 0)
+    .map((line) => line.lineNumber)
+  const nextAfterCurrent = targetLineNumbers.find((lineNumber) =>
+    lineNumber > currentLineNumber && (inputLines[lineNumber - 1] ?? '').trim().length === 0
+  )
+
+  if (nextAfterCurrent) return nextAfterCurrent
+
+  return targetLineNumbers.find((lineNumber) => (inputLines[lineNumber - 1] ?? '').trim().length === 0) ?? null
+}
+
+const buildFlowFocusSummary = (cardTitle: string, missedLines: MultipleChoiceSpecimenFocusLine[]) => {
+  if (missedLines.length === 0) {
+    return `${cardTitle}: full recall was sound, so there is no targeted remediation slice right now.`
+  }
+
+  const preview = missedLines
+    .slice(0, 2)
+    .map((line) => summarizeFlowFocusLine(line))
+    .join(' | ')
+
+  return `${cardTitle}: target ${missedLines.length} drifted line${missedLines.length === 1 ? '' : 's'}${preview ? `, starting with ${preview}` : ''}.`
+}
+
 const splitInlineAnnotationLine = (line: string) => {
   const noteOnlyMatch = line.match(new RegExp(`^(\\s{${INLINE_NOTE_COLUMN},})(\\S.*)$`))
   if (noteOnlyMatch) {
@@ -2052,6 +2176,15 @@ function App() {
   const [plainEnglishPromptLoading, setPlainEnglishPromptLoading] = useState(false)
   const [tagsExpanded, setTagsExpanded] = useState(false)
   const [relatedDrawerOpen, setRelatedDrawerOpen] = useState(false)
+  const [flowDrawerOpen, setFlowDrawerOpen] = useState(false)
+  const [practiceFlow, setPracticeFlow] = useState<PracticeFlowState | null>(null)
+  const [flowMultipleChoiceDeck, setFlowMultipleChoiceDeck] = useState<MultipleChoiceCard[]>([])
+  const [flowMultipleChoiceLoading, setFlowMultipleChoiceLoading] = useState(false)
+  const [flowMultipleChoiceError, setFlowMultipleChoiceError] = useState('')
+  const [flowMultipleChoicePosition, setFlowMultipleChoicePosition] = useState(0)
+  const [flowMultipleChoiceSelectedChoiceId, setFlowMultipleChoiceSelectedChoiceId] = useState('')
+  const [flowMultipleChoiceStartedAt, setFlowMultipleChoiceStartedAt] = useState<number | null>(null)
+  const [flowMultipleChoiceSubmittedByCard, setFlowMultipleChoiceSubmittedByCard] = useState<Record<string, string>>({})
 
   const [sessionOrder, setSessionOrder] = useState<number[]>([])
   const [sessionPosition, setSessionPosition] = useState(0)
@@ -2083,6 +2216,7 @@ function App() {
   const [submissionTuning] = useState(() => loadStoredSubmissionTuning())
   const [codeEditorTuning] = useState(() => loadStoredCodeEditorTuning())
   const syntaxTheme = theme === 'light-high-contrast' ? vs : vscDarkPlus
+  const liveFeedbackEnabled = LIVE_FEEDBACK_ENABLED && liveCoachTuning.enabled
   const [coachFeedback, setCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
   const [coachLoading, setCoachLoading] = useState(false)
   const [coachError, setCoachError] = useState('')
@@ -2094,6 +2228,7 @@ function App() {
   const multipleChoiceQuestionCount = mcqTuning.questionCount
   const mainInputRef = useRef<RecallCodeEditorHandle | null>(null)
   const shouldFocusMainInputRef = useRef(false)
+  const pendingGhostFocusLineRef = useRef<number | null>(null)
   const previewCodeContainerRef = useRef<HTMLDivElement | null>(null)
   const [recallMinHeight, setRecallMinHeight] = useState<number | undefined>(undefined)
   const currentCardIdRef = useRef('')
@@ -2107,6 +2242,7 @@ function App() {
   const coachRequestVersionRef = useRef(0)
   const skillMapDeckRequestVersionRef = useRef(0)
   const multipleChoiceDeckRequestVersionRef = useRef(0)
+  const flowMultipleChoiceDeckRequestVersionRef = useRef(0)
   const focusedPatternSlug = searchParams.get('focusPattern')?.trim() || ''
   const focusedTagSlug = searchParams.get('focusTag')?.trim() || ''
   const focusedModeParam = searchParams.get('focusMode')?.trim() || ''
@@ -2323,6 +2459,70 @@ function App() {
     }
   }
 
+  const fetchFlowMultipleChoiceDeck = async () => {
+    if (!practiceFlow) return
+
+    flowMultipleChoiceDeckRequestVersionRef.current += 1
+    const requestVersion = flowMultipleChoiceDeckRequestVersionRef.current
+    setFlowMultipleChoiceLoading(true)
+    setFlowMultipleChoiceError('')
+    setFlowMultipleChoiceDeck([])
+    setFlowMultipleChoicePosition(0)
+    setFlowMultipleChoiceSelectedChoiceId('')
+    setFlowMultipleChoiceStartedAt(null)
+    setFlowMultipleChoiceSubmittedByCard({})
+
+    const cardPatternSlug = getPrimaryPatternTag(card.tags)
+    const specimenPattern = cardPatternSlug ? patternLabelFromSlug(cardPatternSlug) : card.title
+    const cardBasedSkillMap: SkillMapNode[] = [{
+      pattern: specimenPattern || 'Algorithm',
+      methods: [card.title, ...card.tags.filter((tag) => tag !== 'skill-map').slice(0, 4)],
+    }]
+    const specimenContext: MultipleChoiceSpecimenContext = {
+      cardId: card.id,
+      cardTitle: card.title,
+      pattern: specimenPattern || 'Algorithm',
+      prompt: practicePrompt,
+      target: practiceTarget,
+      tags: card.tags,
+      focus: {
+        sequenceStage: 'multiple-choice',
+        focusSummary: practiceFlow.focus.focusSummary,
+        missedLines: practiceFlow.focus.missedLines,
+      },
+    }
+
+    const requestBody: MultipleChoiceDrillsRequest = {
+      questionType: `skill-map-mcq:card:progressive:flow-cycle-${practiceFlow.cycle}`,
+      count: practiceFlow.mcqTarget,
+      skillMap: cardBasedSkillMap,
+      difficulty: multipleChoiceDifficulty,
+      sourceMode: 'card',
+      flowMode: 'progressive',
+      specimen: specimenContext,
+      llmProvider: requestLlmProvider,
+    }
+
+    try {
+      const payload = await requestMultipleChoiceDrills(requestBody)
+      if (flowMultipleChoiceDeckRequestVersionRef.current !== requestVersion) return
+      setFlowMultipleChoiceDeck(payload.drills)
+      setFlowMultipleChoiceStartedAt(Date.now())
+    } catch (error) {
+      if (flowMultipleChoiceDeckRequestVersionRef.current !== requestVersion) return
+      setFlowMultipleChoiceDeck([])
+      setFlowMultipleChoiceError(
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : 'Targeted multiple choice generation is unavailable right now.'
+      )
+    } finally {
+      if (flowMultipleChoiceDeckRequestVersionRef.current === requestVersion) {
+        setFlowMultipleChoiceLoading(false)
+      }
+    }
+  }
+
   const startSession = (deckLength: number) => {
     setSessionOrder(Array.from({ length: deckLength }, (_, idx) => idx))
     setSessionPosition(0)
@@ -2374,6 +2574,12 @@ function App() {
   }, [practiceMode, llmProvider, requestedQuestionType, multipleChoiceSkillMapSignature, multipleChoiceDifficulty, multipleChoiceQuestionCount, multipleChoiceRefreshToken, mcqTuning.sourceMode, mcqTuning.flowMode, skillMapLoading, skillMapSessionVersion])
 
   useEffect(() => {
+    if (!practiceFlow || practiceFlow.stage !== 'multiple-choice') return
+    void fetchFlowMultipleChoiceDeck()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [practiceFlow?.stage, practiceFlow?.cycle, practiceFlow?.focus.focusSummary, multipleChoiceDifficulty, requestLlmProvider])
+
+  useEffect(() => {
     saveStoredLiveCoachTuning(liveCoachTuning)
   }, [liveCoachTuning])
 
@@ -2394,13 +2600,23 @@ function App() {
   const currentDeckIndex = sessionOrder[sessionPosition] ?? 0
   const card = filteredDeck[currentDeckIndex] ?? filteredDeck[0] ?? emptySkillMapCard
   const multipleChoiceCard = multipleChoiceDeck[currentDeckIndex] ?? multipleChoiceDeck[0] ?? null
-  const activeCardId = practiceMode === 'multiple-choice' ? multipleChoiceCard?.id ?? '' : card.id
-  const activeCardTitle = practiceMode === 'multiple-choice' ? multipleChoiceCard?.title ?? 'Multiple Choice' : card.title
-  const activeCardDifficulty = practiceMode === 'multiple-choice' ? multipleChoiceCard?.difficulty ?? multipleChoiceDifficulty : card.difficulty
-  const activeCardDifficultyLabel = activeCardDifficulty === 'Med.' ? 'Medium' : activeCardDifficulty
-  const activeCardTags = practiceMode === 'multiple-choice' ? multipleChoiceCard?.tags ?? [] : card.tags
-  const isCoreAlgorithmCard = activeCardTags.includes('core-algorithm')
-  const isMetaCard = activeCardTags.includes('core-meta') || activeCardTags.includes('meta')
+  const flowMultipleChoiceCard = flowMultipleChoiceDeck[flowMultipleChoicePosition] ?? flowMultipleChoiceDeck[0] ?? null
+  const isFlowActive = practiceFlow !== null
+  const currentPracticeMode: PracticeMode = practiceFlow
+    ? (practiceFlow.stage === 'multiple-choice' ? 'multiple-choice' : 'recall')
+    : practiceMode
+  const effectiveSupportLayer: SupportLayer = practiceFlow?.stage === 'ghost' ? 'ghost-reps' : supportLayer
+  const activeMultipleChoiceCard = isFlowActive ? flowMultipleChoiceCard : multipleChoiceCard
+  const activeCardId = currentPracticeMode === 'multiple-choice' ? activeMultipleChoiceCard?.id ?? '' : card.id
+  const activeCardTitle = currentPracticeMode === 'multiple-choice' ? activeMultipleChoiceCard?.title ?? 'Multiple Choice' : card.title
+  const activeCardDifficulty = currentPracticeMode === 'multiple-choice' ? activeMultipleChoiceCard?.difficulty ?? multipleChoiceDifficulty : card.difficulty
+  const activeCardTags = currentPracticeMode === 'multiple-choice' ? activeMultipleChoiceCard?.tags ?? [] : card.tags
+  const headerCardTitle = isFlowActive ? practiceFlow?.anchorTitle ?? card.title : activeCardTitle
+  const headerCardDifficulty = isFlowActive ? card.difficulty : activeCardDifficulty
+  const headerCardDifficultyLabel = headerCardDifficulty === 'Med.' ? 'Medium' : headerCardDifficulty
+  const headerCardTags = isFlowActive ? card.tags : activeCardTags
+  const isCoreAlgorithmCard = headerCardTags.includes('core-algorithm')
+  const isMetaCard = headerCardTags.includes('core-meta') || headerCardTags.includes('meta')
   const primaryPatternTag = useMemo(() => getPrimaryPatternTag(card.tags), [card.tags])
   const fullSolutionTarget = useMemo(
     () => normalizeTyping(card.solution.replace('{{missing}}', card.missing)),
@@ -2489,31 +2705,52 @@ function App() {
     promptToggleExplanationRequestVersionRef.current = 0
   }, [promptToggleRequestKey])
 
+  const flowGhostTarget = useMemo(
+    () => buildFlowGhostTarget(practiceFlow?.focus.missedLines ?? []),
+    [practiceFlow]
+  )
+  const flowGhostScaffold = useMemo(
+    () => buildFlowGhostScaffold(practiceTarget, practiceFlow?.focus.missedLines ?? []),
+    [practiceFlow, practiceTarget]
+  )
+  const currentRecallSubmissionInput = useMemo(
+    () => practiceFlow?.stage === 'ghost'
+      ? extractFlowGhostFocusedInput(mainInput, practiceFlow.focus.missedLines)
+      : normalizeTyping(mainInput),
+    [mainInput, practiceFlow]
+  )
+  const activeRecallTarget = practiceFlow?.stage === 'ghost' && flowGhostTarget ? flowGhostTarget : practiceTarget
   const currentQuestionType = `${requestedQuestionType}:${recallTargetMode}${inlineEnabled ? `:${inlineLens}` : ''}`
-  const currentMultipleChoiceQuestionType = `skill-map-mcq:${mcqTuning.sourceMode}:${mcqTuning.flowMode}`
+  const currentMultipleChoiceQuestionType = isFlowActive
+    ? `skill-map-mcq:card:progressive:flow-cycle-${practiceFlow?.cycle ?? 1}`
+    : `skill-map-mcq:${mcqTuning.sourceMode}:${mcqTuning.flowMode}`
   const currentSkillTags = useMemo(
     () => [
       ...card.tags,
       `template-${currentTemplateMode}`,
       `target-${recallTargetMode}`,
       ...(inlineEnabled ? [`inline-${inlineLens}`] : []),
+      ...(isFlowActive && practiceFlow
+        ? ['mode-flow', `flow-stage-${practiceFlow.stage}`, `flow-cycle-${practiceFlow.cycle}`]
+        : []),
     ],
-    [card.tags, currentTemplateMode, inlineEnabled, inlineLens, recallTargetMode]
+    [card.tags, currentTemplateMode, inlineEnabled, inlineLens, isFlowActive, practiceFlow, recallTargetMode]
   )
   const currentRecallHistoryKey = `${card.id}:${currentTemplateMode}:${recallTargetMode}:${inlineEnabled ? inlineLens : 'plain'}`
   const currentMultipleChoiceSkillTags = useMemo(
     () => [
-      ...(multipleChoiceCard?.tags ?? []),
+      ...(activeMultipleChoiceCard?.tags ?? []),
       'mode-multiple-choice',
-      `source-${mcqTuning.sourceMode}`,
-      `flow-${mcqTuning.flowMode}`,
+      `source-${isFlowActive ? 'card' : mcqTuning.sourceMode}`,
+      `flow-${isFlowActive ? 'progressive' : mcqTuning.flowMode}`,
       `difficulty-${multipleChoiceDifficulty === 'Hard' ? 'hard' : 'med'}`,
+      ...(isFlowActive && practiceFlow ? ['mode-flow', `flow-cycle-${practiceFlow.cycle}`] : []),
     ],
-    [mcqTuning.flowMode, mcqTuning.sourceMode, multipleChoiceCard?.tags, multipleChoiceDifficulty]
+    [activeMultipleChoiceCard?.tags, isFlowActive, mcqTuning.flowMode, mcqTuning.sourceMode, multipleChoiceDifficulty, practiceFlow]
   )
   const visibleCardTags = useMemo(
-    () => activeCardTags.filter((tag) => tag !== 'skill-map' && tag !== 'skill-map-mcq'),
-    [activeCardTags]
+    () => headerCardTags.filter((tag) => tag !== 'skill-map' && tag !== 'skill-map-mcq'),
+    [headerCardTags]
   )
 
   currentCardIdRef.current = activeCardId
@@ -2524,23 +2761,29 @@ function App() {
   }
 
   const hasRecallDeck = filteredDeck.length > 0
-  const hasMultipleChoiceDeck = multipleChoiceDeck.length > 0
-  const hasDeck = practiceMode === 'multiple-choice' ? hasMultipleChoiceDeck : hasRecallDeck
-  const activeLoading = practiceMode === 'multiple-choice' ? multipleChoiceLoading : skillMapLoading
-  const activeError = practiceMode === 'multiple-choice' ? multipleChoiceError : skillMapError
-  const isGhostRepsEnabled = supportLayer === 'ghost-reps'
+  const hasMultipleChoiceDeck = isFlowActive ? flowMultipleChoiceDeck.length > 0 : multipleChoiceDeck.length > 0
+  const hasDeck = currentPracticeMode === 'multiple-choice' ? hasMultipleChoiceDeck : hasRecallDeck
+  const activeLoading = currentPracticeMode === 'multiple-choice'
+    ? (isFlowActive ? flowMultipleChoiceLoading : multipleChoiceLoading)
+    : skillMapLoading
+  const activeError = currentPracticeMode === 'multiple-choice'
+    ? (isFlowActive ? flowMultipleChoiceError : multipleChoiceError)
+    : skillMapError
+  const isGhostRepsEnabled = effectiveSupportLayer === 'ghost-reps'
   const hasAnsweredCurrent = Boolean(activeCardId && Object.prototype.hasOwnProperty.call(sessionResults, activeCardId))
   const sessionCounterText =
-    sessionOrder.length === 0
+    isFlowActive && practiceFlow
+      ? `Flow ${practiceFlow.cycle}`
+      : sessionOrder.length === 0
       ? '0 / 0'
       : `${Math.min(sessionPosition + 1, Math.max(sessionOrder.length, 1))} / ${sessionOrder.length}`
   const practiceHistoryHref = useMemo(() => {
     if (!hasDeck) return '/practice-history'
 
-    if (practiceMode === 'multiple-choice' && multipleChoiceCard) {
+    if (currentPracticeMode === 'multiple-choice' && activeMultipleChoiceCard) {
       const searchParams = new URLSearchParams({
-        cardId: multipleChoiceCard.id,
-        cardTitle: multipleChoiceCard.title,
+        cardId: activeMultipleChoiceCard.id,
+        cardTitle: activeMultipleChoiceCard.title,
         questionType: currentMultipleChoiceQuestionType,
       })
 
@@ -2565,25 +2808,28 @@ function App() {
   }, [
     card.id,
     card.title,
+    currentPracticeMode,
+    activeMultipleChoiceCard,
     currentMultipleChoiceQuestionType,
     currentMultipleChoiceSkillTags,
     currentQuestionType,
     currentSkillTags,
     hasDeck,
-    multipleChoiceCard,
-    practiceMode,
   ])
   const currentTemplateLabel = TEMPLATE_MODE_LABELS[currentTemplateMode]
   const activeRecallLabel = recallTargetMode === 'coreShape' ? 'Core shape' : currentTemplateLabel
   const practiceLanguage = codeEditorTuning.language
   const shouldHighlightInlineDecision = inlineEnabled
+  const targetedGhostLineCount = practiceFlow?.focus.missedLines.filter((line) => line.expected.trim().length > 0).length ?? 0
   const practiceInputLabel = inlineEnabled
     ? `Type the ${activeRecallLabel.toLowerCase()} with inline notes from memory`
     : recallTargetMode === 'coreShape'
       ? 'Type the core shape from memory'
       : 'Type the full algorithm from memory'
   const supportedPracticeInputLabel = isGhostRepsEnabled
-    ? `${practiceInputLabel} with Ghost Reps`
+    ? practiceFlow?.stage === 'ghost'
+      ? `Type only the ${targetedGhostLineCount || practiceFlow.focus.missedLines.length} targeted line${(targetedGhostLineCount || practiceFlow.focus.missedLines.length) === 1 ? '' : 's'} from memory`
+      : `${practiceInputLabel} with Ghost Reps`
     : practiceInputLabel
   const practicePlaceholder = inlineEnabled
     ? `Type the ${activeRecallLabel.toLowerCase()}, decisions, and inline notes from memory...`
@@ -2591,14 +2837,18 @@ function App() {
       ? 'Type the reusable skeleton from memory...'
       : 'Type the full algorithm from memory...'
   const supportedPracticePlaceholder = isGhostRepsEnabled
-    ? `Trace the faint ${activeRecallLabel.toLowerCase()} target here...`
+    ? practiceFlow?.stage === 'ghost'
+      ? 'Trace only the lines you missed on the last recall...'
+      : `Trace the faint ${activeRecallLabel.toLowerCase()} target here...`
     : practicePlaceholder
   const startRecallLabel = inlineEnabled ? `Hide ${activeRecallLabel.toLowerCase()} notes and start recall` : 'Start'
   const supportedStartRecallLabel = isGhostRepsEnabled
-    ? `Start Ghost Reps for ${activeRecallLabel}`
+    ? practiceFlow?.stage === 'ghost'
+      ? 'Start targeted Ghost Reps'
+      : `Start Ghost Reps for ${activeRecallLabel}`
     : startRecallLabel
   const relatedLeetCodeSet = useMemo(
-    () => practiceMode === 'recall'
+    () => currentPracticeMode === 'recall'
       ? resolveRelatedLeetCodeSet({
           patternTag: primaryPatternTag,
           title: card.title,
@@ -2608,7 +2858,7 @@ function App() {
           focusedMethods: focusedMethodParams,
         })
       : null,
-    [card.tags, card.title, focusedMethodParams, practiceMode, practicePrompt, practiceTarget, primaryPatternTag]
+    [card.tags, card.title, currentPracticeMode, focusedMethodParams, practicePrompt, practiceTarget, primaryPatternTag]
   )
 
   useEffect(() => {
@@ -2670,15 +2920,15 @@ function App() {
     correct: boolean
     elapsedMs: number
   }) => {
-    if (!multipleChoiceCard) return
+    if (!activeMultipleChoiceCard) return
     try {
       await fetch(apiUrl('/api/attempts'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cardId: multipleChoiceCard.id,
-          cardTitle: multipleChoiceCard.title,
-          question: multipleChoiceCard.question,
+          cardId: activeMultipleChoiceCard.id,
+          cardTitle: activeMultipleChoiceCard.title,
+          question: activeMultipleChoiceCard.question,
           questionType: currentMultipleChoiceQuestionType,
           categoryTags: currentMultipleChoiceSkillTags,
           correctAnswer: `${payload.correctChoice.id}. ${payload.correctChoice.text}`,
@@ -2689,11 +2939,11 @@ function App() {
           exact: payload.correct,
           elapsedMs: payload.elapsedMs,
           interactionId: payload.interactionId,
-          generatedCardId: multipleChoiceCard.id,
+          generatedCardId: activeMultipleChoiceCard.id,
           generatedCard: {
-            ...multipleChoiceCard,
+            ...activeMultipleChoiceCard,
             cardMode: 'multiple-choice',
-            prompt: multipleChoiceCard.question,
+            prompt: activeMultipleChoiceCard.question,
           },
           templateMode: 'algorithm',
           supportLayer: 'none',
@@ -2739,6 +2989,8 @@ function App() {
     setMainCloseEnough(false)
     setMultipleChoiceSelectedChoiceId('')
     setMultipleChoiceStartedAt(Date.now())
+    setFlowMultipleChoiceSelectedChoiceId('')
+    setFlowMultipleChoiceStartedAt(Date.now())
     setCurrentInteractionId('')
     setLiveCoachFeedback(null)
     setLiveCoachFeedbackMeta({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
@@ -2760,9 +3012,80 @@ function App() {
     stuckHintDepthRef.current = 0
     lastStuckHintInputRef.current = ''
     lastMainInputEditAtRef.current = 0
+    pendingGhostFocusLineRef.current = null
+  }
+
+  const resetFlowMultipleChoiceState = () => {
+    setFlowMultipleChoiceDeck([])
+    setFlowMultipleChoiceLoading(false)
+    setFlowMultipleChoiceError('')
+    setFlowMultipleChoicePosition(0)
+    setFlowMultipleChoiceSelectedChoiceId('')
+    setFlowMultipleChoiceStartedAt(null)
+    setFlowMultipleChoiceSubmittedByCard({})
+    flowMultipleChoiceDeckRequestVersionRef.current += 1
+  }
+
+  const startPracticeFlow = () => {
+    if (!hasRecallDeck || sessionFinished) return
+    setPracticeMode('recall')
+    setSupportLayer('none')
+    resetFlowMultipleChoiceState()
+    setPracticeFlow({
+      anchorCardId: card.id,
+      anchorTitle: card.title,
+      cycle: 1,
+      stage: 'recall',
+      focus: {
+        sequenceStage: 'recall',
+        focusSummary: '',
+        missedLines: [],
+      },
+      ghostCompleted: 0,
+      ghostTarget: FLOW_GHOST_REP_TARGET,
+      mcqCompleted: 0,
+      mcqTarget: FLOW_MCQ_TARGET,
+    })
+    resetPerCardInteraction()
+  }
+
+  const stopPracticeFlow = () => {
+    setPracticeFlow(null)
+    setSupportLayer('none')
+    resetFlowMultipleChoiceState()
+    setPracticeMode('recall')
+    resetPerCardInteraction()
+  }
+
+  const advanceFlowMultipleChoice = () => {
+    if (!practiceFlow) return
+
+    if (flowMultipleChoicePosition < Math.max(flowMultipleChoiceDeck.length - 1, 0)) {
+      setFlowMultipleChoicePosition((prev) => prev + 1)
+      return
+    }
+
+    setPracticeFlow((current) => current
+      ? {
+          ...current,
+          cycle: current.cycle + 1,
+          stage: 'recall',
+          focus: {
+            sequenceStage: 'recall',
+            focusSummary: '',
+            missedLines: [],
+          },
+          ghostCompleted: 0,
+          mcqCompleted: 0,
+        }
+      : current)
+    setSupportLayer('none')
+    resetFlowMultipleChoiceState()
+    resetPerCardInteraction()
   }
 
   const toggleInlineHelper = () => {
+    if (!INLINE_FEEDBACK_ENABLED) return
     setInlineEnabled((prev) => !prev)
     if (mainPhase !== 'preview') {
       resetPerCardInteraction()
@@ -2779,15 +3102,32 @@ function App() {
 
   useEffect(() => {
     resetPerCardInteraction()
-  }, [activeCardId, practiceMode, sessionPosition])
+  }, [activeCardId, currentPracticeMode, flowMultipleChoicePosition, practiceFlow?.cycle, sessionPosition])
 
   useEffect(() => {
-    if (mainPhase !== 'typing' || !shouldFocusMainInputRef.current) return
+    if (mainPhase !== 'typing') return
+    const pendingGhostLine = pendingGhostFocusLineRef.current
+    if (pendingGhostLine !== null) {
+      pendingGhostFocusLineRef.current = null
+      window.requestAnimationFrame(() => {
+        mainInputRef.current?.focusLine(pendingGhostLine)
+      })
+      return
+    }
+    if (!shouldFocusMainInputRef.current) return
     shouldFocusMainInputRef.current = false
     window.requestAnimationFrame(() => {
       mainInputRef.current?.focusEnd()
     })
   }, [mainPhase, mainInput])
+
+  const handleGhostRepEnterKey = (context: { value: string, cursorLineNumber: number }) => {
+    if (practiceFlow?.stage !== 'ghost' || mainPhase !== 'typing') return false
+    const nextLineNumber = nextGhostLineNumber(context.cursorLineNumber, context.value, practiceFlow.focus.missedLines)
+    if (!nextLineNumber) return false
+    mainInputRef.current?.focusLine(nextLineNumber)
+    return true
+  }
 
   const startMainRecall = () => {
     if (!hasDeck || hasAnsweredCurrent || sessionFinished) return
@@ -2796,7 +3136,13 @@ function App() {
     }
     setMainPhase('typing')
     setMainStartedAt(Date.now())
-    setMainInput('')
+    if (practiceFlow?.stage === 'ghost') {
+      setMainInput(flowGhostScaffold)
+      pendingGhostFocusLineRef.current = firstIncompleteGhostLineNumber(flowGhostScaffold, practiceFlow.focus.missedLines)
+    } else {
+      setMainInput('')
+      pendingGhostFocusLineRef.current = null
+    }
     setCurrentInteractionId(createInteractionId())
     lastMainInputEditAtRef.current = Date.now()
     liveCoachSnapshotRef.current = null
@@ -2826,7 +3172,7 @@ function App() {
     cursorLineNumber?: number | null
     editContext?: HotkeyEditContext
   }) => {
-    if (!liveCoachTuning.enabled) return
+    if (!liveFeedbackEnabled) return
     const trigger = payload.trigger ?? 'auto'
     const hintDepth = trigger === 'hotkey-stuck' ? Math.max(1, payload.hintDepth ?? 1) : 0
     const cursorLineNumber = payload.cursorLineNumber ?? null
@@ -2899,6 +3245,7 @@ function App() {
 
   const requestLiveCoachFeedback = useEffectEvent(fetchLiveCoachFeedback)
   const toggleLiveFeedback = () => {
+    if (!LIVE_FEEDBACK_ENABLED) return
     setLiveCoachTuning((prev) => ({ ...prev, enabled: !prev.enabled }))
   }
 
@@ -2913,6 +3260,8 @@ function App() {
       previousAttempts: RecallAttemptSnapshot[]
     }
   ): Promise<CoachAttemptFeedback | null> => {
+    if (!SUBMISSION_FEEDBACK_ENABLED) return null
+
     const requestCardId = card.id
     coachRequestVersionRef.current += 1
     const requestVersion = coachRequestVersionRef.current
@@ -3061,19 +3410,19 @@ function App() {
   }
 
   const submitMainRecall = async () => {
-    if (practiceMode !== 'recall' || !hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'typing') return
+    if (currentPracticeMode !== 'recall' || !hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'typing') return
 
     const startedAt = mainStartedAt ?? Date.now()
     const interactionId = currentInteractionId || createInteractionId()
     if (!currentInteractionId) setCurrentInteractionId(interactionId)
     const elapsedMs = Math.max(Date.now() - startedAt, 1)
-    const normalizedInput = normalizeTyping(mainInput)
+    const normalizedInput = currentRecallSubmissionInput
     const normalizedInputLines = normalizedInput.split('\n')
-    const normalizedTarget = practiceTarget
+    const normalizedTarget = activeRecallTarget
     const evaluation = await evaluateSubmittedRecall(normalizedTarget, normalizedInput)
     const accuracy = Math.round(evaluation.accuracy)
     const sound = evaluation.sound
-    const isGhostRep = supportLayer === 'ghost-reps'
+    const isGhostRep = effectiveSupportLayer === 'ghost-reps'
     const closeEnough = !isGhostRep && sound
     const historyKey = currentRecallHistoryKey
     const currentHistory = mainRecallHistoryByCard[historyKey] ?? []
@@ -3083,7 +3432,7 @@ function App() {
       sound,
       elapsedMs,
       currentHistory.length + 1,
-      supportLayer
+      effectiveSupportLayer
     )
     setMainCloseEnough(closeEnough)
     setMainPhase('submitted')
@@ -3114,11 +3463,73 @@ function App() {
       elapsedMs,
       interactionId,
       templateMode: currentTemplateMode,
-      supportLayer,
+      supportLayer: effectiveSupportLayer,
       liveCoachUsed: liveCoachUsedThisAttempt,
       coachFeedback: feedback,
       submissionRubric: feedback?.submissionRubric ?? null,
     })
+
+    if (practiceFlow?.stage === 'recall') {
+      const missedLines = toMultipleChoiceFocusLines(computeLineReview(practiceTarget, normalizedInput).reviews)
+      if (missedLines.length === 0) {
+        setPracticeFlow((current) => current
+          ? {
+              ...current,
+              cycle: current.cycle + 1,
+              focus: {
+                sequenceStage: 'recall',
+                focusSummary: '',
+                missedLines: [],
+              },
+              ghostCompleted: 0,
+              mcqCompleted: 0,
+            }
+          : current)
+        setSupportLayer('none')
+        resetPerCardInteraction()
+        return
+      }
+
+      const nextGhostTarget = buildFlowGhostTarget(missedLines)
+      setPracticeFlow((current) => current
+        ? {
+            ...current,
+            stage: nextGhostTarget ? 'ghost' : 'multiple-choice',
+            focus: {
+              sequenceStage: nextGhostTarget ? 'ghost' : 'multiple-choice',
+              focusSummary: buildFlowFocusSummary(card.title, missedLines),
+              missedLines,
+            },
+            ghostCompleted: 0,
+            mcqCompleted: 0,
+          }
+        : current)
+      setSupportLayer(nextGhostTarget ? 'ghost-reps' : 'none')
+      return
+    }
+
+    if (practiceFlow?.stage === 'ghost') {
+      const nextGhostCompleted = sound
+        ? Math.min(practiceFlow.ghostCompleted + 1, practiceFlow.ghostTarget)
+        : practiceFlow.ghostCompleted
+      const readyForMcq = sound && nextGhostCompleted >= practiceFlow.ghostTarget
+      setPracticeFlow((current) => current
+        ? {
+            ...current,
+            stage: readyForMcq ? 'multiple-choice' : current.stage,
+            ghostCompleted: nextGhostCompleted,
+            focus: {
+              ...current.focus,
+              sequenceStage: readyForMcq ? 'multiple-choice' : current.focus.sequenceStage,
+            },
+            mcqCompleted: readyForMcq ? 0 : current.mcqCompleted,
+          }
+        : current)
+      if (readyForMcq) {
+        setSupportLayer('none')
+      }
+      return
+    }
 
     if (!isGhostRep && closeEnough) {
       completeCardInSession(sound, accuracy, elapsedMs)
@@ -3126,31 +3537,46 @@ function App() {
   }
 
   const submitMultipleChoice = async () => {
+    const selectedChoiceId = isFlowActive ? flowMultipleChoiceSelectedChoiceId : multipleChoiceSelectedChoiceId
+    const activeStartedAt = isFlowActive ? flowMultipleChoiceStartedAt : multipleChoiceStartedAt
     if (
-      practiceMode !== 'multiple-choice' ||
-      !multipleChoiceCard ||
+      currentPracticeMode !== 'multiple-choice' ||
+      !activeMultipleChoiceCard ||
       !hasDeck ||
       hasAnsweredCurrent ||
       sessionFinished ||
-      !multipleChoiceSelectedChoiceId
+      !selectedChoiceId
     ) {
       return
     }
 
-    const selectedChoice = multipleChoiceCard.choices.find((choice) => choice.id === multipleChoiceSelectedChoiceId)
-    const correctChoice = multipleChoiceCard.choices.find((choice) => choice.id === multipleChoiceCard.correctChoiceId)
+    const selectedChoice = activeMultipleChoiceCard.choices.find((choice) => choice.id === selectedChoiceId)
+    const correctChoice = activeMultipleChoiceCard.choices.find((choice) => choice.id === activeMultipleChoiceCard.correctChoiceId)
     if (!selectedChoice || !correctChoice) return
 
     const interactionId = currentInteractionId || createInteractionId()
     if (!currentInteractionId) setCurrentInteractionId(interactionId)
-    const elapsedMs = Math.max(Date.now() - (multipleChoiceStartedAt ?? Date.now()), 1)
+    const elapsedMs = Math.max(Date.now() - (activeStartedAt ?? Date.now()), 1)
     const correct = selectedChoice.id === correctChoice.id
 
-    setMultipleChoiceSubmittedByCard((prev) => ({
-      ...prev,
-      [multipleChoiceCard.id]: selectedChoice.id,
-    }))
-    completeCardInSession(correct, correct ? 100 : 0, elapsedMs)
+    if (isFlowActive && practiceFlow) {
+      setFlowMultipleChoiceSubmittedByCard((prev) => ({
+        ...prev,
+        [activeMultipleChoiceCard.id]: selectedChoice.id,
+      }))
+      setPracticeFlow((current) => current
+        ? {
+            ...current,
+            mcqCompleted: Math.min(current.mcqCompleted + 1, current.mcqTarget),
+          }
+        : current)
+    } else {
+      setMultipleChoiceSubmittedByCard((prev) => ({
+        ...prev,
+        [activeMultipleChoiceCard.id]: selectedChoice.id,
+      }))
+      completeCardInSession(correct, correct ? 100 : 0, elapsedMs)
+    }
 
     await submitMultipleChoiceAttemptToServer({
       interactionId,
@@ -3162,6 +3588,7 @@ function App() {
   }
 
   const reviseMainRecall = () => {
+    if (practiceFlow) return
     if (!hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'submitted' || mainCloseEnough) return
     setMainPhase('typing')
     setMainStartedAt(Date.now())
@@ -3173,9 +3600,15 @@ function App() {
 
   const repeatGhostRep = () => {
     if (!hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'submitted') return
-    shouldFocusMainInputRef.current = true
+    shouldFocusMainInputRef.current = !practiceFlow || practiceFlow.stage !== 'ghost'
     setMainPhase('typing')
-    setMainInput('')
+    if (practiceFlow?.stage === 'ghost') {
+      setMainInput(flowGhostScaffold)
+      pendingGhostFocusLineRef.current = firstIncompleteGhostLineNumber(flowGhostScaffold, practiceFlow.focus.missedLines)
+    } else {
+      setMainInput('')
+      pendingGhostFocusLineRef.current = null
+    }
     setMainStartedAt(Date.now())
     setMainCloseEnough(false)
     setCurrentInteractionId(createInteractionId())
@@ -3188,6 +3621,7 @@ function App() {
   }
 
   const restartSession = () => {
+    if (isFlowActive) return
     if (practiceMode === 'multiple-choice') {
       setMultipleChoiceRefreshToken((prev) => prev + 1)
       return
@@ -3196,11 +3630,13 @@ function App() {
   }
 
   const goNext = () => {
+    if (isFlowActive) return
     if (sessionFinished) return
     setSessionPosition((prev) => Math.min(prev + 1, Math.max(sessionOrder.length - 1, 0)))
   }
 
   const goPrev = () => {
+    if (isFlowActive) return
     setSessionPosition((prev) => Math.max(prev - 1, 0))
   }
 
@@ -3213,15 +3649,15 @@ function App() {
         ) / 10
       : 0
 
-  const canGoNext = sessionPosition < sessionOrder.length - 1
-  const canGoPrev = sessionPosition > 0
+  const canGoNext = !isFlowActive && sessionPosition < sessionOrder.length - 1
+  const canGoPrev = !isFlowActive && sessionPosition > 0
 
   useEffect(() => {
     if (!sessionFinished) return
-    if (practiceMode === 'multiple-choice') return
+    if (currentPracticeMode === 'multiple-choice') return
     void fetchSessionPlan()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [practiceMode, sessionFinished])
+  }, [currentPracticeMode, sessionFinished])
 
   const liveStructure = useMemo(
     () => analyzeLiveStructure(mainInput, currentTemplateMode),
@@ -3236,7 +3672,7 @@ function App() {
     [currentRecallHistoryKey, mainRecallHistoryByCard]
   )
   const inlineLiveNotes = useMemo(() => {
-    if (mainPhase !== 'typing' || !liveCoachTuning.enabled) return []
+    if (mainPhase !== 'typing' || !liveFeedbackEnabled) return []
     const sourceLines = (mainInput || '').split('\n')
     const isStuckHint = liveCoachFeedbackMeta.trigger === 'hotkey-stuck'
     const preferredIndex = isStuckHint && liveCoachFeedbackMeta.cursorLineNumber
@@ -3311,7 +3747,7 @@ function App() {
     }
 
     return notes
-  }, [liveCoachError, liveCoachFeedback, liveCoachFeedbackMeta, liveCoachTuning.enabled, mainInput, mainPhase])
+  }, [liveCoachError, liveCoachFeedback, liveCoachFeedbackMeta, liveFeedbackEnabled, mainInput, mainPhase])
   const displayLines = useMemo(() => {
     const source = mainPhase === 'submitted'
       ? (mainInput || '')
@@ -3357,11 +3793,14 @@ function App() {
     })
   }, [inlineLiveNotes, isGhostRepsEnabled, mainInput, mainPhase, practicePlaceholder])
   const ghostTargetCode = useMemo(() => {
-    if (inlineEnabled && isGhostRepsEnabled && liveCoachTuning.enabled) {
+    if (practiceFlow?.stage === 'ghost') {
+      return practiceTarget
+    }
+    if (inlineEnabled && isGhostRepsEnabled && liveFeedbackEnabled) {
       return stripInlineAnnotationNotes(practiceTarget)
     }
     return practiceTarget
-  }, [inlineEnabled, isGhostRepsEnabled, liveCoachTuning.enabled, practiceTarget])
+  }, [inlineEnabled, isGhostRepsEnabled, liveFeedbackEnabled, practiceFlow?.stage, practiceTarget])
   const previewDisplayLines = useMemo(() => inlineDisplayLines(practiceTarget), [practiceTarget])
   const previewEditorValue = useMemo(
     () => previewDisplayLines
@@ -3381,16 +3820,19 @@ function App() {
   ) => {
     const interactionId = currentInteractionId || createInteractionId()
     if (!currentInteractionId) setCurrentInteractionId(interactionId)
-    const target = practiceTarget
-    const accuracy = estimateTemplateAccuracy(target, trimmedInput)
+    const target = activeRecallTarget
+    const focusedInput = practiceFlow?.stage === 'ghost'
+      ? extractFlowGhostFocusedInput(trimmedInput, practiceFlow.focus.missedLines)
+      : trimmedInput
+    const accuracy = estimateTemplateAccuracy(target, focusedInput)
 
     void requestLiveCoachFeedback({
       interactionId,
       expectedAnswer: target,
-      userAnswer: trimmedInput,
+      userAnswer: focusedInput,
       elapsedMs: Math.max((mainStartedAt ? Date.now() - mainStartedAt : 0), 0),
       accuracy,
-      exact: trimmedInput === target,
+      exact: focusedInput === target,
       previousAttempts: currentCardRecallHistory,
       liveStructure: liveStructure,
       trigger: options?.trigger,
@@ -3400,11 +3842,11 @@ function App() {
     })
   })
   const requestStuckHint = useEffectEvent(() => {
-    if (!liveCoachTuning.enabled) return
-    if (practiceMode !== 'recall') return
+    if (!liveFeedbackEnabled) return
+    if (currentPracticeMode !== 'recall') return
     if (!hasDeck || mainPhase !== 'typing' || sessionFinished || hasAnsweredCurrent) return
 
-    const trimmedInput = normalizeTyping(mainInput)
+    const trimmedInput = currentRecallSubmissionInput
     if (!hasUsefulLiveStructure(trimmedInput, liveStructure)) return
 
     const cursorPosition = mainInputRef.current?.getCursorPosition() ?? mainInput.length
@@ -3416,7 +3858,7 @@ function App() {
     liveCoachSnapshotRef.current = {
       text: trimmedInput,
       progressKey: liveProgressKey(liveStructure),
-      accuracy: estimateTemplateAccuracy(practiceTarget, trimmedInput),
+      accuracy: estimateTemplateAccuracy(activeRecallTarget, trimmedInput),
       nonEmptyLines: liveStructure.nonEmptyLines,
       changedLine: cursorLineNumber - 1,
       sameLineEditCount: 0,
@@ -3436,11 +3878,15 @@ function App() {
   const latestSubmittedAttempt =
     mainPhase === 'submitted' ? currentCardRecallHistory[currentCardRecallHistory.length - 1] ?? null : null
   const latestSubmittedWasGhostRep = latestSubmittedAttempt?.supportLayer === 'ghost-reps'
-  const submittedMultipleChoiceId = multipleChoiceCard ? multipleChoiceSubmittedByCard[multipleChoiceCard.id] ?? '' : ''
-  const selectedMultipleChoice = multipleChoiceCard?.choices.find((choice) => choice.id === multipleChoiceSelectedChoiceId) ?? null
-  const correctMultipleChoice = multipleChoiceCard?.choices.find((choice) => choice.id === multipleChoiceCard.correctChoiceId) ?? null
+  const submittedMultipleChoiceId = activeMultipleChoiceCard
+    ? (isFlowActive
+        ? flowMultipleChoiceSubmittedByCard[activeMultipleChoiceCard.id] ?? ''
+        : multipleChoiceSubmittedByCard[activeMultipleChoiceCard.id] ?? '')
+    : ''
+  const selectedMultipleChoice = activeMultipleChoiceCard?.choices.find((choice) => choice.id === (isFlowActive ? flowMultipleChoiceSelectedChoiceId : multipleChoiceSelectedChoiceId)) ?? null
+  const correctMultipleChoice = activeMultipleChoiceCard?.choices.find((choice) => choice.id === activeMultipleChoiceCard.correctChoiceId) ?? null
   const multipleChoiceSubmitted = Boolean(submittedMultipleChoiceId)
-  const multipleChoiceCorrect = Boolean(submittedMultipleChoiceId && submittedMultipleChoiceId === multipleChoiceCard?.correctChoiceId)
+  const multipleChoiceCorrect = Boolean(submittedMultipleChoiceId && submittedMultipleChoiceId === activeMultipleChoiceCard?.correctChoiceId)
   const inlineLensTabs = inlineEnabled ? (
     <div className="inline-lens-tabs" role="tablist" aria-label="Inline explanation lens">
       {INLINE_LENS_OPTIONS.map((option) => (
@@ -3461,7 +3907,21 @@ function App() {
   const primaryCardAction = (() => {
     if (!hasDeck) return null
 
-    if (practiceMode === 'multiple-choice') {
+    if (currentPracticeMode === 'multiple-choice') {
+      if (isFlowActive && multipleChoiceSubmitted) {
+        return {
+          label: flowMultipleChoicePosition < Math.max(flowMultipleChoiceDeck.length - 1, 0)
+            ? 'Next targeted question'
+            : 'Start next recall cycle',
+          onClick: advanceFlowMultipleChoice,
+          disabled: sessionFinished,
+          icon: (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M5.25 4.5 18.75 12 5.25 19.5V4.5Z" />
+            </svg>
+          ),
+        }
+      }
       if (multipleChoiceSubmitted) return null
       return {
         label: 'Submit answer',
@@ -3470,6 +3930,19 @@ function App() {
         icon: (
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="m4.5 12.75 6 6 9-13.5" />
+          </svg>
+        ),
+      }
+    }
+
+    if (practiceFlow?.stage === 'ghost' && mainPhase === 'submitted' && !latestSubmittedWasGhostRep) {
+      return {
+        label: 'Start targeted ghost reps',
+        onClick: repeatGhostRep,
+        disabled: sessionFinished,
+        icon: (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 3v18M3 12h18" />
           </svg>
         ),
       }
@@ -3492,7 +3965,7 @@ function App() {
       return {
         label: isGhostRepsEnabled ? 'Log ghost rep' : `Submit ${activeRecallLabel.toLowerCase()}`,
         onClick: submitMainRecall,
-        disabled: mainInput.trim().length === 0,
+        disabled: currentRecallSubmissionInput.trim().length === 0,
         icon: (
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 0 0 2.25-2.25V6.75a2.25 2.25 0 0 0-2.25-2.25H6.75A2.25 2.25 0 0 0 4.5 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25Zm.75-12h9v9h-9v-9Z" />
@@ -3559,33 +4032,34 @@ function App() {
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (practiceMode !== 'recall') return
+      if (currentPracticeMode !== 'recall') return
       const key = event.key.toLowerCase()
       if (key === 'h' && event.metaKey && event.shiftKey) {
         event.preventDefault()
         requestStuckHint()
         return
       }
+      if (isFlowActive) return
       if (key === 'g' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
         setSupportLayer((prev) => (prev === 'ghost-reps' ? 'none' : 'ghost-reps'))
       }
-      if (key === 'l' && (event.metaKey || event.ctrlKey)) {
+      if (LIVE_FEEDBACK_ENABLED && key === 'l' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
         setLiveCoachTuning((prev) => ({ ...prev, enabled: !prev.enabled }))
       }
-      if (key === 'i' && (event.metaKey || event.ctrlKey)) {
+      if (INLINE_FEEDBACK_ENABLED && key === 'i' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
         toggleInlineHelper()
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [practiceMode, requestStuckHint, toggleInlineHelper])
+  }, [currentPracticeMode, isFlowActive, requestStuckHint, toggleInlineHelper])
 
   const submissionFeedbackNextStep =
     coachFeedback?.immediateCorrection || coachFeedback?.primaryFocus || 'Review the drifted step, then rewrite the recall target once more.'
-  const showGeneratingSubmissionFeedback = coachLoading && !coachFeedback
+  const showGeneratingSubmissionFeedback = SUBMISSION_FEEDBACK_ENABLED && coachLoading && !coachFeedback
   const submissionResultLabel = latestSubmittedWasGhostRep
     ? 'Ghost Rep'
     : latestSubmittedAttempt?.exact
@@ -3611,9 +4085,20 @@ function App() {
     ? `${activeRecallLabel} recall recorded.`
     : latestSubmittedWasGhostRep
       ? `Ghost rep logged for ${activeRecallLabel}. Repeat it until the shape starts to stick.`
-    : `This recall attempt is not sound yet. Revise the logic and submit again.`
+      : practiceFlow?.stage === 'ghost'
+        ? `Full recall captured ${practiceFlow.focus.missedLines.length} targeted line${practiceFlow.focus.missedLines.length === 1 ? '' : 's'}. Start ghost reps for just those lines.`
+        : `This recall attempt is not sound yet. Revise the logic and submit again.`
+  const flowStatusText = !practiceFlow
+    ? 'Anchor the current card, run a full recall, then sequence targeted ghost reps and MCQs from the lines you missed.'
+    : practiceFlow.stage === 'recall'
+      ? `Cycle ${practiceFlow.cycle}: do a full recall on ${practiceFlow.anchorTitle}.`
+      : practiceFlow.stage === 'ghost'
+        ? `Cycle ${practiceFlow.cycle}: ${practiceFlow.ghostCompleted} of ${practiceFlow.ghostTarget} ghost reps logged on the targeted lines.`
+        : `Cycle ${practiceFlow.cycle}: ${practiceFlow.mcqCompleted} of ${practiceFlow.mcqTarget} targeted MCQs completed from the last recall misses.`
+  const flowFocusPreviewLines = practiceFlow?.focus.missedLines.slice(0, 3) ?? []
   const showSubmittedLineReview = mainPhase === 'submitted' && !mainCloseEnough && !latestSubmittedWasGhostRep
   const submittedFeedbackInlineNotes = useMemo<LiveInlineNote[]>(() => {
+    if (!SUBMISSION_FEEDBACK_ENABLED) return []
     if (mainPhase !== 'submitted' || latestSubmittedWasGhostRep) return []
 
     const sourceLines = (mainInput || '').split('\n')
@@ -3755,17 +4240,17 @@ function App() {
   }
 
   useEffect(() => {
-    if (liveCoachTuning.enabled) return
+    if (liveFeedbackEnabled) return
     liveCoachRequestVersionRef.current += 1
     setLiveCoachLoading(false)
     setLiveCoachError('')
     setLiveCoachFeedback(null)
     setLiveCoachFeedbackMeta({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
-  }, [liveCoachTuning.enabled])
+  }, [liveFeedbackEnabled])
 
   return (
-    <div className={relatedDrawerOpen && relatedLeetCodeSet ? 'app app-related-drawer-open' : 'app'}>
-      {submissionFailureModal && (
+    <div className={(flowDrawerOpen || (relatedDrawerOpen && relatedLeetCodeSet)) ? 'app app-side-drawer-open' : 'app'}>
+      {SUBMISSION_FEEDBACK_ENABLED && submissionFailureModal && (
         <div className="submission-feedback-modal" onClick={() => setSubmissionFailureModal(null)}>
           <div
             className="submission-feedback-popover"
@@ -3796,8 +4281,24 @@ function App() {
       />
 
   <div className={relatedLeetCodeSet ? 'card-shell card-shell-has-drawer' : 'card-shell'}>
-      {(relatedLeetCodeSet || visibleCardTags.length > 0) && (
         <div className="card-side-drawer-actions" aria-label="Card side controls">
+          <button
+            type="button"
+            className={flowDrawerOpen ? 'card-side-drawer-toggle active' : 'card-side-drawer-toggle'}
+            aria-expanded={flowDrawerOpen}
+            aria-controls="card-flow-panel"
+            aria-label={flowDrawerOpen ? 'Hide practice flow drawer' : 'Show practice flow drawer'}
+            title="Practice flow"
+            onClick={() => {
+              setRelatedDrawerOpen(false)
+              setFlowDrawerOpen((open) => !open)
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+            </svg>
+            <span className="sr-only">Practice flow</span>
+          </button>
           {relatedLeetCodeSet && (
             <button
               type="button"
@@ -3806,7 +4307,10 @@ function App() {
               aria-controls="related-problems-drawer"
               aria-label={relatedDrawerOpen ? 'Hide related LeetCode drawer' : 'Show related LeetCode drawer'}
               title="Related LeetCode"
-              onClick={() => setRelatedDrawerOpen((open) => !open)}
+              onClick={() => {
+                setFlowDrawerOpen(false)
+                setRelatedDrawerOpen((open) => !open)
+              }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
@@ -3831,13 +4335,12 @@ function App() {
             </button>
           )}
         </div>
-      )}
       <section className="card">
         <div className="card-header">
           <div className="card-header-main">
-            <h3>{activeCardTitle}</h3>
+            <h3>{headerCardTitle}</h3>
             <p className="card-badges">
-              <span>{activeCardDifficultyLabel}</span>
+              <span>{headerCardDifficultyLabel}</span>
               {(isCoreAlgorithmCard || isMetaCard) && <span aria-hidden="true">•</span>}
               {isCoreAlgorithmCard && <span className="card-badge-core">core</span>}
               {isMetaCard && <span className="card-badge-meta">meta</span>}
@@ -3860,15 +4363,15 @@ function App() {
                 </div>
               </div>
             )}
-            {practiceMode === 'multiple-choice' ? (
+            {currentPracticeMode === 'multiple-choice' ? (
               <div className="coach-metric-row card-header-metric-row">
                 <span className="coach-metric-chip">
-                  {mcqTuning.sourceMode === 'card' ? 'Card specimen' : 'Algorithm anchors'}
+                  {isFlowActive ? 'Targeted card flow' : mcqTuning.sourceMode === 'card' ? 'Card specimen' : 'Algorithm anchors'}
                 </span>
                 <span className="coach-metric-chip">
-                  {mcqTuning.flowMode === 'progressive' ? 'Socratic chain' : 'Balanced random'}
+                  {isFlowActive ? 'Missed-line remediation' : mcqTuning.flowMode === 'progressive' ? 'Socratic chain' : 'Balanced random'}
                 </span>
-                <span className="coach-metric-chip">{multipleChoiceQuestionCount} questions</span>
+                <span className="coach-metric-chip">{isFlowActive && practiceFlow ? practiceFlow.mcqTarget : multipleChoiceQuestionCount} questions</span>
                 {(focusedPatternSlug || requestedPlaylist) && (
                   <span className="coach-metric-chip">
                     {requestedPlaylist ? 'Playlist bias' : `Focus ${focusedPatternLabel}`}
@@ -3877,36 +4380,43 @@ function App() {
               </div>
             ) : null}
           </div>
-          <div className="card-header-side">
-            <div className="practice-mode-control" role="group" aria-label="Practice mode">
-              <button
-                type="button"
-                className={practiceMode === 'recall' ? 'practice-mode-button active' : 'practice-mode-button'}
-                onClick={() => setPracticeMode('recall')}
-                aria-pressed={practiceMode === 'recall'}
-                title="Recall"
-              >
-                Recall
-              </button>
-              <button
-                type="button"
-                className={practiceMode === 'multiple-choice' ? 'practice-mode-button active' : 'practice-mode-button'}
-                onClick={() => setPracticeMode('multiple-choice')}
-                aria-pressed={practiceMode === 'multiple-choice'}
-                title="Multiple Choice"
-              >
-                MCQ
-              </button>
-            </div>
-            {practiceMode === 'recall' ? (
-              <div className="support-layer-control" aria-label="Practice support controls">
+          <div className="card-header-aside">
+            <div className="card-header-side">
+              <div className="practice-mode-control" role="group" aria-label="Practice mode">
                 <button
                   type="button"
-                  className={inlineEnabled ? 'navbar-toggle active' : 'navbar-toggle'}
+                  className={currentPracticeMode === 'recall' ? 'practice-mode-button active' : 'practice-mode-button'}
+                  onClick={() => setPracticeMode('recall')}
+                  aria-pressed={currentPracticeMode === 'recall'}
+                  title="Recall"
+                  disabled={isFlowActive}
+                >
+                  Recall
+                </button>
+                <button
+                  type="button"
+                  className={currentPracticeMode === 'multiple-choice' ? 'practice-mode-button active' : 'practice-mode-button'}
+                  onClick={() => setPracticeMode('multiple-choice')}
+                  aria-pressed={currentPracticeMode === 'multiple-choice'}
+                  title="Multiple Choice"
+                  disabled={isFlowActive}
+                >
+                  MCQ
+                </button>
+              </div>
+              {currentPracticeMode === 'recall' ? (
+                <div className="support-layer-control" aria-label="Practice support controls">
+                <button
+                  type="button"
+                  className={[
+                    INLINE_FEEDBACK_ENABLED && inlineEnabled ? 'navbar-toggle active' : 'navbar-toggle',
+                    !INLINE_FEEDBACK_ENABLED ? 'navbar-toggle-crossed' : '',
+                  ].filter(Boolean).join(' ')}
                   onClick={toggleInlineHelper}
-                  aria-pressed={inlineEnabled}
-                  aria-label={inlineEnabled ? 'Turn Inline off' : 'Turn Inline on'}
-                  title="Inline"
+                  aria-pressed={INLINE_FEEDBACK_ENABLED && inlineEnabled}
+                  aria-label={INLINE_FEEDBACK_ENABLED ? (inlineEnabled ? 'Turn Inline off' : 'Turn Inline on') : 'Inline disabled'}
+                  title={INLINE_FEEDBACK_ENABLED ? 'Inline' : 'Inline disabled'}
+                  disabled={isFlowActive || !INLINE_FEEDBACK_ENABLED}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
@@ -3919,6 +4429,7 @@ function App() {
                   aria-pressed={isGhostRepsEnabled}
                   aria-label={isGhostRepsEnabled ? 'Turn Ghost Reps off' : 'Turn Ghost Reps on'}
                   title="Ghost Reps"
+                  disabled={isFlowActive}
                 >
                   <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M2 12.5V6.5a5 5 0 0 1 10 0v6l-1.5-1.5-1.5 1.5-1.5-1.5-1.5 1.5-1.5-1.5-1.5 1.5Z"/>
@@ -3928,27 +4439,32 @@ function App() {
                 </button>
                 <button
                   type="button"
-                  className={liveCoachTuning.enabled ? 'navbar-toggle active' : 'navbar-toggle'}
+                  className={[
+                    liveFeedbackEnabled ? 'navbar-toggle active' : 'navbar-toggle',
+                    !LIVE_FEEDBACK_ENABLED ? 'navbar-toggle-crossed' : '',
+                  ].filter(Boolean).join(' ')}
                   onClick={toggleLiveFeedback}
-                  aria-pressed={liveCoachTuning.enabled}
-                  aria-label={liveCoachTuning.enabled ? 'Turn live feedback off' : 'Turn live feedback on'}
-                  title="Live"
+                  aria-pressed={liveFeedbackEnabled}
+                  aria-label={LIVE_FEEDBACK_ENABLED ? (liveFeedbackEnabled ? 'Turn live feedback off' : 'Turn live feedback on') : 'Live feedback disabled'}
+                  title={LIVE_FEEDBACK_ENABLED ? 'Live' : 'Live feedback disabled'}
+                  disabled={isFlowActive || !LIVE_FEEDBACK_ENABLED}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
                   </svg>
                 </button>
-              </div>
-            ) : null}
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
 
         {sessionFinished && (
           <p className="status success" style={{ marginTop: 0, marginBottom: '1.5rem' }}>
-            Session complete. {correctCount} of {attempts} {practiceMode === 'multiple-choice' ? 'questions were correct' : 'cards were sound'}. Avg score: {avgAccuracy}%.
+            Session complete. {correctCount} of {attempts} {currentPracticeMode === 'multiple-choice' ? 'questions were correct' : 'cards were sound'}. Avg score: {avgAccuracy}%.
           </p>
         )}
-        {sessionFinished && practiceMode === 'recall' && (
+        {sessionFinished && currentPracticeMode === 'recall' && (
           <div className="hint" style={{ marginTop: 0, marginBottom: '1.5rem' }}>
             <strong>Coach Session Plan</strong>
             {sessionPlanLoading && <p style={{ margin: '0.5rem 0 0' }}>Building your next-session plan...</p>}
@@ -3969,7 +4485,7 @@ function App() {
 
         <div className="card-grid">
           <div className="panel">
-            {practiceMode === 'multiple-choice' ? (
+            {currentPracticeMode === 'multiple-choice' ? (
               !hasDeck ? (
                 activeLoading ? (
                   <div className="skeleton-group">
@@ -3983,10 +4499,10 @@ function App() {
                     <p className="hint">{activeError || 'Regenerate to request another LLM question set.'}</p>
                   </>
                 )
-              ) : multipleChoiceCard ? (
+              ) : activeMultipleChoiceCard ? (
                 <div className="multiple-choice-question-panel">
                   <div className="prompt multiple-choice-question">
-                    <MarkdownCodeContent text={multipleChoiceCard.question} syntaxTheme={syntaxTheme} />
+                    <MarkdownCodeContent text={activeMultipleChoiceCard.question} syntaxTheme={syntaxTheme} />
                   </div>
                 </div>
               ) : null
@@ -4104,7 +4620,7 @@ function App() {
           </div>
 
           <div className="panel">
-            {practiceMode === 'multiple-choice' ? (
+            {currentPracticeMode === 'multiple-choice' ? (
               !hasDeck ? (
                 activeLoading ? (
                   <div className="skeleton-group">
@@ -4120,13 +4636,13 @@ function App() {
                     {activeError || 'No multiple choice questions are available yet.'}
                   </div>
                 )
-              ) : multipleChoiceCard ? (
+              ) : activeMultipleChoiceCard ? (
                 <div className="multiple-choice-card">
                   <div className="multiple-choice-options" role="radiogroup" aria-label="Answer choices">
-                    {multipleChoiceCard.choices.map((choice) => {
-                      const isSelected = multipleChoiceSelectedChoiceId === choice.id
+                    {activeMultipleChoiceCard.choices.map((choice) => {
+                      const isSelected = (isFlowActive ? flowMultipleChoiceSelectedChoiceId : multipleChoiceSelectedChoiceId) === choice.id
                       const isSubmittedChoice = submittedMultipleChoiceId === choice.id
-                      const isCorrectChoice = multipleChoiceCard.correctChoiceId === choice.id
+                      const isCorrectChoice = activeMultipleChoiceCard.correctChoiceId === choice.id
                       const resultClass = multipleChoiceSubmitted
                         ? isCorrectChoice
                           ? ' correct'
@@ -4140,7 +4656,13 @@ function App() {
                           type="button"
                           className={`multiple-choice-option${isSelected ? ' selected' : ''}${resultClass}`}
                           onClick={() => {
-                            if (!multipleChoiceSubmitted) setMultipleChoiceSelectedChoiceId(choice.id)
+                            if (!multipleChoiceSubmitted) {
+                              if (isFlowActive) {
+                                setFlowMultipleChoiceSelectedChoiceId(choice.id)
+                                return
+                              }
+                              setMultipleChoiceSelectedChoiceId(choice.id)
+                            }
                           }}
                           disabled={multipleChoiceSubmitted || hasAnsweredCurrent || sessionFinished}
                           role="radio"
@@ -4153,7 +4675,7 @@ function App() {
                               <span className="multiple-choice-inline-result">
                                 {multipleChoiceCorrect ? (
                                   <span className="multiple-choice-inline-result-explanation">
-                                    <MarkdownCodeContent text={multipleChoiceCard.explanation} syntaxTheme={syntaxTheme} compact />
+                                    <MarkdownCodeContent text={activeMultipleChoiceCard.explanation} syntaxTheme={syntaxTheme} compact />
                                   </span>
                                 ) : (
                                   <>
@@ -4165,7 +4687,7 @@ function App() {
                                       </span>
                                     )}
                                     <span className="multiple-choice-inline-result-explanation">
-                                      <MarkdownCodeContent text={multipleChoiceCard.explanation} syntaxTheme={syntaxTheme} compact />
+                                      <MarkdownCodeContent text={activeMultipleChoiceCard.explanation} syntaxTheme={syntaxTheme} compact />
                                     </span>
                                   </>
                                 )}
@@ -4247,7 +4769,7 @@ function App() {
                             <span>{submissionResultLabel}</span>
                             <span>Accuracy {latestSubmittedAttempt.accuracy}%</span>
                             <span>Time {(latestSubmittedAttempt.elapsedMs / 1000).toFixed(1)}s</span>
-                            {!latestSubmittedWasGhostRep && <span>Coach {submissionCoachLabel}</span>}
+                            {SUBMISSION_FEEDBACK_ENABLED && !latestSubmittedWasGhostRep && <span>Coach {submissionCoachLabel}</span>}
                           </div>
                         )}
                       </div>
@@ -4267,6 +4789,7 @@ function App() {
                         commonPatterns={codeEditorTuning.commonPatterns}
                         onChange={handleMainInputChange}
                         onSubmitHotkey={handleRecallEditorSubmitHotkey}
+                        onEnterKey={handleGhostRepEnterKey}
                       />
                     </div>
                   </div>
@@ -4318,6 +4841,59 @@ function App() {
           )}
         </div>
       </section>
+      <aside
+        id="card-flow-panel"
+        className={flowDrawerOpen ? 'card-flow-panel card-flow-panel-open' : 'card-flow-panel'}
+        aria-label="Sequenced practice flow"
+        aria-hidden={!flowDrawerOpen}
+      >
+        <div className="related-problems-header">
+          <div>
+            <span className="related-problems-eyebrow">Flow</span>
+            <h3>Sequenced Practice Flow</h3>
+            <p>{practiceFlow ? `Cycle ${practiceFlow.cycle} on ${practiceFlow.anchorTitle}` : card.title}</p>
+          </div>
+          <button type="button" className="related-problems-close" onClick={() => setFlowDrawerOpen(false)} aria-label="Close practice flow drawer">
+            Close
+          </button>
+        </div>
+        <div className="related-problems-body card-flow-body">
+          <div className="card-flow-header-row">
+            <span className="card-flow-kicker">Status</span>
+            <button
+              type="button"
+              className="secondary card-flow-action"
+              onClick={practiceFlow ? stopPracticeFlow : startPracticeFlow}
+              disabled={!practiceFlow && (!hasRecallDeck || sessionFinished)}
+            >
+              {practiceFlow ? 'Stop flow' : 'Start flow'}
+            </button>
+          </div>
+          <p className="card-flow-anchor">{practiceFlow?.anchorTitle ?? card.title}</p>
+          <div className="card-flow-stage-row" aria-label="Flow stages">
+            <span className={practiceFlow?.stage === 'recall' ? 'card-flow-stage active' : 'card-flow-stage'}>Recall</span>
+            <span className={practiceFlow?.stage === 'ghost' ? 'card-flow-stage active' : 'card-flow-stage'}>
+              Ghost {practiceFlow ? `${practiceFlow.ghostCompleted}/${practiceFlow.ghostTarget}` : `0/${FLOW_GHOST_REP_TARGET}`}
+            </span>
+            <span className={practiceFlow?.stage === 'multiple-choice' ? 'card-flow-stage active' : 'card-flow-stage'}>
+              MCQ {practiceFlow ? `${practiceFlow.mcqCompleted}/${practiceFlow.mcqTarget}` : `0/${FLOW_MCQ_TARGET}`}
+            </span>
+          </div>
+          <p className="card-flow-status">{flowStatusText}</p>
+          {practiceFlow?.focus.focusSummary && (
+            <p className="card-flow-summary">{practiceFlow.focus.focusSummary}</p>
+          )}
+          {flowFocusPreviewLines.length > 0 && (
+            <div className="card-flow-focus-list" aria-label="Targeted lines">
+              {flowFocusPreviewLines.map((line) => (
+                <span key={`${line.lineNumber}-${line.status}-${line.expected}`} className="card-flow-focus-chip">
+                  L{line.lineNumber} {summarizeFlowFocusLine(line)}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </aside>
       {relatedLeetCodeSet && (
         <RelatedLeetCodeDrawer
           relatedSet={relatedLeetCodeSet}

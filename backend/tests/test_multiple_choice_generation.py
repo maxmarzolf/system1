@@ -179,6 +179,18 @@ async def test_generate_multiple_choice_drills_response_sends_card_progressive_c
             "prompt": "Return the longest valid window.",
             "target": "def solve(nums):\n    left = 0\n    return left",
             "tags": ["skill-map", "sliding-window"],
+            "focus": {
+                "sequenceStage": "multiple-choice",
+                "focusSummary": "Target the left-boundary update and why it preserves the valid window invariant.",
+                "missedLines": [
+                    {
+                        "lineNumber": 2,
+                        "expected": "    left = 0",
+                        "actual": "",
+                        "status": "missing",
+                    }
+                ],
+            },
         },
     )
     captured: dict[str, object] = {}
@@ -219,8 +231,10 @@ async def test_generate_multiple_choice_drills_response_sends_card_progressive_c
     assert payload["sourceMode"] == "card"
     assert payload["flowMode"] == "progressive"
     assert payload["specimenContext"]["target"].startswith("def solve")
+    assert payload["specimenContext"]["focus"]["missedLines"][0]["lineNumber"] == 2
     assert "provided specimenContext" in captured["system_prompt"]
     assert "immediately previous drill" in captured["system_prompt"]
+    assert "missed lines" in captured["system_prompt"]
     assert response.drills[0].tags[-2:] == ["source-card", "flow-progressive"]
 
 

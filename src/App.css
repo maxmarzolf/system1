@@ -12,6 +12,7 @@
   transition: max-width 0.22s ease, margin-right 0.22s ease;
 }
 
+.app-side-drawer-open,
 .app-related-drawer-open {
   max-width: min(1000px, calc(100vw - var(--related-drawer-width) - var(--related-drawer-gap) - 2rem));
   margin-left: auto;
@@ -196,6 +197,25 @@
   border-color: var(--hc-accent);
   background: var(--hc-picker-active-bg);
   color: var(--hc-fg);
+}
+
+.navbar-toggle-crossed {
+  position: relative;
+  overflow: hidden;
+}
+
+.navbar-toggle-crossed::after {
+  content: '';
+  position: absolute;
+  left: 0.18rem;
+  right: 0.18rem;
+  top: 50%;
+  height: 1px;
+  background: currentColor;
+  transform: rotate(-45deg);
+  transform-origin: center;
+  opacity: 0.9;
+  pointer-events: none;
 }
 
 .navbar-toggle-label {
@@ -1674,6 +1694,127 @@ button.link:hover {
   flex: 0 0 auto;
 }
 
+.card-header-aside {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  flex: 0 0 auto;
+}
+
+.card-flow-panel {
+  position: fixed;
+  top: 5.25rem;
+  right: 0.75rem;
+  width: min(var(--related-drawer-width), calc(100vw - 1.5rem));
+  max-height: calc(100vh - 6.25rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-card-surface-gradient);
+  box-shadow: none;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(calc(100% + 1rem));
+  transition: transform 0.22s ease, opacity 0.18s ease;
+  z-index: 20;
+}
+
+.card-flow-panel-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.card-flow-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.card-flow-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.card-flow-kicker {
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hc-accent);
+}
+
+.card-flow-action {
+  min-height: auto;
+  padding: 0.28rem 0.45rem;
+  font-size: 0.66rem;
+}
+
+.card-flow-anchor {
+  margin: 0;
+  color: var(--hc-fg);
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.card-flow-stage-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.card-flow-stage {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.42rem;
+  border: 1px solid var(--hc-border-dim);
+  color: var(--hc-fg-dim);
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+}
+
+.card-flow-stage.active {
+  border-color: var(--hc-accent);
+  color: var(--hc-accent);
+  background: var(--hc-picker-active-bg);
+}
+
+.card-flow-status,
+.card-flow-summary {
+  margin: 0;
+  color: var(--hc-fg-dim);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.card-flow-summary {
+  color: var(--hc-fg);
+}
+
+.card-flow-focus-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.32rem;
+}
+
+.card-flow-focus-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 0.16rem 0.4rem;
+  border: 1px solid var(--hc-border-dim);
+  color: var(--hc-fg-dim);
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.58rem;
+  line-height: 1.35;
+}
+
 .leetcode-num {
   color: var(--hc-accent);
   margin-right: 0.4rem;
@@ -1840,6 +1981,11 @@ button.link:hover {
 
 @media (max-width: 720px) {
   .card-header {
+    flex-direction: column;
+  }
+
+  .card-header-aside {
+    width: 100%;
     flex-direction: column;
   }
 
@@ -2257,6 +2403,12 @@ button.link:hover {
     width: min(15.5rem, calc(100vw - 1rem));
     max-height: calc(100vh - 5.4rem);
   }
+
+  .card-flow-panel {
+    top: 4.8rem;
+    width: min(15.5rem, calc(100vw - 1rem));
+    max-height: calc(100vh - 5.4rem);
+  }
 }
 
 @media (max-width: 720px) {
@@ -2271,6 +2423,13 @@ button.link:hover {
   }
 
   .related-problems-drawer {
+    top: 4.4rem;
+    right: 0.5rem;
+    width: min(var(--related-drawer-width), calc(100vw - 1rem));
+    max-height: min(30rem, calc(100vh - 4.9rem));
+  }
+
+  .card-flow-panel {
     top: 4.4rem;
     right: 0.5rem;
     width: min(var(--related-drawer-width), calc(100vw - 1rem));
