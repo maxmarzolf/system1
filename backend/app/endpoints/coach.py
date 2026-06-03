@@ -21,8 +21,8 @@ from app.models import (
     SkillMapDrillsRequest,
     SkillMapDrillsResponse,
 )
-from app.core import coach as coach_service
-from app.core import core_algorithm_practice as core_algorithm_practice_service
+from app.services import coach_service
+from app.services import core_algorithm_practice_service
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])
 

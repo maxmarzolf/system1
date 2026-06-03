@@ -515,11 +515,7 @@ async def _backfill_answer_attempts_from_score_attempts(db_pool: asyncpg.Pool) -
                         s.updated_at_norm
                     FROM source_attempts s
                     LEFT JOIN question q ON q.fingerprint = s.fingerprint_norm
-                    WHERE NOT EXISTS (
-                        SELECT 1
-                        FROM answer existing
-                        WHERE existing.migration_key = 'score_attempts:' || s.legacy_attempt_id::text
-                    );
+                    ON CONFLICT (migration_key) DO NOTHING;
 
                     DROP TABLE IF EXISTS score_attempts CASCADE;
                 END IF;

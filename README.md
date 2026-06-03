@@ -31,13 +31,19 @@ Default container names:
 
 Backend architecture is:
 
-`endpoints -> core/services -> repositories -> database`
+`endpoints -> services -> domain/core -> repositories -> database`
 
 Key backend modules:
 - `backend/app/endpoints/` FastAPI routes.
-- `backend/app/core/` orchestration and LLM pipelines.
+- `backend/app/services/` use-case orchestration and persistence wiring.
+- `backend/app/domain/` pure logic modules (profiles, evaluators, resilience, feedback builders).
+- `backend/app/core/` cross-domain engines (assessor, narrator, generator, provider adapters).
 - `backend/app/repositories/` all SQL and row shaping.
 - `backend/app/database.py` startup schema ensures + compatibility migrations.
+
+Detailed architecture and migration notes:
+- `docs/backend-architecture.md`
+- `docs/migration-notes.md`
 
 Core algorithm naming is canonical throughout the app (`core_algorithm_*`, `core_algorithms`) and legacy `static_function*` names are migrated at startup.
 

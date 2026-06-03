@@ -8,9 +8,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
-from app.core import coach as coach_service
 from app.main import create_app
 from app.models import MultipleChoiceDrillsResponse
+from app.services import drill_generation_service
 
 
 QUESTION_SCHEMA_SQL = """
@@ -122,12 +122,12 @@ def test_multiple_choice_route_persists_generated_question(monkeypatch: pytest.M
         return MultipleChoiceDrillsResponse.model_validate({"drills": [question_payload], "llmUsed": True})
 
     monkeypatch.setattr(
-        coach_service,
+        drill_generation_service,
         "_resolve_available_llm_provider",
         lambda _preferred_provider: "openai",
     )
     monkeypatch.setattr(
-        coach_service,
+        drill_generation_service,
         "generate_multiple_choice_drills_response",
         _stub_generate_multiple_choice_drills_response,
     )

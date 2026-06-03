@@ -6,10 +6,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
+from app.domain.llm_resilience import SUBMISSION_LLM_MAX_RETRIES, SUBMISSION_LLM_RETRY_DELAYS_SECONDS
 from app.models import CoachAttemptFeedbackRequest, TemplateMode
-
-SUBMISSION_LLM_MAX_RETRIES = 3
-SUBMISSION_LLM_RETRY_DELAYS_SECONDS = (0.3, 0.6, 0.9)
 
 
 class NarratorFeedbackUnavailableError(RuntimeError):

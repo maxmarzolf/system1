@@ -3,15 +3,15 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from app import main as app_main
-from app.core import coach as coach_service
 from app.main import create_app
+from app.services import prompt_explanation_service
 
 
 def test_prompt_toggle_explanation_route_uses_llm(monkeypatch) -> None:
-    monkeypatch.setattr(coach_service, "_resolve_available_llm_provider", lambda _requested: "openai")
-    monkeypatch.setattr(coach_service, "_llm_provider_available", lambda _provider: True)
+    monkeypatch.setattr(prompt_explanation_service, "_resolve_available_llm_provider", lambda _requested: "openai")
+    monkeypatch.setattr(prompt_explanation_service, "_llm_provider_available", lambda _provider: True)
     monkeypatch.setattr(
-        coach_service,
+        prompt_explanation_service,
         "_call_llm_json",
         lambda *_args, **_kwargs: {
             "plainEnglish": "It walks the array and keeps a running window.",

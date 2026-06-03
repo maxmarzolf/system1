@@ -4,7 +4,7 @@ from app.models import (
     AdminResetPracticeHistoryRequest,
     AdminResetPracticeHistoryResponse,
 )
-from app.core import admin as admin_service
+from app.services import admin_service
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 

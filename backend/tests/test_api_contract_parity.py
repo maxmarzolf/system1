@@ -3,9 +3,9 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from app import main as app_main
-from app.core import attempts as attempts_service
-from app.core import coach as coach_service
 from app.main import create_app
+from app.services import attempts_service
+from app.services import coach_service
 
 
 def test_attempts_endpoint_contract(monkeypatch) -> None:

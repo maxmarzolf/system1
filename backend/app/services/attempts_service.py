@@ -429,3 +429,24 @@ def build_skill_map_nodes(pattern_rows: list[dict[str, Any]]) -> list[SkillMapNo
             grouped[pattern_id].methods.append(str(method_name))
 
     return list(grouped.values())
+
+
+async def create_attempt(body: Any):
+    # Local import avoids a circular dependency during service extraction.
+    from app.core import attempts as attempts_core
+
+    return await attempts_core.create_attempt(body)
+
+
+async def get_skill_map():
+    # Local import avoids a circular dependency during service extraction.
+    from app.core import attempts as attempts_core
+
+    return await attempts_core.get_skill_map()
+
+
+async def get_skill_map_overview():
+    # Local import avoids a circular dependency during service extraction.
+    from app.core import attempts as attempts_core
+
+    return await attempts_core.get_skill_map_overview()

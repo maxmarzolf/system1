@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.models import AttemptCreate, SkillMapNode, SkillMapOverviewResponse
-from app.core import attempts as attempts_service
+from app.services import attempts_service
 
 router = APIRouter(prefix="/api", tags=["attempts"])
 
