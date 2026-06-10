@@ -73,32 +73,18 @@ def build_core_algorithm_drill(row: dict[str, Any]) -> dict[str, Any]:
 
 
 async def core_algorithm_drills_for_pattern(pattern_slug: str) -> dict[str, Any]:
-    from app.repositories.core_algorithms_repository import fetch_core_algorithm_practice_rows
+    from app.services import core_algorithm_practice_service
 
-    rows = await fetch_core_algorithm_practice_rows(pattern_slug)
-    return {
-        "drills": [build_core_algorithm_drill(row) for row in rows],
-        "llmUsed": False,
-    }
+    return await core_algorithm_practice_service.core_algorithm_drills_for_pattern(pattern_slug)
 
 
 async def core_algorithm_drills_for_tag(tag_slug: str, count: int = 10) -> dict[str, Any]:
-    from app.repositories.core_algorithms_repository import fetch_core_algorithm_practice_rows_by_tag
+    from app.services import core_algorithm_practice_service
 
-    safe_count = max(1, min(int(count or 10), 30))
-    rows = await fetch_core_algorithm_practice_rows_by_tag(tag_slug, safe_count)
-    return {
-        "drills": [build_core_algorithm_drill(row) for row in rows],
-        "llmUsed": False,
-    }
+    return await core_algorithm_practice_service.core_algorithm_drills_for_tag(tag_slug, count)
 
 
 async def random_core_algorithm_drills(count: int = 10) -> dict[str, Any]:
-    from app.repositories.core_algorithms_repository import fetch_random_core_algorithm_practice_rows
+    from app.services import core_algorithm_practice_service
 
-    safe_count = max(1, min(int(count or 10), 30))
-    rows = await fetch_random_core_algorithm_practice_rows(safe_count)
-    return {
-        "drills": [build_core_algorithm_drill(row) for row in rows],
-        "llmUsed": False,
-    }
+    return await core_algorithm_practice_service.random_core_algorithm_drills(count)

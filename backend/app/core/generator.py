@@ -10,12 +10,10 @@ import random
 import re
 import tokenize
 import urllib.request
-from collections.abc import Awaitable, Callable, Generator
+from collections.abc import AsyncIterator, Awaitable, Callable, Generator
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
-from typing import Any
-
-from fastapi.responses import StreamingResponse
+from typing import Any, TypeAlias, TypedDict
 
 from app.config import settings
 from app.core.focused_core_algorithm_cards import (
@@ -46,6 +44,33 @@ TEMPLATE_MODE_ORDER = (
 INLINE_TEMPLATE_KEY = "inline"
 CORE_SHAPE_TEMPLATE_KEY = "coreShape"
 TEMPLATE_TARGET_ORDER = (TemplateMode.algorithm.value, CORE_SHAPE_TEMPLATE_KEY, INLINE_TEMPLATE_KEY)
+
+LLMJsonPayload: TypeAlias = dict[str, Any]
+LLMJsonResponse: TypeAlias = dict[str, Any]
+SkillMapProgressPayload: TypeAlias = dict[str, Any]
+SkillMapDrillPayload: TypeAlias = dict[str, Any]
+
+
+class MultipleChoiceChoicePayload(TypedDict):
+    id: str
+    text: str
+
+
+class MultipleChoiceQuestionPayload(TypedDict, total=False):
+    id: str
+    title: str
+    pattern: str
+    difficulty: str
+    question: str
+    choices: list[MultipleChoiceChoicePayload]
+    correctChoiceId: str
+    explanation: str
+    tags: list[str]
+
+
+class SkillMapDrillsEnvelope(TypedDict):
+    drills: list[SkillMapDrillPayload]
+    llmUsed: bool
 
 
 class GeneratorUnavailableError(RuntimeError):
@@ -99,9 +124,9 @@ class GeneratorContext:
     body: SkillMapDrillsRequest
     provider: str
     provider_label: str
-    progress_summary: dict[str, Any]
-    generation_skill_map: list[Any]
-    llm_payload: dict[str, Any]
+    progress_summary: SkillMapProgressPayload
+    generation_skill_map: list[SkillMapNode]
+    llm_payload: LLMJsonPayload
     system_prompt: str
     stamp_prefix: str
     output_tuning: GeneratorOutputTuning
@@ -109,8 +134,8 @@ class GeneratorContext:
 
 @dataclass(frozen=True)
 class GeneratorRuntime:
-    call_llm_json: Callable[[str, dict[str, Any], str, int, int, float], dict[str, Any] | None]
-    persist_skill_map_drills: Callable[[list[dict[str, Any]], bool, dict[str, Any]], Awaitable[None]]
+    call_llm_json: Callable[[str, LLMJsonPayload, str, int, int, float], LLMJsonResponse | None]
+    persist_skill_map_drills: Callable[[list[SkillMapDrillPayload], bool, SkillMapProgressPayload], Awaitable[None]]
     drill_gen_max_tokens: int
     drill_gen_openai_timeout_seconds: int
     drill_gen_temperature: float
@@ -452,7 +477,7 @@ def _normalize_python_markdown_display(text: str) -> str:
     return re.sub(r"```([A-Za-z0-9_-]+)?\s*\n?([\s\S]*?)```", replace_fence, text.strip())
 
 
-def _process_multiple_choice_card(raw: Any, index: int, body: MultipleChoiceDrillsRequest) -> dict[str, Any] | None:
+def _process_multiple_choice_card(raw: Any, index: int, body: MultipleChoiceDrillsRequest) -> MultipleChoiceQuestionPayload | None:
     if not isinstance(raw, dict):
         return None
 
@@ -525,11 +550,11 @@ async def generate_multiple_choice_drills_response(
     provider: str,
     provider_label: str,
     provider_available: bool,
-    call_llm_json: Callable[[str, dict[str, Any], str, int, int, float], dict[str, Any] | None],
+    call_llm_json: Callable[[str, LLMJsonPayload, str, int, int, float], LLMJsonResponse | None],
     fallback_providers: list[tuple[str, str, bool]] | None = None,
     provider_timeout_seconds: int = 60,
     retry_delays_seconds: tuple[float, ...] = (0.4, 0.8),
-    persist_generated_questions: Callable[[list[dict[str, Any]]], Awaitable[None]] | None = None,
+    persist_generated_questions: Callable[[list[MultipleChoiceQuestionPayload]], Awaitable[None]] | None = None,
     logger: logging.Logger | None = None,
 ) -> MultipleChoiceDrillsResponse:
     provider_candidates = fallback_providers or [(provider, provider_label, provider_available)]
@@ -635,11 +660,11 @@ async def generate_multiple_choice_drills_response(
         },
     }
 
-    llm_response: dict[str, Any] | None = None
+    llm_response: LLMJsonResponse | None = None
     resolved_provider = provider
     resolved_provider_label = provider_label
     for candidate_provider, candidate_label, _available in available_candidates:
-        candidate_response: dict[str, Any] | None = None
+        candidate_response: LLMJsonResponse | None = None
         max_attempts = len(retry_delays_seconds) + 1
         for attempt_index in range(max_attempts):
             candidate_response = await asyncio.to_thread(
@@ -682,7 +707,7 @@ async def generate_multiple_choice_drills_response(
             api_error_code="provider_empty_response",
         )
 
-    drills: list[dict[str, Any]] = []
+    drills: list[MultipleChoiceQuestionPayload] = []
     for index, raw in enumerate(llm_response["drills"][: body.count]):
         processed = _process_multiple_choice_card(raw, index, body)
         if not processed:
@@ -1214,7 +1239,7 @@ def build_plain_english_prompt_detail(
     prompt: str,
     target: str,
     hint: str = "",
-) -> dict[str, Any]:
+) -> LLMJsonPayload:
     profile = _focused_profile(pattern or pattern_slug, method)
     if profile:
         return {
@@ -1363,11 +1388,11 @@ def _normalize_drill_difficulty(value: Any) -> str:
 
 
 def attach_plain_english_prompt_detail(
-    drill: dict[str, Any],
+    drill: SkillMapDrillPayload,
     *,
     pattern: str = "",
     method: str = "",
-) -> dict[str, Any]:
+) -> SkillMapDrillPayload:
     tags = [str(tag) for tag in drill.get("tags", []) if str(tag).strip()]
     pattern_slug = _pattern_slug(pattern) or next((tag for tag in tags if tag != "skill-map"), "")
     template_targets = drill.get("templateTargets", {}) if isinstance(drill.get("templateTargets"), dict) else {}
@@ -1399,7 +1424,7 @@ def _focused_source_method(source_node: Any) -> str:
     return str(methods[0]).strip() if methods else "core method"
 
 
-def _should_rewrite_focused_drill(raw: dict[str, Any], pattern: str, method: str, target: str) -> bool:
+def _should_rewrite_focused_drill(raw: SkillMapDrillPayload, pattern: str, method: str, target: str) -> bool:
     title = str(raw.get("title", ""))
     prompt = str(raw.get("prompt", ""))
     hint = str(raw.get("hint", ""))
@@ -1419,14 +1444,14 @@ def _should_rewrite_focused_drill(raw: dict[str, Any], pattern: str, method: str
 
 def _focused_drill_from_source(
     *,
-    raw: dict[str, Any] | None,
+    raw: SkillMapDrillPayload | None,
     index: int,
     body: SkillMapDrillsRequest,
     source_node: Any,
     pattern: str,
     pattern_slug: str,
     method: str,
-) -> dict[str, Any]:
+) -> SkillMapDrillPayload:
     target = _focused_skeleton_for_method(pattern, method)
     target = apply_specimen_tuning_to_target(target, body.specimenTuning)
     prompt = _focused_prompt(pattern, method)
@@ -1478,10 +1503,10 @@ class _DrillStreamParser:
         self._arr = False
         self._obj = 0
         self._obj_start = -1
-        self.drills: list[dict[str, Any]] = []
+        self.drills: list[SkillMapDrillPayload] = []
 
-    def feed(self, chunk: str) -> list[dict[str, Any]]:
-        new: list[dict[str, Any]] = []
+    def feed(self, chunk: str) -> list[SkillMapDrillPayload]:
+        new: list[SkillMapDrillPayload] = []
         for ch in chunk:
             self._buf.append(ch)
             pos = len(self._buf) - 1
@@ -1528,7 +1553,7 @@ class _DrillStreamParser:
 
 def _call_openai_streaming(
     system_prompt: str,
-    user_payload: dict[str, Any],
+    user_payload: LLMJsonPayload,
     max_tokens: int = 1800,
     timeout_seconds: int = 90,
     temperature: float = 0.7,
@@ -1536,7 +1561,7 @@ def _call_openai_streaming(
     if not settings.coach_openai_api_key:
         return
     url = f"{settings.coach_openai_base_url.rstrip('/')}/chat/completions"
-    body: dict[str, Any] = {
+    body: LLMJsonPayload = {
         "model": settings.coach_openai_model,
         "temperature": temperature,
         "max_completion_tokens": max_tokens,
@@ -1578,9 +1603,9 @@ def _process_raw_drill(
     raw: Any,
     index: int,
     body: SkillMapDrillsRequest,
-    generation_skill_map: list[Any],
+    generation_skill_map: list[SkillMapNode],
     prompt_max_chars: int = 80,
-) -> dict[str, Any] | None:
+) -> SkillMapDrillPayload | None:
     if not isinstance(raw, dict):
         return None
     solution = str(raw.get("solution", "")).strip()
@@ -1694,7 +1719,7 @@ def _process_raw_drill(
 
 def build_generator_context(
     body: SkillMapDrillsRequest,
-    progress_summary: dict[str, Any],
+    progress_summary: SkillMapProgressPayload,
     provider: str,
     provider_label: str,
     tuning: GeneratorTuning | None = None,
@@ -1826,7 +1851,7 @@ def _invalid_response_error(context: GeneratorContext) -> GeneratorUnavailableEr
     )
 
 
-def _fallback_template_for_pattern(pattern: str, method_hint: str, prompt_max_chars: int = 80) -> dict[str, Any]:
+def _fallback_template_for_pattern(pattern: str, method_hint: str, prompt_max_chars: int = 80) -> SkillMapDrillPayload:
     slug = _pattern_slug(pattern) or "pattern"
     func = slug.replace("-", "_")
     method_text = method_hint.strip() if method_hint else "core method"
@@ -1848,8 +1873,8 @@ def _fallback_template_for_pattern(pattern: str, method_hint: str, prompt_max_ch
     }
 
 
-def fallback_skill_map_drills(context: GeneratorContext) -> dict[str, Any]:
-    drills: list[dict[str, Any]] = []
+def fallback_skill_map_drills(context: GeneratorContext) -> SkillMapDrillsEnvelope:
+    drills: list[SkillMapDrillPayload] = []
     nodes = context.body.skillMap[: context.body.count]
     if not nodes:
         nodes = [type("Node", (), {"pattern": "algorithm", "methods": []})()]
@@ -1926,7 +1951,7 @@ def fallback_skill_map_drills(context: GeneratorContext) -> dict[str, Any]:
     return {"drills": drills, "llmUsed": False}
 
 
-async def generate_skill_map_drills(context: GeneratorContext, runtime: GeneratorRuntime) -> dict[str, Any]:
+async def generate_skill_map_drills(context: GeneratorContext, runtime: GeneratorRuntime) -> SkillMapDrillsEnvelope:
     llm_response = await asyncio.to_thread(
         runtime.call_llm_json,
         context.system_prompt,
@@ -1944,7 +1969,7 @@ async def generate_skill_map_drills(context: GeneratorContext, runtime: Generato
             api_error_code="provider_empty_response",
         )
 
-    drills: list[dict[str, Any]] = []
+    drills: list[SkillMapDrillPayload] = []
     for index, raw in enumerate(llm_response["drills"][: context.body.count]):
         processed = _process_raw_drill(
             raw,
@@ -1964,9 +1989,9 @@ async def generate_skill_map_drills(context: GeneratorContext, runtime: Generato
     return {"drills": drills, "llmUsed": True}
 
 
-def stamp_skill_map_drills(drills: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def stamp_skill_map_drills(drills: list[SkillMapDrillPayload]) -> list[SkillMapDrillPayload]:
     stamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S%f")
-    stamped: list[dict[str, Any]] = []
+    stamped: list[SkillMapDrillPayload] = []
     for index, drill in enumerate(drills):
         tags = [str(tag) for tag in drill.get("tags", [])]
         if "skill-map" not in tags:
@@ -1979,7 +2004,7 @@ def stamp_skill_map_drills(drills: list[dict[str, Any]]) -> list[dict[str, Any]]
     return stamped
 
 
-def _stamped_stream_drill(context: GeneratorContext, drill: dict[str, Any], index: int) -> dict[str, Any]:
+def _stamped_stream_drill(context: GeneratorContext, drill: SkillMapDrillPayload, index: int) -> SkillMapDrillPayload:
     tags = [str(t) for t in drill.get("tags", [])]
     if "skill-map" not in tags:
         tags = ["skill-map", *tags]
@@ -2009,11 +2034,11 @@ class SkillMapDrillGenerator:
     async def generate_response(
         self,
         body: SkillMapDrillsRequest,
-        progress_summary: dict[str, Any],
+        progress_summary: SkillMapProgressPayload,
         provider: str,
         provider_label: str,
         provider_available: bool,
-    ) -> dict[str, Any]:
+    ) -> SkillMapDrillsEnvelope:
         context = build_generator_context(body, progress_summary, provider, provider_label, self.tuning)
         runtime = runtime_with_tuning(self.runtime, self.tuning)
         if provider_available:
@@ -2032,11 +2057,11 @@ class SkillMapDrillGenerator:
     def stream_response(
         self,
         body: SkillMapDrillsRequest,
-        progress_summary: dict[str, Any],
+        progress_summary: SkillMapProgressPayload,
         provider: str,
         provider_label: str,
         provider_available: bool,
-    ) -> StreamingResponse:
+    ) -> AsyncIterator[str]:
         context = build_generator_context(body, progress_summary, provider, provider_label, self.tuning)
         runtime = runtime_with_tuning(self.runtime, self.tuning)
         if not provider_available:
@@ -2044,7 +2069,7 @@ class SkillMapDrillGenerator:
         return skill_map_drills_stream_response(context, runtime)
 
 
-def skill_map_drills_stream_response(context: GeneratorContext, runtime: GeneratorRuntime) -> StreamingResponse:
+def skill_map_drills_stream_response(context: GeneratorContext, runtime: GeneratorRuntime) -> AsyncIterator[str]:
     total_drills = min(context.body.count, len(context.generation_skill_map))
 
     async def generate():
@@ -2125,7 +2150,7 @@ def skill_map_drills_stream_response(context: GeneratorContext, runtime: Generat
 
         loop = asyncio.get_event_loop()
         future = loop.run_in_executor(None, _blocking)
-        all_drills: list[dict[str, Any]] = []
+        all_drills: list[SkillMapDrillPayload] = []
 
         while True:
             while q.empty():
@@ -2158,15 +2183,15 @@ def skill_map_drills_stream_response(context: GeneratorContext, runtime: Generat
 
         await future
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return generate()
 
 
-def skill_map_drills_fallback_stream_response(context: GeneratorContext, runtime: GeneratorRuntime) -> StreamingResponse:
+def skill_map_drills_fallback_stream_response(context: GeneratorContext, runtime: GeneratorRuntime) -> AsyncIterator[str]:
     total_drills = min(context.body.count, max(1, len(context.body.skillMap[: context.body.count])))
 
     async def generate():
         fallback = fallback_skill_map_drills(context)
-        stamped: list[dict[str, Any]] = []
+        stamped: list[SkillMapDrillPayload] = []
         for index, raw_drill in enumerate(fallback["drills"][: context.body.count]):
             tags = [str(t) for t in raw_drill.get("tags", [])]
             if "skill-map" not in tags:
@@ -2183,4 +2208,4 @@ def skill_map_drills_fallback_stream_response(context: GeneratorContext, runtime
         await runtime.persist_skill_map_drills(stamped, False, context.progress_summary)
         yield f"event: done\ndata: {json.dumps({'count': len(stamped), 'llmUsed': False})}\n\n"
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return generate()

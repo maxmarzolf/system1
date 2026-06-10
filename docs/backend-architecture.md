@@ -1,5 +1,10 @@
 # Backend Architecture Map
 
+Related docs:
+- `../README.md`
+- `./migration-notes.md`
+- `./service-contracts.md`
+
 ## Canonical Dependency Flow
 
 Request flow is now:
@@ -9,6 +14,7 @@ Request flow is now:
 Hard rules:
 - Endpoints are transport-only and call services.
 - Services orchestrate use-cases and persistence boundaries.
+- Service input/output and callback payloads are defined in `app/services/contracts.py`.
 - Domain modules are pure logic and cannot import repositories.
 - Repositories are SQL-only access boundaries.
 
@@ -46,7 +52,7 @@ Hard rules:
 | Layer | Owns | Must Not Own |
 |---|---|---|
 | `app/endpoints` | HTTP request/response binding | SQL, orchestration, LLM retries |
-| `app/services` | Use-case orchestration, dependency wiring, persistence orchestration | FastAPI framework coupling, SQL text |
+| `app/services` | Use-case orchestration, dependency wiring, persistence orchestration, service-level TypedDict contracts | FastAPI framework coupling, SQL text |
 | `app/domain` | Pure decision logic, scoring, profiles, error taxonomy helpers | Repositories, HTTP exceptions |
 | `app/core` | Cross-domain engines (assessor, narrator, generator, provider adapters) | Endpoint orchestration, direct route handling |
 | `app/repositories` | SQL statements and row-level data access | Business branching/orchestration |
@@ -58,7 +64,13 @@ Rules enforced in tests:
 - Endpoints cannot import `app.core.*`.
 - Services cannot import `app.endpoints.*` or `fastapi`.
 - Domain modules cannot import `app.repositories.*`.
-- `app.core.coach` cannot import `app.repositories.*`.
+- Core modules cannot import `app.repositories.*`, `fastapi`, or `starlette`.
+- Repository modules cannot import `app.services.*` or `app.endpoints.*`.
+
+Practical implications:
+- Streaming transport wrappers (for example `StreamingResponse`) are endpoint-owned.
+- Core generator stream APIs return framework-agnostic async iterators.
+- Repository writes are always delegated by services, including generator persistence and feedback events.
 
 Anti-pattern examples:
 - Endpoint calling repository directly.

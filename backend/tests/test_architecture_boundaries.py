@@ -69,17 +69,6 @@ def test_services_do_not_import_endpoints_or_fastapi() -> None:
     assert not violations, "Service layer must stay framework-agnostic and endpoint-independent:\n" + "\n".join(violations)
 
 
-def test_services_do_not_import_core_coach() -> None:
-    violations: list[str] = []
-    blocked_prefixes = ("app.core.coach",)
-    for file_path in sorted(SERVICES_DIR.glob("*.py")):
-        if file_path.name == "__init__.py":
-            continue
-        violations.extend(_import_violations(file_path, blocked_prefixes))
-
-    assert not violations, "Service layer must not depend on app.core.coach:\n" + "\n".join(violations)
-
-
 def test_domain_does_not_import_repositories() -> None:
     violations: list[str] = []
     for file_path in sorted(DOMAIN_DIR.glob("*.py")):
@@ -90,7 +79,34 @@ def test_domain_does_not_import_repositories() -> None:
     assert not violations, "Domain layer must not depend on repositories:\n" + "\n".join(violations)
 
 
-def test_coach_core_does_not_import_repositories() -> None:
-    coach_file = CORE_DIR / "coach.py"
-    violations = _import_violations(coach_file, ("app.repositories",))
-    assert not violations, "app.core.coach must not depend on repositories:\n" + "\n".join(violations)
+def test_core_does_not_import_repositories() -> None:
+    violations: list[str] = []
+    for file_path in sorted(CORE_DIR.glob("*.py")):
+        if file_path.name == "__init__.py":
+            continue
+        violations.extend(_import_violations(file_path, ("app.repositories",)))
+
+    assert not violations, "Core layer must not depend on repositories:\n" + "\n".join(violations)
+
+
+def test_core_does_not_import_fastapi_or_starlette() -> None:
+    violations: list[str] = []
+    blocked_prefixes = ("fastapi", "starlette")
+    for file_path in sorted(CORE_DIR.glob("*.py")):
+        if file_path.name == "__init__.py":
+            continue
+        violations.extend(_import_violations(file_path, blocked_prefixes))
+
+    assert not violations, "Core layer must stay framework-agnostic:\n" + "\n".join(violations)
+
+
+def test_repositories_do_not_import_services_or_endpoints() -> None:
+    repositories_dir = Path(__file__).resolve().parents[1] / "app" / "repositories"
+    violations: list[str] = []
+    blocked_prefixes = ("app.services", "app.endpoints")
+    for file_path in sorted(repositories_dir.glob("*.py")):
+        if file_path.name == "__init__.py":
+            continue
+        violations.extend(_import_violations(file_path, blocked_prefixes))
+
+    assert not violations, "Repository layer must not depend on services or endpoints:\n" + "\n".join(violations)

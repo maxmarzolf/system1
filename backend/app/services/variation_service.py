@@ -24,7 +24,7 @@ from app.domain.coach_context import pattern_display_name as _domain_pattern_dis
 from app.domain.coach_profiles import ADAPTIVE_VARIATION_STRATEGIES, SUBMISSION_DIMENSION_LABELS
 from app.domain.feedback_builder import adaptive_primary_failure as _domain_adaptive_primary_failure
 from app.domain.llm_resilience import SubmissionFeedbackUnavailableError
-from app.models import AdaptiveVariationRequest, SequentialVariationRequest, TemplateMode
+from app.models import AdaptiveVariationRequest, AdaptiveVariationResponse, SequentialVariationRequest, SequentialVariationResponse, TemplateMode
 
 
 def _build_variation_drill(
@@ -86,7 +86,7 @@ def _build_variation_drill(
     )
 
 
-async def coach_adaptive_variation(body: AdaptiveVariationRequest) -> dict[str, Any]:
+async def coach_adaptive_variation(body: AdaptiveVariationRequest) -> AdaptiveVariationResponse:
     provider = _resolve_available_llm_provider(body.llmProvider)
     if not _llm_provider_available(provider):
         raise SubmissionFeedbackUnavailableError(
@@ -178,15 +178,15 @@ async def coach_adaptive_variation(body: AdaptiveVariationRequest) -> dict[str, 
         adaptive_failure_key=failure_key,
         adaptive_failure_label=failure_label,
     )
-    return {
-        "drill": drill,
-        "targetDimension": failure_key,
-        "variationReason": reason,
-        "llmUsed": True,
-    }
+    return AdaptiveVariationResponse(
+        drill=drill,
+        targetDimension=failure_key,
+        variationReason=reason,
+        llmUsed=True,
+    )
 
 
-async def coach_sequential_variation(body: SequentialVariationRequest) -> dict[str, Any]:
+async def coach_sequential_variation(body: SequentialVariationRequest) -> SequentialVariationResponse:
     provider = _resolve_available_llm_provider(body.llmProvider)
     if not _llm_provider_available(provider):
         raise SubmissionFeedbackUnavailableError(
@@ -271,8 +271,8 @@ async def coach_sequential_variation(body: SequentialVariationRequest) -> dict[s
         tags=tags,
         stamp=stamp,
     )
-    return {
-        "drill": drill,
-        "progressionReason": progression_reason,
-        "llmUsed": True,
-    }
+    return SequentialVariationResponse(
+        drill=drill,
+        progressionReason=progression_reason,
+        llmUsed=True,
+    )

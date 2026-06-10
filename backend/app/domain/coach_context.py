@@ -2,11 +2,52 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from typing import Any
+from typing import Any, TypedDict
 
-from app.models import TemplateMode
+from app.models import SkillMapNode, TemplateMode
 from app.readiness import READINESS_MODE_ORDER, summarize_readiness
 from app.submission_rubric import summarize_submission_rubrics
+
+
+class AttemptHistoryEntry(TypedDict, total=False):
+    templateMode: str
+    categoryTags: list[str]
+    submissionFeedback: dict[str, Any]
+    question: str
+    accuracy: float
+    exact: bool
+
+
+class AttemptHistorySummary(TypedDict, total=False):
+    attemptCount: int
+    recentAvgAccuracy: float
+    weakestTag: str
+    repeatedErrorTags: list[str]
+    recentPrimaryFocuses: list[str]
+    recentQuestions: list[str]
+    readiness: float
+    daysSinceLastSubmit: int | None
+    stale: bool
+    dimensionSummary: dict[str, Any]
+    templateModes: dict[str, dict[str, Any]]
+
+
+class PatternProgressSummary(TypedDict, total=False):
+    pattern: str
+    attemptCount: int
+    avgAccuracy: float
+    readiness: float
+    exactRate: float
+    repeatedErrorTags: list[str]
+    latestPrimaryFocus: str
+    latestQuestion: str
+    stale: bool
+    dimensionSummary: dict[str, Any]
+
+
+class SkillMapProgressSummary(TypedDict):
+    overall: dict[str, Any]
+    patterns: dict[str, PatternProgressSummary]
 
 
 def _pattern_slug(text: str) -> str:
@@ -17,7 +58,7 @@ def _pattern_slug(text: str) -> str:
     )
 
 
-def summarize_attempt_history(history: list[dict[str, Any]]) -> dict[str, Any]:
+def summarize_attempt_history(history: list[AttemptHistoryEntry]) -> AttemptHistorySummary:
     template_mode_summaries = {
         mode: {
             **summarize_readiness([item for item in history if str(item.get("templateMode", "")) == mode]),
@@ -86,9 +127,9 @@ def summarize_attempt_history(history: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def summarize_skill_map_progress(
-    skill_map: list[Any], history: list[dict[str, Any]]
-) -> dict[str, Any]:
-    progress_by_pattern: dict[str, dict[str, Any]] = {}
+    skill_map: list[SkillMapNode], history: list[AttemptHistoryEntry]
+) -> SkillMapProgressSummary:
+    progress_by_pattern: dict[str, PatternProgressSummary] = {}
 
     for node in skill_map:
         slug = _pattern_slug(getattr(node, "pattern", ""))
@@ -161,7 +202,7 @@ def summarize_skill_map_progress(
     }
 
 
-def progress_focus_note(progress: dict[str, Any]) -> str:
+def progress_focus_note(progress: PatternProgressSummary | dict[str, Any]) -> str:
     if not progress or int(progress.get("attemptCount", 0)) == 0:
         return ""
     repeated = [str(tag) for tag in progress.get("repeatedErrorTags", []) if str(tag).strip()]

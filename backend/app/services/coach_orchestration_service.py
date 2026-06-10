@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Any
 
 from app.core.llm import llm_provider_label as _llm_provider_label
 from app.domain.llm_resilience import SubmissionFeedbackUnavailableError, coach_llm_http_exception
@@ -23,6 +22,12 @@ from app.services import drill_generation_service
 from app.services import prompt_explanation_service
 from app.services import session_service
 from app.services import variation_service
+from app.services.contracts import (
+    MultipleChoiceQuestionPayload,
+    SkillMapCardGenerationContext,
+    SkillMapDrillPayload,
+    SkillMapProgressSummary,
+)
 
 
 async def coach_provider_default():
@@ -45,14 +50,14 @@ async def coach_prompt_toggle_explanation(body: CoachPromptToggleExplanationRequ
 
 
 async def _persist_skill_map_drills(
-    drills: list[dict[str, Any]], llm_used: bool, progress_summary: dict[str, Any]
+    drills: list[SkillMapDrillPayload], llm_used: bool, progress_summary: SkillMapProgressSummary
 ) -> None:
     now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
 
     for drill in drills:
         tags = [str(tag) for tag in drill.get("tags", []) if str(tag).strip()]
         pattern_slug = next((tag for tag in tags if tag != "skill-map"), "")
-        generation_context = {
+        generation_context: SkillMapCardGenerationContext = {
             "llmUsed": llm_used,
             "historySummary": progress_summary.get("overall", {}),
             "patternProgress": progress_summary.get("patterns", {}).get(pattern_slug, {}),
@@ -92,7 +97,7 @@ async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
     )
 
 
-async def _persist_generated_questions(drills: list[dict[str, Any]]) -> None:
+async def _persist_generated_questions(drills: list[MultipleChoiceQuestionPayload]) -> None:
     now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
     await insert_generated_multiple_choice_question_rows(
         questions=drills,

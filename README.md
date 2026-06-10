@@ -26,6 +26,8 @@ Default container names:
 - `backend/app/services/` contains pure Python only.
 - Endpoint handlers in `backend/app/endpoints/` stay thin.
 - Database row contracts live in `backend/app/repositories/types.py`.
+- Service payload contracts live in `backend/app/services/contracts.py`.
+- `backend/app/core/` stays framework-agnostic and does not import FastAPI/Starlette.
 
 ## Current Architecture
 
@@ -36,6 +38,7 @@ Backend architecture is:
 Key backend modules:
 - `backend/app/endpoints/` FastAPI routes.
 - `backend/app/services/` use-case orchestration and persistence wiring.
+- `backend/app/services/contracts.py` TypedDict/TypeAlias contracts for service payloads and callbacks.
 - `backend/app/domain/` pure logic modules (profiles, evaluators, resilience, feedback builders).
 - `backend/app/core/` cross-domain engines (assessor, narrator, generator, provider adapters).
 - `backend/app/repositories/` all SQL and row shaping.
@@ -44,6 +47,12 @@ Key backend modules:
 Detailed architecture and migration notes:
 - `docs/backend-architecture.md`
 - `docs/migration-notes.md`
+- `docs/service-contracts.md`
+
+Docs navigation:
+- `docs/backend-architecture.md` -> dependency flow, boundary rules, and layer responsibilities.
+- `docs/migration-notes.md` -> migration decisions, moved modules, and compatibility notes.
+- `docs/service-contracts.md` -> service-level TypedDict/TypeAlias ownership and refactor guidance.
 
 Core algorithm naming is canonical throughout the app (`core_algorithm_*`, `core_algorithms`) and legacy `static_function*` names are migrated at startup.
 
@@ -141,6 +150,7 @@ Recent test hardening includes:
 - Migration idempotency guard tests.
 - Fixture-backed integration parity tests for migrated attempt data.
 - Query-plan performance guard tests using `EXPLAIN (FORMAT JSON)`.
+- Architecture boundary guard tests that enforce no framework coupling in service/core and no repository imports from domain/core.
 
 Integration tests are designed to skip cleanly when Postgres/infrastructure is unavailable.
 

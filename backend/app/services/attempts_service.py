@@ -1,18 +1,48 @@
 from __future__ import annotations
 
+import json as _json
 import re
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
-from typing import Any
+from typing import Any, TypedDict
 
-from app.models import SkillMapNode
+from app.models import AttemptCreate, SkillMapNode
 from app.readiness import READINESS_MODE_ORDER, summarize_readiness
+from app.repositories.attempts_repository import (
+    fetch_patterns_with_methods_rows,
+    fetch_skill_map_overview_attempt_rows,
+    fetch_skill_map_overview_generated_rows,
+    fetch_skill_map_overview_pattern_rows,
+    insert_answer_attempt_row,
+)
 from app.repositories.types import (
+    PatternMethodRow,
     SkillMapOverviewAttemptRow,
     SkillMapOverviewGeneratedRow,
     SkillMapOverviewPatternRow,
 )
 from app.submission_rubric import compact_submission_rubric, summarize_submission_rubrics
+from app.services.contracts import (
+    AttemptSaveResult,
+    SkillMapGhostRepActivity,
+    SkillMapGhostRepActivityDay,
+    SkillMapGhostRepPattern,
+    SkillMapModeActivity,
+    SkillMapModeActivityDay,
+    SkillMapModeSummary,
+    SkillMapOverviewPayload,
+    SkillMapOverviewSummary,
+    SkillMapPatternSummary,
+    SkillMapReviewQueueItem,
+)
+
+
+class AttemptOverviewItem(TypedDict):
+    accuracy: float
+    created_at: datetime
+    supportLayer: str
+    liveCoachUsed: bool
+    submissionRubric: dict[str, Any]
 
 
 def _pattern_slug(pattern: str) -> str:
@@ -46,7 +76,7 @@ def _aligned_activity_window(today: date) -> tuple[date, date]:
     return window_start, window_end
 
 
-def _build_mode_activity(attempts: list[dict[str, Any]]) -> dict[str, Any]:
+def _build_mode_activity(attempts: list[AttemptOverviewItem]) -> SkillMapModeActivity:
     today = datetime.now(timezone.utc).date()
     window_start, window_end = _aligned_activity_window(today)
     counts_by_date: Counter[str] = Counter()
@@ -57,7 +87,7 @@ def _build_mode_activity(attempts: list[dict[str, Any]]) -> dict[str, Any]:
             continue
         counts_by_date[created_at.date().isoformat()] += 1
 
-    days: list[dict[str, Any]] = []
+    days: list[SkillMapModeActivityDay] = []
     active_days = 0
     recent_submit_count = 0
     last_seven_day_submit_count = 0
@@ -107,7 +137,7 @@ def _build_mode_activity(attempts: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _build_support_counts(attempts: list[dict[str, Any]]) -> dict[str, int]:
+def _build_support_counts(attempts: list[AttemptOverviewItem]) -> dict[str, int]:
     ghost_rep_count = sum(1 for a in attempts if str(a.get("supportLayer", "none")) == "ghost-reps")
     unsupported_attempt_count = len(attempts) - ghost_rep_count
     return {
@@ -121,7 +151,7 @@ def _build_ghost_rep_activity(
     attempt_rows: list[SkillMapOverviewAttemptRow],
     slug_to_pattern: dict[str, str],
     window_days: int = 10,
-) -> dict[str, Any]:
+) -> SkillMapGhostRepActivity:
     today = datetime.now(timezone.utc).date()
     window_start = today - timedelta(days=max(window_days - 1, 0))
     known_pattern_slugs = set(slug_to_pattern)
@@ -158,7 +188,7 @@ def _build_ghost_rep_activity(
             if slug not in last_work_seen_by_pattern or attempt_date > last_work_seen_by_pattern[slug]:
                 last_work_seen_by_pattern[slug] = attempt_date
 
-    days: list[dict[str, Any]] = []
+    days: list[SkillMapGhostRepActivityDay] = []
     active_days = 0
     peak_daily_count = 0
     cursor = window_start
@@ -191,7 +221,7 @@ def _build_ghost_rep_activity(
         })
         cursor += timedelta(days=1)
 
-    patterns = [
+    patterns: list[SkillMapGhostRepPattern] = [
         {
             "pattern": pattern,
             "slug": slug,
@@ -221,7 +251,7 @@ def build_skill_map_overview(
     pattern_rows: list[SkillMapOverviewPatternRow],
     generated_rows: list[SkillMapOverviewGeneratedRow],
     attempt_rows: list[SkillMapOverviewAttemptRow],
-) -> dict[str, Any]:
+) -> SkillMapOverviewPayload:
     grouped: dict[int, dict[str, Any]] = {}
     for row in pattern_rows:
         pattern_id = int(row["pattern_id"])
@@ -252,8 +282,8 @@ def build_skill_map_overview(
         for slug in matched_pattern_slugs:
             card_ids_by_pattern.setdefault(slug, set()).add(str(row["id"]))
 
-    attempts_by_card_mode: dict[tuple[str, str], list[dict[str, Any]]] = {}
-    attempts_by_pattern_mode: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    attempts_by_card_mode: dict[tuple[str, str], list[AttemptOverviewItem]] = {}
+    attempts_by_pattern_mode: dict[tuple[str, str], list[AttemptOverviewItem]] = {}
     attempted_card_ids: set[str] = set()
     total_ghost_rep_count = 0
     total_unsupported_attempt_count = 0
@@ -280,7 +310,7 @@ def build_skill_map_overview(
                 "patternSlugs": matched_pattern_slugs,
             }
 
-        attempt = {
+        attempt: AttemptOverviewItem = {
             "accuracy": float(row["accuracy"] or 0),
             "created_at": row["created_at"],
             "supportLayer": support_layer,
@@ -292,13 +322,13 @@ def build_skill_map_overview(
             attempts_by_pattern_mode.setdefault((slug, template_mode), []).append(attempt)
         attempted_card_ids.add(card_id)
 
-    pattern_summaries: list[dict[str, Any]] = []
-    card_mode_summaries: dict[tuple[str, str], dict[str, Any]] = {}
+    pattern_summaries: list[SkillMapPatternSummary] = []
+    card_mode_summaries: dict[tuple[str, str], SkillMapReviewQueueItem] = {}
 
     for pattern in patterns:
         slug = str(pattern["slug"])
         pattern_card_ids = card_ids_by_pattern.get(slug, set())
-        mode_summaries: dict[str, Any] = {}
+        mode_summaries: dict[str, SkillMapModeSummary] = {}
         practiced_cards_any_mode: set[str] = set()
         stale_cards_any_mode: set[str] = set()
         overall_attempt_count = 0
@@ -373,7 +403,7 @@ def build_skill_map_overview(
             "modes": mode_summaries,
         })
 
-    review_queue = [
+    review_queue: list[SkillMapReviewQueueItem] = [
         item
         for item in sorted(
             card_mode_summaries.values(),
@@ -393,29 +423,31 @@ def build_skill_map_overview(
         1,
     ) if pattern_summaries else 0.0
 
+    summary: SkillMapOverviewSummary = {
+        "totalGeneratedCards": len(generated_cards),
+        "attemptedCards": len(attempted_card_ids),
+        "untouchedCards": max(len(generated_cards) - len(attempted_card_ids), 0),
+        "staleCards": len(stale_card_ids),
+        "ghostRepCount": total_ghost_rep_count,
+        "unsupportedAttemptCount": total_unsupported_attempt_count,
+        "workCount": total_ghost_rep_count + total_unsupported_attempt_count,
+        "patternsStarted": sum(1 for item in pattern_summaries if item["overallAttemptCount"] > 0),
+        "patternsUntouched": sum(1 for item in pattern_summaries if item["overallAttemptCount"] == 0),
+        "avgPatternReadiness": avg_pattern_readiness,
+        "modeOrder": list(READINESS_MODE_ORDER),
+        "successThreshold": 90,
+        "staleAfterDays": 7,
+    }
+
     return {
-        "summary": {
-            "totalGeneratedCards": len(generated_cards),
-            "attemptedCards": len(attempted_card_ids),
-            "untouchedCards": max(len(generated_cards) - len(attempted_card_ids), 0),
-            "staleCards": len(stale_card_ids),
-            "ghostRepCount": total_ghost_rep_count,
-            "unsupportedAttemptCount": total_unsupported_attempt_count,
-            "workCount": total_ghost_rep_count + total_unsupported_attempt_count,
-            "patternsStarted": sum(1 for item in pattern_summaries if item["overallAttemptCount"] > 0),
-            "patternsUntouched": sum(1 for item in pattern_summaries if item["overallAttemptCount"] == 0),
-            "avgPatternReadiness": avg_pattern_readiness,
-            "modeOrder": list(READINESS_MODE_ORDER),
-            "successThreshold": 90,
-            "staleAfterDays": 7,
-        },
+        "summary": summary,
         "patterns": pattern_summaries,
         "reviewQueue": review_queue,
         "ghostRepActivity": _build_ghost_rep_activity(attempt_rows, slug_to_pattern),
     }
 
 
-def build_skill_map_nodes(pattern_rows: list[dict[str, Any]]) -> list[SkillMapNode]:
+def build_skill_map_nodes(pattern_rows: list[PatternMethodRow]) -> list[SkillMapNode]:
     grouped: dict[int, SkillMapNode] = {}
     for row in pattern_rows:
         pattern_id = int(row["pattern_id"])
@@ -431,22 +463,49 @@ def build_skill_map_nodes(pattern_rows: list[dict[str, Any]]) -> list[SkillMapNo
     return list(grouped.values())
 
 
-async def create_attempt(body: Any):
-    # Local import avoids a circular dependency during service extraction.
-    from app.core import attempts as attempts_core
+async def create_attempt(body: AttemptCreate) -> AttemptSaveResult:
+    now = datetime.now(tz=timezone.utc)
+    submission_rubric = compact_submission_rubric(
+        body.submissionRubric
+        or (body.coachFeedback or {}).get("submissionRubric")
+    )
 
-    return await attempts_core.create_attempt(body)
+    row = await insert_answer_attempt_row(
+        card_id=body.cardId,
+        card_title=body.cardTitle,
+        question=body.question,
+        question_type=body.questionType,
+        category_tags=body.categoryTags,
+        correct_answer=body.correctAnswer,
+        user_answer=body.userAnswer,
+        mode=body.mode.value,
+        correct=body.correct,
+        accuracy=body.accuracy,
+        exact=body.exact,
+        elapsed_ms=body.elapsedMs,
+        interaction_id=body.interactionId,
+        generated_card_id=body.generatedCardId,
+        generated_card_json=_json.dumps(body.generatedCard) if body.generatedCard else None,
+        template_mode=body.templateMode.value,
+        support_layer=body.supportLayer.value,
+        live_coach_used=body.liveCoachUsed,
+        coach_feedback_json=_json.dumps(body.coachFeedback) if body.coachFeedback else None,
+        submission_rubric_json=_json.dumps(submission_rubric) if submission_rubric else None,
+        created_at=now,
+        updated_at=now,
+    )
+
+    return {"saved": True, "attemptId": row["id"] if row else None}
 
 
-async def get_skill_map():
-    # Local import avoids a circular dependency during service extraction.
-    from app.core import attempts as attempts_core
+async def get_skill_map() -> list[SkillMapNode]:
+    rows = await fetch_patterns_with_methods_rows()
 
-    return await attempts_core.get_skill_map()
+    return build_skill_map_nodes(rows)
 
 
-async def get_skill_map_overview():
-    # Local import avoids a circular dependency during service extraction.
-    from app.core import attempts as attempts_core
-
-    return await attempts_core.get_skill_map_overview()
+async def get_skill_map_overview() -> SkillMapOverviewPayload:
+    pattern_rows = await fetch_skill_map_overview_pattern_rows()
+    generated_rows = await fetch_skill_map_overview_generated_rows()
+    attempt_rows = await fetch_skill_map_overview_attempt_rows()
+    return build_skill_map_overview(pattern_rows, generated_rows, attempt_rows)

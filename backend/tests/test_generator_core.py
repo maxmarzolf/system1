@@ -31,7 +31,8 @@ def _test_word_count(value: str) -> int:
 
 async def _collect_sse_drills(response) -> list[dict]:
     text = ""
-    async for chunk in response.body_iterator:
+    stream = response.body_iterator if hasattr(response, "body_iterator") else response
+    async for chunk in stream:
         text += chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
     drills: list[dict] = []
     event_type = ""

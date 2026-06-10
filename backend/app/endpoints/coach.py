@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Query
+from fastapi.responses import StreamingResponse
 
 from app.models import (
     AdaptiveVariationRequest,
@@ -64,7 +65,8 @@ async def coach_skill_map_drills(body: SkillMapDrillsRequest):
 
 @router.post("/skill-map-drills-stream")
 async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
-    return await coach_service.coach_skill_map_drills_stream(body)
+    stream = await coach_service.coach_skill_map_drills_stream(body)
+    return StreamingResponse(stream, media_type="text/event-stream")
 
 
 @router.get("/core-algorithm-drills", response_model=SkillMapDrillsResponse)

@@ -10,10 +10,10 @@ from app.core.llm import (
     resolve_available_llm_provider as _resolve_available_llm_provider,
 )
 from app.domain.llm_resilience import SubmissionFeedbackUnavailableError
-from app.models import CoachSessionPlanRequest
+from app.models import CoachSessionPlanRequest, CoachSessionPlanResponse
 
 
-async def coach_session_plan(body: CoachSessionPlanRequest) -> dict[str, Any]:
+async def coach_session_plan(body: CoachSessionPlanRequest) -> CoachSessionPlanResponse:
     provider = _resolve_available_llm_provider(body.llmProvider)
     if not _llm_provider_available(provider):
         raise SubmissionFeedbackUnavailableError(
@@ -58,12 +58,12 @@ async def coach_session_plan(body: CoachSessionPlanRequest) -> dict[str, Any]:
             api_error_code="provider_invalid_json",
         )
 
-    return {
-        "headline": str(llm_response["headline"]),
-        "focusTheme": str(llm_response["focusTheme"]),
-        "warmup": str(llm_response["warmup"]),
-        "mainSet": str(llm_response["mainSet"]),
-        "cooldown": str(llm_response["cooldown"]),
-        "note": str(llm_response["note"]),
-        "llmUsed": True,
-    }
+    return CoachSessionPlanResponse(
+        headline=str(llm_response["headline"]),
+        focusTheme=str(llm_response["focusTheme"]),
+        warmup=str(llm_response["warmup"]),
+        mainSet=str(llm_response["mainSet"]),
+        cooldown=str(llm_response["cooldown"]),
+        note=str(llm_response["note"]),
+        llmUsed=True,
+    )

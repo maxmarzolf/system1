@@ -32,8 +32,9 @@ from app.domain.llm_resilience import (
     SubmissionFeedbackUnavailableError,
 )
 from app.domain.template_evaluator import merged_submission_tuning as _domain_merged_submission_tuning
-from app.models import CoachAttemptFeedbackRequest
+from app.models import CoachAttemptFeedbackRequest, CoachAttemptFeedbackResponse
 from app.repositories.coach_repository import fetch_latest_answer_id_for_feedback, insert_feedback_event_row
+from app.services.contracts import FeedbackPayload, HistoryEntry, HistorySummary
 from app.services import history_service
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,7 @@ async def _run_assessor_phase(
     body: CoachAttemptFeedbackRequest,
     provider: str,
     template_mode: str,
-) -> dict[str, object]:
+) -> FeedbackPayload:
     assessor_context = AssessorContext(
         provider=provider,
         provider_label=_llm_provider_label(provider),
@@ -86,12 +87,12 @@ async def _run_assessor_phase(
 
 async def _run_submission_narrator_phase(
     body: CoachAttemptFeedbackRequest,
-    assessment: dict[str, object],
-    history: list[dict[str, object]],
-    history_summary: dict[str, object],
+    assessment: FeedbackPayload,
+    history: list[HistoryEntry],
+    history_summary: HistorySummary,
     provider: str,
     template_mode: str,
-) -> dict[str, object]:
+) -> FeedbackPayload:
     narrator_context = NarratorContext(
         provider=provider,
         provider_label=_llm_provider_label(provider),
@@ -127,18 +128,18 @@ async def _run_submission_narrator_phase(
 
 def _finalize_feedback_payload(
     body: CoachAttemptFeedbackRequest,
-    assessment: dict[str, object],
-    feedback: dict[str, object],
+    assessment: FeedbackPayload,
+    feedback: FeedbackPayload,
     provider: str,
-) -> dict[str, object]:
+) -> CoachAttemptFeedbackResponse:
     if not body.liveMode:
         feedback["submissionRubric"] = _domain_submission_rubric_from_assessment(body, assessment)
     feedback["llmProvider"] = provider if bool(feedback.get("llmUsed")) else ""
     feedback.pop("signals", None)
-    return feedback
+    return CoachAttemptFeedbackResponse.model_validate(feedback)
 
 
-async def persist_feedback_event(body: CoachAttemptFeedbackRequest, feedback: dict[str, object]) -> None:
+async def persist_feedback_event(body: CoachAttemptFeedbackRequest, feedback: CoachAttemptFeedbackResponse) -> None:
     now = datetime.now(tz=timezone.utc)
     answer_id = await fetch_latest_answer_id_for_feedback(
         interaction_id=body.interactionId or "",
@@ -146,6 +147,8 @@ async def persist_feedback_event(body: CoachAttemptFeedbackRequest, feedback: di
         question_type=body.questionType,
         allow_card_fallback=not body.liveMode,
     )
+
+    feedback_payload: FeedbackPayload = feedback.model_dump()
 
     await insert_feedback_event_row(
         interaction_id=body.interactionId,
@@ -163,14 +166,13 @@ async def persist_feedback_event(body: CoachAttemptFeedbackRequest, feedback: di
         skill_tags=body.skillTags,
         previous_attempts_json=json.dumps(body.previousAttempts),
         live_milestones_json=json.dumps(body.liveMilestones),
-        feedback_json=json.dumps(feedback),
-        llm_used=bool(feedback.get("llmUsed")),
+        feedback_json=json.dumps(feedback_payload),
+        llm_used=bool(feedback.llmUsed),
         created_at=now,
         answer_id=answer_id,
     )
 
-
-async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
+async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest) -> CoachAttemptFeedbackResponse:
     history, history_summary = await history_service.load_feedback_context(body)
     provider = _resolve_feedback_provider(body)
     template_mode = _template_mode_value(body.templateMode)

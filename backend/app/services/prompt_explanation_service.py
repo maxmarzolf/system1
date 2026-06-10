@@ -9,7 +9,7 @@ from app.core.llm import (
     resolve_available_llm_provider as _resolve_available_llm_provider,
 )
 from app.core.generator import build_plain_english_prompt_detail
-from app.models import CoachPromptToggleExplanationRequest
+from app.models import CoachPromptToggleExplanationRequest, CoachPromptToggleExplanationResponse
 
 
 def _fallback_prompt_toggle_plain_english(body: CoachPromptToggleExplanationRequest) -> str:
@@ -20,7 +20,7 @@ def _fallback_prompt_toggle_plain_english(body: CoachPromptToggleExplanationRequ
     return f"{title} asks you to explain the code in plain English."
 
 
-async def coach_prompt_toggle_explanation(body: CoachPromptToggleExplanationRequest) -> dict[str, Any]:
+async def coach_prompt_toggle_explanation(body: CoachPromptToggleExplanationRequest) -> CoachPromptToggleExplanationResponse:
     provider = _resolve_available_llm_provider(body.llmProvider)
     if _llm_provider_available(provider):
         system_prompt = (
@@ -44,12 +44,12 @@ async def coach_prompt_toggle_explanation(body: CoachPromptToggleExplanationRequ
             input_example = str(llm_response.get("inputExample", "")).strip()
             output_example = str(llm_response.get("outputExample", "")).strip()
             if explanation and input_example and output_example:
-                return {
-                    "plainEnglish": explanation,
-                    "inputExample": input_example,
-                    "outputExample": output_example,
-                    "llmUsed": True,
-                }
+                return CoachPromptToggleExplanationResponse(
+                    plainEnglish=explanation,
+                    inputExample=input_example,
+                    outputExample=output_example,
+                    llmUsed=True,
+                )
 
     fallback_detail = build_plain_english_prompt_detail(
         pattern=str(body.cardTitle or body.tags[0] if body.tags else "pattern"),
@@ -61,17 +61,17 @@ async def coach_prompt_toggle_explanation(body: CoachPromptToggleExplanationRequ
         hint="",
     )
     if fallback_detail:
-        return {
-            "plainEnglish": str(fallback_detail.get("plainEnglish", "")),
-            "inputExample": str(fallback_detail.get("inputExample", "")),
-            "outputExample": str(fallback_detail.get("outputExample", "")),
-            "llmUsed": False,
-        }
+        return CoachPromptToggleExplanationResponse(
+            plainEnglish=str(fallback_detail.get("plainEnglish", "")),
+            inputExample=str(fallback_detail.get("inputExample", "")),
+            outputExample=str(fallback_detail.get("outputExample", "")),
+            llmUsed=False,
+        )
 
     explanation = _fallback_prompt_toggle_plain_english(body)
-    return {
-        "plainEnglish": explanation,
-        "inputExample": f"{str(body.cardTitle or 'function')}(...)",
-        "outputExample": "the function's return value",
-        "llmUsed": False,
-    }
+    return CoachPromptToggleExplanationResponse(
+        plainEnglish=explanation,
+        inputExample=f"{str(body.cardTitle or 'function')}(...)",
+        outputExample="the function's return value",
+        llmUsed=False,
+    )

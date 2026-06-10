@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from typing import Any
+from collections.abc import AsyncIterator, Awaitable, Callable
 
 from app.config import settings
 from app.core.generator import (
@@ -20,6 +19,7 @@ from app.core.llm import (
 from app.domain.llm_resilience import SubmissionFeedbackUnavailableError
 from app.models import MultipleChoiceDrillsRequest, MultipleChoiceDrillsResponse, SkillMapDrillsRequest
 from app.core.generator import GeneratorUnavailableError
+from app.services.contracts import PersistGeneratedQuestions, PersistSkillMapDrills, SkillMapProgressSummary
 
 import logging
 
@@ -31,7 +31,7 @@ DRILL_GEN_TEMPERATURE = 0.7
 
 
 def _make_skill_map_drill_generator(
-    persist_skill_map_drills: Callable[[list[dict[str, Any]], bool, dict[str, Any]], Awaitable[Any]],
+    persist_skill_map_drills: PersistSkillMapDrills,
 ) -> SkillMapDrillGenerator:
     runtime = GeneratorRuntime(
         call_llm_json=_call_llm_json,
@@ -49,8 +49,8 @@ def _make_skill_map_drill_generator(
 
 async def coach_skill_map_drills(
     body: SkillMapDrillsRequest,
-    progress_summary: dict[str, Any],
-    persist_skill_map_drills: Callable[[list[dict[str, Any]], bool, dict[str, Any]], Awaitable[Any]],
+    progress_summary: SkillMapProgressSummary,
+    persist_skill_map_drills: PersistSkillMapDrills,
 ):
     provider = _resolve_available_llm_provider(body.llmProvider)
     skill_map_drill_generator = _make_skill_map_drill_generator(persist_skill_map_drills)
@@ -65,9 +65,9 @@ async def coach_skill_map_drills(
 
 async def coach_skill_map_drills_stream(
     body: SkillMapDrillsRequest,
-    progress_summary: dict[str, Any],
-    persist_skill_map_drills: Callable[[list[dict[str, Any]], bool, dict[str, Any]], Awaitable[Any]],
-):
+    progress_summary: SkillMapProgressSummary,
+    persist_skill_map_drills: PersistSkillMapDrills,
+) -> AsyncIterator[str]:
     provider = _resolve_available_llm_provider(body.llmProvider)
     skill_map_drill_generator = _make_skill_map_drill_generator(persist_skill_map_drills)
     return skill_map_drill_generator.stream_response(
@@ -81,7 +81,7 @@ async def coach_skill_map_drills_stream(
 
 async def coach_multiple_choice_drills(
     body: MultipleChoiceDrillsRequest,
-    persist_generated_questions: Callable[[list[dict[str, Any]]], Awaitable[Any]],
+    persist_generated_questions: PersistGeneratedQuestions,
 ) -> MultipleChoiceDrillsResponse:
     provider = _resolve_available_llm_provider(body.llmProvider)
     provider_label = _llm_provider_label(provider)

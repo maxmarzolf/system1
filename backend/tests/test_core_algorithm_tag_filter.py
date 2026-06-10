@@ -3,8 +3,8 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from app import main as app_main
-from app.core import core_algorithm_practice as core_algorithm_practice_service
 from app.main import create_app
+from app.services import core_algorithm_practice_service
 
 
 def test_core_algorithm_drills_route_filters_by_tag(monkeypatch) -> None:
