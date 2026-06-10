@@ -14,7 +14,7 @@ import {
   rectangularSelection,
   type DecorationSet,
 } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap, indentLess, indentMore } from '@codemirror/commands'
 import {
   autocompletion,
   closeBrackets,
@@ -48,6 +48,7 @@ import { markdown } from '@codemirror/lang-markdown'
 import { rust } from '@codemirror/lang-rust'
 import type { AppTheme } from './theme'
 import type { CodeEditorStyleGuide } from './codeEditorTuning'
+import { getEditorHotkeyKey } from './hotkeys'
 
 export type RecallEditorLineStatus = 'match' | 'mismatch' | 'missing' | 'extra'
 export type RecallEditorLiveTone = 'positive' | 'negative' | 'neutral'
@@ -81,6 +82,7 @@ type RecallCodeEditorProps = {
   intellisense?: boolean
   styleGuide?: CodeEditorStyleGuide
   commonPatterns?: boolean
+  foldControls?: boolean
   onChange: (nextValue: string) => void
   onSubmitHotkey: () => void
   onEnterKey?: (context: { value: string, cursorLineNumber: number }) => boolean
@@ -213,31 +215,10 @@ const editorAssistanceExtension = (
   ]
 }
 
-const editorStyleGuideExtension = (language: string, styleGuide: CodeEditorStyleGuide): Extension => {
-  const normalized = normalizedLanguage(language)
-  if (styleGuide !== 'python-pep8' || (normalized !== 'python' && normalized !== 'py')) return []
-
-  return EditorView.theme({
-    '.cm-content': {
-      position: 'relative',
-    },
-    '.cm-content::after': {
-      content: '""',
-      position: 'absolute',
-      top: '0',
-      bottom: '0',
-      left: 'calc(1.5rem + 79ch)',
-      borderLeft: '1px dotted color-mix(in srgb, var(--hc-border-dim) 72%, transparent)',
-      pointerEvents: 'none',
-    },
-  })
-}
-
 const recallBaseSetup = [
   lineNumbers(),
   highlightSpecialChars(),
   history(),
-  foldGutter(),
   drawSelection(),
   dropCursor(),
   EditorState.allowMultipleSelections.of(true),
@@ -404,7 +385,7 @@ const recallTheme = (theme: AppTheme) => [
       lineHeight: '1.6',
     },
     '.cm-content': {
-      padding: '1rem 1.5rem',
+      padding: '0.35rem 0.75rem',
       minHeight: '12rem',
       caretColor: 'var(--hc-fg)',
     },
@@ -414,7 +395,14 @@ const recallTheme = (theme: AppTheme) => [
     '.cm-gutters': {
       backgroundColor: 'var(--hc-editor-bg)',
       color: 'var(--hc-gutter-fg)',
-      borderRight: '1px solid var(--hc-border-dim)',
+      borderRight: 'none',
+    },
+    '.cm-gutters::before': {
+      display: 'none',
+    },
+    '.cm-lineNumbers .cm-gutterElement': {
+      minWidth: '2.5rem',
+      padding: '0 0.65rem 0 0.4rem',
     },
     '.cm-activeLineGutter, .cm-activeLine': {
       backgroundColor: 'transparent',
@@ -444,6 +432,8 @@ const editableExtension = (editable: boolean, disabled?: boolean) => [
   EditorView.editable.of(editable && !disabled),
 ]
 
+const foldControlsExtension = (foldControls: boolean) => foldControls ? foldGutter() : []
+
 const valueFromEditor = (view: EditorView) => view.state.doc.toString()
 
 const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProps>(function RecallCodeEditor(
@@ -458,8 +448,8 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
     lineMeta,
     minHeight,
     intellisense = true,
-    styleGuide = 'python-pep8',
     commonPatterns = true,
+    foldControls = false,
     onChange,
     onSubmitHotkey,
     onEnterKey,
@@ -478,7 +468,7 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
   const decorationsCompartment = useMemo(() => new Compartment(), [])
   const placeholderCompartment = useMemo(() => new Compartment(), [])
   const assistanceCompartment = useMemo(() => new Compartment(), [])
-  const styleGuideCompartment = useMemo(() => new Compartment(), [])
+  const foldControlsCompartment = useMemo(() => new Compartment(), [])
 
   useEffect(() => {
     onChangeRef.current = onChange
@@ -531,20 +521,24 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
       extensions: [
         Prec.highest(keymap.of([
           {
-            key: 'Enter',
+            key: getEditorHotkeyKey('next-targeted-line'),
             run: (view) => onEnterKeyRef.current?.({
               value: valueFromEditor(view),
               cursorLineNumber: view.state.doc.lineAt(view.state.selection.main.head).number,
             }) ?? false,
           },
           {
-            key: 'Mod-Enter',
+            key: getEditorHotkeyKey('primary-recall-action'),
             run: () => {
               onSubmitHotkeyRef.current()
               return true
             },
           },
-          indentWithTab,
+          {
+            key: getEditorHotkeyKey('indent-outdent'),
+            run: indentMore,
+            shift: indentLess,
+          },
         ])),
         recallBaseSetup,
         languageCompartment.of(resolveLanguageExtension(language)),
@@ -554,7 +548,7 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
         decorationsCompartment.of(recallDecorations(lineMeta, ghostTarget)),
         placeholderCompartment.of(createPlaceholderExtension(placeholder)),
         assistanceCompartment.of(editorAssistanceExtension(language, intellisense, commonPatterns)),
-        styleGuideCompartment.of(editorStyleGuideExtension(language, styleGuide)),
+        foldControlsCompartment.of(foldControlsExtension(foldControls)),
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return
@@ -631,9 +625,9 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
 
   useEffect(() => {
     viewRef.current?.dispatch({
-      effects: styleGuideCompartment.reconfigure(editorStyleGuideExtension(language, styleGuide)),
+      effects: foldControlsCompartment.reconfigure(foldControlsExtension(foldControls)),
     })
-  }, [language, styleGuide, styleGuideCompartment])
+  }, [foldControls, foldControlsCompartment])
 
   return (
     <div

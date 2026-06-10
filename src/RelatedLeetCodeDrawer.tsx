@@ -16,7 +16,7 @@ export default function RelatedLeetCodeDrawer({ relatedSet, open, onClose }: Rel
     >
       <div className="related-problems-header">
         <div>
-          <span className="related-problems-eyebrow">Shape Matches</span>
+          <span className="related-problems-eyebrow">Exact Card</span>
           <h3>Highly Corresponding LeetCode</h3>
           <p>{relatedSet.heading}</p>
         </div>

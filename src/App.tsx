@@ -17,6 +17,11 @@ import { providerDisplayLabel, useConfiguredProviderLabel } from './llmProviderD
 import TopNav from './TopNav'
 import { useTheme } from './theme'
 import RecallCodeEditor, { type RecallCodeEditorHandle, type RecallEditorLineMeta } from './RecallCodeEditor'
+import {
+  formatHotkey,
+  matchesHotkey,
+  type PracticeFlowStage,
+} from './hotkeys'
 
 type Flashcard = {
   id: string
@@ -65,8 +70,6 @@ type MultipleChoiceSpecimenFocus = {
   focusSummary: string
   missedLines: MultipleChoiceSpecimenFocusLine[]
 }
-
-type PracticeFlowStage = 'recall' | 'ghost' | 'multiple-choice'
 
 type PracticeFlowState = {
   anchorCardId: string
@@ -2575,6 +2578,7 @@ function App() {
 
   useEffect(() => {
     if (!practiceFlow || practiceFlow.stage !== 'multiple-choice') return
+    if (flowMultipleChoiceDeck.length > 0) return
     void fetchFlowMultipleChoiceDeck()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [practiceFlow?.stage, practiceFlow?.cycle, practiceFlow?.focus.focusSummary, multipleChoiceDifficulty, requestLlmProvider])
@@ -2850,15 +2854,11 @@ function App() {
   const relatedLeetCodeSet = useMemo(
     () => currentPracticeMode === 'recall'
       ? resolveRelatedLeetCodeSet({
-          patternTag: primaryPatternTag,
           title: card.title,
-          prompt: practicePrompt,
-          target: practiceTarget,
-          tags: card.tags,
-          focusedMethods: focusedMethodParams,
+          examples: card.plainEnglishPromptDetail?.leetcodeExamples ?? [],
         })
       : null,
-    [card.tags, card.title, currentPracticeMode, focusedMethodParams, practicePrompt, practiceTarget, primaryPatternTag]
+    [card.plainEnglishPromptDetail?.leetcodeExamples, card.title, currentPracticeMode]
   )
 
   useEffect(() => {
@@ -3081,6 +3081,25 @@ function App() {
       : current)
     setSupportLayer('none')
     resetFlowMultipleChoiceState()
+    resetPerCardInteraction()
+  }
+
+  const switchPracticeFlowStage = (nextStage: PracticeFlowStage) => {
+    if (!practiceFlow || practiceFlow.stage === nextStage || mainPhase === 'typing') return
+    const hasTargetedLines = practiceFlow.focus.missedLines.some((line) => line.expected.trim().length > 0)
+    if (nextStage !== 'recall' && !hasTargetedLines) return
+
+    setPracticeFlow((current) => current
+      ? {
+          ...current,
+          stage: nextStage,
+          focus: {
+            ...current.focus,
+            sequenceStage: nextStage,
+          },
+        }
+      : current)
+    setSupportLayer(nextStage === 'ghost' ? 'ghost-reps' : 'none')
     resetPerCardInteraction()
   }
 
@@ -3471,6 +3490,7 @@ function App() {
 
     if (practiceFlow?.stage === 'recall') {
       const missedLines = toMultipleChoiceFocusLines(computeLineReview(practiceTarget, normalizedInput).reviews)
+      resetFlowMultipleChoiceState()
       if (missedLines.length === 0) {
         setPracticeFlow((current) => current
           ? {
@@ -4006,49 +4026,51 @@ function App() {
   useEffect(() => {
     if (mainPhase !== 'submitted' || !latestSubmittedWasGhostRep) return
     const handler = (event: KeyboardEvent) => {
-      const modifierPressed = event.metaKey || event.ctrlKey
-      if (!modifierPressed) return
-
-      if (event.key === 'Enter') {
+      if (matchesHotkey(event, 'primary-recall-action')) {
         event.preventDefault()
         repeatGhostRep()
-        return
       }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [latestSubmittedWasGhostRep, mainPhase, sessionFinished, sessionOrder.length, sessionPosition])
 
-      if (event.key === 'ArrowLeft') {
+  useEffect(() => {
+    if (isFlowActive) return
+    const handler = (event: KeyboardEvent) => {
+      if (matchesHotkey(event, 'move-cards') && event.key === 'ArrowLeft') {
         event.preventDefault()
         if (canGoPrev) goPrev()
         return
       }
 
-      if (event.key === 'ArrowRight') {
+      if (matchesHotkey(event, 'move-cards') && event.key === 'ArrowRight') {
         event.preventDefault()
         if (canGoNext) goNext()
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [canGoNext, canGoPrev, latestSubmittedWasGhostRep, mainPhase, sessionFinished, sessionOrder.length, sessionPosition])
+  }, [canGoNext, canGoPrev, isFlowActive, sessionOrder.length, sessionPosition])
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (currentPracticeMode !== 'recall') return
-      const key = event.key.toLowerCase()
-      if (key === 'h' && event.metaKey && event.shiftKey) {
+      if (matchesHotkey(event, 'stuck-hint')) {
         event.preventDefault()
         requestStuckHint()
         return
       }
       if (isFlowActive) return
-      if (key === 'g' && (event.metaKey || event.ctrlKey)) {
+      if (matchesHotkey(event, 'toggle-ghost-reps')) {
         event.preventDefault()
         setSupportLayer((prev) => (prev === 'ghost-reps' ? 'none' : 'ghost-reps'))
       }
-      if (LIVE_FEEDBACK_ENABLED && key === 'l' && (event.metaKey || event.ctrlKey)) {
+      if (LIVE_FEEDBACK_ENABLED && matchesHotkey(event, 'toggle-live-feedback')) {
         event.preventDefault()
         setLiveCoachTuning((prev) => ({ ...prev, enabled: !prev.enabled }))
       }
-      if (INLINE_FEEDBACK_ENABLED && key === 'i' && (event.metaKey || event.ctrlKey)) {
+      if (INLINE_FEEDBACK_ENABLED && matchesHotkey(event, 'toggle-inline-feedback')) {
         event.preventDefault()
         toggleInlineHelper()
       }
@@ -4056,6 +4078,27 @@ function App() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [currentPracticeMode, isFlowActive, requestStuckHint, toggleInlineHelper])
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (!practiceFlow || mainPhase === 'typing') return
+
+      const nextStage = matchesHotkey(event, 'flow-full-recall')
+        ? 'recall'
+        : matchesHotkey(event, 'flow-targeted-ghost')
+          ? 'ghost'
+          : matchesHotkey(event, 'flow-targeted-mcq')
+            ? 'multiple-choice'
+            : null
+      if (!nextStage) return
+
+      event.preventDefault()
+      switchPracticeFlowStage(nextStage)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainPhase, practiceFlow])
 
   const submissionFeedbackNextStep =
     coachFeedback?.immediateCorrection || coachFeedback?.primaryFocus || 'Review the drifted step, then rewrite the recall target once more.'
@@ -4096,6 +4139,10 @@ function App() {
         ? `Cycle ${practiceFlow.cycle}: ${practiceFlow.ghostCompleted} of ${practiceFlow.ghostTarget} ghost reps logged on the targeted lines.`
         : `Cycle ${practiceFlow.cycle}: ${practiceFlow.mcqCompleted} of ${practiceFlow.mcqTarget} targeted MCQs completed from the last recall misses.`
   const flowFocusPreviewLines = practiceFlow?.focus.missedLines.slice(0, 3) ?? []
+  const isMac = navigator.platform.includes('Mac')
+  const primaryRecallHotkey = formatHotkey('primary-recall-action', isMac)
+  const moveCardsHotkey = formatHotkey('move-cards', isMac)
+  const indentOutdentHotkey = formatHotkey('indent-outdent', isMac)
   const showSubmittedLineReview = mainPhase === 'submitted' && !mainCloseEnough && !latestSubmittedWasGhostRep
   const submittedFeedbackInlineNotes = useMemo<LiveInlineNote[]>(() => {
     if (!SUBMISSION_FEEDBACK_ENABLED) return []
@@ -4287,8 +4334,8 @@ function App() {
             className={flowDrawerOpen ? 'card-side-drawer-toggle active' : 'card-side-drawer-toggle'}
             aria-expanded={flowDrawerOpen}
             aria-controls="card-flow-panel"
-            aria-label={flowDrawerOpen ? 'Hide practice flow drawer' : 'Show practice flow drawer'}
-            title="Practice flow"
+            aria-label={flowDrawerOpen ? 'Hide Flow drawer' : 'Show Flow drawer'}
+            title="Flow"
             onClick={() => {
               setRelatedDrawerOpen(false)
               setFlowDrawerOpen((open) => !open)
@@ -4297,7 +4344,7 @@ function App() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
             </svg>
-            <span className="sr-only">Practice flow</span>
+            <span className="sr-only">Flow</span>
           </button>
           {relatedLeetCodeSet && (
             <button
@@ -4732,6 +4779,7 @@ function App() {
                         intellisense={codeEditorTuning.intellisense}
                         styleGuide={codeEditorTuning.styleGuide}
                         commonPatterns={codeEditorTuning.commonPatterns}
+                        foldControls={codeEditorTuning.foldControls}
                         onChange={() => {}}
                         onSubmitHotkey={startMainRecall}
                       />
@@ -4787,6 +4835,7 @@ function App() {
                         intellisense={codeEditorTuning.intellisense}
                         styleGuide={codeEditorTuning.styleGuide}
                         commonPatterns={codeEditorTuning.commonPatterns}
+                        foldControls={codeEditorTuning.foldControls}
                         onChange={handleMainInputChange}
                         onSubmitHotkey={handleRecallEditorSubmitHotkey}
                         onEnterKey={handleGhostRepEnterKey}
@@ -4796,8 +4845,8 @@ function App() {
                 </div>
                 <p className="typing-help">
                   {isGhostRepsEnabled
-                    ? <>Ghost Reps are saved as supported work · trace the faint target as many times as needed · <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter</kbd> to log · <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Left</kbd>/<kbd>Right</kbd> to move cards</>
-                    : <>Tab inserts 4 spaces · Shift+Tab outdents · Enter auto-indents · <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter</kbd> to submit</>}
+                    ? <>Ghost Reps are saved as supported work · trace the faint target as many times as needed · <kbd>{primaryRecallHotkey}</kbd> to log{!isFlowActive && <> · <kbd>{moveCardsHotkey}</kbd> to move cards</>}</>
+                    : <><kbd>{indentOutdentHotkey}</kbd> adjusts indentation · Enter auto-indents · <kbd>{primaryRecallHotkey}</kbd> to submit{!isFlowActive && <> · <kbd>{moveCardsHotkey}</kbd> to move cards</>}</>}
                 </p>
               </>
             )}
@@ -4844,16 +4893,16 @@ function App() {
       <aside
         id="card-flow-panel"
         className={flowDrawerOpen ? 'card-flow-panel card-flow-panel-open' : 'card-flow-panel'}
-        aria-label="Sequenced practice flow"
+        aria-label="Flow"
         aria-hidden={!flowDrawerOpen}
       >
         <div className="related-problems-header">
           <div>
             <span className="related-problems-eyebrow">Flow</span>
-            <h3>Sequenced Practice Flow</h3>
+            <h3>Flow</h3>
             <p>{practiceFlow ? `Cycle ${practiceFlow.cycle} on ${practiceFlow.anchorTitle}` : card.title}</p>
           </div>
-          <button type="button" className="related-problems-close" onClick={() => setFlowDrawerOpen(false)} aria-label="Close practice flow drawer">
+          <button type="button" className="related-problems-close" onClick={() => setFlowDrawerOpen(false)} aria-label="Close Flow drawer">
             Close
           </button>
         </div>

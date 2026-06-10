@@ -30,6 +30,7 @@ import {
 import type { McqTuning } from './mcqTuning'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
+import { getHotkeyReferenceGroups } from './hotkeys'
 
 const trackedDimensions = [
   {
@@ -160,6 +161,7 @@ function NumberControl({
 
 export default function TunePage() {
   const configuredProviderLabel = useConfiguredProviderLabel()
+  const hotkeyGroups = getHotkeyReferenceGroups(navigator.platform.includes('Mac'))
   const [liveCoachTuning, setLiveCoachTuning] = useState<LiveCoachTuning>(() => loadStoredLiveCoachTuning())
   const [submissionTuning, setSubmissionTuning] = useState<SubmissionTuning>(() => loadStoredSubmissionTuning())
   const [specimenTuning, setSpecimenTuning] = useState<SpecimenTuning>(() => loadStoredSpecimenTuning())
@@ -230,6 +232,7 @@ export default function TunePage() {
             <a href="#live-coach">Live coach</a>
             <a href="#submission">Submission</a>
             <a href="#dimensions">Dimensions</a>
+            <a href="#hotkeys">Hotkeys</a>
           </aside>
 
           <div className="tune-content">
@@ -308,7 +311,7 @@ export default function TunePage() {
                     label="Style guide"
                     value={codeEditorTuning.styleGuide}
                     onChange={(value) => updateCodeEditorTuning('styleGuide', value)}
-                    description="PEP 8 adds a Python-oriented column guide and keeps 4-space indentation."
+                    description="PEP 8 keeps Python-oriented 4-space indentation."
                     options={[
                       { value: 'python-pep8', label: 'Python PEP 8' },
                       { value: 'none', label: 'No guide' },
@@ -325,6 +328,11 @@ export default function TunePage() {
                     checked={codeEditorTuning.commonPatterns}
                     onChange={(value) => updateCodeEditorTuning('commonPatterns', value)}
                     label="Include common Python and algorithm pattern snippets"
+                  />
+                  <ToggleControl
+                    checked={codeEditorTuning.foldControls}
+                    onChange={(value) => updateCodeEditorTuning('foldControls', value)}
+                    label="Show fold controls in gutter"
                   />
                 </div>
               </div>
@@ -524,6 +532,33 @@ export default function TunePage() {
                 Full-template grading also tracks syntax validity, indentation drift, early line drift, and omitted
                 versus extra lines.
               </p>
+            </TuneSection>
+
+            <TuneSection
+              eyebrow="07"
+              title="Hotkeys"
+              copy="Reference the keyboard controls available during recall practice and a Flow."
+            >
+              <div className="tune-hotkey-groups" id="hotkeys">
+                {hotkeyGroups.map((group) => (
+                  <section key={group.title} className="tune-hotkey-group">
+                    <h4>{group.title}</h4>
+                    <div className="tune-hotkey-list">
+                      {group.hotkeys.map((hotkey) => (
+                        <div key={hotkey.id} className="tune-hotkey-row">
+                          <span className="tune-hotkey-copy">
+                            <strong>{hotkey.label}</strong>
+                            <span>{hotkey.description}</span>
+                          </span>
+                          <span className="tune-hotkey-keys" aria-label={hotkey.keys.join(' plus ')}>
+                            {hotkey.keys.map((key) => <kbd key={key}>{key}</kbd>)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
             </TuneSection>
           </div>
         </div>

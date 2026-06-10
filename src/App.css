@@ -2880,7 +2880,6 @@ button.link:hover {
   align-items: flex-start;
   min-height: 1.65rem;
   margin-bottom: 0.35rem;
-  border-bottom: 1px dotted color-mix(in srgb, var(--hc-border-dim) 82%, transparent);
   pointer-events: none;
 }
 
@@ -3967,6 +3966,70 @@ button.tune-reset {
   margin: 0.8rem 0 0;
 }
 
+.tune-hotkey-groups {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.tune-hotkey-group h4 {
+  margin: 0 0 0.55rem;
+  color: var(--hc-accent);
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tune-hotkey-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.tune-hotkey-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--hc-border-dim);
+}
+
+.tune-hotkey-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.tune-hotkey-copy strong {
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.tune-hotkey-copy span {
+  color: var(--hc-fg-dim);
+  font-size: 0.64rem;
+  line-height: 1.45;
+}
+
+.tune-hotkey-keys {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.22rem;
+}
+
+.tune-hotkey-keys kbd {
+  padding: 0.14rem 0.32rem;
+  border: 1px solid var(--hc-border);
+  background: var(--hc-bg);
+  color: var(--hc-fg);
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.58rem;
+  line-height: 1.2;
+}
+
 @media (max-width: 860px) {
   .tune-layout {
     grid-template-columns: 1fr;
@@ -4009,6 +4072,14 @@ button.tune-reset {
   .tune-dimension-row {
     grid-template-columns: 1fr;
     gap: 0.25rem;
+  }
+
+  .tune-hotkey-row {
+    flex-direction: column;
+  }
+
+  .tune-hotkey-keys {
+    justify-content: flex-start;
   }
 }
 
