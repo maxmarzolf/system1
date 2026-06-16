@@ -350,11 +350,18 @@ class SkillMapModeActivity(BaseModel):
     days: list[SkillMapActivityDay] = []
 
 
+class SkillMapGhostRepMethodSegment(BaseModel):
+    method: str = ""
+    slug: str = ""
+    count: int = Field(default=0, ge=0)
+
+
 class SkillMapGhostRepSegment(BaseModel):
     pattern: str = ""
     slug: str = ""
     workType: str = "ghost-reps"
     count: int = Field(default=0, ge=0)
+    methods: list[SkillMapGhostRepMethodSegment] = []
 
 
 class SkillMapGhostRepActivityDay(BaseModel):

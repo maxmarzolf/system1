@@ -16,6 +16,7 @@ export type CodeEditorTuning = {
   styleGuide: CodeEditorStyleGuide
   commonPatterns: boolean
   foldControls: boolean
+  showSearchPanel: boolean
 }
 
 export const CODE_EDITOR_TUNING_STORAGE_KEY = 'system1-code-editor-tuning-v1'
@@ -26,6 +27,7 @@ export const defaultCodeEditorTuning: CodeEditorTuning = {
   styleGuide: 'python-pep8',
   commonPatterns: true,
   foldControls: false,
+  showSearchPanel: false,
 }
 
 const CODE_EDITOR_LANGUAGES: readonly CodeEditorLanguage[] = [
@@ -72,6 +74,9 @@ export const loadStoredCodeEditorTuning = (): CodeEditorTuning => {
       foldControls: typeof parsed.foldControls === 'boolean'
         ? parsed.foldControls
         : defaultCodeEditorTuning.foldControls,
+      showSearchPanel: typeof parsed.showSearchPanel === 'boolean'
+        ? parsed.showSearchPanel
+        : defaultCodeEditorTuning.showSearchPanel,
     }
   } catch {
     return defaultCodeEditorTuning

@@ -15,6 +15,7 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
         pattern_rows=[
             {"pattern_id": 1, "pattern_name": "Sliding Window", "method_name": "valid window rule"},
             {"pattern_id": 2, "pattern_name": "Binary Search", "method_name": "left / right bounds"},
+            {"pattern_id": 2, "pattern_name": "Binary Search", "method_name": "search on answer"},
         ],
         generated_rows=[
             {"id": "sw-1", "title": "Window", "tags": ["skill-map", "sliding-window"]},
@@ -35,7 +36,7 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
             {
                 "tracked_card_id": "bs-1",
                 "card_title": "Search",
-                "category_tags": ["skill-map", "binary-search"],
+                "category_tags": ["skill-map", "binary-search", "left-right-bounds"],
                 "accuracy": 90,
                 "created_at": yesterday,
                 "template_mode": "algorithm",
@@ -79,10 +80,22 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
     assert today_bucket["ghostRepCount"] == 0
     assert today_bucket["multipleChoiceCount"] == 1
     assert today_bucket["segments"] == [
-        {"pattern": "Binary Search", "slug": "binary-search", "workType": "multiple-choice", "count": 1}
+        {
+            "pattern": "Binary Search",
+            "slug": "binary-search",
+            "workType": "multiple-choice",
+            "count": 1,
+            "methods": [{"method": "Unclassified", "slug": "unclassified", "count": 1}],
+        }
     ]
     assert yesterday_bucket["segments"] == [
-        {"pattern": "Binary Search", "slug": "binary-search", "workType": "ghost-reps", "count": 1}
+        {
+            "pattern": "Binary Search",
+            "slug": "binary-search",
+            "workType": "ghost-reps",
+            "count": 1,
+            "methods": [{"method": "left / right bounds", "slug": "left-right-bounds", "count": 1}],
+        }
     ]
     assert pattern_freshness["sliding-window"]["daysSinceLastGhostRep"] == 5
     assert pattern_freshness["binary-search"]["daysSinceLastGhostRep"] == 1

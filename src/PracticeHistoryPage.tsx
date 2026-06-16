@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiUrl } from './api'
+import { skillMap } from './data/skill-map'
 import GhostRepActivityChart, { type GhostRepActivity, type GhostRepPatternOrder } from './GhostRepActivityChart'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
@@ -211,6 +212,14 @@ export default function PracticeHistoryPage() {
     setSelectedSlugs(slugs)
   }, [])
 
+  const historyPatternOrder = useMemo(() => {
+    const canonicalMethods = new Map(skillMap.map(node => [node.pattern, node.methods]))
+    return (ghostRepOverview?.patterns ?? []).map(pattern => ({
+      ...pattern,
+      methods: canonicalMethods.get(pattern.pattern) ?? pattern.methods,
+    }))
+  }, [ghostRepOverview?.patterns])
+
   const repeatedWeakDimensions = practiceHistorySummary?.dimensionSummary?.weakDimensions ?? []
 
   return (
@@ -219,7 +228,7 @@ export default function PracticeHistoryPage() {
 
       <GhostRepActivityChart
         activity={ghostRepOverview?.ghostRepActivity}
-        patternOrder={ghostRepOverview?.patterns ?? []}
+        patternOrder={historyPatternOrder}
         onSelectionChange={handleSelectionChange}
       />
       {ghostRepOverviewError && <p className="coach-error">{ghostRepOverviewError}</p>}

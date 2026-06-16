@@ -775,7 +775,7 @@ def _entry_point_from_template_target(template_mode: str, target: str) -> str:
     return f"{match.group(1)}({match.group(2)})" if match else ""
 
 
-def _shorten_annotation_note(value: str, max_words: int = 8) -> str:
+def _shorten_annotation_note(value: str, max_words: int = 16) -> str:
     cleaned = re.sub(r"#\s*", "", str(value or ""))
     cleaned = re.sub(r"\bINVARIANT\s*:\s*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"[.]+$", "", cleaned)
@@ -1099,7 +1099,7 @@ def _core_shape_template_target(pattern_slug: str, algorithm_target: str) -> str
 
 def _pattern_prompt_focus(pattern_slug: str, template_mode: str) -> str:
     if template_mode == INLINE_TEMPLATE_KEY:
-        return "add sparse inline notes to the recall target"
+        return "write a conceptual next-line task for each recall line"
 
     focus_by_pattern = {
         "sliding-window": {
@@ -1757,10 +1757,10 @@ def build_generator_context(
         "For nested DFS/backtracking, prefer the helper skeleton itself, such as def dfs(i): with base case, skip/take branches, recurse, and undo. "
         "For other patterns, keep the minimal loop/recurrence/frontier/boundary skeleton that transfers to nearby LeetCode problems. "
         "coreShape must still be Python-like and executable when practical, but it may use generic names like n, path, state, left, right, or record(path). "
-        "Inline is a separate helper layer. If you include templateTargets.inline, it should be the algorithm target with sparse aligned side-notes. "
+        "Inline is a separate progressive helper layer. If you include templateTargets.inline, it should be the algorithm target with one aligned conceptual task for every nonempty code line. "
         "Any comments or explanatory notes in generated targets should be short '#' comments or aligned side-notes so the UI can render them only in Inline mode. "
-        "Inline notes must be 8 words or fewer, specific to the line's role, and only on key invariant, choice, mutation, frontier, boundary, or result-recording lines. "
-        "Do not annotate routine temporaries, guards, every assignment, every return, or loop headers. "
+        "Each Inline task should gently describe what the user should accomplish next without revealing exact code, identifiers, or syntax. "
+        "Inline tasks must be one concise sentence of 16 words or fewer and include the function signature, routine temporaries, guards, assignments, returns, and loop headers. "
         "Never use generic notes like 'update state for next decision', 'move through core step', or 'return final answer'. "
         "Decision notes must avoid legacy mode labels. "
         f"{specimen_style_prompt(body.specimenTuning)} "

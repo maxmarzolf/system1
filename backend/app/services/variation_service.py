@@ -68,7 +68,7 @@ def _build_variation_drill(
                 template_mode: prompt,
                 TemplateMode.algorithm.value: prompt,
                 "coreShape": f"{pattern_name}: recall the reusable core shape.",
-                "inline": f"{pattern_name}: add sparse inline notes.",
+                "inline": f"{pattern_name}: follow progressive conceptual line tasks.",
             },
             "templateTargets": {
                 template_mode: specimen,

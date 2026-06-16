@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vs, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useSearchParams } from 'react-router-dom'
@@ -17,6 +17,7 @@ import { providerDisplayLabel, useConfiguredProviderLabel } from './llmProviderD
 import TopNav from './TopNav'
 import { useTheme } from './theme'
 import RecallCodeEditor, { type RecallCodeEditorHandle, type RecallEditorLineMeta } from './RecallCodeEditor'
+import FeedbackRails, { type FeedbackRailModel } from './FeedbackRails'
 import {
   formatHotkey,
   matchesHotkey,
@@ -85,9 +86,9 @@ type PracticeFlowState = {
 
 const FLOW_GHOST_REP_TARGET = 5
 const FLOW_MCQ_TARGET = 5
-const SUBMISSION_FEEDBACK_ENABLED = false
-const INLINE_FEEDBACK_ENABLED = false
-const LIVE_FEEDBACK_ENABLED = false
+const SUBMISSION_FEEDBACK_ENABLED = true
+const INLINE_FEEDBACK_ENABLED = true
+const LIVE_FEEDBACK_ENABLED = true
 
 const emptySkillMapCard: Flashcard = {
   id: 'skill-map-loading',
@@ -145,6 +146,20 @@ type CoachAttemptFeedback = {
 type SubmissionFailureModalState = {
   providerLabel: string
   message: string
+}
+
+const compactFeedbackItems = (items: Array<string | undefined>, limit = 4) => {
+  const seen = new Set<string>()
+  return items
+    .map((item) => item?.trim() ?? '')
+    .filter((item) => {
+      if (!item) return false
+      const key = item.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .slice(0, limit)
 }
 
 type CoachSessionPlan = {
@@ -601,13 +616,6 @@ const DEFAULT_TEMPLATE_MODES: TemplateMode[] = ['algorithm']
 const TEMPLATE_MODE_LABELS: Record<TemplateMode, string> = {
   algorithm: 'Algorithm',
 }
-const INLINE_LENS_OPTIONS: Array<{ value: InlineLens; label: string; title: string }> = [
-  { value: 'pattern', label: 'Pattern', title: 'Pattern' },
-  { value: 'plainEnglish', label: 'Plain English', title: 'Plain English' },
-  { value: 'why', label: 'Why', title: 'Why' },
-  { value: 'transfer', label: 'Transfer', title: 'Transfer' },
-  { value: 'debug', label: 'Debug My Understanding', title: 'Debug My Understanding' },
-]
 const patternToSlug = (pattern: string) =>
   pattern
     .toLowerCase()
@@ -1479,7 +1487,7 @@ const inlineNoteForLine = (trimmedLine: string, patternTag: string, lens: Inline
   return transformInlineNoteForLens(patternNote, lens)
 }
 
-const appendAlignedNote = (line: string, note: string, maxWords?: number) => {
+const appendAlignedNote = (line: string, note: string, maxWords = 16) => {
   const compactNote = shortenAnnotationNote(note, maxWords)
   if (!compactNote) return line
   const trimmedRight = line.trimEnd()
@@ -2024,6 +2032,44 @@ const inlineDisplayLines = (code: string) => {
   return displayLines
 }
 
+const capitalizeInlineTask = (value: string) => {
+  const trimmed = value.trim().replace(/[.]+$/, '')
+  return trimmed ? `${trimmed[0]?.toUpperCase()}${trimmed.slice(1)}.` : ''
+}
+
+const fallbackInlineTaskForLine = (line: string) => {
+  const trimmed = line.trim()
+  if (/^(async\s+)?def\b|^(export\s+)?(async\s+)?function\b/.test(trimmed)) {
+    return 'Define a function that accepts the inputs needed for this problem.'
+  }
+  if (/^for\b/.test(trimmed)) return 'Visit the next part of the input while keeping the current item available.'
+  if (/^while\b/.test(trimmed)) return 'Repeat the core step while its controlling condition still holds.'
+  if (/^(if|elif)\b/.test(trimmed)) return 'Check the condition that decides whether this path can continue.'
+  if (/^else\b/.test(trimmed)) return 'Handle the remaining case.'
+  if (/^return\s+(true|True)\b/.test(trimmed)) return 'Report success once every required step has held.'
+  if (/^return\s+(false|False)\b/.test(trimmed)) return 'Stop and report that the goal cannot be completed.'
+  if (/^return\b/.test(trimmed)) return 'Return the result produced by the completed state.'
+  if (/^[\w,[\]().\s]+\s*=\s*/.test(trimmed)) return 'Set up or update the state needed for the next decision.'
+  if (/\.(append|add|push|enqueue)\(/.test(trimmed)) return 'Record the current item so it can contribute later.'
+  if (/\.(pop|remove|discard|dequeue)\(/.test(trimmed)) return 'Remove the item that no longer belongs in the active state.'
+  return 'Carry out the next state-changing step.'
+}
+
+const buildInlineTaskProgression = (plainTarget: string, inlineTarget: string) => {
+  const inlineRows = inlineTarget
+    .split('\n')
+    .map((line) => splitInlineAnnotationLine(line))
+    .filter((parts) => parts.code.trim())
+
+  return plainTarget
+    .split('\n')
+    .filter((line) => line.trim())
+    .map((line, index) => {
+      const note = inlineRows[index]?.note.trim() ?? ''
+      return note ? capitalizeInlineTask(note) : fallbackInlineTaskForLine(line)
+    })
+}
+
 type MarkdownCodeSegment =
   | { type: 'text'; text: string }
   | { type: 'code'; code: string; language: string }
@@ -2173,7 +2219,8 @@ function App() {
   const [multipleChoiceSessionVersion, setMultipleChoiceSessionVersion] = useState(0)
   const [recallTargetMode] = useState<RecallTargetMode>('algorithm')
   const [inlineEnabled, setInlineEnabled] = useState(false)
-  const [inlineLens, setInlineLens] = useState<InlineLens>('pattern')
+  const [inlineLens] = useState<InlineLens>('pattern')
+  const [inlineTaskProgress, setInlineTaskProgress] = useState(0)
   const [plainEnglishPromptOpen, setPlainEnglishPromptOpen] = useState(false)
   const [promptToggleDetail, setPromptToggleDetail] = useState<PromptToggleExplanationResponse | null>(null)
   const [plainEnglishPromptLoading, setPlainEnglishPromptLoading] = useState(false)
@@ -2213,7 +2260,7 @@ function App() {
   const [mainRecallHistoryByCard, setMainRecallHistoryByCard] = useState<Record<string, RecallAttemptSnapshot[]>>({})
   const [liveCoachFeedback, setLiveCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
   const [liveCoachFeedbackMeta, setLiveCoachFeedbackMeta] = useState<LiveFeedbackMeta>({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
-  const [, setLiveCoachLoading] = useState(false)
+  const [liveCoachLoading, setLiveCoachLoading] = useState(false)
   const [liveCoachError, setLiveCoachError] = useState('')
   const [liveCoachTuning, setLiveCoachTuning] = useState(() => loadStoredLiveCoachTuning())
   const [submissionTuning] = useState(() => loadStoredSubmissionTuning())
@@ -2233,6 +2280,8 @@ function App() {
   const shouldFocusMainInputRef = useRef(false)
   const pendingGhostFocusLineRef = useRef<number | null>(null)
   const previewCodeContainerRef = useRef<HTMLDivElement | null>(null)
+  const cardShellRef = useRef<HTMLDivElement | null>(null)
+  const [feedbackRailsPosition, setFeedbackRailsPosition] = useState({ top: 0, height: 0 })
   const [recallMinHeight, setRecallMinHeight] = useState<number | undefined>(undefined)
   const currentCardIdRef = useRef('')
   const liveCoachRequestVersionRef = useRef(0)
@@ -2538,6 +2587,7 @@ function App() {
     setMainPhase('preview')
     setRecallMinHeight(undefined)
     setMainInput('')
+    setInlineTaskProgress(0)
     setMainStartedAt(null)
     setMainCloseEnough(false)
     setMultipleChoiceSelectedChoiceId('')
@@ -2645,8 +2695,7 @@ function App() {
   const inlinePracticeTarget = useMemo(() => {
     const generatedTarget = recallTargetMode === 'algorithm' ? card.templateTargets?.inline?.trim() : ''
     if (generatedTarget && recallTargetMode === 'algorithm') {
-      const cleanGeneratedTarget = stripInlineAnnotationNotes(generatedTarget.replace('{{missing}}', card.missing))
-      return normalizeInlineTemplateTarget(cleanGeneratedTarget, primaryPatternTag, inlineLens)
+      return normalizeInlineTemplateTarget(generatedTarget.replace('{{missing}}', card.missing), primaryPatternTag, inlineLens)
     }
     return normalizeInlineTemplateTarget(selectedPracticeBaseTarget, primaryPatternTag, inlineLens)
   }, [card.missing, card.templateTargets, inlineLens, primaryPatternTag, recallTargetMode, selectedPracticeBaseTarget])
@@ -2654,7 +2703,11 @@ function App() {
     () => normalizeTyping(stripHashAnnotationComments(stripInlineAnnotationNotes(selectedPracticeBaseTarget))),
     [selectedPracticeBaseTarget]
   )
-  const practiceTarget = inlineEnabled ? inlinePracticeTarget : plainPracticeTarget
+  const inlineTaskProgression = useMemo(
+    () => buildInlineTaskProgression(plainPracticeTarget, inlinePracticeTarget),
+    [inlinePracticeTarget, plainPracticeTarget]
+  )
+  const practiceTarget = plainPracticeTarget
   const generatedPracticePrompt =
     (recallTargetMode === 'coreShape' ? card.templatePrompts?.coreShape?.trim() : card.templatePrompts?.algorithm?.trim())
     || card.prompt.trim()
@@ -2774,6 +2827,9 @@ function App() {
     ? (isFlowActive ? flowMultipleChoiceError : multipleChoiceError)
     : skillMapError
   const isGhostRepsEnabled = effectiveSupportLayer === 'ghost-reps'
+  const currentInlineTask = inlineEnabled && mainPhase === 'typing' && !isGhostRepsEnabled
+    ? inlineTaskProgression[inlineTaskProgress]
+    : undefined
   const hasAnsweredCurrent = Boolean(activeCardId && Object.prototype.hasOwnProperty.call(sessionResults, activeCardId))
   const sessionCounterText =
     isFlowActive && practiceFlow
@@ -2823,29 +2879,24 @@ function App() {
   const currentTemplateLabel = TEMPLATE_MODE_LABELS[currentTemplateMode]
   const activeRecallLabel = recallTargetMode === 'coreShape' ? 'Core shape' : currentTemplateLabel
   const practiceLanguage = codeEditorTuning.language
-  const shouldHighlightInlineDecision = inlineEnabled
   const targetedGhostLineCount = practiceFlow?.focus.missedLines.filter((line) => line.expected.trim().length > 0).length ?? 0
-  const practiceInputLabel = inlineEnabled
-    ? `Type the ${activeRecallLabel.toLowerCase()} with inline notes from memory`
-    : recallTargetMode === 'coreShape'
-      ? 'Type the core shape from memory'
-      : 'Type the full algorithm from memory'
+  const practiceInputLabel = recallTargetMode === 'coreShape'
+    ? 'Type the core shape from memory'
+    : 'Type the full algorithm from memory'
   const supportedPracticeInputLabel = isGhostRepsEnabled
     ? practiceFlow?.stage === 'ghost'
       ? `Type only the ${targetedGhostLineCount || practiceFlow.focus.missedLines.length} targeted line${(targetedGhostLineCount || practiceFlow.focus.missedLines.length) === 1 ? '' : 's'} from memory`
       : `${practiceInputLabel} with Ghost Reps`
     : practiceInputLabel
-  const practicePlaceholder = inlineEnabled
-    ? `Type the ${activeRecallLabel.toLowerCase()}, decisions, and inline notes from memory...`
-    : recallTargetMode === 'coreShape'
-      ? 'Type the reusable skeleton from memory...'
-      : 'Type the full algorithm from memory...'
+  const practicePlaceholder = recallTargetMode === 'coreShape'
+    ? 'Type the reusable skeleton from memory...'
+    : 'Type the full algorithm from memory...'
   const supportedPracticePlaceholder = isGhostRepsEnabled
     ? practiceFlow?.stage === 'ghost'
       ? 'Trace only the lines you missed on the last recall...'
       : `Trace the faint ${activeRecallLabel.toLowerCase()} target here...`
     : practicePlaceholder
-  const startRecallLabel = inlineEnabled ? `Hide ${activeRecallLabel.toLowerCase()} notes and start recall` : 'Start'
+  const startRecallLabel = 'Start'
   const supportedStartRecallLabel = isGhostRepsEnabled
     ? practiceFlow?.stage === 'ghost'
       ? 'Start targeted Ghost Reps'
@@ -2985,6 +3036,7 @@ function App() {
     setMainPhase('preview')
     setRecallMinHeight(undefined)
     setMainInput('')
+    setInlineTaskProgress(0)
     setMainStartedAt(null)
     setMainCloseEnough(false)
     setMultipleChoiceSelectedChoiceId('')
@@ -3111,14 +3163,6 @@ function App() {
     }
   }
 
-  const selectInlineLens = (nextLens: InlineLens) => {
-    if (inlineLens === nextLens) return
-    setInlineLens(nextLens)
-    if (mainPhase !== 'preview') {
-      resetPerCardInteraction()
-    }
-  }
-
   useEffect(() => {
     resetPerCardInteraction()
   }, [activeCardId, currentPracticeMode, flowMultipleChoicePosition, practiceFlow?.cycle, sessionPosition])
@@ -3155,6 +3199,7 @@ function App() {
     }
     setMainPhase('typing')
     setMainStartedAt(Date.now())
+    setInlineTaskProgress(0)
     if (practiceFlow?.stage === 'ghost') {
       setMainInput(flowGhostScaffold)
       pendingGhostFocusLineRef.current = firstIncompleteGhostLineNumber(flowGhostScaffold, practiceFlow.focus.missedLines)
@@ -3171,9 +3216,17 @@ function App() {
     setLiveCoachFeedbackMeta({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
   }
 
-  const handleMainInputChange = (nextValue: string) => {
+  const handleMainInputChange = (nextValue: string, context: { cursorLineNumber: number }) => {
     if (mainPhase !== 'typing') return
     setMainInput(nextValue)
+    if (inlineEnabled && !isGhostRepsEnabled) {
+      const completedLineCount = nextValue
+        .split('\n')
+        .slice(0, Math.max(context.cursorLineNumber - 1, 0))
+        .filter((line) => line.trim().length > 0)
+        .length
+      setInlineTaskProgress((current) => Math.max(current, completedLineCount))
+    }
     lastMainInputEditAtRef.current = Date.now()
   }
 
@@ -3611,6 +3664,10 @@ function App() {
     if (practiceFlow) return
     if (!hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'submitted' || mainCloseEnough) return
     setMainPhase('typing')
+    setInlineTaskProgress((current) => Math.max(
+      current,
+      mainInput.split('\n').filter((line) => line.trim().length > 0).length
+    ))
     setMainStartedAt(Date.now())
     setCurrentInteractionId(createInteractionId())
     lastMainInputEditAtRef.current = Date.now()
@@ -3622,6 +3679,7 @@ function App() {
     if (!hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'submitted') return
     shouldFocusMainInputRef.current = !practiceFlow || practiceFlow.stage !== 'ghost'
     setMainPhase('typing')
+    setInlineTaskProgress(0)
     if (practiceFlow?.stage === 'ghost') {
       setMainInput(flowGhostScaffold)
       pendingGhostFocusLineRef.current = firstIncompleteGhostLineNumber(flowGhostScaffold, practiceFlow.focus.missedLines)
@@ -3907,23 +3965,6 @@ function App() {
   const correctMultipleChoice = activeMultipleChoiceCard?.choices.find((choice) => choice.id === activeMultipleChoiceCard.correctChoiceId) ?? null
   const multipleChoiceSubmitted = Boolean(submittedMultipleChoiceId)
   const multipleChoiceCorrect = Boolean(submittedMultipleChoiceId && submittedMultipleChoiceId === activeMultipleChoiceCard?.correctChoiceId)
-  const inlineLensTabs = inlineEnabled ? (
-    <div className="inline-lens-tabs" role="tablist" aria-label="Inline explanation lens">
-      {INLINE_LENS_OPTIONS.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          role="tab"
-          className={inlineLens === option.value ? 'inline-lens-tab active' : 'inline-lens-tab'}
-          aria-selected={inlineLens === option.value}
-          title={option.title}
-          onClick={() => selectInlineLens(option.value)}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  ) : null
   const primaryCardAction = (() => {
     if (!hasDeck) return null
 
@@ -4100,9 +4141,6 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainPhase, practiceFlow])
 
-  const submissionFeedbackNextStep =
-    coachFeedback?.immediateCorrection || coachFeedback?.primaryFocus || 'Review the drifted step, then rewrite the recall target once more.'
-  const showGeneratingSubmissionFeedback = SUBMISSION_FEEDBACK_ENABLED && coachLoading && !coachFeedback
   const submissionResultLabel = latestSubmittedWasGhostRep
     ? 'Ghost Rep'
     : latestSubmittedAttempt?.exact
@@ -4124,13 +4162,6 @@ function App() {
             ? 'Gemma 4'
             : 'LLM'
       : 'Rules'
-  const submissionAttemptStatusText = mainCloseEnough
-    ? `${activeRecallLabel} recall recorded.`
-    : latestSubmittedWasGhostRep
-      ? `Ghost rep logged for ${activeRecallLabel}. Repeat it until the shape starts to stick.`
-      : practiceFlow?.stage === 'ghost'
-        ? `Full recall captured ${practiceFlow.focus.missedLines.length} targeted line${practiceFlow.focus.missedLines.length === 1 ? '' : 's'}. Start ghost reps for just those lines.`
-        : `This recall attempt is not sound yet. Revise the logic and submit again.`
   const flowStatusText = !practiceFlow
     ? 'Anchor the current card, run a full recall, then sequence targeted ghost reps and MCQs from the lines you missed.'
     : practiceFlow.stage === 'recall'
@@ -4144,136 +4175,38 @@ function App() {
   const moveCardsHotkey = formatHotkey('move-cards', isMac)
   const indentOutdentHotkey = formatHotkey('indent-outdent', isMac)
   const showSubmittedLineReview = mainPhase === 'submitted' && !mainCloseEnough && !latestSubmittedWasGhostRep
-  const submittedFeedbackInlineNotes = useMemo<LiveInlineNote[]>(() => {
-    if (!SUBMISSION_FEEDBACK_ENABLED) return []
-    if (mainPhase !== 'submitted' || latestSubmittedWasGhostRep) return []
-
-    const sourceLines = (mainInput || '').split('\n')
-    const fallbackIndex = findNearestWrittenLineIndex(sourceLines, sourceLines.length - 1)
-    const fallbackLineNumber = fallbackIndex >= 0 ? fallbackIndex + 1 : 1
-    const seenNotes = new Set<string>()
-    const notes: LiveInlineNote[] = []
-
-    const addNote = (
-      text: string | undefined,
-      tone: LiveInlineTone,
-      options: { maxWords?: number, fallbackOnly?: boolean } = {}
-    ) => {
-      const compactNote = shortenAnnotationNote(text ?? '', options.maxWords)
-      if (!compactNote) return
-      const noteKey = compactNote.toLowerCase()
-      if (seenNotes.has(noteKey)) return
-      seenNotes.add(noteKey)
-      const sourceIndex = options.fallbackOnly
-        ? fallbackIndex
-        : findBestLiveNoteAnchorLine(sourceLines, compactNote, fallbackIndex)
-      notes.push({
-        text: compactNote,
-        sourceLineNumber: sourceIndex >= 0 ? sourceIndex + 1 : fallbackLineNumber,
-        tone,
-        maxWords: options.maxWords,
-      })
-    }
-
-    if (showGeneratingSubmissionFeedback) {
-      addNote('Waiting for submission feedback', 'neutral', { maxWords: 8, fallbackOnly: true })
-      return notes
-    }
-
-    if (coachError) {
-      addNote(coachError, 'negative', { maxWords: 12, fallbackOnly: true })
-    }
-
-    if (coachFeedback) {
-      if (mainCloseEnough) {
-        addNote(coachFeedback.affirmation || submissionAttemptStatusText, 'positive', { maxWords: 10 })
-        addNote(coachFeedback.nextMove || submissionFeedbackNextStep, 'neutral', { maxWords: 12, fallbackOnly: true })
-      } else {
-        addNote(coachFeedback.primaryFocus, 'negative', { maxWords: 12 })
-        addNote(coachFeedback.immediateCorrection, 'negative', { maxWords: 12 })
-        addNote(coachFeedback.diagnosis, 'negative', { maxWords: 12 })
-        addNote(submissionFeedbackNextStep, 'neutral', { maxWords: 12, fallbackOnly: true })
-      }
-    } else if (!coachLoading) {
-      addNote(submissionAttemptStatusText, mainCloseEnough ? 'positive' : 'negative', {
-        maxWords: 12,
-        fallbackOnly: true,
-      })
-    }
-
-    if (coachLoading && coachFeedback) {
-      addNote('Refining submission feedback', 'neutral', { maxWords: 8, fallbackOnly: true })
-    }
-    return notes.slice(0, 5)
-  }, [
-    coachError,
-    coachFeedback,
-    coachLoading,
-    latestSubmittedWasGhostRep,
-    mainCloseEnough,
-    mainInput,
-    mainPhase,
-    showGeneratingSubmissionFeedback,
-    submissionAttemptStatusText,
-    submissionFeedbackNextStep,
-  ])
-  const submittedFeedbackAnnotationsBySourceLine = useMemo(() => {
-    const annotations = new Map<number, LiveLineAnnotation>()
-    submittedFeedbackInlineNotes.forEach((note) => {
-      const sourceIndex = note.sourceLineNumber ? note.sourceLineNumber - 1 : null
-      if (sourceIndex === null || sourceIndex < 0) return
-      annotations.set(sourceIndex, mergeLiveLineAnnotation(annotations.get(sourceIndex), note))
-    })
-    return annotations
-  }, [submittedFeedbackInlineNotes])
   const recallEditorLineMeta = useMemo<RecallEditorLineMeta[]>(() => {
     const lineCount = Math.max((mainInput || '').split('\n').length, displayLines.length, 1)
 
     return Array.from({ length: lineCount }, (_, index) => {
       const displayLine = displayLines[index]
-      const parts = displayLine ? splitInlineAnnotationLine(displayLine.text) : null
       const sourceLineNumber = displayLine?.sourceLineNumber ?? index + 1
       const status =
         showSubmittedLineReview && sourceLineNumber
           ? lineReview.actualStatuses[sourceLineNumber - 1] ?? 'match'
           : null
-      const submittedAnnotation = sourceLineNumber
-        ? submittedFeedbackAnnotationsBySourceLine.get(sourceLineNumber - 1)
-        : undefined
-      const inlineNotes = [parts?.note.trim(), submittedAnnotation?.note].filter(Boolean)
 
       return {
         sourceLineNumber,
         status,
-        liveTone: submittedAnnotation
-          ? mergeLiveTone(displayLine?.liveTone, submittedAnnotation.tone)
-          : displayLine?.liveTone ?? null,
-        inlineDecision: Boolean(displayLine && shouldHighlightInlineDecision && isInlineDecisionLine(displayLine.text)),
-        inlineNote: inlineNotes.length > 0 ? inlineNotes.join(' / ') : undefined,
+        liveTone: null,
+        inlineDecision: false,
+        inlineNote: undefined,
       }
     })
   }, [
     displayLines,
     lineReview.actualStatuses,
     mainInput,
-    shouldHighlightInlineDecision,
     showSubmittedLineReview,
-    submittedFeedbackAnnotationsBySourceLine,
   ])
   const previewEditorLineMeta = useMemo<RecallEditorLineMeta[]>(() => (
-    previewDisplayLines.map(({ line, sourceLineNumber, absorbedDecision }) => {
-      const parts = splitInlineAnnotationLine(line)
-      const inlineDecision = shouldHighlightInlineDecision && (
-        isInlineDecisionLine(line) || absorbedDecision
-      )
-
-      return {
-        sourceLineNumber,
-        inlineDecision,
-        inlineNote: parts.note.trim() ? parts.note.trim() : undefined,
-      }
-    })
-  ), [previewDisplayLines, shouldHighlightInlineDecision])
+    plainPracticeTarget.split('\n').map((_, index) => ({
+      sourceLineNumber: index + 1,
+      inlineDecision: false,
+      inlineNote: undefined,
+    }))
+  ), [plainPracticeTarget])
 
   const handleRecallEditorSubmitHotkey = () => {
     if (mainPhase === 'submitted' && latestSubmittedWasGhostRep) {
@@ -4294,6 +4227,95 @@ function App() {
     setLiveCoachFeedback(null)
     setLiveCoachFeedbackMeta({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
   }, [liveFeedbackEnabled])
+
+  const feedbackRailModel = useMemo<FeedbackRailModel | null>(() => {
+    if (currentPracticeMode !== 'recall') return null
+
+    if (mainPhase === 'submitted' && !latestSubmittedWasGhostRep && SUBMISSION_FEEDBACK_ENABLED) {
+      return {
+        source: 'Submission',
+        loading: coachLoading && !coachFeedback,
+        items: compactFeedbackItems([
+          coachFeedback?.affirmation,
+          ...(coachFeedback?.strengths ?? []),
+          coachFeedback?.keepInMind,
+          coachError,
+          coachFeedback?.diagnosis,
+          coachFeedback?.primaryFocus,
+          coachFeedback?.immediateCorrection,
+          coachFeedback?.why,
+        ], 8),
+      }
+    }
+
+    if (mainPhase === 'typing' && liveFeedbackEnabled && (liveCoachLoading || liveCoachFeedback || liveCoachError)) {
+      return {
+        source: 'Live',
+        loading: liveCoachLoading && !liveCoachFeedback,
+        items: compactFeedbackItems([
+          liveCoachFeedback?.affirmation,
+          ...(liveCoachFeedback?.strengths ?? []),
+          liveCoachFeedback?.keepInMind,
+          liveCoachError,
+          liveCoachFeedback?.diagnosis,
+          liveCoachFeedback?.primaryFocus,
+          liveCoachFeedback?.immediateCorrection,
+          liveCoachFeedback?.why,
+        ], 8),
+      }
+    }
+
+    return null
+  }, [
+    coachError,
+    coachFeedback,
+    coachLoading,
+    currentPracticeMode,
+    latestSubmittedWasGhostRep,
+    liveCoachError,
+    liveCoachFeedback,
+    liveCoachLoading,
+    liveFeedbackEnabled,
+    mainPhase,
+  ])
+
+  useLayoutEffect(() => {
+    const shell = cardShellRef.current
+    const editor = shell?.querySelector<HTMLElement>('.recall-editor-container') ?? null
+    if (!shell || !editor || !feedbackRailModel) {
+      setFeedbackRailsPosition({ top: 0, height: 0 })
+      return
+    }
+
+    const measure = () => {
+      const shellRect = shell.getBoundingClientRect()
+      const editorRect = editor.getBoundingClientRect()
+      const nextPosition = {
+        top: editorRect.top - shellRect.top,
+        height: editorRect.height,
+      }
+      setFeedbackRailsPosition((current) => (
+        Math.abs(current.top - nextPosition.top) < 0.25 && Math.abs(current.height - nextPosition.height) < 0.25
+          ? current
+          : nextPosition
+      ))
+    }
+    measure()
+    const animationFrame = window.requestAnimationFrame(measure)
+    const settleTimer = window.setTimeout(measure, 250)
+    const alignmentTimer = window.setInterval(measure, 250)
+    const observer = new ResizeObserver(measure)
+    observer.observe(shell)
+    observer.observe(editor)
+    window.addEventListener('resize', measure)
+    return () => {
+      window.cancelAnimationFrame(animationFrame)
+      window.clearTimeout(settleTimer)
+      window.clearInterval(alignmentTimer)
+      observer.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [feedbackRailModel, mainPhase, plainEnglishPromptOpen, recallMinHeight])
 
   return (
     <div className={(flowDrawerOpen || (relatedDrawerOpen && relatedLeetCodeSet)) ? 'app app-side-drawer-open' : 'app'}>
@@ -4327,7 +4349,7 @@ function App() {
         practiceHistoryHref={practiceHistoryHref}
       />
 
-  <div className={relatedLeetCodeSet ? 'card-shell card-shell-has-drawer' : 'card-shell'}>
+  <div ref={cardShellRef} className={relatedLeetCodeSet ? 'card-shell card-shell-has-drawer' : 'card-shell'}>
         <div className="card-side-drawer-actions" aria-label="Card side controls">
           <button
             type="button"
@@ -4764,9 +4786,13 @@ function App() {
               )
             ) : mainPhase === 'preview' && (
               <div className="drill-fade-in">
-                <div className="code-container recall-editor-container" ref={previewCodeContainerRef}>
+                <div
+                  className="code-container recall-editor-container"
+                  ref={(node) => {
+                    previewCodeContainerRef.current = node
+                  }}
+                >
                   <div className="typing-editor-shell">
-                    {inlineLensTabs}
                     <div className="recall-editor-code-wrap">
                       <div className="recall-submit-summary-slot" aria-live="polite" />
                       <RecallCodeEditor
@@ -4780,6 +4806,7 @@ function App() {
                         styleGuide={codeEditorTuning.styleGuide}
                         commonPatterns={codeEditorTuning.commonPatterns}
                         foldControls={codeEditorTuning.foldControls}
+                        showSearchPanel={codeEditorTuning.showSearchPanel}
                         onChange={() => {}}
                         onSubmitHotkey={startMainRecall}
                       />
@@ -4802,7 +4829,6 @@ function App() {
                   style={recallMinHeight ? { minHeight: recallMinHeight } : undefined}
                 >
                   <div className="typing-editor-shell">
-                    {inlineLensTabs}
                     <div className="recall-editor-code-wrap">
                       <div className="recall-submit-summary-slot" aria-live="polite">
                         {mainPhase === 'submitted' && latestSubmittedAttempt && (
@@ -4828,14 +4854,16 @@ function App() {
                         theme={theme}
                         editable={mainPhase === 'typing'}
                         disabled={hasAnsweredCurrent || sessionFinished}
-                        placeholder={mainPhase === 'typing' && isGhostRepsEnabled ? '' : supportedPracticePlaceholder}
+                        placeholder={mainPhase === 'typing' && (isGhostRepsEnabled || inlineEnabled) ? '' : supportedPracticePlaceholder}
                         ghostTarget={mainPhase === 'typing' && isGhostRepsEnabled ? ghostTargetCode : undefined}
+                        inlineTask={currentInlineTask}
                         lineMeta={recallEditorLineMeta}
                         minHeight={recallMinHeight}
                         intellisense={codeEditorTuning.intellisense}
                         styleGuide={codeEditorTuning.styleGuide}
                         commonPatterns={codeEditorTuning.commonPatterns}
                         foldControls={codeEditorTuning.foldControls}
+                        showSearchPanel={codeEditorTuning.showSearchPanel}
                         onChange={handleMainInputChange}
                         onSubmitHotkey={handleRecallEditorSubmitHotkey}
                         onEnterKey={handleGhostRepEnterKey}
@@ -4890,6 +4918,13 @@ function App() {
           )}
         </div>
       </section>
+      {feedbackRailModel && feedbackRailsPosition.height > 0 && (
+        <FeedbackRails
+          feedback={feedbackRailModel}
+          top={feedbackRailsPosition.top}
+          height={feedbackRailsPosition.height}
+        />
+      )}
       <aside
         id="card-flow-panel"
         className={flowDrawerOpen ? 'card-flow-panel card-flow-panel-open' : 'card-flow-panel'}

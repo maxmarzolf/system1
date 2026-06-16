@@ -334,6 +334,11 @@ export default function TunePage() {
                     onChange={(value) => updateCodeEditorTuning('foldControls', value)}
                     label="Show fold controls in gutter"
                   />
+                  <ToggleControl
+                    checked={codeEditorTuning.showSearchPanel}
+                    onChange={(value) => updateCodeEditorTuning('showSearchPanel', value)}
+                    label="Show editor search panel (Command+G may open it)"
+                  />
                 </div>
               </div>
             </TuneSection>

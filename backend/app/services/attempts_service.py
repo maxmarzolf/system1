@@ -150,12 +150,14 @@ def _build_support_counts(attempts: list[AttemptOverviewItem]) -> dict[str, int]
 def _build_ghost_rep_activity(
     attempt_rows: list[SkillMapOverviewAttemptRow],
     slug_to_pattern: dict[str, str],
+    methods_by_pattern_slug: dict[str, list[str]],
     window_days: int = 10,
 ) -> SkillMapGhostRepActivity:
     today = datetime.now(timezone.utc).date()
     window_start = today - timedelta(days=max(window_days - 1, 0))
     known_pattern_slugs = set(slug_to_pattern)
     counts_by_day_type_pattern: dict[str, Counter[tuple[str, str]]] = {}
+    method_counts_by_day_type_pattern: dict[tuple[str, str, str], Counter[str]] = {}
     pattern_ghost_totals: Counter[str] = Counter()
     pattern_mcq_totals: Counter[str] = Counter()
     last_ghost_seen_by_pattern: dict[str, date] = {}
@@ -177,12 +179,20 @@ def _build_ghost_rep_activity(
         attempt_date = created_at.date()
         iso_date = attempt_date.isoformat()
         for slug in matched_pattern_slugs:
+            known_methods = methods_by_pattern_slug.get(slug, [])
+            matched_method_slugs = [
+                _pattern_slug(method)
+                for method in known_methods
+                if _pattern_slug(method) in category_tags
+            ]
+            method_slug = matched_method_slugs[0] if matched_method_slugs else "unclassified"
             if is_mcq:
                 pattern_mcq_totals[slug] += 1
             else:
                 pattern_ghost_totals[slug] += 1
             if attempt_date >= window_start:
                 counts_by_day_type_pattern.setdefault(iso_date, Counter())[(work_type, slug)] += 1
+                method_counts_by_day_type_pattern.setdefault((iso_date, work_type, slug), Counter())[method_slug] += 1
             if is_ghost_rep and (slug not in last_ghost_seen_by_pattern or attempt_date > last_ghost_seen_by_pattern[slug]):
                 last_ghost_seen_by_pattern[slug] = attempt_date
             if slug not in last_work_seen_by_pattern or attempt_date > last_work_seen_by_pattern[slug]:
@@ -212,6 +222,24 @@ def _build_ghost_rep_activity(
                     "slug": slug,
                     "workType": work_type,
                     "count": count,
+                    "methods": [
+                        {
+                            "method": next(
+                                (
+                                    method
+                                    for method in methods_by_pattern_slug.get(slug, [])
+                                    if _pattern_slug(method) == method_slug
+                                ),
+                                "Unclassified",
+                            ),
+                            "slug": method_slug,
+                            "count": method_count,
+                        }
+                        for method_slug, method_count in sorted(
+                            method_counts_by_day_type_pattern.get((iso_date, work_type, slug), Counter()).items(),
+                            key=lambda item: item[0],
+                        )
+                    ],
                 }
                 for (work_type, slug), count in sorted(
                     day_counts.items(),
@@ -267,6 +295,10 @@ def build_skill_map_overview(
 
     patterns = list(grouped.values())
     slug_to_pattern = {str(item["slug"]): str(item["pattern"]) for item in patterns}
+    methods_by_pattern_slug = {
+        str(item["slug"]): [str(method) for method in item["methods"]]
+        for item in patterns
+    }
     known_pattern_slugs = set(slug_to_pattern)
 
     generated_cards: dict[str, dict[str, Any]] = {}
@@ -443,7 +475,7 @@ def build_skill_map_overview(
         "summary": summary,
         "patterns": pattern_summaries,
         "reviewQueue": review_queue,
-        "ghostRepActivity": _build_ghost_rep_activity(attempt_rows, slug_to_pattern),
+        "ghostRepActivity": _build_ghost_rep_activity(attempt_rows, slug_to_pattern, methods_by_pattern_slug),
     }
 
 

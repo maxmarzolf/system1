@@ -77,13 +77,15 @@ type RecallCodeEditorProps = {
   disabled?: boolean
   placeholder: string
   ghostTarget?: string
+  inlineTask?: string
   lineMeta: RecallEditorLineMeta[]
   minHeight?: number
   intellisense?: boolean
   styleGuide?: CodeEditorStyleGuide
   commonPatterns?: boolean
   foldControls?: boolean
-  onChange: (nextValue: string) => void
+  showSearchPanel?: boolean
+  onChange: (nextValue: string, context: { cursorLineNumber: number }) => void
   onSubmitHotkey: () => void
   onEnterKey?: (context: { value: string, cursorLineNumber: number }) => boolean
 }
@@ -230,7 +232,6 @@ const recallBaseSetup = [
   highlightSelectionMatches(),
   keymap.of([
     ...defaultKeymap,
-    ...searchKeymap,
     ...historyKeymap,
     ...foldKeymap,
     ...lintKeymap,
@@ -301,6 +302,26 @@ class GhostBlockWidget extends WidgetType {
   }
 }
 
+class InlineTaskWidget extends WidgetType {
+  readonly task: string
+
+  constructor(task: string) {
+    super()
+    this.task = task
+  }
+
+  eq(widget: InlineTaskWidget) {
+    return widget.task === this.task
+  }
+
+  toDOM() {
+    const element = document.createElement('span')
+    element.className = 'cm-recall-inline-task'
+    element.textContent = this.task
+    return element
+  }
+}
+
 const lineClassForMeta = (meta: RecallEditorLineMeta) => {
   const classes = ['cm-recall-line']
   if (meta.status) classes.push(`line-${meta.status}`)
@@ -316,7 +337,8 @@ const lineClassForMeta = (meta: RecallEditorLineMeta) => {
 const buildRecallDecorations = (
   view: EditorView,
   lineMeta: RecallEditorLineMeta[],
-  ghostTarget: string | undefined
+  ghostTarget: string | undefined,
+  inlineTask: string | undefined
 ): DecorationSet => {
   const builder = new RangeSetBuilder<Decoration>()
   const doc = view.state.doc
@@ -352,6 +374,14 @@ const buildRecallDecorations = (
         Decoration.widget({ widget: new InlineNoteWidget(meta.inlineNote, meta.liveTone), side: 2 })
       )
     }
+
+    if (inlineTask && line.number === view.state.doc.lineAt(view.state.selection.main.head).number && !line.text.trim()) {
+      builder.add(
+        line.to,
+        line.to,
+        Decoration.widget({ widget: new InlineTaskWidget(inlineTask), side: 4 })
+      )
+    }
   }
 
   if (ghostLines.length > doc.lines) {
@@ -368,8 +398,8 @@ const buildRecallDecorations = (
   return builder.finish()
 }
 
-const recallDecorations = (lineMeta: RecallEditorLineMeta[], ghostTarget?: string) =>
-  EditorView.decorations.of((view) => buildRecallDecorations(view, lineMeta, ghostTarget))
+const recallDecorations = (lineMeta: RecallEditorLineMeta[], ghostTarget?: string, inlineTask?: string) =>
+  EditorView.decorations.of((view) => buildRecallDecorations(view, lineMeta, ghostTarget, inlineTask))
 
 const recallTheme = (theme: AppTheme) => [
   theme === 'dark-high-contrast' ? oneDark : [],
@@ -434,6 +464,8 @@ const editableExtension = (editable: boolean, disabled?: boolean) => [
 
 const foldControlsExtension = (foldControls: boolean) => foldControls ? foldGutter() : []
 
+const searchPanelExtension = (showSearchPanel: boolean) => showSearchPanel ? keymap.of(searchKeymap) : []
+
 const valueFromEditor = (view: EditorView) => view.state.doc.toString()
 
 const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProps>(function RecallCodeEditor(
@@ -445,11 +477,13 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
     disabled,
     placeholder,
     ghostTarget,
+    inlineTask,
     lineMeta,
     minHeight,
     intellisense = true,
     commonPatterns = true,
     foldControls = false,
+    showSearchPanel = false,
     onChange,
     onSubmitHotkey,
     onEnterKey,
@@ -469,6 +503,7 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
   const placeholderCompartment = useMemo(() => new Compartment(), [])
   const assistanceCompartment = useMemo(() => new Compartment(), [])
   const foldControlsCompartment = useMemo(() => new Compartment(), [])
+  const searchPanelCompartment = useMemo(() => new Compartment(), [])
 
   useEffect(() => {
     onChangeRef.current = onChange
@@ -545,14 +580,17 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
         indentationCompartment.of(resolveIndentationExtension(language)),
         themeCompartment.of(recallTheme(theme)),
         editableCompartment.of(editableExtension(editable, disabled)),
-        decorationsCompartment.of(recallDecorations(lineMeta, ghostTarget)),
+        decorationsCompartment.of(recallDecorations(lineMeta, ghostTarget, inlineTask)),
         placeholderCompartment.of(createPlaceholderExtension(placeholder)),
         assistanceCompartment.of(editorAssistanceExtension(language, intellisense, commonPatterns)),
         foldControlsCompartment.of(foldControlsExtension(foldControls)),
+        searchPanelCompartment.of(searchPanelExtension(showSearchPanel)),
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return
-          onChangeRef.current(valueFromEditor(update.view))
+          onChangeRef.current(valueFromEditor(update.view), {
+            cursorLineNumber: update.state.doc.lineAt(update.state.selection.main.head).number,
+          })
         }),
       ],
     })
@@ -607,9 +645,9 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
 
   useEffect(() => {
     viewRef.current?.dispatch({
-      effects: decorationsCompartment.reconfigure(recallDecorations(lineMeta, ghostTarget)),
+      effects: decorationsCompartment.reconfigure(recallDecorations(lineMeta, ghostTarget, inlineTask)),
     })
-  }, [decorationsCompartment, ghostTarget, lineMeta])
+  }, [decorationsCompartment, ghostTarget, inlineTask, lineMeta])
 
   useEffect(() => {
     viewRef.current?.dispatch({
@@ -628,6 +666,12 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
       effects: foldControlsCompartment.reconfigure(foldControlsExtension(foldControls)),
     })
   }, [foldControls, foldControlsCompartment])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: searchPanelCompartment.reconfigure(searchPanelExtension(showSearchPanel)),
+    })
+  }, [searchPanelCompartment, showSearchPanel])
 
   return (
     <div

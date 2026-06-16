@@ -49,7 +49,7 @@ def build_core_algorithm_drill(row: dict[str, Any]) -> dict[str, Any]:
         "templatePrompts": {
             "algorithm": prompt,
             "coreShape": prompt,
-            "inline": f"{pattern_name}: add line notes.",
+            "inline": f"{pattern_name}: follow progressive conceptual line tasks.",
         },
         "templateTargets": {
             "algorithm": code,

@@ -5,6 +5,13 @@ export type GhostRepActivitySegment = {
   slug: string
   workType?: 'ghost-reps' | 'multiple-choice'
   count: number
+  methods?: GhostRepActivityMethodSegment[]
+}
+
+export type GhostRepActivityMethodSegment = {
+  method: string
+  slug: string
+  count: number
 }
 
 export type GhostRepActivityDay = {
@@ -40,6 +47,7 @@ export type GhostRepActivity = {
 export type GhostRepPatternOrder = {
   pattern: string
   slug: string
+  methods?: string[]
 }
 
 const shortDateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
@@ -60,6 +68,8 @@ const GHOST_REP_PATTERN_COLORS = [
   '#9b8cff',
   '#b08d57',
 ]
+
+const METHOD_COLORS = ['#56ccf2', '#6fcf97', '#f2c94c', '#bb6bd9', '#ff7a90', '#94a3b8']
 
 const parseCalendarDate = (value: string) => new Date(`${value}T12:00:00`)
 const formatCalendarDate = (value: string) => shortDateFormatter.format(parseCalendarDate(value))
@@ -305,6 +315,128 @@ function TrendAnalysisChart({
   )
 }
 
+function MethodDrilldown({
+  activity,
+  selectedKeys,
+  patternOrder,
+}: {
+  activity: GhostRepActivity
+  selectedKeys: Set<string>
+  patternOrder: GhostRepPatternOrder[]
+}) {
+  const selectedParents = [...selectedKeys].map((key) => {
+    const [slug, workType] = key.split('::')
+    const patternMeta = patternOrder.find(pattern => pattern.slug === slug)
+    const fallbackSegment = activity.days.flatMap(day => day.segments)
+      .find(segment => segmentKey(segment.slug, segment.workType) === key)
+    return {
+      key,
+      slug,
+      workType,
+      pattern: patternMeta?.pattern ?? fallbackSegment?.pattern ?? slug,
+      methods: patternMeta?.methods ?? [],
+    }
+  })
+
+  return (
+    <div className="method-drilldown-section">
+      <div className="method-drilldown-heading">
+        <span className="trend-analysis-title">Method Drill-down</span>
+        <span className="method-drilldown-note">Practice without a method tag is shown as Unclassified.</span>
+      </div>
+
+      {selectedParents.map(parent => {
+        const dailyMethods = activity.days.map(day => (
+          day.segments.find(segment => segmentKey(segment.slug, segment.workType) === parent.key)?.methods ?? []
+        ))
+        const totals = new Map<string, { method: string; count: number }>()
+        const allowedMethodSlugs = new Set<string>()
+        for (const method of parent.methods) {
+          const slug = method.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+          allowedMethodSlugs.add(slug)
+          totals.set(slug, { method, count: 0 })
+        }
+        for (const methods of dailyMethods) {
+          for (const method of methods) {
+            const slug = allowedMethodSlugs.size === 0 || allowedMethodSlugs.has(method.slug)
+              ? method.slug
+              : 'unclassified'
+            const label = slug === 'unclassified' ? 'Unclassified' : method.method
+            const current = totals.get(slug)
+            totals.set(slug, { method: label, count: (current?.count ?? 0) + method.count })
+          }
+        }
+        const visibleMethods = [...totals.entries()].filter(([slug, value]) => slug !== 'unclassified' || value.count > 0)
+        const colorByMethod = new Map(visibleMethods.map(([slug], index) => [slug, METHOD_COLORS[index % METHOD_COLORS.length]]))
+        const peak = Math.max(...dailyMethods.map(methods => methods.reduce((sum, method) => sum + method.count, 0)), 1)
+
+        return (
+          <div key={parent.key} className="method-drilldown-parent">
+            <div className="method-drilldown-parent-header">
+              <strong>{parent.pattern}</strong>
+              <span>{parent.workType === 'multiple-choice' ? 'MCQ' : 'Ghost Reps'}</span>
+            </div>
+            <div className="method-drilldown-legend">
+              {visibleMethods.map(([slug, method]) => (
+                <span key={slug} className="trend-analysis-legend-item">
+                  <span className="trend-analysis-legend-dot" style={{ background: colorByMethod.get(slug) }} />
+                  {method.method} <b>{method.count}</b>
+                </span>
+              ))}
+            </div>
+            <div className="method-drilldown-chart">
+              {activity.days.map((day, dayIndex) => {
+                const methodsBySlug = new Map<string, GhostRepActivityMethodSegment>()
+                for (const method of dailyMethods[dayIndex]) {
+                  const slug = allowedMethodSlugs.size === 0 || allowedMethodSlugs.has(method.slug)
+                    ? method.slug
+                    : 'unclassified'
+                  const current = methodsBySlug.get(slug)
+                  methodsBySlug.set(slug, {
+                    method: slug === 'unclassified' ? 'Unclassified' : method.method,
+                    slug,
+                    count: (current?.count ?? 0) + method.count,
+                  })
+                }
+                const methods = [...methodsBySlug.values()]
+                const total = methods.reduce((sum, method) => sum + method.count, 0)
+                return (
+                  <div key={`${parent.key}-${day.date}`} className="method-drilldown-day">
+                    <div className="daily-work-history-day-label">
+                      <strong>{formatCalendarWeekday(day.date)}</strong>
+                      <span>{formatCalendarDate(day.date)}</span>
+                    </div>
+                    <div className="method-drilldown-bar">
+                      {total > 0 ? (
+                        <div className="method-drilldown-fill" style={{ width: `${Math.max(8, Math.round((total / peak) * 100))}%` }}>
+                          {methods.map(method => (
+                            <span
+                              key={method.slug}
+                              className="method-drilldown-segment"
+                              style={{
+                                flexGrow: method.count,
+                                '--method-color': colorByMethod.get(method.slug) ?? METHOD_COLORS[METHOD_COLORS.length - 1],
+                              } as CSSProperties}
+                              title={`${method.method}: ${method.count}`}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="daily-work-history-empty-label">—</span>
+                      )}
+                    </div>
+                    <span className="method-drilldown-total">{total || ''}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 
 export default function GhostRepActivityChart({
   activity,
@@ -523,11 +655,14 @@ export default function GhostRepActivityChart({
       </div>
 
       {selectedSeriesData.length > 0 && (
-        <TrendAnalysisChart
-          series={selectedSeriesData}
-          dates={activity.days.map(d => d.date)}
-          onClearAll={handleClearAll}
-        />
+        <>
+          <TrendAnalysisChart
+            series={selectedSeriesData}
+            dates={activity.days.map(d => d.date)}
+            onClearAll={handleClearAll}
+          />
+          <MethodDrilldown activity={activity} selectedKeys={selectedKeys} patternOrder={patternOrder} />
+        </>
       )}
 
     </section>

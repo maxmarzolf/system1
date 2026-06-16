@@ -127,11 +127,18 @@ class SkillMapReviewQueueItem(TypedDict):
 	dimensionSummary: dict[str, Any]
 
 
+class SkillMapGhostRepMethodSegment(TypedDict):
+	method: str
+	slug: str
+	count: int
+
+
 class SkillMapGhostRepSegment(TypedDict):
 	pattern: str
 	slug: str
 	workType: str
 	count: int
+	methods: list[SkillMapGhostRepMethodSegment]
 
 
 class SkillMapGhostRepActivityDay(TypedDict):

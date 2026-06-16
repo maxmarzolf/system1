@@ -54,7 +54,9 @@ def narrator_submission_system_prompt(
         "Base your diagnosis on the provided assessment signals. "
         "Use correctedVersion only for meaningful structural corrections, never line-by-line rewrites. "
         "Return strict JSON: diagnosis, primaryFocus, immediateCorrection, fullFeedback, correctedVersion, "
-        "microDrill, nextRepTarget, strengths (max 3), errorTags. "
+        "affirmation, keepInMind, nextMove, why, microDrill, nextRepTarget, strengths (max 3), errorTags. "
+        "Use affirmation and strengths for what was correct and how it generalizes. "
+        "Use diagnosis, primaryFocus, immediateCorrection, and why for what was wrong and why it matters in plain English. "
         "No markdown fences, no bullet prefixes."
     )
 
