@@ -501,6 +501,9 @@ async def create_attempt(body: AttemptCreate) -> AttemptSaveResult:
         body.submissionRubric
         or (body.coachFeedback or {}).get("submissionRubric")
     )
+    mcq_detail = body.mcqDetail.model_dump() if body.mcqDetail else None
+    skill_evidence = [item.model_dump() for item in body.skillEvidence]
+    misconception_signals = [item.model_dump() for item in body.misconceptionSignals]
 
     row = await insert_answer_attempt_row(
         card_id=body.cardId,
@@ -523,6 +526,13 @@ async def create_attempt(body: AttemptCreate) -> AttemptSaveResult:
         live_coach_used=body.liveCoachUsed,
         coach_feedback_json=_json.dumps(body.coachFeedback) if body.coachFeedback else None,
         submission_rubric_json=_json.dumps(submission_rubric) if submission_rubric else None,
+        activity_format=body.activityFormat,
+        target_source=body.targetSource,
+        target_control=body.targetControl,
+        format_control=body.formatControl,
+        mcq_detail=mcq_detail,
+        skill_evidence=skill_evidence,
+        misconception_signals=misconception_signals,
         created_at=now,
         updated_at=now,
     )

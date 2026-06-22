@@ -12,4 +12,4 @@ def test_backfill_uses_deterministic_migration_key_prefix() -> None:
 
 def test_backfill_is_idempotent_via_migration_key_conflict_guard() -> None:
     source = inspect.getsource(database._backfill_answer_attempts_from_score_attempts)
-    assert "ON CONFLICT (migration_key) DO NOTHING" in source
+    assert "ON CONFLICT (migration_key) WHERE migration_key IS NOT NULL DO NOTHING" in source

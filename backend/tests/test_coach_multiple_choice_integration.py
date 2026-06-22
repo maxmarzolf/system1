@@ -110,6 +110,8 @@ def test_multiple_choice_route_persists_generated_question(monkeypatch: pytest.M
         provider_label,
         provider_available,
         call_llm_json,
+        fallback_providers,
+        provider_timeout_seconds,
         persist_generated_questions,
         logger,
     ) -> MultipleChoiceDrillsResponse:
@@ -117,6 +119,8 @@ def test_multiple_choice_route_persists_generated_question(monkeypatch: pytest.M
         assert provider_label
         assert provider_available is True
         assert call_llm_json is not None
+        assert fallback_providers
+        assert provider_timeout_seconds > 0
         assert logger is not None
         await persist_generated_questions([question_payload])
         return MultipleChoiceDrillsResponse.model_validate({"drills": [question_payload], "llmUsed": True})

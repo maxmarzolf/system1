@@ -642,7 +642,7 @@ METHOD_PROFILE_CATALOG: dict[tuple[str, str], dict[str, str]] = {
         "example_out": "3",
         "brass": "Loop in the order that makes dependencies already computed.",
     },
-    ("dynamic-programming", "space-optimization"): {
+    ("dynamic-programming", "time-and-space-optimization"): {
         "title": "House Robber Space Optimized",
         "prompt": "DP Space Optimization",
         "function": "rob_rolling",
@@ -895,7 +895,7 @@ STATIC_DIFFICULTY_CATALOG: dict[tuple[str, str], str] = {
     ("dynamic-programming", "transition-equation"): "Easy",
     ("dynamic-programming", "base-cases"): "Easy",
     ("dynamic-programming", "iteration-order"): "Med.",
-    ("dynamic-programming", "space-optimization"): "Med.",
+    ("dynamic-programming", "time-and-space-optimization"): "Med.",
     ("graph-traversal", "adjacency-representation"): "Med.",
     ("graph-traversal", "start-state-selection"): "Med.",
     ("graph-traversal", "topological-ordering"): "Med.",
@@ -1225,15 +1225,15 @@ def topo_order(graph):
     for node in graph:
         for nxt in graph[node]:
             indegree[nxt] += 1
-    queue = [node for node in indegree if indegree[node] == 0]
+    q = [node for node in indegree if indegree[node] == 0]
     order = []
-    while queue:
-        node = queue.pop(0)
+    while q:
+        node = q.pop(0)
         order.append(node)
         for nxt in graph[node]:
             indegree[nxt] -= 1
             if indegree[nxt] == 0:
-                queue.append(nxt)
+                q.append(nxt)
     return order
 """,
     "update_indegree": """
@@ -1246,16 +1246,16 @@ def update_indegree(graph):
 """,
     "shortest_path_bfs": """
 def shortest_path_bfs(graph, start, target):
-    seen, queue, dist = {start}, [start], 0
-    while queue:
-        for _ in range(len(queue)):
-            node = queue.pop(0)
+    seen, q, dist = {start}, [start], 0
+    while q:
+        for _ in range(len(q)):
+            node = q.pop(0)
             if node == target:
                 return dist
             for nxt in graph[node]:
                 if nxt not in seen:
                     seen.add(nxt)
-                    queue.append(nxt)
+                    q.append(nxt)
         dist += 1
     return -1
 """,
@@ -1469,39 +1469,39 @@ def {function_name}(graph):
     for node in graph:
         for nxt in graph[node]:
             indegree[nxt] += 1
-    queue = [node for node in indegree if indegree[node] == 0]
+    q = [node for node in indegree if indegree[node] == 0]
     order = []
-    while queue:
-        node = queue.pop(0)
+    while q:
+        node = q.pop(0)
         order.append(node)
     return order
 """
         if function_name == "shortest_path_bfs":
             return """
 def shortest_path_bfs(graph, start, target):
-    seen, queue, dist = {start}, [start], 0
-    while queue:
-        for _ in range(len(queue)):
-            node = queue.pop(0)
+    seen, q, dist = {start}, [start], 0
+    while q:
+        for _ in range(len(q)):
+            node = q.pop(0)
             if node == target:
                 return dist
             for nxt in graph[node]:
                 if nxt not in seen:
                     seen.add(nxt)
-                    queue.append(nxt)
+                    q.append(nxt)
         dist += 1
     return -1
 """
         return f"""
 def {function_name}(graph, start):
-    seen, queue, out = {{start}}, [start], []
-    while queue:
-        node = queue.pop(0)
+    seen, q, out = {{start}}, [start], []
+    while q:
+        node = q.pop(0)
         out.append(node)
         for nxt in graph[node]:
             if nxt not in seen:
                 seen.add(nxt)
-                queue.append(nxt)
+                q.append(nxt)
     return out
 """
     if family == "dfs-bfs":

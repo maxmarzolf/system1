@@ -218,7 +218,7 @@ def test_focused_core_algorithm_catalog_covers_dashboard_methods() -> None:
         ("Backtracking", ["choice / explore / undo", "path state", "pruning conditions", "start index control", "result collection"]),
         ("Heap / Priority Queue", ["top-k maintenance", "min vs max heap choice", "push / pop discipline", "stream processing", "lazy deletion patterns"]),
         ("Union Find", ["parent initialization", "find with compression", "union by rank / size", "component counting", "cycle detection"]),
-        ("Dynamic Programming", ["state definition", "transition equation", "base cases", "iteration order", "space optimization"]),
+        ("Dynamic Programming", ["overlapping subproblem recognition", "optimal substructure recognition", "state definition", "transition equation", "base cases", "top-down memoization", "bottom-up tabulation", "iteration order", "state dimensions and boundaries", "solution reconstruction", "time and space optimization", "correctness reasoning", "complexity analysis"]),
         ("Graph Traversal", ["adjacency representation", "start state selection", "topological ordering", "indegree bookkeeping", "shortest-path framing"]),
         ("Intervals", ["sort by start / end", "merge overlap logic", "sweep decisions", "room / resource counting", "boundary comparisons"]),
         ("Prefix Sums", ["running total setup", "sum-to-index map", "subarray difference trick", "mod remainder buckets", "constant-time range queries"]),

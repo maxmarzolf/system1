@@ -6,6 +6,7 @@ from app.core import core_algorithms as sf
 from app.core import core_meta
 from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG, CORE_META_CATALOG, function_names_for_skill
 from app.core.core_algorithm_practice import build_core_algorithm_drill
+from app.core.skill_map_catalog import SKILL_MAP_METHODS as CANONICAL_SKILL_MAP_METHODS
 
 
 SKILL_MAP_METHODS = [
@@ -16,7 +17,7 @@ SKILL_MAP_METHODS = [
     ("Backtracking", ["choice / explore / undo", "path state", "pruning conditions", "start index control", "result collection"]),
     ("Heap / Priority Queue", ["top-k maintenance", "min vs max heap choice", "push / pop discipline", "stream processing", "lazy deletion patterns"]),
     ("Union Find", ["parent initialization", "find with compression", "union by rank / size", "component counting", "cycle detection"]),
-    ("Dynamic Programming", ["state definition", "transition equation", "base cases", "iteration order", "space optimization"]),
+    ("Dynamic Programming", ["overlapping subproblem recognition", "optimal substructure recognition", "state definition", "transition equation", "base cases", "top-down memoization", "bottom-up tabulation", "iteration order", "state dimensions and boundaries", "solution reconstruction", "time and space optimization", "correctness reasoning", "complexity analysis"]),
     ("Graph Traversal", ["adjacency representation", "start state selection", "topological ordering", "indegree bookkeeping", "shortest-path framing"]),
     ("Intervals", ["sort by start / end", "merge overlap logic", "sweep decisions", "room / resource counting", "boundary comparisons"]),
     ("Prefix Sums", ["running total setup", "sum-to-index map", "subarray difference trick", "mod remainder buckets", "constant-time range queries"]),
@@ -30,6 +31,26 @@ def core_algorithm_names() -> set[str]:
         for name, obj in inspect.getmembers(sf, inspect.isfunction)
         if obj.__module__ == sf.__name__
     }
+
+
+def test_skill_map_algorithms_have_intentionally_sized_unique_taxonomies() -> None:
+    expected_counts = {
+        "sliding-window": 9,
+        "two-pointers": 9,
+        "binary-search": 11,
+        "dfs-bfs": 10,
+        "backtracking": 10,
+        "heap": 10,
+        "union-find": 10,
+        "dynamic-programming": 13,
+        "graph-traversal": 12,
+        "intervals": 10,
+        "prefix-sums": 10,
+        "monotonic-stack": 10,
+    }
+    assert {pattern: len(methods) for pattern, methods in CANONICAL_SKILL_MAP_METHODS.items()} == expected_counts
+    for methods in CANONICAL_SKILL_MAP_METHODS.values():
+        assert len(set(methods)) == len(methods)
 
 
 def test_core_algorithm_catalog_references_real_functions() -> None:

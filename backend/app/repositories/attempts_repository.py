@@ -127,6 +127,13 @@ async def insert_answer_attempt_row(
     live_coach_used: bool,
     coach_feedback_json: str | None,
     submission_rubric_json: str | None,
+    activity_format: str | None,
+    target_source: str | None,
+    target_control: str | None,
+    format_control: str | None,
+    mcq_detail: dict[str, object] | None,
+    skill_evidence: list[dict[str, object]],
+    misconception_signals: list[dict[str, object]],
     created_at: datetime,
     updated_at: datetime,
 ) -> ScoreAttemptInsertResult | None:
@@ -145,15 +152,16 @@ async def insert_answer_attempt_row(
         updated_at=updated_at,
     )
 
-    async with acquire_connection() as conn:
+    async with acquire_connection() as conn, conn.transaction():
         row = await conn.fetchrow(
             """
             INSERT INTO answer
                 (session_id, user_id, question_id, answer, question_type, category_tags,
                  correct_answer, is_correct, accuracy, exact, elapsed_ms, interaction_id,
                  generated_card_id, generated_card, template_mode, support_layer,
-                 live_coach_used, coach_feedback, submission_rubric, created_at, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+                 live_coach_used, coach_feedback, submission_rubric, activity_format,
+                 target_source, target_control, format_control, created_at, updated_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
             RETURNING id
             """,
             interaction_id or question_id,
@@ -175,9 +183,97 @@ async def insert_answer_attempt_row(
             live_coach_used,
             coach_feedback_json,
             submission_rubric_json,
+            activity_format,
+            target_source,
+            target_control,
+            format_control,
             created_at,
             updated_at,
         )
+        if not row:
+            return None
+
+        answer_id = int(row["id"])
+        if mcq_detail:
+            reasoning = str(mcq_detail.get("reasoning") or "").strip() or None
+            reasoning_evaluation = mcq_detail.get("reasoningEvaluation")
+            await conn.execute(
+                """
+                INSERT INTO answer_mcq_detail (
+                    answer_id, selected_choice_label, correct_choice_label, reasoning,
+                    reasoning_quality, reasoning_evaluation, created_at
+                )
+                VALUES ($1,$2,$3,$4,$5,$6,$7)
+                """,
+                answer_id,
+                str(mcq_detail.get("selectedChoiceLabel") or ""),
+                str(mcq_detail.get("correctChoiceLabel") or ""),
+                reasoning,
+                mcq_detail.get("reasoningQuality"),
+                json.dumps(reasoning_evaluation) if reasoning_evaluation else None,
+                created_at,
+            )
+
+        evidence_ids: dict[tuple[str, str], int] = {}
+        for evidence in skill_evidence:
+            pattern_slug = str(evidence.get("patternSlug") or "")
+            skill_slug = str(evidence.get("skillSlug") or "")
+            evidence_row = await conn.fetchrow(
+                """
+                INSERT INTO answer_skill_evidence (
+                    answer_id, pattern_slug, skill_slug, evidence_score, confidence,
+                    evidence_source, created_at
+                )
+                VALUES ($1,$2,$3,$4,$5,$6,$7)
+                RETURNING id
+                """,
+                answer_id,
+                pattern_slug,
+                skill_slug,
+                float(evidence.get("evidenceScore") or 0),
+                float(evidence.get("confidence") or 0),
+                str(evidence.get("evidenceSource") or ""),
+                created_at,
+            )
+            if evidence_row:
+                evidence_ids[(pattern_slug, skill_slug)] = int(evidence_row["id"])
+
+        for signal in misconception_signals:
+            pattern_slug = str(signal.get("patternSlug") or "")
+            skill_slug = str(signal.get("skillSlug") or "")
+            misconception_tag = str(signal.get("misconceptionTag") or "")
+            catalog_row = await conn.fetchrow(
+                """
+                SELECT id
+                FROM skill_misconception_catalog
+                WHERE pattern_slug = $1
+                  AND skill_slug = $2
+                  AND misconception_tag = $3
+                  AND active = TRUE
+                """,
+                pattern_slug,
+                skill_slug,
+                misconception_tag,
+            )
+            await conn.execute(
+                """
+                INSERT INTO answer_misconception (
+                    answer_id, skill_evidence_id, misconception_id, pattern_slug, skill_slug,
+                    misconception_tag, evaluator_note, confidence, detected_by, created_at
+                )
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+                """,
+                answer_id,
+                evidence_ids.get((pattern_slug, skill_slug)),
+                int(catalog_row["id"]) if catalog_row else None,
+                pattern_slug,
+                skill_slug,
+                misconception_tag,
+                str(signal.get("evaluatorNote") or "").strip() or None,
+                float(signal.get("confidence") or 0),
+                str(signal.get("detectedBy") or ""),
+                created_at,
+            )
     return cast(ScoreAttemptInsertResult, dict(row)) if row else None
 
 

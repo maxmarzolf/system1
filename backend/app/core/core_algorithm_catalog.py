@@ -314,7 +314,7 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "climb_stairs": _entry(
         "DP Base Cases",
         ("dynamic-programming",),
-        ("base-cases", "transition-equation", "space-optimization"),
+        ("base-cases", "transition-equation", "time-and-space-optimization"),
         "Easy",
         "Seed tiny answers before applying the recurrence.",
         ("Climbing Stairs", "Fibonacci Number"),
@@ -322,7 +322,7 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "house_robber": _entry(
         "Rolling Take-or-Skip DP",
         ("dynamic-programming",),
-        ("state-definition", "transition-equation", "space-optimization"),
+        ("state-definition", "transition-equation", "time-and-space-optimization"),
         "Med.",
         "Keep only the previous take and skip states.",
         ("House Robber", "Delete and Earn"),
@@ -346,7 +346,7 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "unique_paths": _entry(
         "Grid DP Rolling Row",
         ("dynamic-programming", "matrix-grid"),
-        ("state-definition", "transition-equation", "space-optimization"),
+        ("state-definition", "transition-equation", "time-and-space-optimization"),
         "Med.",
         "Accumulate path counts from top and left dependencies.",
         ("Unique Paths", "Minimum Path Sum"),

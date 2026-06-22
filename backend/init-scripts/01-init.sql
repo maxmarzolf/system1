@@ -84,6 +84,10 @@ CREATE TABLE IF NOT EXISTS answer (
     live_coach_used BOOLEAN NOT NULL DEFAULT FALSE,
     coach_feedback JSONB,
     submission_rubric JSONB,
+    activity_format VARCHAR(30),
+    target_source VARCHAR(30),
+    target_control VARCHAR(20),
+    format_control VARCHAR(20),
     migration_key TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -101,6 +105,69 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_answer_migration_key
 
 CREATE INDEX IF NOT EXISTS idx_answer_created_at
     ON answer(created_at DESC);
+
+-- Format-specific response details remain linked to the shared answer event.
+CREATE TABLE IF NOT EXISTS answer_mcq_detail (
+    answer_id BIGINT PRIMARY KEY REFERENCES answer(id) ON DELETE CASCADE,
+    selected_choice_label VARCHAR(10) NOT NULL,
+    correct_choice_label VARCHAR(10) NOT NULL,
+    reasoning TEXT,
+    reasoning_quality REAL CHECK (reasoning_quality >= 0 AND reasoning_quality <= 1),
+    reasoning_evaluation JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS answer_skill_evidence (
+    id BIGSERIAL PRIMARY KEY,
+    answer_id BIGINT NOT NULL REFERENCES answer(id) ON DELETE CASCADE,
+    pattern_slug TEXT NOT NULL,
+    skill_slug TEXT NOT NULL,
+    evidence_score REAL NOT NULL CHECK (evidence_score >= 0 AND evidence_score <= 1),
+    confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+    evidence_source TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_answer_skill_evidence_skill
+    ON answer_skill_evidence(pattern_slug, skill_slug, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS skill_misconception_catalog (
+    id BIGSERIAL PRIMARY KEY,
+    pattern_slug TEXT NOT NULL,
+    skill_slug TEXT NOT NULL,
+    misconception_tag TEXT NOT NULL,
+    label TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    UNIQUE (pattern_slug, skill_slug, misconception_tag)
+);
+
+INSERT INTO skill_misconception_catalog
+    (pattern_slug, skill_slug, misconception_tag, label, description)
+VALUES
+    ('dynamic-programming', 'state-definition', 'insufficient-state', 'Insufficient state', 'The state omits information needed to determine future decisions.'),
+    ('dynamic-programming', 'state-definition', 'redundant-state', 'Redundant state', 'The state stores information already implied by other dimensions.'),
+    ('dynamic-programming', 'state-definition', 'state-transition-confusion', 'State/transition confusion', 'The learner describes how state changes instead of what the state means.'),
+    ('dynamic-programming', 'state-definition', 'unclear-dimensions', 'Unclear dimensions', 'One or more state dimensions do not have a precise meaning.'),
+    ('dynamic-programming', 'state-definition', 'future-state-collision', 'Future state collision', 'One state merges subproblems that require different future decisions.')
+ON CONFLICT (pattern_slug, skill_slug, misconception_tag) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS answer_misconception (
+    id BIGSERIAL PRIMARY KEY,
+    answer_id BIGINT NOT NULL REFERENCES answer(id) ON DELETE CASCADE,
+    skill_evidence_id BIGINT REFERENCES answer_skill_evidence(id) ON DELETE SET NULL,
+    misconception_id BIGINT REFERENCES skill_misconception_catalog(id) ON DELETE SET NULL,
+    pattern_slug TEXT NOT NULL,
+    skill_slug TEXT NOT NULL,
+    misconception_tag TEXT NOT NULL,
+    evaluator_note TEXT,
+    confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+    detected_by TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_answer_misconception_signal
+    ON answer_misconception(pattern_slug, skill_slug, misconception_tag, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_answer_question_type_created_at
     ON answer(question_type, created_at DESC);

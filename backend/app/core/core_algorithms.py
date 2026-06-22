@@ -253,42 +253,42 @@ def dfs_iterative(graph, start):
 
 
 def bfs_order(graph, start):
-    seen, queue, order = {start}, deque([start]), []
-    while queue:
-        node = queue.popleft()
+    seen, q, order = {start}, deque([start]), []
+    while q:
+        node = q.popleft()
         order.append(node)
         for nxt in graph.get(node, []):
             if nxt not in seen:
                 seen.add(nxt)
-                queue.append(nxt)
+                q.append(nxt)
     return order
 
 
 def bfs_levels_graph(graph, start):
-    seen, queue, levels = {start}, deque([start]), []
-    while queue:
+    seen, q, levels = {start}, deque([start]), []
+    while q:
         level = []
-        for _ in range(len(queue)):
-            node = queue.popleft()
+        for _ in range(len(q)):
+            node = q.popleft()
             level.append(node)
             for nxt in graph.get(node, []):
                 if nxt not in seen:
                     seen.add(nxt)
-                    queue.append(nxt)
+                    q.append(nxt)
         levels.append(level)
     return levels
 
 
 def shortest_path_unweighted(graph, start, target):
-    seen, queue = {start}, deque([(start, 0)])
-    while queue:
-        node, dist = queue.popleft()
+    seen, q = {start}, deque([(start, 0)])
+    while q:
+        node, dist = q.popleft()
         if node == target:
             return dist
         for nxt in graph.get(node, []):
             if nxt not in seen:
                 seen.add(nxt)
-                queue.append((nxt, dist + 1))
+                q.append((nxt, dist + 1))
     return -1
 
 
@@ -821,14 +821,14 @@ def num_islands(grid):
             if grid[r][c] != "1":
                 continue
             count += 1
-            queue = deque([(r, c)])
+            q = deque([(r, c)])
             grid[r][c] = "0"
-            while queue:
-                row, col = queue.popleft()
+            while q:
+                row, col = q.popleft()
                 for nr, nc in grid_neighbors(grid, row, col):
                     if grid[nr][nc] == "1":
                         grid[nr][nc] = "0"
-                        queue.append((nr, nc))
+                        q.append((nr, nc))
     return count
 
 
@@ -853,15 +853,15 @@ def oranges_rotting(grid):
 
 
 def shortest_path_grid(grid, start, target):
-    queue, seen = deque([(start[0], start[1], 0)]), {start}
-    while queue:
-        row, col, dist = queue.popleft()
+    q, seen = deque([(start[0], start[1], 0)]), {start}
+    while q:
+        row, col, dist = q.popleft()
         if (row, col) == target:
             return dist
         for nr, nc in grid_neighbors(grid, row, col):
             if grid[nr][nc] == 0 and (nr, nc) not in seen:
                 seen.add((nr, nc))
-                queue.append((nr, nc, dist + 1))
+                q.append((nr, nc, dist + 1))
     return -1
 
 
@@ -979,15 +979,15 @@ def build_indegree(graph):
 
 def topo_order(graph):
     indegree = build_indegree(graph)
-    queue = deque([node for node, deg in indegree.items() if deg == 0])
+    q = deque([node for node, deg in indegree.items() if deg == 0])
     order = []
-    while queue:
-        node = queue.popleft()
+    while q:
+        node = q.popleft()
         order.append(node)
         for nxt in graph.get(node, []):
             indegree[nxt] -= 1
             if indegree[nxt] == 0:
-                queue.append(nxt)
+                q.append(nxt)
     return order
 
 

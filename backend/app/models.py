@@ -25,6 +25,31 @@ class SupportLayer(str, Enum):
 # ─── Request schemas ───
 
 
+class McqAttemptDetailCreate(BaseModel):
+    selectedChoiceLabel: str = Field(min_length=1, max_length=10)
+    correctChoiceLabel: str = Field(min_length=1, max_length=10)
+    reasoning: str | None = None
+    reasoningQuality: float | None = Field(default=None, ge=0, le=1)
+    reasoningEvaluation: dict[str, Any] | None = None
+
+
+class SkillEvidenceCreate(BaseModel):
+    patternSlug: str = Field(min_length=1)
+    skillSlug: str = Field(min_length=1)
+    evidenceScore: float = Field(ge=0, le=1)
+    confidence: float = Field(default=1, ge=0, le=1)
+    evidenceSource: str = Field(min_length=1)
+
+
+class MisconceptionSignalCreate(BaseModel):
+    patternSlug: str = Field(min_length=1)
+    skillSlug: str = Field(min_length=1)
+    misconceptionTag: str = Field(min_length=1)
+    evaluatorNote: str | None = None
+    confidence: float = Field(default=1, ge=0, le=1)
+    detectedBy: str = Field(min_length=1)
+
+
 class AttemptCreate(BaseModel):
     cardId: str = Field(min_length=1)
     cardTitle: str | None = None
@@ -46,6 +71,13 @@ class AttemptCreate(BaseModel):
     liveCoachUsed: bool = False
     coachFeedback: dict[str, Any] | None = None
     submissionRubric: dict[str, Any] | None = None
+    activityFormat: Literal["recall", "multiple-choice", "code-completion"] | None = None
+    targetSource: Literal["recall-miss", "algorithm", "skill-map"] | None = None
+    targetControl: Literal["user", "system"] | None = None
+    formatControl: Literal["user", "system"] | None = None
+    mcqDetail: McqAttemptDetailCreate | None = None
+    skillEvidence: list[SkillEvidenceCreate] = []
+    misconceptionSignals: list[MisconceptionSignalCreate] = []
 
 
 # ─── Response schemas ───
@@ -212,6 +244,7 @@ class MultipleChoiceCard(BaseModel):
     id: str = Field(min_length=1)
     title: str = Field(min_length=1)
     pattern: str = Field(min_length=1)
+    skill: str = ""
     difficulty: str = Field(default="Med.")
     question: str = Field(min_length=1)
     choices: list[MultipleChoiceChoice] = Field(min_length=4, max_length=4)
@@ -248,7 +281,7 @@ class MultipleChoiceDrillsRequest(BaseModel):
     count: int = Field(default=12, ge=1, le=30)
     skillMap: list[SkillMapNode] = []
     difficulty: str = Field(default="Med.")
-    sourceMode: Literal["algorithm", "card"] = "algorithm"
+    sourceMode: Literal["algorithm", "skill-map", "card"] = "algorithm"
     flowMode: Literal["random", "progressive"] = "random"
     specimen: MultipleChoiceSpecimenContext | None = None
     llmProvider: str = "openai"

@@ -51,6 +51,7 @@ type MultipleChoiceCard = {
   id: string
   title: string
   pattern: string
+  skill?: string
   difficulty: MultipleChoiceDifficulty
   question: string
   choices: MultipleChoiceChoice[]
@@ -367,7 +368,24 @@ const MCQ_CORE_ALGORITHM_ANCHORS: SkillMapNode[] = [
   { pattern: 'Binary Search', methods: ['bounds invariant', 'search on answer', 'first / last occurrence'] },
   { pattern: 'Trees', methods: ['recursive traversal', 'path state', 'subtree return values'] },
   { pattern: 'Graph Traversal', methods: ['visited tracking', 'BFS frontier', 'DFS recursion'] },
-  { pattern: 'Dynamic Programming', methods: ['state definition', 'transition equation', 'iteration order'] },
+  {
+    pattern: 'Dynamic Programming',
+    methods: [
+      'overlapping subproblem recognition',
+      'optimal substructure recognition',
+      'state definition',
+      'transition equation',
+      'base cases',
+      'top-down memoization',
+      'bottom-up tabulation',
+      'iteration order',
+      'state dimensions and boundaries',
+      'solution reconstruction',
+      'time and space optimization',
+      'correctness reasoning',
+      'complexity analysis',
+    ],
+  },
   { pattern: 'Backtracking', methods: ['choice / explore / undo', 'path state', 'pruning'] },
   { pattern: 'Tries', methods: ['prefix tree nodes', 'word markers', 'character transitions'] },
   { pattern: 'Heap / Priority Queue', methods: ['top-k maintenance', 'min vs max heap', 'stream processing'] },
@@ -2233,6 +2251,7 @@ function App() {
   const [flowMultipleChoiceError, setFlowMultipleChoiceError] = useState('')
   const [flowMultipleChoicePosition, setFlowMultipleChoicePosition] = useState(0)
   const [flowMultipleChoiceSelectedChoiceId, setFlowMultipleChoiceSelectedChoiceId] = useState('')
+  const [flowMultipleChoiceReasoning, setFlowMultipleChoiceReasoning] = useState('')
   const [flowMultipleChoiceStartedAt, setFlowMultipleChoiceStartedAt] = useState<number | null>(null)
   const [flowMultipleChoiceSubmittedByCard, setFlowMultipleChoiceSubmittedByCard] = useState<Record<string, string>>({})
 
@@ -2254,6 +2273,7 @@ function App() {
   const [mainStartedAt, setMainStartedAt] = useState<number | null>(null)
   const [mainCloseEnough, setMainCloseEnough] = useState(false)
   const [multipleChoiceSelectedChoiceId, setMultipleChoiceSelectedChoiceId] = useState('')
+  const [multipleChoiceReasoning, setMultipleChoiceReasoning] = useState('')
   const [multipleChoiceStartedAt, setMultipleChoiceStartedAt] = useState<number | null>(null)
   const [multipleChoiceSubmittedByCard, setMultipleChoiceSubmittedByCard] = useState<Record<string, string>>({})
   const [currentInteractionId, setCurrentInteractionId] = useState('')
@@ -2332,6 +2352,17 @@ function App() {
     [requestedSkillMap]
   )
   const multipleChoiceSkillMap = useMemo<SkillMapNode[]>(() => {
+    if (mcqTuning.sourceMode === 'skill-map') {
+      const selectedNode = skillMap.find((node) => node.pattern === mcqTuning.skillMapPattern)
+      if (selectedNode) {
+        const selectedMethods = selectedNode.methods.filter((method) => mcqTuning.skillMapMethods.includes(method))
+        return [{
+          pattern: selectedNode.pattern,
+          methods: selectedMethods.length > 0 ? selectedMethods : selectedNode.methods,
+        }]
+      }
+      return requestedSkillMap
+    }
     if (requestedPlaylist) {
       return playlistQuestionsToSkillMap(requestedPlaylist)
     }
@@ -2345,7 +2376,7 @@ function App() {
       return [{ pattern: focusedPatternNode.pattern, methods }]
     }
     return MCQ_CORE_ALGORITHM_ANCHORS
-  }, [focusedMethodParams, focusedPatternNode, requestedPlaylist])
+  }, [focusedMethodParams, focusedPatternNode, mcqTuning.skillMapMethods, mcqTuning.skillMapPattern, mcqTuning.sourceMode, requestedPlaylist, requestedSkillMap])
   const multipleChoiceSkillMapSignature = useMemo(
     () => JSON.stringify(multipleChoiceSkillMap),
     [multipleChoiceSkillMap]
@@ -2521,6 +2552,7 @@ function App() {
     setFlowMultipleChoiceDeck([])
     setFlowMultipleChoicePosition(0)
     setFlowMultipleChoiceSelectedChoiceId('')
+    setFlowMultipleChoiceReasoning('')
     setFlowMultipleChoiceStartedAt(null)
     setFlowMultipleChoiceSubmittedByCard({})
 
@@ -2591,6 +2623,7 @@ function App() {
     setMainStartedAt(null)
     setMainCloseEnough(false)
     setMultipleChoiceSelectedChoiceId('')
+    setMultipleChoiceReasoning('')
     setMultipleChoiceStartedAt(Date.now())
     setMultipleChoiceSubmittedByCard({})
     setCurrentInteractionId('')
@@ -2957,6 +2990,10 @@ function App() {
           liveCoachUsed: payload.liveCoachUsed,
           coachFeedback: payload.coachFeedback ?? null,
           submissionRubric: payload.submissionRubric ?? null,
+          activityFormat: 'recall',
+          targetSource: isFlowActive ? 'recall-miss' : 'skill-map',
+          targetControl: isFlowActive ? 'system' : 'user',
+          formatControl: isFlowActive ? 'system' : 'user',
         }),
       })
     } catch {
@@ -2970,6 +3007,7 @@ function App() {
     correctChoice: MultipleChoiceChoice
     correct: boolean
     elapsedMs: number
+    reasoning: string
   }) => {
     if (!activeMultipleChoiceCard) return
     try {
@@ -3001,6 +3039,29 @@ function App() {
           liveCoachUsed: false,
           coachFeedback: null,
           submissionRubric: null,
+          activityFormat: 'multiple-choice',
+          targetSource: isFlowActive || mcqTuning.sourceMode === 'card'
+            ? 'recall-miss'
+            : mcqTuning.sourceMode === 'skill-map'
+              ? 'skill-map'
+              : 'algorithm',
+          targetControl: isFlowActive ? 'system' : 'user',
+          formatControl: isFlowActive ? 'system' : 'user',
+          mcqDetail: {
+            selectedChoiceLabel: payload.selectedChoice.id,
+            correctChoiceLabel: payload.correctChoice.id,
+            reasoning: payload.reasoning.trim() || null,
+          },
+          skillEvidence: activeMultipleChoiceCard.skill?.trim()
+            ? [{
+                patternSlug: patternToSlug(activeMultipleChoiceCard.pattern),
+                skillSlug: patternToSlug(activeMultipleChoiceCard.skill),
+                evidenceScore: payload.correct ? 1 : 0,
+                confidence: payload.reasoning.trim() ? 0.95 : 0.75,
+                evidenceSource: payload.reasoning.trim() ? 'mcq-with-reasoning' : 'mcq-selection',
+              }]
+            : [],
+          misconceptionSignals: [],
         }),
       })
     } catch {
@@ -3040,8 +3101,10 @@ function App() {
     setMainStartedAt(null)
     setMainCloseEnough(false)
     setMultipleChoiceSelectedChoiceId('')
+    setMultipleChoiceReasoning('')
     setMultipleChoiceStartedAt(Date.now())
     setFlowMultipleChoiceSelectedChoiceId('')
+    setFlowMultipleChoiceReasoning('')
     setFlowMultipleChoiceStartedAt(Date.now())
     setCurrentInteractionId('')
     setLiveCoachFeedback(null)
@@ -3073,6 +3136,7 @@ function App() {
     setFlowMultipleChoiceError('')
     setFlowMultipleChoicePosition(0)
     setFlowMultipleChoiceSelectedChoiceId('')
+    setFlowMultipleChoiceReasoning('')
     setFlowMultipleChoiceStartedAt(null)
     setFlowMultipleChoiceSubmittedByCard({})
     flowMultipleChoiceDeckRequestVersionRef.current += 1
@@ -3631,6 +3695,7 @@ function App() {
     if (!currentInteractionId) setCurrentInteractionId(interactionId)
     const elapsedMs = Math.max(Date.now() - (activeStartedAt ?? Date.now()), 1)
     const correct = selectedChoice.id === correctChoice.id
+    const reasoning = isFlowActive ? flowMultipleChoiceReasoning : multipleChoiceReasoning
 
     if (isFlowActive && practiceFlow) {
       setFlowMultipleChoiceSubmittedByCard((prev) => ({
@@ -3657,6 +3722,7 @@ function App() {
       correctChoice,
       correct,
       elapsedMs,
+      reasoning,
     })
   }
 
@@ -4435,7 +4501,13 @@ function App() {
             {currentPracticeMode === 'multiple-choice' ? (
               <div className="coach-metric-row card-header-metric-row">
                 <span className="coach-metric-chip">
-                  {isFlowActive ? 'Targeted card flow' : mcqTuning.sourceMode === 'card' ? 'Card specimen' : 'Algorithm anchors'}
+                  {isFlowActive
+                    ? 'Targeted card flow'
+                    : mcqTuning.sourceMode === 'card'
+                      ? 'Card specimen'
+                      : mcqTuning.sourceMode === 'skill-map'
+                        ? 'Algorithm skill map'
+                        : 'Algorithm anchors'}
                 </span>
                 <span className="coach-metric-chip">
                   {isFlowActive ? 'Missed-line remediation' : mcqTuning.flowMode === 'progressive' ? 'Socratic chain' : 'Balanced random'}
@@ -4767,6 +4839,23 @@ function App() {
                       )
                     })}
                   </div>
+                  <label className="multiple-choice-reasoning">
+                    <span>Why? <span className="multiple-choice-reasoning-optional">Optional</span></span>
+                    <textarea
+                      value={isFlowActive ? flowMultipleChoiceReasoning : multipleChoiceReasoning}
+                      onChange={(event) => {
+                        if (isFlowActive) {
+                          setFlowMultipleChoiceReasoning(event.target.value)
+                          return
+                        }
+                        setMultipleChoiceReasoning(event.target.value)
+                      }}
+                      placeholder="Briefly explain why your choice is correct."
+                      rows={3}
+                      maxLength={1200}
+                      disabled={multipleChoiceSubmitted || hasAnsweredCurrent || sessionFinished}
+                    />
+                  </label>
                 </div>
               ) : null
             ) : !hasDeck ? (

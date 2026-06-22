@@ -1,8 +1,71 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 
+from app.models import AttemptCreate
+from app.services import attempts_service
 from app.services.attempts_service import build_skill_map_overview
+
+
+def test_create_attempt_forwards_mcq_evidence_and_misconceptions(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def _insert(**kwargs):
+        captured.update(kwargs)
+        return {"id": 91}
+
+    monkeypatch.setattr(attempts_service, "insert_answer_attempt_row", _insert)
+    body = AttemptCreate.model_validate({
+        "cardId": "mcq-1",
+        "mode": "main-recall",
+        "correct": False,
+        "activityFormat": "multiple-choice",
+        "targetSource": "skill-map",
+        "targetControl": "user",
+        "formatControl": "user",
+        "mcqDetail": {
+            "selectedChoiceLabel": "B",
+            "correctChoiceLabel": "C",
+            "reasoning": "The state only needs the current value.",
+        },
+        "skillEvidence": [{
+            "patternSlug": "dynamic-programming",
+            "skillSlug": "state-definition",
+            "evidenceScore": 0,
+            "confidence": 0.95,
+            "evidenceSource": "mcq-with-reasoning",
+        }],
+        "misconceptionSignals": [{
+            "patternSlug": "dynamic-programming",
+            "skillSlug": "state-definition",
+            "misconceptionTag": "insufficient-state",
+            "evaluatorNote": "Tracks too little history.",
+            "confidence": 0.9,
+            "detectedBy": "reasoning-evaluator",
+        }],
+    })
+
+    result = asyncio.run(attempts_service.create_attempt(body))
+
+    assert result == {"saved": True, "attemptId": 91}
+    assert captured["activity_format"] == "multiple-choice"
+    assert captured["target_source"] == "skill-map"
+    assert captured["mcq_detail"] == {
+        "selectedChoiceLabel": "B",
+        "correctChoiceLabel": "C",
+        "reasoning": "The state only needs the current value.",
+        "reasoningQuality": None,
+        "reasoningEvaluation": None,
+    }
+    assert captured["skill_evidence"] == [{
+        "patternSlug": "dynamic-programming",
+        "skillSlug": "state-definition",
+        "evidenceScore": 0.0,
+        "confidence": 0.95,
+        "evidenceSource": "mcq-with-reasoning",
+    }]
+    assert captured["misconception_signals"][0]["misconceptionTag"] == "insufficient-state"
 
 
 def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:

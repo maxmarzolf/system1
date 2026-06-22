@@ -60,6 +60,7 @@ class MultipleChoiceQuestionPayload(TypedDict, total=False):
     id: str
     title: str
     pattern: str
+    skill: str
     difficulty: str
     question: str
     choices: list[MultipleChoiceChoicePayload]
@@ -483,6 +484,10 @@ def _process_multiple_choice_card(raw: Any, index: int, body: MultipleChoiceDril
 
     source_node = body.skillMap[index % max(len(body.skillMap), 1)] if body.skillMap else None
     pattern = str(raw.get("pattern") or getattr(source_node, "pattern", "") or "Algorithm").strip()
+    skill = str(raw.get("skill") or "").strip()
+    source_methods = list(getattr(source_node, "methods", []) or [])
+    if not skill and body.sourceMode == "skill-map" and len(source_methods) == 1:
+        skill = str(source_methods[0]).strip()
     pattern_slug = _pattern_slug(pattern) or "algorithm"
     title = str(raw.get("title") or f"{pattern} Multiple Choice").strip()
     question = _normalize_python_markdown_display(str(raw.get("question") or ""))
@@ -526,7 +531,8 @@ def _process_multiple_choice_card(raw: Any, index: int, body: MultipleChoiceDril
     tags: list[str] = []
     source_tag = f"source-{body.sourceMode}"
     flow_tag = f"flow-{body.flowMode}"
-    for tag in ["skill-map", "skill-map-mcq", pattern_slug, source_tag, flow_tag, *raw_tags]:
+    skill_slug = _pattern_slug(skill)
+    for tag in ["skill-map", "skill-map-mcq", pattern_slug, skill_slug, source_tag, flow_tag, *raw_tags]:
         if tag and tag not in tags:
             tags.append(tag)
 
@@ -535,6 +541,7 @@ def _process_multiple_choice_card(raw: Any, index: int, body: MultipleChoiceDril
         "id": f"mcq-{stamp}-{index + 1}",
         "title": title,
         "pattern": pattern,
+        "skill": skill,
         "difficulty": difficulty,
         "question": question,
         "choices": choices,
@@ -580,6 +587,11 @@ async def generate_multiple_choice_drills_response(
         "Anchor each drill on the named algorithm pattern itself, not on an individual LeetCode problem. "
         "Questions must test the broader algorithm pattern, invariant, tradeoff, state choice, boundary condition, or debugging insight, not a specific core algorithm memorized fact. "
     )
+    if body.sourceMode == "skill-map":
+        source_instruction = (
+            "Anchor each drill on one specific method supplied in the skill map. "
+            "Set the drill's skill field to that exact method and isolate the decision that demonstrates it. "
+        )
     if body.sourceMode == "card":
         source_instruction = (
             "Anchor every drill on the provided specimenContext. The specimen prompt and target code are the source of truth. "
@@ -611,7 +623,8 @@ async def generate_multiple_choice_drills_response(
         "You generate multiple-choice cards for algorithm pattern recognition and reasoning. "
         "Return only a top-level JSON object shaped exactly like {\"drills\": [...]}. "
         "The drills array must contain exactly the requested count. "
-        "Each drill must have id, title, pattern, difficulty, question, choices, correctChoiceId, explanation, and tags. "
+        "Each drill must have id, title, pattern, skill, difficulty, question, choices, correctChoiceId, explanation, and tags. "
+        "Skill must name the single method from the supplied skill map that the drill primarily tests. "
         "Each choices array must contain exactly four objects with ids A, B, C, and D and concise answer text. "
         f"{source_instruction}"
         f"{focus_instruction}"
@@ -645,6 +658,7 @@ async def generate_multiple_choice_drills_response(
                 "id": "temporary id from model; server will replace it",
                 "title": "short pattern-first title",
                 "pattern": "algorithm pattern name",
+                "skill": "one supplied skill-map method",
                 "difficulty": difficulty,
                 "question": "one multiple-choice question",
                 "choices": [

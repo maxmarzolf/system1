@@ -8,9 +8,9 @@ import asyncpg
 from app.config import settings
 from app.core import core_algorithms, core_meta
 from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG, CORE_META_CATALOG
+from app.core.skill_map_catalog import RETIRED_SKILL_MAP_METHODS, SKILL_MAP_METHODS
 
 pool: asyncpg.Pool | None = None
-
 
 async def connect() -> asyncpg.Pool:
     global pool
@@ -166,6 +166,18 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
             ADD COLUMN IF NOT EXISTS submission_rubric JSONB;
 
             ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS activity_format VARCHAR(30);
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS target_source VARCHAR(30);
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS target_control VARCHAR(20);
+
+            ALTER TABLE answer
+            ADD COLUMN IF NOT EXISTS format_control VARCHAR(20);
+
+            ALTER TABLE answer
             ADD COLUMN IF NOT EXISTS migration_key TEXT;
 
             ALTER TABLE answer
@@ -221,6 +233,72 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
 
             CREATE INDEX IF NOT EXISTS idx_answer_session_id_created_at
                 ON answer(session_id, created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS answer_mcq_detail (
+                answer_id BIGINT PRIMARY KEY REFERENCES answer(id) ON DELETE CASCADE,
+                selected_choice_label VARCHAR(10) NOT NULL,
+                correct_choice_label VARCHAR(10) NOT NULL,
+                reasoning TEXT,
+                reasoning_quality REAL CHECK (reasoning_quality >= 0 AND reasoning_quality <= 1),
+                reasoning_evaluation JSONB,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS answer_skill_evidence (
+                id BIGSERIAL PRIMARY KEY,
+                answer_id BIGINT NOT NULL REFERENCES answer(id) ON DELETE CASCADE,
+                pattern_slug TEXT NOT NULL,
+                skill_slug TEXT NOT NULL,
+                evidence_score REAL NOT NULL CHECK (evidence_score >= 0 AND evidence_score <= 1),
+                confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+                evidence_source TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_answer_skill_evidence_skill
+                ON answer_skill_evidence(pattern_slug, skill_slug, created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS skill_misconception_catalog (
+                id BIGSERIAL PRIMARY KEY,
+                pattern_slug TEXT NOT NULL,
+                skill_slug TEXT NOT NULL,
+                misconception_tag TEXT NOT NULL,
+                label TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                active BOOLEAN NOT NULL DEFAULT TRUE,
+                UNIQUE (pattern_slug, skill_slug, misconception_tag)
+            );
+
+            INSERT INTO skill_misconception_catalog
+                (pattern_slug, skill_slug, misconception_tag, label, description)
+            VALUES
+                ('dynamic-programming', 'state-definition', 'insufficient-state', 'Insufficient state', 'The state omits information needed to determine future decisions.'),
+                ('dynamic-programming', 'state-definition', 'redundant-state', 'Redundant state', 'The state stores information already implied by other dimensions.'),
+                ('dynamic-programming', 'state-definition', 'state-transition-confusion', 'State/transition confusion', 'The learner describes how state changes instead of what the state means.'),
+                ('dynamic-programming', 'state-definition', 'unclear-dimensions', 'Unclear dimensions', 'One or more state dimensions do not have a precise meaning.'),
+                ('dynamic-programming', 'state-definition', 'future-state-collision', 'Future state collision', 'One state merges subproblems that require different future decisions.')
+            ON CONFLICT (pattern_slug, skill_slug, misconception_tag) DO NOTHING;
+
+            CREATE TABLE IF NOT EXISTS answer_misconception (
+                id BIGSERIAL PRIMARY KEY,
+                answer_id BIGINT NOT NULL REFERENCES answer(id) ON DELETE CASCADE,
+                skill_evidence_id BIGINT REFERENCES answer_skill_evidence(id) ON DELETE SET NULL,
+                misconception_id BIGINT REFERENCES skill_misconception_catalog(id) ON DELETE SET NULL,
+                pattern_slug TEXT NOT NULL,
+                skill_slug TEXT NOT NULL,
+                misconception_tag TEXT NOT NULL,
+                evaluator_note TEXT,
+                confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+                detected_by TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            ALTER TABLE answer_misconception
+            ADD COLUMN IF NOT EXISTS misconception_id BIGINT
+                REFERENCES skill_misconception_catalog(id) ON DELETE SET NULL;
+
+            CREATE INDEX IF NOT EXISTS idx_answer_misconception_signal
+                ON answer_misconception(pattern_slug, skill_slug, misconception_tag, created_at DESC);
             """
         )
         await conn.execute(
@@ -515,7 +593,7 @@ async def _backfill_answer_attempts_from_score_attempts(db_pool: asyncpg.Pool) -
                         s.updated_at_norm
                     FROM source_attempts s
                     LEFT JOIN question q ON q.fingerprint = s.fingerprint_norm
-                    ON CONFLICT (migration_key) DO NOTHING;
+                    ON CONFLICT (migration_key) WHERE migration_key IS NOT NULL DO NOTHING;
 
                     DROP TABLE IF EXISTS score_attempts CASCADE;
                 END IF;
@@ -715,6 +793,11 @@ async def _seed_core_algorithms(db_pool: asyncpg.Pool) -> None:
                     method_order.setdefault(method_key, len(method_order) + 1)
                     mapping_rows.append((function_name, pattern_slug, method_slug, function_index))
 
+    for pattern_slug, method_slugs in SKILL_MAP_METHODS.items():
+        pattern_order.setdefault(pattern_slug, len(pattern_order) + 1)
+        for method_slug in method_slugs:
+            method_order.setdefault((pattern_slug, method_slug), len(method_order) + 1)
+
     async with db_pool.acquire() as conn:
         async with conn.transaction():
             for pattern_slug, display_order in pattern_order.items():
@@ -775,6 +858,23 @@ async def _seed_core_algorithms(db_pool: asyncpg.Pool) -> None:
                 )
 
             await conn.execute("DELETE FROM core_algorithm_skill_map")
+            for pattern_slug, method_slugs in RETIRED_SKILL_MAP_METHODS.items():
+                await conn.execute(
+                    """
+                    DELETE FROM core_algorithm_methods
+                    WHERE pattern_slug = $1
+                      AND method_slug = ANY($2::text[])
+                    """,
+                    pattern_slug,
+                    list(method_slugs),
+                )
+            await conn.execute(
+                """
+                DELETE FROM core_algorithm_methods
+                WHERE pattern_slug = 'dynamic-programming'
+                  AND method_slug = 'space-optimization'
+                """
+            )
             for function_name, pattern_slug, method_slug, display_order in mapping_rows:
                 await conn.execute(
                     """
