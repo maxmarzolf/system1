@@ -171,6 +171,47 @@ class SkillMapGhostRepActivity(TypedDict):
 	patterns: list[SkillMapGhostRepPattern]
 
 
+class SkillMapSpacedRepetitionFamily(TypedDict):
+	pattern: str
+	slug: str
+	coreAlgorithmCount: int
+
+
+class SkillMapSpacedRepetitionDay(TypedDict):
+	date: str
+	status: str
+	label: str
+
+
+class SkillMapSpacedRepetitionPacket(TypedDict):
+	id: str
+	label: str
+	group: str
+	families: list[SkillMapSpacedRepetitionFamily]
+	coreAlgorithmCount: int
+	requiredGhostReps: int
+	status: str
+	statusLabel: str
+	stageLabel: str
+	completedSessions: int
+	startedAt: str | None
+	lastAttemptedAt: str | None
+	lastCompletedAt: str | None
+	nextDueAt: str | None
+	daysUntilDue: int | None
+	days: list[SkillMapSpacedRepetitionDay]
+
+
+class SkillMapSpacedRepetitionPayload(TypedDict):
+	today: str
+	windowStart: str
+	windowEnd: str
+	intervals: list[int]
+	requiredGhostReps: int
+	packets: list[SkillMapSpacedRepetitionPacket]
+	queue: list[SkillMapSpacedRepetitionPacket]
+
+
 class SkillMapOverviewSummary(TypedDict):
 	totalGeneratedCards: int
 	attemptedCards: int
@@ -192,6 +233,7 @@ class SkillMapOverviewPayload(TypedDict):
 	patterns: list[SkillMapPatternSummary]
 	reviewQueue: list[SkillMapReviewQueueItem]
 	ghostRepActivity: SkillMapGhostRepActivity
+	spacedRepetition: SkillMapSpacedRepetitionPayload
 
 class FeedbackPayload(TypedDict, total=False):
 	diagnosis: str

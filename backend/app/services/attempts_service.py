@@ -34,6 +34,7 @@ from app.services.contracts import (
     SkillMapOverviewSummary,
     SkillMapPatternSummary,
     SkillMapReviewQueueItem,
+    SkillMapSpacedRepetitionPayload,
 )
 
 
@@ -43,6 +44,48 @@ class AttemptOverviewItem(TypedDict):
     supportLayer: str
     liveCoachUsed: bool
     submissionRubric: dict[str, Any]
+
+
+SPACED_REPETITION_REQUIRED_GHOST_REPS = 1
+SPACED_REPETITION_INTERVALS = (0, 1, 3, 7, 14, 30, 60, 90)
+SPACED_REPETITION_PACKET_DEFINITIONS = (
+    {
+        "id": "group-1a",
+        "label": "Group 1A",
+        "group": "Linear Scan / Index Control",
+        "patternSlugs": ("prefix-sums", "two-pointers", "sliding-window"),
+    },
+    {
+        "id": "group-1b",
+        "label": "Group 1B",
+        "group": "Linear Scan / Index Control",
+        "patternSlugs": ("binary-search", "intervals", "greedy-sorting"),
+    },
+    {
+        "id": "group-2a",
+        "label": "Group 2A",
+        "group": "Structure / Traversal / Search",
+        "patternSlugs": ("linked-lists", "stacks-queues", "monotonic-stack"),
+    },
+    {
+        "id": "group-2b",
+        "label": "Group 2B",
+        "group": "Structure / Traversal / Search",
+        "patternSlugs": ("trees", "dfs-bfs", "backtracking", "trie"),
+    },
+    {
+        "id": "group-3a",
+        "label": "Group 3A",
+        "group": "Optimization / Connectivity / Advanced State",
+        "patternSlugs": ("heap-priority-queue", "union-find", "graph-traversal", "topological-sort"),
+    },
+    {
+        "id": "group-3b",
+        "label": "Group 3B",
+        "group": "Optimization / Connectivity / Advanced State",
+        "patternSlugs": ("dynamic-programming", "matrix-grid"),
+    },
+)
 
 
 def _pattern_slug(pattern: str) -> str:
@@ -275,6 +318,219 @@ def _build_ghost_rep_activity(
     }
 
 
+def _status_label(status: str) -> str:
+    return {
+        "not_started": "Not started",
+        "acquisition": "Acquisition incomplete",
+        "failed": "Failed validation",
+        "overdue": "Overdue",
+        "due": "Due today",
+        "scheduled": "Scheduled",
+        "maintenance": "Maintenance",
+    }.get(status, status.replace("_", " ").title())
+
+
+def _next_interval_gap(completed_sessions: int) -> int:
+    if completed_sessions <= 0:
+        return 0
+    if completed_sessions < len(SPACED_REPETITION_INTERVALS):
+        return SPACED_REPETITION_INTERVALS[completed_sessions] - SPACED_REPETITION_INTERVALS[completed_sessions - 1]
+    return 90
+
+
+def _build_spaced_repetition(
+    attempt_rows: list[SkillMapOverviewAttemptRow],
+    card_ids_by_pattern: dict[str, set[str]],
+    slug_to_pattern: dict[str, str],
+) -> SkillMapSpacedRepetitionPayload:
+    today = datetime.now(timezone.utc).date()
+    window_start = today - timedelta(days=6)
+    window_end = today + timedelta(days=14)
+
+    packet_card_ids: dict[str, set[str]] = {}
+    packet_families: dict[str, list[dict[str, Any]]] = {}
+    card_to_packet_ids: dict[str, set[str]] = {}
+
+    for packet in SPACED_REPETITION_PACKET_DEFINITIONS:
+        packet_id = str(packet["id"])
+        families: list[dict[str, Any]] = []
+        cards: set[str] = set()
+        for slug in packet["patternSlugs"]:
+            family_card_ids = card_ids_by_pattern.get(str(slug), set())
+            if not family_card_ids:
+                continue
+            families.append({
+                "pattern": slug_to_pattern.get(str(slug), str(slug)),
+                "slug": str(slug),
+                "coreAlgorithmCount": len(family_card_ids),
+            })
+            cards.update(family_card_ids)
+        packet_card_ids[packet_id] = cards
+        packet_families[packet_id] = families
+        for card_id in cards:
+            card_to_packet_ids.setdefault(card_id, set()).add(packet_id)
+
+    attempted_by_packet_day: dict[str, dict[date, set[str]]] = {
+        str(packet["id"]): {} for packet in SPACED_REPETITION_PACKET_DEFINITIONS
+    }
+    successful_by_packet_day: dict[str, dict[date, set[str]]] = {
+        str(packet["id"]): {} for packet in SPACED_REPETITION_PACKET_DEFINITIONS
+    }
+
+    for row in attempt_rows:
+        if str(row["support_layer"] or "none") != "ghost-reps":
+            continue
+        card_id = str(row["tracked_card_id"] or "").strip()
+        if not card_id or card_id not in card_to_packet_ids:
+            continue
+        created_at = _coerce_utc_datetime(row["created_at"])
+        if created_at is None:
+            continue
+        attempt_date = created_at.date()
+        is_success = bool(row.get("exact")) or float(row["accuracy"] or 0) >= 100
+        for packet_id in card_to_packet_ids[card_id]:
+            attempted_by_packet_day.setdefault(packet_id, {}).setdefault(attempt_date, set()).add(card_id)
+            if is_success:
+                successful_by_packet_day.setdefault(packet_id, {}).setdefault(attempt_date, set()).add(card_id)
+
+    packets: list[dict[str, Any]] = []
+    for packet in SPACED_REPETITION_PACKET_DEFINITIONS:
+        packet_id = str(packet["id"])
+        cards = packet_card_ids.get(packet_id, set())
+        if not cards:
+            continue
+
+        attempted_days = attempted_by_packet_day.get(packet_id, {})
+        successful_days = successful_by_packet_day.get(packet_id, {})
+        completion_dates = sorted(
+            attempt_date
+            for attempt_date, successful_cards in successful_days.items()
+            if cards.issubset(successful_cards)
+        )
+        attempted_dates = sorted(attempted_days)
+        started_at = attempted_dates[0] if attempted_dates else None
+        last_attempted_at = attempted_dates[-1] if attempted_dates else None
+        last_completed_at = completion_dates[-1] if completion_dates else None
+
+        completed_sessions = len(completion_dates)
+        next_due_at: date | None = None
+        status = "not_started"
+        stage_label = "Acquire"
+
+        incomplete_after_last_completion = [
+            attempt_date
+            for attempt_date in attempted_dates
+            if attempt_date not in completion_dates and (last_completed_at is None or attempt_date > last_completed_at)
+        ]
+        last_incomplete_at = incomplete_after_last_completion[-1] if incomplete_after_last_completion else None
+
+        if not completion_dates:
+            if attempted_dates:
+                status = "acquisition"
+                next_due_at = today
+            stage_label = "Acquire"
+        elif last_incomplete_at:
+            next_due_at = last_incomplete_at + timedelta(days=1)
+            if next_due_at < today:
+                status = "overdue"
+            elif next_due_at == today:
+                status = "failed"
+            else:
+                status = "failed"
+            stage_label = "Validate"
+        else:
+            next_due_at = last_completed_at + timedelta(days=_next_interval_gap(completed_sessions))
+            if completed_sessions >= len(SPACED_REPETITION_INTERVALS):
+                stage_label = "Maintenance"
+            else:
+                stage_label = f"Day {SPACED_REPETITION_INTERVALS[completed_sessions]}"
+
+            if next_due_at < today:
+                status = "overdue"
+            elif next_due_at == today:
+                status = "due"
+            elif completed_sessions >= len(SPACED_REPETITION_INTERVALS):
+                status = "maintenance"
+            else:
+                status = "scheduled"
+
+        days = []
+        cursor = window_start
+        while cursor <= window_end:
+            if cursor in completion_dates:
+                day_status = "completed"
+                label = "Completed"
+            elif cursor in attempted_dates:
+                day_status = "failed"
+                label = "Incomplete"
+            elif next_due_at and cursor == next_due_at:
+                day_status = "due" if cursor <= today else "scheduled"
+                label = "Due" if cursor <= today else "Scheduled"
+            elif next_due_at and next_due_at < cursor <= today:
+                day_status = "overdue"
+                label = "Overdue"
+            else:
+                day_status = "empty"
+                label = ""
+            days.append({
+                "date": cursor.isoformat(),
+                "status": day_status,
+                "label": label,
+            })
+            cursor += timedelta(days=1)
+
+        days_until_due = (next_due_at - today).days if next_due_at else None
+        packets.append({
+            "id": packet_id,
+            "label": str(packet["label"]),
+            "group": str(packet["group"]),
+            "families": packet_families.get(packet_id, []),
+            "coreAlgorithmCount": len(cards),
+            "requiredGhostReps": SPACED_REPETITION_REQUIRED_GHOST_REPS,
+            "status": status,
+            "statusLabel": _status_label(status),
+            "stageLabel": stage_label,
+            "completedSessions": completed_sessions,
+            "startedAt": started_at.isoformat() if started_at else None,
+            "lastAttemptedAt": last_attempted_at.isoformat() if last_attempted_at else None,
+            "lastCompletedAt": last_completed_at.isoformat() if last_completed_at else None,
+            "nextDueAt": next_due_at.isoformat() if next_due_at else None,
+            "daysUntilDue": days_until_due,
+            "days": days,
+        })
+
+    priority = {
+        "overdue": 0,
+        "failed": 1,
+        "acquisition": 2,
+        "due": 3,
+        "not_started": 4,
+        "scheduled": 5,
+        "maintenance": 6,
+    }
+    queue = [
+        packet for packet in sorted(
+            packets,
+            key=lambda item: (
+                priority.get(str(item["status"]), 9),
+                item["daysUntilDue"] if item["daysUntilDue"] is not None else 999,
+                str(item["id"]),
+            ),
+        )
+        if str(packet["status"]) in {"overdue", "failed", "acquisition", "due"}
+    ]
+
+    return {
+        "today": today.isoformat(),
+        "windowStart": window_start.isoformat(),
+        "windowEnd": window_end.isoformat(),
+        "intervals": list(SPACED_REPETITION_INTERVALS),
+        "requiredGhostReps": SPACED_REPETITION_REQUIRED_GHOST_REPS,
+        "packets": packets,
+        "queue": queue,
+    }
+
+
 def build_skill_map_overview(
     pattern_rows: list[SkillMapOverviewPatternRow],
     generated_rows: list[SkillMapOverviewGeneratedRow],
@@ -476,6 +732,7 @@ def build_skill_map_overview(
         "patterns": pattern_summaries,
         "reviewQueue": review_queue,
         "ghostRepActivity": _build_ghost_rep_activity(attempt_rows, slug_to_pattern, methods_by_pattern_slug),
+        "spacedRepetition": _build_spaced_repetition(attempt_rows, card_ids_by_pattern, slug_to_pattern),
     }
 
 

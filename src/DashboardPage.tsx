@@ -45,14 +45,188 @@ type SkillMapPatternReadiness = {
 
 type SkillMapOverviewResponse = {
   patterns: SkillMapPatternReadiness[]
+  spacedRepetition?: SkillMapSpacedRepetition
 }
 
 type TemplateMode = 'algorithm'
+
+type SpacedRepetitionDay = {
+  date: string
+  status: 'empty' | 'completed' | 'failed' | 'due' | 'scheduled' | 'overdue'
+  label: string
+}
+
+type SpacedRepetitionFamily = {
+  pattern: string
+  slug: string
+  coreAlgorithmCount: number
+}
+
+type SpacedRepetitionPacket = {
+  id: string
+  label: string
+  group: string
+  families: SpacedRepetitionFamily[]
+  coreAlgorithmCount: number
+  requiredGhostReps: number
+  status: 'not_started' | 'acquisition' | 'failed' | 'overdue' | 'due' | 'scheduled' | 'maintenance'
+  statusLabel: string
+  stageLabel: string
+  completedSessions: number
+  startedAt: string | null
+  lastAttemptedAt: string | null
+  lastCompletedAt: string | null
+  nextDueAt: string | null
+  daysUntilDue: number | null
+  days: SpacedRepetitionDay[]
+}
+
+type SkillMapSpacedRepetition = {
+  today: string
+  windowStart: string
+  windowEnd: string
+  intervals: number[]
+  requiredGhostReps: number
+  packets: SpacedRepetitionPacket[]
+  queue: SpacedRepetitionPacket[]
+}
 
 const readinessTone = (readiness: number) => {
   if (readiness >= 80) return 'success'
   if (readiness >= 50) return 'warning'
   return 'error'
+}
+
+const spacedStatusTone = (status: SpacedRepetitionPacket['status']) => {
+  if (status === 'overdue' || status === 'failed' || status === 'acquisition') return 'error'
+  if (status === 'due') return 'warning'
+  return 'success'
+}
+
+const formatShortDate = (value?: string | null) => {
+  if (!value) return 'Not scheduled'
+  return new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+const dueCopy = (packet: SpacedRepetitionPacket) => {
+  if (!packet.nextDueAt) return 'Not scheduled'
+  if (packet.daysUntilDue === null) return formatShortDate(packet.nextDueAt)
+  if (packet.daysUntilDue < 0) return `${Math.abs(packet.daysUntilDue)}d overdue`
+  if (packet.daysUntilDue === 0) return 'Today'
+  if (packet.daysUntilDue === 1) return 'Tomorrow'
+  return formatShortDate(packet.nextDueAt)
+}
+
+function SpacedRepetitionPanel({
+  spacedRepetition,
+  onStartFamily,
+}: {
+  spacedRepetition?: SkillMapSpacedRepetition
+  onStartFamily: (patternSlug: string) => void
+}) {
+  if (!spacedRepetition) {
+    return (
+      <section className="spaced-repetition-panel" aria-label="Spaced repetition">
+        <div className="spaced-repetition-header">
+          <div>
+            <p className="dashboard-activity-eyebrow">Spaced Repetition</p>
+            <h2>Loading schedule...</h2>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  const activeQueue = spacedRepetition.queue
+  const visibleQueue = activeQueue.slice(0, 2)
+  const nextPacket = activeQueue[0] ?? spacedRepetition.packets.find(packet => packet.status === 'not_started')
+
+  return (
+    <section className="spaced-repetition-panel" aria-label="Spaced repetition">
+      <div className="spaced-repetition-header">
+        <div>
+          <p className="dashboard-activity-eyebrow">Spaced Repetition</p>
+          <h2>{nextPacket ? `${nextPacket.label}: ${nextPacket.statusLabel}` : 'All packets scheduled'}</h2>
+        </div>
+        <div className="spaced-repetition-summary">
+          <span className="coach-metric-chip">{spacedRepetition.requiredGhostReps} ghost/core</span>
+          <span className="coach-metric-chip">{activeQueue.length} active</span>
+          <span className="coach-metric-chip">0 · 1 · 3 · 7 · 14 · 30</span>
+        </div>
+      </div>
+
+      {activeQueue.length > 0 && (
+        <div className="spaced-repetition-queue" aria-label="Required packets">
+          {visibleQueue.map(packet => (
+            <article key={`queue-${packet.id}`} className={`spaced-repetition-queue-card spaced-repetition-queue-card-${spacedStatusTone(packet.status)}`}>
+              <div>
+                <div className="spaced-repetition-queue-topline">
+                  <strong>{packet.label}</strong>
+                  <span>{packet.statusLabel}</span>
+                </div>
+                <p>{packet.families.map(family => family.pattern).join(' / ')}</p>
+              </div>
+              <div className="spaced-repetition-queue-actions">
+                <span className="coach-metric-chip">Due {dueCopy(packet)}</span>
+                {packet.families.map(family => (
+                  <button key={family.slug} type="button" onClick={() => onStartFamily(family.slug)}>
+                    {family.pattern}
+                  </button>
+                ))}
+              </div>
+            </article>
+          ))}
+          {activeQueue.length > visibleQueue.length && (
+            <div className="spaced-repetition-queue-more">
+              +{activeQueue.length - visibleQueue.length} more active in the packet graph
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="spaced-repetition-table" aria-label="Packet schedule">
+        {spacedRepetition.packets.map(packet => (
+          <article key={packet.id} className="spaced-repetition-row">
+            <div className="spaced-repetition-row-meta">
+              <div className="spaced-repetition-row-title">
+                <strong>{packet.label}</strong>
+                <span className={`spaced-repetition-status spaced-repetition-status-${packet.status}`}>
+                  {packet.statusLabel}
+                </span>
+              </div>
+              <p>{packet.families.map(family => family.pattern).join(' / ')}</p>
+              <div className="spaced-repetition-row-chips">
+                <span>{packet.coreAlgorithmCount} cores</span>
+                <span>{packet.stageLabel}</span>
+                <span>Due {dueCopy(packet)}</span>
+              </div>
+            </div>
+            <div className="spaced-repetition-days">
+              {packet.days.map(day => {
+                const isToday = day.date === spacedRepetition.today
+                return (
+                  <span
+                    key={`${packet.id}-${day.date}`}
+                    className={`spaced-repetition-day spaced-repetition-day-${day.status}${isToday ? ' spaced-repetition-day-today' : ''}`}
+                    title={`${formatShortDate(day.date)}${day.label ? `: ${day.label}` : ''}`}
+                    aria-label={`${packet.label} ${formatShortDate(day.date)} ${day.label || 'not due'}`}
+                  />
+                )
+              })}
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <div className="spaced-repetition-legend" aria-label="Schedule legend">
+        <span><i className="spaced-repetition-day spaced-repetition-day-completed" /> Completed</span>
+        <span><i className="spaced-repetition-day spaced-repetition-day-failed" /> Incomplete</span>
+        <span><i className="spaced-repetition-day spaced-repetition-day-due" /> Due</span>
+        <span><i className="spaced-repetition-day spaced-repetition-day-overdue" /> Overdue</span>
+        <span><i className="spaced-repetition-day spaced-repetition-day-scheduled" /> Scheduled</span>
+      </div>
+    </section>
+  )
 }
 
 const normalizePatternKey = (slug: string, pattern: string) =>
@@ -361,6 +535,11 @@ export default function DashboardPage() {
 
       <section className="dashboard">
         {error && <p className="skill-map-intro">{error}</p>}
+
+        <SpacedRepetitionPanel
+          spacedRepetition={overview?.spacedRepetition}
+          onStartFamily={launchFocusedPractice}
+        />
 
         <div className="skill-map-grid">
           {loading && !error && <p className="skill-map-intro">Loading readiness overview...</p>}

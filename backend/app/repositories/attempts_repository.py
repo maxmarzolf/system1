@@ -338,6 +338,7 @@ async def fetch_skill_map_overview_attempt_rows() -> list[SkillMapOverviewAttemp
                 COALESCE(NULLIF(a.generated_card->>'title', ''), q.question_text, a.question_id) AS card_title,
                 a.category_tags AS category_tags,
                 a.accuracy,
+                a.exact,
                 a.created_at,
                 a.template_mode,
                 a.support_layer,

@@ -90,6 +90,7 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
                 "card_title": "Window",
                 "category_tags": ["skill-map", "sliding-window"],
                 "accuracy": 95,
+                "exact": False,
                 "created_at": five_days_ago,
                 "template_mode": "algorithm",
                 "support_layer": "ghost-reps",
@@ -101,6 +102,7 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
                 "card_title": "Search",
                 "category_tags": ["skill-map", "binary-search", "left-right-bounds"],
                 "accuracy": 90,
+                "exact": False,
                 "created_at": yesterday,
                 "template_mode": "algorithm",
                 "support_layer": "ghost-reps",
@@ -112,6 +114,7 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
                 "card_title": "Search",
                 "category_tags": ["skill-map", "binary-search"],
                 "accuracy": 70,
+                "exact": False,
                 "created_at": today,
                 "template_mode": "algorithm",
                 "support_layer": "none",
@@ -123,6 +126,7 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
                 "card_title": "Binary Search MCQ",
                 "category_tags": ["skill-map", "skill-map-mcq", "binary-search"],
                 "accuracy": 100,
+                "exact": True,
                 "created_at": today,
                 "template_mode": "algorithm",
                 "support_layer": "none",
@@ -164,3 +168,75 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
     assert pattern_freshness["binary-search"]["daysSinceLastGhostRep"] == 1
     assert pattern_freshness["binary-search"]["daysSinceLastPractice"] == 0
     assert overview["summary"]["workCount"] == 3
+
+
+def test_spaced_repetition_schedules_group_1a_after_clean_completion() -> None:
+    now = datetime.now(timezone.utc)
+    today = now.replace(hour=12, minute=0, second=0, microsecond=0)
+    tomorrow = (today + timedelta(days=1)).date().isoformat()
+
+    overview = build_skill_map_overview(
+        pattern_rows=[
+            {"pattern_id": 1, "pattern_name": "Prefix Sums", "method_name": "running total setup"},
+            {"pattern_id": 2, "pattern_name": "Two Pointers", "method_name": "opposing pointers"},
+            {"pattern_id": 3, "pattern_name": "Sliding Window", "method_name": "valid window rule"},
+        ],
+        generated_rows=[
+            {"id": "ps-1", "title": "Prefix", "tags": ["skill-map", "prefix-sums"]},
+            {"id": "tp-1", "title": "Pointers", "tags": ["skill-map", "two-pointers"]},
+            {"id": "sw-1", "title": "Window", "tags": ["skill-map", "sliding-window"]},
+        ],
+        attempt_rows=[
+            {
+                "tracked_card_id": "ps-1",
+                "card_title": "Prefix",
+                "category_tags": ["skill-map", "prefix-sums"],
+                "accuracy": 100,
+                "exact": True,
+                "created_at": today,
+                "template_mode": "algorithm",
+                "support_layer": "ghost-reps",
+                "live_coach_used": False,
+                "submission_rubric": {},
+            },
+            {
+                "tracked_card_id": "tp-1",
+                "card_title": "Pointers",
+                "category_tags": ["skill-map", "two-pointers"],
+                "accuracy": 100,
+                "exact": True,
+                "created_at": today,
+                "template_mode": "algorithm",
+                "support_layer": "ghost-reps",
+                "live_coach_used": False,
+                "submission_rubric": {},
+            },
+            {
+                "tracked_card_id": "sw-1",
+                "card_title": "Window",
+                "category_tags": ["skill-map", "sliding-window"],
+                "accuracy": 100,
+                "exact": True,
+                "created_at": today,
+                "template_mode": "algorithm",
+                "support_layer": "ghost-reps",
+                "live_coach_used": False,
+                "submission_rubric": {},
+            },
+        ],
+    )
+
+    spaced_repetition = overview["spacedRepetition"]
+    group_1a = next(packet for packet in spaced_repetition["packets"] if packet["id"] == "group-1a")
+
+    assert group_1a["status"] == "scheduled"
+    assert group_1a["completedSessions"] == 1
+    assert group_1a["lastCompletedAt"] == today.date().isoformat()
+    assert group_1a["nextDueAt"] == tomorrow
+    assert group_1a["coreAlgorithmCount"] == 3
+    assert {family["slug"] for family in group_1a["families"]} == {
+        "prefix-sums",
+        "two-pointers",
+        "sliding-window",
+    }
+    assert not spaced_repetition["queue"]

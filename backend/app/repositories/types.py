@@ -96,6 +96,7 @@ class SkillMapOverviewAttemptRow(TypedDict):
     card_title: str
     category_tags: list[str] | None
     accuracy: float
+    exact: bool
     created_at: datetime
     template_mode: str
     support_layer: str
