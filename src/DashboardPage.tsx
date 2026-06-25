@@ -117,6 +117,11 @@ const dueCopy = (packet: SpacedRepetitionPacket) => {
   return formatShortDate(packet.nextDueAt)
 }
 
+const nextScheduledPacket = (packets: SpacedRepetitionPacket[]) =>
+  packets
+    .filter(packet => packet.nextDueAt && packet.daysUntilDue !== null && packet.daysUntilDue > 0)
+    .sort((left, right) => (left.daysUntilDue ?? 999) - (right.daysUntilDue ?? 999))[0]
+
 function SpacedRepetitionPanel({
   spacedRepetition,
   onStartFamily,
@@ -137,86 +142,93 @@ function SpacedRepetitionPanel({
     )
   }
 
-  const activeQueue = spacedRepetition.queue
-  const visibleQueue = activeQueue.slice(0, 2)
-  const nextPacket = activeQueue[0] ?? spacedRepetition.packets.find(packet => packet.status === 'not_started')
+  const activeReviews = spacedRepetition.queue
+  const reviewPacket = activeReviews[0]
+    ?? nextScheduledPacket(spacedRepetition.packets)
+    ?? spacedRepetition.packets.find(packet => packet.status === 'not_started')
+  const hiddenActiveReviewCount = Math.max(activeReviews.length - 1, 0)
+  const activeReviewCopy = activeReviews.length === 0
+    ? 'No reviews due'
+    : activeReviews.length === 1
+      ? '1 needs review'
+      : `${activeReviews.length} need review`
 
   return (
     <section className="spaced-repetition-panel" aria-label="Spaced repetition">
       <div className="spaced-repetition-header">
         <div>
           <p className="dashboard-activity-eyebrow">Spaced Repetition</p>
-          <h2>{nextPacket ? `${nextPacket.label}: ${nextPacket.statusLabel}` : 'All packets scheduled'}</h2>
+          <h2>{reviewPacket ? `${reviewPacket.label}: ${reviewPacket.statusLabel}` : 'All packets scheduled'}</h2>
         </div>
         <div className="spaced-repetition-summary">
           <span className="coach-metric-chip">{spacedRepetition.requiredGhostReps} ghost/core</span>
-          <span className="coach-metric-chip">{activeQueue.length} active</span>
+          <span className="coach-metric-chip">{activeReviewCopy}</span>
           <span className="coach-metric-chip">0 · 1 · 3 · 7 · 14 · 30</span>
         </div>
       </div>
 
-      {activeQueue.length > 0 && (
-        <div className="spaced-repetition-queue" aria-label="Required packets">
-          {visibleQueue.map(packet => (
-            <article key={`queue-${packet.id}`} className={`spaced-repetition-queue-card spaced-repetition-queue-card-${spacedStatusTone(packet.status)}`}>
-              <div>
-                <div className="spaced-repetition-queue-topline">
-                  <strong>{packet.label}</strong>
-                  <span>{packet.statusLabel}</span>
-                </div>
-                <p>{packet.families.map(family => family.pattern).join(' / ')}</p>
+      {reviewPacket && (
+        <div className="spaced-repetition-focus" aria-label="Review focus">
+          <article className={`spaced-repetition-focus-card spaced-repetition-focus-card-${spacedStatusTone(reviewPacket.status)}`}>
+            <div>
+              <div className="spaced-repetition-focus-topline">
+                <strong>{activeReviews.length > 0 ? 'Review now' : 'Next review'}</strong>
+                <span>{reviewPacket.statusLabel}</span>
               </div>
-              <div className="spaced-repetition-queue-actions">
-                <span className="coach-metric-chip">Due {dueCopy(packet)}</span>
-                {packet.families.map(family => (
-                  <button key={family.slug} type="button" onClick={() => onStartFamily(family.slug)}>
-                    {family.pattern}
-                  </button>
-                ))}
-              </div>
-            </article>
-          ))}
-          {activeQueue.length > visibleQueue.length && (
-            <div className="spaced-repetition-queue-more">
-              +{activeQueue.length - visibleQueue.length} more active in the packet graph
+              <p>{reviewPacket.families.map(family => family.pattern).join(' / ')}</p>
+            </div>
+            <div className="spaced-repetition-focus-actions">
+              <span className="coach-metric-chip">Due {dueCopy(reviewPacket)}</span>
+              <span className="coach-metric-chip">{reviewPacket.coreAlgorithmCount} cores</span>
+              <span className="coach-metric-chip">{reviewPacket.stageLabel}</span>
+              {reviewPacket.families.map(family => (
+                <button key={family.slug} type="button" onClick={() => onStartFamily(family.slug)}>
+                  {family.pattern}
+                </button>
+              ))}
+            </div>
+          </article>
+          {hiddenActiveReviewCount > 0 && (
+            <div className="spaced-repetition-focus-more">
+              +{hiddenActiveReviewCount} more due after this
             </div>
           )}
         </div>
       )}
 
-      <div className="spaced-repetition-table" aria-label="Packet schedule">
-        {spacedRepetition.packets.map(packet => (
-          <article key={packet.id} className="spaced-repetition-row">
+      {reviewPacket && (
+        <div className="spaced-repetition-table" aria-label="Packet schedule">
+          <article key={reviewPacket.id} className="spaced-repetition-row">
             <div className="spaced-repetition-row-meta">
               <div className="spaced-repetition-row-title">
-                <strong>{packet.label}</strong>
-                <span className={`spaced-repetition-status spaced-repetition-status-${packet.status}`}>
-                  {packet.statusLabel}
+                <strong>{reviewPacket.label}</strong>
+                <span className={`spaced-repetition-status spaced-repetition-status-${reviewPacket.status}`}>
+                  {reviewPacket.statusLabel}
                 </span>
               </div>
-              <p>{packet.families.map(family => family.pattern).join(' / ')}</p>
+              <p>{reviewPacket.families.map(family => family.pattern).join(' / ')}</p>
               <div className="spaced-repetition-row-chips">
-                <span>{packet.coreAlgorithmCount} cores</span>
-                <span>{packet.stageLabel}</span>
-                <span>Due {dueCopy(packet)}</span>
+                <span>{reviewPacket.coreAlgorithmCount} cores</span>
+                <span>{reviewPacket.stageLabel}</span>
+                <span>Due {dueCopy(reviewPacket)}</span>
               </div>
             </div>
             <div className="spaced-repetition-days">
-              {packet.days.map(day => {
+              {reviewPacket.days.map(day => {
                 const isToday = day.date === spacedRepetition.today
                 return (
                   <span
-                    key={`${packet.id}-${day.date}`}
+                    key={`${reviewPacket.id}-${day.date}`}
                     className={`spaced-repetition-day spaced-repetition-day-${day.status}${isToday ? ' spaced-repetition-day-today' : ''}`}
                     title={`${formatShortDate(day.date)}${day.label ? `: ${day.label}` : ''}`}
-                    aria-label={`${packet.label} ${formatShortDate(day.date)} ${day.label || 'not due'}`}
+                    aria-label={`${reviewPacket.label} ${formatShortDate(day.date)} ${day.label || 'not due'}`}
                   />
                 )
               })}
             </div>
           </article>
-        ))}
-      </div>
+        </div>
+      )}
 
       <div className="spaced-repetition-legend" aria-label="Schedule legend">
         <span><i className="spaced-repetition-day spaced-repetition-day-completed" /> Completed</span>

@@ -1,4 +1,4 @@
-import { type CSSProperties, type KeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { type CSSProperties, useMemo, useState } from 'react'
 
 export type GhostRepActivitySegment = {
   pattern: string
@@ -50,393 +50,41 @@ export type GhostRepPatternOrder = {
   methods?: string[]
 }
 
+type SwimLaneCell = {
+  date: string
+  count: number
+  methods: GhostRepActivityMethodSegment[]
+}
+
+type SwimLaneRow = {
+  label: string
+  slug: string
+  parentSlug?: string
+  cells: SwimLaneCell[]
+}
+
 const shortDateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
-const longDateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 const weekdayFormatter = new Intl.DateTimeFormat(undefined, { weekday: 'short' })
-
-const GHOST_REP_PATTERN_COLORS = [
-  '#2f80ed',
-  '#27ae60',
-  '#f2994a',
-  '#bb6bd9',
-  '#eb5757',
-  '#00a6a6',
-  '#f2c94c',
-  '#56ccf2',
-  '#6fcf97',
-  '#ff7a90',
-  '#9b8cff',
-  '#b08d57',
-]
-
-const METHOD_COLORS = ['#56ccf2', '#6fcf97', '#f2c94c', '#bb6bd9', '#ff7a90', '#94a3b8']
 
 const parseCalendarDate = (value: string) => new Date(`${value}T12:00:00`)
 const formatCalendarDate = (value: string) => shortDateFormatter.format(parseCalendarDate(value))
-const formatCalendarLongDate = (value: string) => longDateFormatter.format(parseCalendarDate(value))
 const formatCalendarWeekday = (value: string) => weekdayFormatter.format(parseCalendarDate(value))
+const slugify = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
-
-const formatSegmentPatternLabel = (pattern: string) => {
-  const normalized = pattern.toLowerCase()
-  if (normalized.includes('sliding window')) return 'Window'
-  if (normalized.includes('two pointers')) return '2 Ptr'
-  if (normalized.includes('binary search')) return 'Binary'
-  if (normalized.includes('dfs') || normalized.includes('bfs')) return 'DFS/BFS'
-  if (normalized.includes('backtracking')) return 'Backtrack'
-  if (normalized.includes('heap') || normalized.includes('priority')) return 'Heap'
-  if (normalized.includes('union find')) return 'Union'
-  if (normalized.includes('dynamic programming')) return 'DP'
-  if (normalized.includes('graph')) return 'Graph'
-  if (normalized.includes('interval')) return 'Intervals'
-  if (normalized.includes('prefix')) return 'Prefix'
-  if (normalized.includes('monotonic')) return 'Stack'
+const compactPatternLabel = (pattern: string) => {
+  if (pattern.length <= 18) return pattern
   return pattern
+    .replace('Dynamic Programming', 'DP')
+    .replace('Priority Queue', 'PQ')
+    .replace('Graph Traversal', 'Graphs')
 }
 
-const readableTextColor = (hexColor: string) => {
-  const normalized = hexColor.replace('#', '')
-  const expanded = normalized.length === 3
-    ? normalized.split('').map((character) => character + character).join('')
-    : normalized
-  const red = Number.parseInt(expanded.slice(0, 2), 16)
-  const green = Number.parseInt(expanded.slice(2, 4), 16)
-  const blue = Number.parseInt(expanded.slice(4, 6), 16)
-  const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255
-  return luminance > 0.58 ? '#000000' : '#ffffff'
+const methodSummary = (methods: GhostRepActivityMethodSegment[]) => {
+  if (methods.length === 0) return ''
+  return methods
+    .map(method => `${method.method}: ${method.count}`)
+    .join(', ')
 }
-
-// ─── Trend analysis ──────────────────────────────────────────────────────────
-
-const GHOST_GOAL = 5
-const MCQ_GOAL = 10
-const GAP_WARNING_DAYS = 3
-const GAP_CRITICAL_DAYS = 5
-
-const segmentKey = (slug: string, workType?: GhostRepActivitySegment['workType']) =>
-  `${slug}::${workType ?? 'ghost-reps'}`
-
-interface GapZone { start: number; end: number }
-
-function findGapZones(counts: number[], minGap: number): GapZone[] {
-  const zones: GapZone[] = []
-  let gapStart = -1
-  for (let i = 0; i < counts.length; i++) {
-    if (counts[i] === 0) {
-      if (gapStart === -1) gapStart = i
-    } else {
-      if (gapStart !== -1 && (i - gapStart) >= minGap) {
-        zones.push({ start: gapStart, end: i - 1 })
-      }
-      gapStart = -1
-    }
-  }
-  if (gapStart !== -1 && (counts.length - gapStart) >= minGap) {
-    zones.push({ start: gapStart, end: counts.length - 1 })
-  }
-  return zones
-}
-
-interface TrendSeries {
-  key: string
-  pattern: string
-  workType?: GhostRepActivitySegment['workType']
-  color: string
-  counts: number[]
-  goal: number
-}
-
-const SVG_W = 560
-const SVG_H = 130
-const PAD_L = 30
-const PAD_R = 30
-const PAD_T = 14
-const PAD_B = 24
-const CHART_W = SVG_W - PAD_L - PAD_R
-const CHART_H = SVG_H - PAD_T - PAD_B
-
-function TrendAnalysisChart({
-  series,
-  dates,
-  onClearAll,
-}: {
-  series: TrendSeries[]
-  dates: string[]
-  onClearAll: () => void
-}) {
-  const n = dates.length
-  if (n === 0 || series.length === 0) return null
-
-  const xOf = (i: number) => PAD_L + (n <= 1 ? CHART_W / 2 : (i / (n - 1)) * CHART_W)
-  const xLeft = (s: number) => s === 0 ? PAD_L : (xOf(s) + xOf(s - 1)) / 2
-  const xRight = (e: number) => e === n - 1 ? SVG_W - PAD_R : (xOf(e) + xOf(e + 1)) / 2
-
-  const maxGoal = Math.max(...series.map(s => s.goal))
-  const maxData = Math.max(...series.flatMap(s => s.counts), 0)
-  const maxCount = Math.max(maxGoal, maxData, 1)
-  const yOf = (count: number) => PAD_T + (1 - count / maxCount) * CHART_H
-
-  const uniqueGoals = [...new Set(series.map(s => s.goal))]
-  const labelEvery = n > 20 ? 7 : n > 14 ? 4 : n > 7 ? 2 : 1
-
-  const yTicks = [0, Math.ceil(maxCount / 2), maxCount]
-
-  return (
-    <div className="trend-analysis-section">
-      <div className="trend-analysis-header">
-        <span className="trend-analysis-title">Trend Analysis</span>
-        <div className="trend-analysis-legend">
-          {series.map(s => (
-            <span key={s.key} className="trend-analysis-legend-item">
-              <span className="trend-analysis-legend-dot" style={{ background: s.color }} />
-              {formatSegmentPatternLabel(s.pattern)}
-              <span className="trend-analysis-legend-type">
-                {s.workType === 'multiple-choice' ? 'MCQ' : 'Ghost'}
-              </span>
-            </span>
-          ))}
-        </div>
-        <button type="button" className="trend-analysis-clear" onClick={onClearAll}>
-          Clear
-        </button>
-      </div>
-
-      <svg
-        viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-        className="trend-analysis-svg"
-        aria-label="Trend analysis chart"
-        role="img"
-      >
-        {/* Y-axis grid + labels */}
-        {yTicks.map(val => (
-          <g key={val}>
-            <line
-              x1={PAD_L} y1={yOf(val)} x2={SVG_W - PAD_R} y2={yOf(val)}
-              className="trend-grid-line"
-            />
-            <text x={PAD_L - 5} y={yOf(val) + 3.5} textAnchor="end" className="trend-axis-label">
-              {val}
-            </text>
-          </g>
-        ))}
-
-        {/* Gap zones – warning (3+ days) */}
-        {series.flatMap(s =>
-          findGapZones(s.counts, GAP_WARNING_DAYS).map((zone, zi) => (
-            <rect
-              key={`w-${s.key}-${zi}`}
-              x={xLeft(zone.start)} y={PAD_T}
-              width={xRight(zone.end) - xLeft(zone.start)}
-              height={CHART_H}
-              className="trend-gap-warning"
-            />
-          ))
-        )}
-
-        {/* Gap zones – critical (5+ days) */}
-        {series.flatMap(s =>
-          findGapZones(s.counts, GAP_CRITICAL_DAYS).map((zone, zi) => (
-            <rect
-              key={`c-${s.key}-${zi}`}
-              x={xLeft(zone.start)} y={PAD_T}
-              width={xRight(zone.end) - xLeft(zone.start)}
-              height={CHART_H}
-              className="trend-gap-critical"
-            />
-          ))
-        )}
-
-        {/* Goal reference lines */}
-        {uniqueGoals.map(goal => (
-          <g key={`goal-${goal}`}>
-            <line
-              x1={PAD_L} y1={yOf(goal)} x2={SVG_W - PAD_R} y2={yOf(goal)}
-              className="trend-goal-line"
-            />
-            <text x={SVG_W - PAD_R + 4} y={yOf(goal) + 3.5} className="trend-goal-label">
-              {goal}
-            </text>
-          </g>
-        ))}
-
-        {/* Lines per series */}
-        {series.map(s => (
-          <polyline
-            key={`line-${s.key}`}
-            points={s.counts.map((c, i) => `${xOf(i)},${yOf(c)}`).join(' ')}
-            fill="none"
-            stroke={s.color}
-            strokeWidth={1.5}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        ))}
-
-        {/* Dots per series */}
-        {series.map(s =>
-          s.counts.map((count, i) => (
-            <circle
-              key={`dot-${s.key}-${i}`}
-              cx={xOf(i)} cy={yOf(count)}
-              r={count > 0 ? 2.5 : 1.5}
-              fill={count > 0 ? s.color : 'var(--hc-border)'}
-              opacity={count > 0 ? 1 : 0.3}
-            />
-          ))
-        )}
-
-        {/* X-axis date labels */}
-        {dates.map((date, i) => {
-          if (i % labelEvery !== 0 && i !== n - 1) return null
-          const anchor = i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'
-          return (
-            <text key={date} x={xOf(i)} y={SVG_H - 3} textAnchor={anchor} className="trend-axis-label">
-              {formatCalendarDate(date)}
-            </text>
-          )
-        })}
-      </svg>
-
-      <div className="trend-gap-legend">
-        <span className="trend-gap-legend-item">
-          <span className="trend-gap-swatch trend-gap-swatch-warning" />
-          3+ day gap
-        </span>
-        <span className="trend-gap-legend-item">
-          <span className="trend-gap-swatch trend-gap-swatch-critical" />
-          5+ day gap
-        </span>
-        <span className="trend-gap-legend-item">
-          <span className="trend-gap-swatch trend-gap-swatch-goal" />
-          daily goal
-        </span>
-      </div>
-    </div>
-  )
-}
-
-function MethodDrilldown({
-  activity,
-  selectedKeys,
-  patternOrder,
-}: {
-  activity: GhostRepActivity
-  selectedKeys: Set<string>
-  patternOrder: GhostRepPatternOrder[]
-}) {
-  const selectedParents = [...selectedKeys].map((key) => {
-    const [slug, workType] = key.split('::')
-    const patternMeta = patternOrder.find(pattern => pattern.slug === slug)
-    const fallbackSegment = activity.days.flatMap(day => day.segments)
-      .find(segment => segmentKey(segment.slug, segment.workType) === key)
-    return {
-      key,
-      slug,
-      workType,
-      pattern: patternMeta?.pattern ?? fallbackSegment?.pattern ?? slug,
-      methods: patternMeta?.methods ?? [],
-    }
-  })
-
-  return (
-    <div className="method-drilldown-section">
-      <div className="method-drilldown-heading">
-        <span className="trend-analysis-title">Method Drill-down</span>
-        <span className="method-drilldown-note">Practice without a method tag is shown as Unclassified.</span>
-      </div>
-
-      {selectedParents.map(parent => {
-        const dailyMethods = activity.days.map(day => (
-          day.segments.find(segment => segmentKey(segment.slug, segment.workType) === parent.key)?.methods ?? []
-        ))
-        const totals = new Map<string, { method: string; count: number }>()
-        const allowedMethodSlugs = new Set<string>()
-        for (const method of parent.methods) {
-          const slug = method.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-          allowedMethodSlugs.add(slug)
-          totals.set(slug, { method, count: 0 })
-        }
-        for (const methods of dailyMethods) {
-          for (const method of methods) {
-            const slug = allowedMethodSlugs.size === 0 || allowedMethodSlugs.has(method.slug)
-              ? method.slug
-              : 'unclassified'
-            const label = slug === 'unclassified' ? 'Unclassified' : method.method
-            const current = totals.get(slug)
-            totals.set(slug, { method: label, count: (current?.count ?? 0) + method.count })
-          }
-        }
-        const visibleMethods = [...totals.entries()].filter(([slug, value]) => slug !== 'unclassified' || value.count > 0)
-        const colorByMethod = new Map(visibleMethods.map(([slug], index) => [slug, METHOD_COLORS[index % METHOD_COLORS.length]]))
-        const peak = Math.max(...dailyMethods.map(methods => methods.reduce((sum, method) => sum + method.count, 0)), 1)
-
-        return (
-          <div key={parent.key} className="method-drilldown-parent">
-            <div className="method-drilldown-parent-header">
-              <strong>{parent.pattern}</strong>
-              <span>{parent.workType === 'multiple-choice' ? 'MCQ' : 'Ghost Reps'}</span>
-            </div>
-            <div className="method-drilldown-legend">
-              {visibleMethods.map(([slug, method]) => (
-                <span key={slug} className="trend-analysis-legend-item">
-                  <span className="trend-analysis-legend-dot" style={{ background: colorByMethod.get(slug) }} />
-                  {method.method} <b>{method.count}</b>
-                </span>
-              ))}
-            </div>
-            <div className="method-drilldown-chart">
-              {activity.days.map((day, dayIndex) => {
-                const methodsBySlug = new Map<string, GhostRepActivityMethodSegment>()
-                for (const method of dailyMethods[dayIndex]) {
-                  const slug = allowedMethodSlugs.size === 0 || allowedMethodSlugs.has(method.slug)
-                    ? method.slug
-                    : 'unclassified'
-                  const current = methodsBySlug.get(slug)
-                  methodsBySlug.set(slug, {
-                    method: slug === 'unclassified' ? 'Unclassified' : method.method,
-                    slug,
-                    count: (current?.count ?? 0) + method.count,
-                  })
-                }
-                const methods = [...methodsBySlug.values()]
-                const total = methods.reduce((sum, method) => sum + method.count, 0)
-                return (
-                  <div key={`${parent.key}-${day.date}`} className="method-drilldown-day">
-                    <div className="daily-work-history-day-label">
-                      <strong>{formatCalendarWeekday(day.date)}</strong>
-                      <span>{formatCalendarDate(day.date)}</span>
-                    </div>
-                    <div className="method-drilldown-bar">
-                      {total > 0 ? (
-                        <div className="method-drilldown-fill" style={{ width: `${Math.max(8, Math.round((total / peak) * 100))}%` }}>
-                          {methods.map(method => (
-                            <span
-                              key={method.slug}
-                              className="method-drilldown-segment"
-                              style={{
-                                flexGrow: method.count,
-                                '--method-color': colorByMethod.get(method.slug) ?? METHOD_COLORS[METHOD_COLORS.length - 1],
-                              } as CSSProperties}
-                              title={`${method.method}: ${method.count}`}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="daily-work-history-empty-label">—</span>
-                      )}
-                    </div>
-                    <span className="method-drilldown-total">{total || ''}</span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 
 export default function GhostRepActivityChart({
   activity,
@@ -447,69 +95,90 @@ export default function GhostRepActivityChart({
   patternOrder: GhostRepPatternOrder[]
   onSelectionChange?: (slugs: string[]) => void
 }) {
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
+  const [drilldownSlug, setDrilldownSlug] = useState<string | null>(null)
+  const drilldownPattern = patternOrder.find(pattern => pattern.slug === drilldownSlug)
 
-  const colorBySlug = useMemo(() => {
-    const entries = patternOrder.map((pattern, index) => [
-      pattern.slug,
-      GHOST_REP_PATTERN_COLORS[index % GHOST_REP_PATTERN_COLORS.length],
-    ] as const)
-    return new Map(entries)
-  }, [patternOrder])
+  const rows = useMemo<SwimLaneRow[]>(() => {
+    if (!activity) return []
 
-  const handleSegmentClick = useCallback((slug: string, workType?: GhostRepActivitySegment['workType']) => {
-    const key = segmentKey(slug, workType)
-    setSelectedKeys(prev => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }, [])
-
-  const handleSegmentKeyDown = useCallback((
-    e: KeyboardEvent,
-    slug: string,
-    workType?: GhostRepActivitySegment['workType'],
-  ) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      handleSegmentClick(slug, workType)
-    }
-  }, [handleSegmentClick])
-
-  const handleClearAll = useCallback(() => setSelectedKeys(new Set()), [])
-
-  useEffect(() => {
-    const slugs = [...new Set([...selectedKeys].map(key => key.split('::')[0]))]
-    onSelectionChange?.(slugs)
-  }, [selectedKeys, onSelectionChange])
-
-  const selectedSeriesData = useMemo((): TrendSeries[] => {
-    if (selectedKeys.size === 0 || !activity) return []
-    const meta = new Map<string, { pattern: string; workType?: GhostRepActivitySegment['workType']; color: string }>()
-    for (const day of activity.days) {
-      for (const seg of day.segments) {
-        const key = segmentKey(seg.slug, seg.workType)
-        if (selectedKeys.has(key) && !meta.has(key)) {
-          meta.set(key, {
-            pattern: seg.pattern,
-            workType: seg.workType,
-            color: colorBySlug.get(seg.slug) ?? GHOST_REP_PATTERN_COLORS[0],
-          })
+    if (drilldownPattern) {
+      const methodRows = (drilldownPattern.methods ?? []).map(method => ({
+        method,
+        slug: slugify(method),
+      }))
+      const observedMethodSlugs = new Map<string, string>()
+      for (const day of activity.days) {
+        for (const segment of day.segments) {
+          if (segment.slug !== drilldownPattern.slug || segment.workType === 'multiple-choice') continue
+          for (const method of segment.methods ?? []) {
+            observedMethodSlugs.set(method.slug, method.method)
+          }
         }
       }
-    }
-    return [...selectedKeys]
-      .filter(key => meta.has(key))
-      .map(key => {
-        const { pattern, workType, color } = meta.get(key)!
-        const counts = activity.days.map(day =>
-          day.segments.find(s => segmentKey(s.slug, s.workType) === key)?.count ?? 0
-        )
-        return { key, pattern, workType, color, counts, goal: workType === 'multiple-choice' ? MCQ_GOAL : GHOST_GOAL }
+      for (const [slug, method] of observedMethodSlugs) {
+        if (!methodRows.some(row => row.slug === slug)) {
+          methodRows.push({ slug, method })
+        }
+      }
+
+      return methodRows.map(method => {
+        const cells = activity.days.map(day => {
+          const ghostSegments = day.segments.filter(segment =>
+            segment.slug === drilldownPattern.slug && segment.workType !== 'multiple-choice'
+          )
+          const count = ghostSegments.reduce((sum, segment) => {
+            const methodCount = (segment.methods ?? [])
+              .filter(item => item.slug === method.slug)
+              .reduce((methodSum, item) => methodSum + item.count, 0)
+            return sum + methodCount
+          }, 0)
+          return {
+            date: day.date,
+            count,
+            methods: count > 0 ? [{ method: method.method, slug: method.slug, count }] : [],
+          }
+        })
+        return {
+          label: method.method,
+          slug: method.slug,
+          parentSlug: drilldownPattern.slug,
+          cells,
+        }
       })
-  }, [selectedKeys, activity, colorBySlug])
+    }
+
+    return patternOrder.map(pattern => {
+      const cells = activity.days.map(day => {
+        const ghostSegments = day.segments.filter(segment =>
+          segment.slug === pattern.slug && segment.workType !== 'multiple-choice'
+        )
+        const count = ghostSegments.reduce((sum, segment) => sum + segment.count, 0)
+        const methodsBySlug = new Map<string, GhostRepActivityMethodSegment>()
+        for (const segment of ghostSegments) {
+          for (const method of segment.methods ?? []) {
+            const current = methodsBySlug.get(method.slug)
+            methodsBySlug.set(method.slug, {
+              method: method.method,
+              slug: method.slug,
+              count: (current?.count ?? 0) + method.count,
+            })
+          }
+        }
+        return {
+          date: day.date,
+          count,
+          methods: [...methodsBySlug.values()],
+        }
+      })
+      return {
+        label: pattern.pattern,
+        slug: pattern.slug,
+        cells,
+      }
+    })
+  }, [activity, drilldownPattern, patternOrder])
+
+  const peakCellCount = Math.max(...rows.flatMap(row => row.cells.map(cell => cell.count)), 1)
 
   if (!activity) {
     return (
@@ -517,154 +186,92 @@ export default function GhostRepActivityChart({
         <div className="daily-work-history-header">
           <div>
             <p className="dashboard-activity-eyebrow">Daily Work History</p>
-     
           </div>
         </div>
-        <p className="dashboard-mode-meta">Loading practice activity...</p>
+        <p className="dashboard-mode-meta">Loading ghost rep activity...</p>
       </section>
     )
   }
-
-  const peakGhost = Math.max(...activity.days.map(d => d.ghostRepCount ?? 0), 1)
-  const peakMcq = Math.max(...activity.days.map(d => d.multipleChoiceCount ?? 0), 1)
 
   return (
     <section className="daily-work-history" aria-label="Daily work history">
       <div className="daily-work-history-header">
         <div>
           <p className="dashboard-activity-eyebrow">Daily Work History</p>
+          {drilldownPattern && <h2>{drilldownPattern.pattern}</h2>}
         </div>
         <div className="daily-work-history-stats">
-          <span className="coach-metric-chip">{activity.totalGhostReps} Ghost</span>
-          <span className="coach-metric-chip">{activity.totalMultipleChoice ?? 0} MCQ</span>
+          <span className="coach-metric-chip">{activity.totalGhostReps} Ghost Reps</span>
           <span className="coach-metric-chip">{activity.activeDays} active days</span>
         </div>
       </div>
 
-      <div className="daily-work-history-type-legend" aria-label="Work type legend">
-        <span className="daily-work-history-type-item">
-          <span className="daily-work-history-type-swatch daily-work-history-type-swatch-ghost" />
-          Ghost Reps
-        </span>
-        <span className="daily-work-history-type-item">
-          <span className="daily-work-history-type-swatch daily-work-history-type-swatch-mcq" />
-          Multiple Choice
-        </span>
-      </div>
-
-      <div className="daily-work-history-chart">
-        {activity.days.map((day) => {
-          const ghostCount = day.ghostRepCount ?? 0
-          const mcqCount = day.multipleChoiceCount ?? 0
-          const ghostSegments = day.segments.filter(s => s.workType !== 'multiple-choice')
-          const mcqSegments = day.segments.filter(s => s.workType === 'multiple-choice')
-          const ghostFillPercent = ghostCount > 0 ? Math.max(8, Math.round((ghostCount / peakGhost) * 100)) : 0
-          const mcqFillPercent = mcqCount > 0 ? Math.max(8, Math.round((mcqCount / peakMcq) * 100)) : 0
-          return (
-            <div key={day.date} className="daily-work-history-day">
-              <div className="daily-work-history-day-label">
-                <strong>{formatCalendarWeekday(day.date)}</strong>
-                <span>{formatCalendarDate(day.date)}</span>
-              </div>
-              <div className="daily-work-history-bars">
-                <div
-                  className={ghostCount > 0 ? 'daily-work-history-bar' : 'daily-work-history-bar daily-work-history-bar-empty'}
-                  title={ghostCount > 0 ? `${formatCalendarLongDate(day.date)}: ${ghostCount} Ghost` : `${formatCalendarLongDate(day.date)}: no ghost reps`}
-                >
-                  {ghostCount > 0 ? (
-                    <div className="daily-work-history-fill" style={{ width: `${ghostFillPercent}%` }}>
-                      {ghostSegments.map((segment) => {
-                        const segmentColor = colorBySlug.get(segment.slug) ?? GHOST_REP_PATTERN_COLORS[0]
-                        const key = segmentKey(segment.slug, segment.workType)
-                        const isSelected = selectedKeys.has(key)
-                        return (
-                          <span
-                            key={`${day.date}-ghost-${segment.slug}`}
-                            className={isSelected ? 'daily-work-history-segment daily-work-history-segment-ghost daily-work-history-segment-selected' : 'daily-work-history-segment daily-work-history-segment-ghost'}
-                            style={{
-                              flexGrow: segment.count,
-                              '--work-history-color': segmentColor,
-                              '--work-history-label-color': readableTextColor(segmentColor),
-                            } as CSSProperties}
-                            role="button"
-                            tabIndex={0}
-                            aria-pressed={isSelected}
-                            title={`${segment.pattern}: ${segment.count} Ghost${segment.count === 1 ? '' : 's'} — click to view trend`}
-                            aria-label={`${segment.pattern}: ${segment.count} Ghost${segment.count === 1 ? '' : 's'}`}
-                            onClick={() => handleSegmentClick(segment.slug, segment.workType)}
-                            onKeyDown={(e) => handleSegmentKeyDown(e, segment.slug, segment.workType)}
-                          >
-                            <span className="daily-work-history-segment-label">
-                              {formatSegmentPatternLabel(segment.pattern)}
-                            </span>
-                          </span>
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    <span className="daily-work-history-empty-label">—</span>
-                  )}
-                </div>
-                <div
-                  className={mcqCount > 0 ? 'daily-work-history-bar' : 'daily-work-history-bar daily-work-history-bar-empty'}
-                  title={mcqCount > 0 ? `${formatCalendarLongDate(day.date)}: ${mcqCount} MCQ` : `${formatCalendarLongDate(day.date)}: no MCQ`}
-                >
-                  {mcqCount > 0 ? (
-                    <div className="daily-work-history-fill" style={{ width: `${mcqFillPercent}%` }}>
-                      {mcqSegments.map((segment) => {
-                        const segmentColor = colorBySlug.get(segment.slug) ?? GHOST_REP_PATTERN_COLORS[0]
-                        const key = segmentKey(segment.slug, segment.workType)
-                        const isSelected = selectedKeys.has(key)
-                        return (
-                          <span
-                            key={`${day.date}-mcq-${segment.slug}`}
-                            className={isSelected ? 'daily-work-history-segment daily-work-history-segment-mcq daily-work-history-segment-selected' : 'daily-work-history-segment daily-work-history-segment-mcq'}
-                            style={{
-                              flexGrow: segment.count,
-                              '--work-history-color': segmentColor,
-                              '--work-history-label-color': readableTextColor(segmentColor),
-                            } as CSSProperties}
-                            role="button"
-                            tabIndex={0}
-                            aria-pressed={isSelected}
-                            title={`${segment.pattern}: ${segment.count} MCQ${segment.count === 1 ? '' : 's'} — click to view trend`}
-                            aria-label={`${segment.pattern}: ${segment.count} MCQ${segment.count === 1 ? '' : 's'}`}
-                            onClick={() => handleSegmentClick(segment.slug, segment.workType)}
-                            onKeyDown={(e) => handleSegmentKeyDown(e, segment.slug, segment.workType)}
-                          >
-                            <span className="daily-work-history-segment-label">
-                              {formatSegmentPatternLabel(segment.pattern)}
-                            </span>
-                          </span>
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    <span className="daily-work-history-empty-label">—</span>
-                  )}
-                </div>
-              </div>
-              <span className="daily-work-history-day-total">
-                {day.total > 0 && (
-                  <small>{ghostCount}G / {mcqCount}M</small>
-                )}
-              </span>
+      <div
+        className="daily-work-history-swimlane"
+        style={{ '--daily-work-history-days': activity.days.length } as CSSProperties}
+      >
+        <div className="daily-work-history-axis-corner">
+          {drilldownPattern && (
+            <button
+              type="button"
+              className="daily-work-history-axis-button"
+              onClick={() => setDrilldownSlug(null)}
+            >
+              All algorithms
+            </button>
+          )}
+        </div>
+        <div className="daily-work-history-x-axis" aria-label="Days">
+          {activity.days.map(day => (
+            <div key={day.date} className="daily-work-history-x-day">
+              <strong>{formatCalendarWeekday(day.date)}</strong>
+              <span>{formatCalendarDate(day.date)}</span>
             </div>
-          )
-        })}
+          ))}
+        </div>
+
+        {rows.map(row => (
+          <div key={row.slug} className="daily-work-history-lane">
+            <div className="daily-work-history-lane-label">
+              {drilldownPattern ? (
+                <strong title={row.label}>{row.label}</strong>
+              ) : (
+                <button
+                  type="button"
+                  className="daily-work-history-lane-button"
+                  title={row.label}
+                  onClick={() => setDrilldownSlug(row.slug)}
+                >
+                  {compactPatternLabel(row.label)}
+                </button>
+              )}
+            </div>
+            <div className="daily-work-history-lane-cells">
+              {row.cells.map(cell => {
+                const intensity = cell.count > 0 ? `${Math.round(Math.max(0.28, cell.count / peakCellCount) * 72)}%` : '0%'
+                const methods = methodSummary(cell.methods)
+                const title = cell.count > 0
+                  ? `${row.label} on ${formatCalendarDate(cell.date)}: ${cell.count} ghost rep${cell.count === 1 ? '' : 's'}${methods ? ` (${methods})` : ''}`
+                  : `${row.label} on ${formatCalendarDate(cell.date)}: no ghost reps`
+                return (
+                  <button
+                    key={`${row.slug}-${cell.date}`}
+                    type="button"
+                    className={cell.count > 0 ? 'daily-work-history-cell daily-work-history-cell-active' : 'daily-work-history-cell'}
+                    style={{ '--daily-work-history-cell-alpha': intensity } as CSSProperties}
+                    title={title}
+                    aria-label={title}
+                    disabled={cell.count === 0}
+                    onClick={cell.count > 0 ? () => onSelectionChange?.([row.parentSlug ?? row.slug]) : undefined}
+                  >
+                    {cell.count > 0 && <span>{cell.count}</span>}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
       </div>
-
-      {selectedSeriesData.length > 0 && (
-        <>
-          <TrendAnalysisChart
-            series={selectedSeriesData}
-            dates={activity.days.map(d => d.date)}
-            onClearAll={handleClearAll}
-          />
-          <MethodDrilldown activity={activity} selectedKeys={selectedKeys} patternOrder={patternOrder} />
-        </>
-      )}
-
     </section>
   )
 }
