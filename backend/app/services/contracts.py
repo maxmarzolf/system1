@@ -171,23 +171,19 @@ class SkillMapGhostRepActivity(TypedDict):
 	patterns: list[SkillMapGhostRepPattern]
 
 
-class SkillMapSpacedRepetitionFamily(TypedDict):
-	pattern: str
-	slug: str
-	coreAlgorithmCount: int
-
-
 class SkillMapSpacedRepetitionDay(TypedDict):
 	date: str
 	status: str
 	label: str
 
 
-class SkillMapSpacedRepetitionPacket(TypedDict):
+class SkillMapSpacedRepetitionTrack(TypedDict):
 	id: str
 	label: str
-	group: str
-	families: list[SkillMapSpacedRepetitionFamily]
+	slug: str
+	level: str
+	parentSlug: str | None
+	parentLabel: str | None
 	coreAlgorithmCount: int
 	requiredGhostReps: int
 	status: str
@@ -208,8 +204,8 @@ class SkillMapSpacedRepetitionPayload(TypedDict):
 	windowEnd: str
 	intervals: list[int]
 	requiredGhostReps: int
-	packets: list[SkillMapSpacedRepetitionPacket]
-	queue: list[SkillMapSpacedRepetitionPacket]
+	tracks: list[SkillMapSpacedRepetitionTrack]
+	queue: list[SkillMapSpacedRepetitionTrack]
 
 
 class SkillMapOverviewSummary(TypedDict):

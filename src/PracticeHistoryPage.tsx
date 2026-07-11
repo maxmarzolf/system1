@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiUrl } from './api'
 import { skillMap } from './data/skill-map'
-import GhostRepActivityChart, { type GhostRepActivity, type GhostRepPatternOrder } from './GhostRepActivityChart'
+import GhostRepActivityChart, {
+  type GhostRepActivity,
+  type GhostRepPatternOrder,
+  type GhostRepSpacedRepetition,
+} from './GhostRepActivityChart'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 
@@ -110,6 +114,7 @@ type PracticeHistoryResponse = {
 type SkillMapOverviewForGhostReps = {
   patterns: GhostRepPatternOrder[]
   ghostRepActivity: GhostRepActivity
+  spacedRepetition: GhostRepSpacedRepetition
 }
 
 const MAIN_RECALL_CLOSE_ENOUGH_ACCURACY = 90
@@ -229,6 +234,7 @@ export default function PracticeHistoryPage() {
       <GhostRepActivityChart
         activity={ghostRepOverview?.ghostRepActivity}
         patternOrder={historyPatternOrder}
+        spacedRepetition={ghostRepOverview?.spacedRepetition}
         onSelectionChange={handleSelectionChange}
       />
       {ghostRepOverviewError && <p className="coach-error">{ghostRepOverviewError}</p>}

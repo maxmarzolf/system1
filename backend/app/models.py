@@ -427,23 +427,19 @@ class SkillMapGhostRepActivity(BaseModel):
     patterns: list[SkillMapGhostRepPattern] = []
 
 
-class SkillMapSpacedRepetitionFamily(BaseModel):
-    pattern: str = ""
-    slug: str = ""
-    coreAlgorithmCount: int = Field(default=0, ge=0)
-
-
 class SkillMapSpacedRepetitionDay(BaseModel):
     date: str = ""
     status: str = "empty"
     label: str = ""
 
 
-class SkillMapSpacedRepetitionPacket(BaseModel):
+class SkillMapSpacedRepetitionTrack(BaseModel):
     id: str = ""
     label: str = ""
-    group: str = ""
-    families: list[SkillMapSpacedRepetitionFamily] = []
+    slug: str = ""
+    level: str = "pattern"
+    parentSlug: str | None = None
+    parentLabel: str | None = None
     coreAlgorithmCount: int = Field(default=0, ge=0)
     requiredGhostReps: int = Field(default=1, ge=1)
     status: str = "not_started"
@@ -464,8 +460,8 @@ class SkillMapSpacedRepetition(BaseModel):
     windowEnd: str = ""
     intervals: list[int] = []
     requiredGhostReps: int = Field(default=1, ge=1)
-    packets: list[SkillMapSpacedRepetitionPacket] = []
-    queue: list[SkillMapSpacedRepetitionPacket] = []
+    tracks: list[SkillMapSpacedRepetitionTrack] = []
+    queue: list[SkillMapSpacedRepetitionTrack] = []
 
 
 class SkillMapModeReadiness(BaseModel):

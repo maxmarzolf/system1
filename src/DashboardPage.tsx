@@ -45,200 +45,14 @@ type SkillMapPatternReadiness = {
 
 type SkillMapOverviewResponse = {
   patterns: SkillMapPatternReadiness[]
-  spacedRepetition?: SkillMapSpacedRepetition
 }
 
 type TemplateMode = 'algorithm'
-
-type SpacedRepetitionDay = {
-  date: string
-  status: 'empty' | 'completed' | 'failed' | 'due' | 'scheduled' | 'overdue'
-  label: string
-}
-
-type SpacedRepetitionFamily = {
-  pattern: string
-  slug: string
-  coreAlgorithmCount: number
-}
-
-type SpacedRepetitionPacket = {
-  id: string
-  label: string
-  group: string
-  families: SpacedRepetitionFamily[]
-  coreAlgorithmCount: number
-  requiredGhostReps: number
-  status: 'not_started' | 'acquisition' | 'failed' | 'overdue' | 'due' | 'scheduled' | 'maintenance'
-  statusLabel: string
-  stageLabel: string
-  completedSessions: number
-  startedAt: string | null
-  lastAttemptedAt: string | null
-  lastCompletedAt: string | null
-  nextDueAt: string | null
-  daysUntilDue: number | null
-  days: SpacedRepetitionDay[]
-}
-
-type SkillMapSpacedRepetition = {
-  today: string
-  windowStart: string
-  windowEnd: string
-  intervals: number[]
-  requiredGhostReps: number
-  packets: SpacedRepetitionPacket[]
-  queue: SpacedRepetitionPacket[]
-}
 
 const readinessTone = (readiness: number) => {
   if (readiness >= 80) return 'success'
   if (readiness >= 50) return 'warning'
   return 'error'
-}
-
-const spacedStatusTone = (status: SpacedRepetitionPacket['status']) => {
-  if (status === 'overdue' || status === 'failed' || status === 'acquisition') return 'error'
-  if (status === 'due') return 'warning'
-  return 'success'
-}
-
-const formatShortDate = (value?: string | null) => {
-  if (!value) return 'Not scheduled'
-  return new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
-
-const dueCopy = (packet: SpacedRepetitionPacket) => {
-  if (!packet.nextDueAt) return 'Not scheduled'
-  if (packet.daysUntilDue === null) return formatShortDate(packet.nextDueAt)
-  if (packet.daysUntilDue < 0) return `${Math.abs(packet.daysUntilDue)}d overdue`
-  if (packet.daysUntilDue === 0) return 'Today'
-  if (packet.daysUntilDue === 1) return 'Tomorrow'
-  return formatShortDate(packet.nextDueAt)
-}
-
-const nextScheduledPacket = (packets: SpacedRepetitionPacket[]) =>
-  packets
-    .filter(packet => packet.nextDueAt && packet.daysUntilDue !== null && packet.daysUntilDue > 0)
-    .sort((left, right) => (left.daysUntilDue ?? 999) - (right.daysUntilDue ?? 999))[0]
-
-function SpacedRepetitionPanel({
-  spacedRepetition,
-  onStartFamily,
-}: {
-  spacedRepetition?: SkillMapSpacedRepetition
-  onStartFamily: (patternSlug: string) => void
-}) {
-  if (!spacedRepetition) {
-    return (
-      <section className="spaced-repetition-panel" aria-label="Spaced repetition">
-        <div className="spaced-repetition-header">
-          <div>
-            <p className="dashboard-activity-eyebrow">Spaced Repetition</p>
-            <h2>Loading schedule...</h2>
-          </div>
-        </div>
-      </section>
-    )
-  }
-
-  const activeReviews = spacedRepetition.queue
-  const reviewPacket = activeReviews[0]
-    ?? nextScheduledPacket(spacedRepetition.packets)
-    ?? spacedRepetition.packets.find(packet => packet.status === 'not_started')
-  const hiddenActiveReviewCount = Math.max(activeReviews.length - 1, 0)
-  const activeReviewCopy = activeReviews.length === 0
-    ? 'No reviews due'
-    : activeReviews.length === 1
-      ? '1 needs review'
-      : `${activeReviews.length} need review`
-
-  return (
-    <section className="spaced-repetition-panel" aria-label="Spaced repetition">
-      <div className="spaced-repetition-header">
-        <div>
-          <p className="dashboard-activity-eyebrow">Spaced Repetition</p>
-          <h2>{reviewPacket ? `${reviewPacket.label}: ${reviewPacket.statusLabel}` : 'All packets scheduled'}</h2>
-        </div>
-        <div className="spaced-repetition-summary">
-          <span className="coach-metric-chip">{spacedRepetition.requiredGhostReps} ghost/core</span>
-          <span className="coach-metric-chip">{activeReviewCopy}</span>
-          <span className="coach-metric-chip">0 · 1 · 3 · 7 · 14 · 30</span>
-        </div>
-      </div>
-
-      {reviewPacket && (
-        <div className="spaced-repetition-focus" aria-label="Review focus">
-          <article className={`spaced-repetition-focus-card spaced-repetition-focus-card-${spacedStatusTone(reviewPacket.status)}`}>
-            <div>
-              <div className="spaced-repetition-focus-topline">
-                <strong>{activeReviews.length > 0 ? 'Review now' : 'Next review'}</strong>
-                <span>{reviewPacket.statusLabel}</span>
-              </div>
-              <p>{reviewPacket.families.map(family => family.pattern).join(' / ')}</p>
-            </div>
-            <div className="spaced-repetition-focus-actions">
-              <span className="coach-metric-chip">Due {dueCopy(reviewPacket)}</span>
-              <span className="coach-metric-chip">{reviewPacket.coreAlgorithmCount} cores</span>
-              <span className="coach-metric-chip">{reviewPacket.stageLabel}</span>
-              {reviewPacket.families.map(family => (
-                <button key={family.slug} type="button" onClick={() => onStartFamily(family.slug)}>
-                  {family.pattern}
-                </button>
-              ))}
-            </div>
-          </article>
-          {hiddenActiveReviewCount > 0 && (
-            <div className="spaced-repetition-focus-more">
-              +{hiddenActiveReviewCount} more due after this
-            </div>
-          )}
-        </div>
-      )}
-
-      {reviewPacket && (
-        <div className="spaced-repetition-table" aria-label="Packet schedule">
-          <article key={reviewPacket.id} className="spaced-repetition-row">
-            <div className="spaced-repetition-row-meta">
-              <div className="spaced-repetition-row-title">
-                <strong>{reviewPacket.label}</strong>
-                <span className={`spaced-repetition-status spaced-repetition-status-${reviewPacket.status}`}>
-                  {reviewPacket.statusLabel}
-                </span>
-              </div>
-              <p>{reviewPacket.families.map(family => family.pattern).join(' / ')}</p>
-              <div className="spaced-repetition-row-chips">
-                <span>{reviewPacket.coreAlgorithmCount} cores</span>
-                <span>{reviewPacket.stageLabel}</span>
-                <span>Due {dueCopy(reviewPacket)}</span>
-              </div>
-            </div>
-            <div className="spaced-repetition-days">
-              {reviewPacket.days.map(day => {
-                const isToday = day.date === spacedRepetition.today
-                return (
-                  <span
-                    key={`${reviewPacket.id}-${day.date}`}
-                    className={`spaced-repetition-day spaced-repetition-day-${day.status}${isToday ? ' spaced-repetition-day-today' : ''}`}
-                    title={`${formatShortDate(day.date)}${day.label ? `: ${day.label}` : ''}`}
-                    aria-label={`${reviewPacket.label} ${formatShortDate(day.date)} ${day.label || 'not due'}`}
-                  />
-                )
-              })}
-            </div>
-          </article>
-        </div>
-      )}
-
-      <div className="spaced-repetition-legend" aria-label="Schedule legend">
-        <span><i className="spaced-repetition-day spaced-repetition-day-completed" /> Completed</span>
-        <span><i className="spaced-repetition-day spaced-repetition-day-failed" /> Incomplete</span>
-        <span><i className="spaced-repetition-day spaced-repetition-day-due" /> Due</span>
-        <span><i className="spaced-repetition-day spaced-repetition-day-overdue" /> Overdue</span>
-        <span><i className="spaced-repetition-day spaced-repetition-day-scheduled" /> Scheduled</span>
-      </div>
-    </section>
-  )
 }
 
 const normalizePatternKey = (slug: string, pattern: string) =>
@@ -476,16 +290,162 @@ function SkillAlgorithmIllustration({ slug, pattern }: { slug: string; pattern: 
     )
   }
 
+  if (patternKey === 'greedy-sorting') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <g className="skill-svg-grid">
+            <rect x="16" y="48" width="12" height="20" rx="2" />
+            <rect x="34" y="25" width="12" height="43" rx="2" />
+            <rect x="52" y="39" width="12" height="29" rx="2" />
+            <rect x="96" y="50" width="12" height="18" rx="2" />
+            <rect className="skill-svg-cell-filled" x="114" y="36" width="12" height="32" rx="2" />
+            <rect className="skill-svg-cell-filled" x="132" y="20" width="12" height="48" rx="2" />
+          </g>
+          <path className="skill-svg-line skill-svg-accent" d="M67 43h22" />
+          <path className="skill-svg-line skill-svg-accent" d="m84 37 7 6-7 6" />
+          <path className="skill-svg-line skill-svg-muted" d="M12 69h136" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="120" cy="15" r="3" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (patternKey === 'trees') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <path className="skill-svg-line" d="M80 16 45 39m35-23 35 23M45 39 27 66m18-27 24 27m46-27-24 27m24-27 18 27" />
+          <path className="skill-svg-line skill-svg-accent" d="M80 16 115 39 91 66" />
+          <circle className="skill-svg-node" cx="80" cy="16" r="8" />
+          <circle className="skill-svg-node" cx="45" cy="39" r="7" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="115" cy="39" r="7" />
+          <circle className="skill-svg-node" cx="27" cy="66" r="6" />
+          <circle className="skill-svg-node" cx="69" cy="66" r="6" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="91" cy="66" r="6" />
+          <circle className="skill-svg-node" cx="133" cy="66" r="6" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (patternKey === 'stacks-queues') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <path className="skill-svg-line" d="M22 22v48h45V22" />
+          <g className="skill-svg-grid">
+            <rect x="28" y="53" width="33" height="11" rx="2" />
+            <rect x="28" y="39" width="33" height="11" rx="2" />
+            <rect className="skill-svg-cell-filled" x="28" y="25" width="33" height="11" rx="2" />
+          </g>
+          <path className="skill-svg-line skill-svg-accent" d="M44 16V8m0 0-5 6m5-6 5 6" />
+          <g className="skill-svg-grid">
+            <rect className="skill-svg-cell-filled" x="88" y="38" width="18" height="18" rx="3" />
+            <rect x="109" y="38" width="18" height="18" rx="3" />
+            <rect x="130" y="38" width="18" height="18" rx="3" />
+          </g>
+          <path className="skill-svg-line skill-svg-accent" d="M78 47h8m-4-5 5 5-5 5M135 28h13v8" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (patternKey === 'matrix-grid') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <g className="skill-svg-grid">
+            {[0, 1, 2, 3].map((row) =>
+              [0, 1, 2, 3, 4, 5].map((col) => (
+                <rect
+                  key={`${row}-${col}`}
+                  className={[[0, 0], [0, 1], [1, 1], [2, 1], [2, 2], [2, 3], [3, 3], [3, 4], [3, 5]].some(([r, c]) => r === row && c === col) ? 'skill-svg-cell-filled' : ''}
+                  x={25 + col * 19}
+                  y={10 + row * 18}
+                  width="16"
+                  height="15"
+                  rx="2"
+                />
+              )),
+            )}
+          </g>
+          <path className="skill-svg-line skill-svg-accent" d="M33 17h19v18 18h19 19v18h19 19" />
+          <path className="skill-svg-line skill-svg-accent" d="m124 66 6 5-6 5" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (patternKey === 'linked-lists') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          {[26, 64, 102].map((x, index) => (
+            <g key={x}>
+              <rect className={index === 1 ? 'skill-svg-block skill-svg-accent-fill' : 'skill-svg-block'} x={x - 14} y="31" width="28" height="24" rx="4" />
+              <circle className={index === 1 ? 'skill-svg-node skill-svg-accent-fill' : 'skill-svg-node'} cx={x} cy="43" r="3" />
+            </g>
+          ))}
+          <path className="skill-svg-line skill-svg-accent" d="M40 43h10m-4-5 6 5-6 5m32-5h10m-4-5 6 5-6 5m32-5h17" />
+          <path className="skill-svg-line" d="m133 36 10 14m0-14-10 14" />
+          <path className="skill-svg-line skill-svg-dashed" d="M64 27c0-15 38-15 38 0" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (patternKey === 'trie') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <path className="skill-svg-line" d="M80 14 46 36m34-22 34 22M46 36 28 62m18-26 22 26m46-26-18 26m18-26 22 26" />
+          <path className="skill-svg-line skill-svg-accent" d="M80 14 114 36 136 62" />
+          <g className="skill-svg-labels">
+            <text x="80" y="18">•</text>
+            <text x="46" y="40">c</text>
+            <text className="skill-svg-label-accent" x="114" y="40">t</text>
+            <text x="28" y="66">a</text>
+            <text x="68" y="66">o</text>
+            <text x="96" y="66">e</text>
+            <text className="skill-svg-label-accent" x="136" y="66">o</text>
+          </g>
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="143" cy="58" r="2.5" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (patternKey === 'topological-sort') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <path className="skill-svg-line" d="M24 22h28m-5-5 7 5-7 5M54 22l25 20m-6-1 8 2-4-7M81 43h27m-5-5 7 5-7 5M110 43l24 20m-6 0 8 2-3-7" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="22" cy="22" r="7" />
+          <circle className="skill-svg-node" cx="55" cy="22" r="7" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="81" cy="43" r="7" />
+          <circle className="skill-svg-node" cx="110" cy="43" r="7" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="136" cy="65" r="7" />
+          <path className="skill-svg-line skill-svg-accent" d="M19 75h120" />
+          <g className="skill-svg-order-marks">
+            <circle cx="22" cy="75" r="3" /><circle cx="81" cy="75" r="3" /><circle cx="136" cy="75" r="3" />
+          </g>
+        </svg>
+      </div>
+    )
+  }
+
   if (patternKey === 'meta') {
     return (
       <div className="skill-map-illustration" aria-hidden="true">
         <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
-          <path className="skill-svg-line" d="M38 23h84M38 43h84M38 63h84" />
-          <path className="skill-svg-line skill-svg-accent" d="M38 23h36M38 43h58M38 63h44" />
-          <circle className="skill-svg-node skill-svg-accent-fill" cx="126" cy="23" r="5" />
-          <circle className="skill-svg-node" cx="112" cy="43" r="5" />
-          <circle className="skill-svg-node skill-svg-accent-fill" cx="92" cy="63" r="5" />
-          <path className="skill-svg-line skill-svg-dashed" d="M126 23c15 10 15 30-14 20" />
+          <rect className="skill-svg-block" x="31" y="14" width="78" height="50" rx="6" transform="rotate(-7 70 39)" />
+          <rect className="skill-svg-block" x="45" y="18" width="78" height="50" rx="6" transform="rotate(5 84 43)" />
+          <rect className="skill-svg-block skill-svg-accent-fill" x="41" y="21" width="78" height="50" rx="6" />
+          <path className="skill-svg-line skill-svg-muted" d="M54 35h31M54 45h42M54 55h24" />
+          <circle className="skill-svg-node skill-svg-accent-fill" cx="102" cy="53" r="11" />
+          <path className="skill-svg-play" d="m99 47 9 6-9 6Z" />
+          <path className="skill-svg-line skill-svg-accent" d="M126 20v10m-5-5h10M132 41l5 5m0-5-5 5" />
         </svg>
       </div>
     )
@@ -547,11 +507,6 @@ export default function DashboardPage() {
 
       <section className="dashboard">
         {error && <p className="skill-map-intro">{error}</p>}
-
-        <SpacedRepetitionPanel
-          spacedRepetition={overview?.spacedRepetition}
-          onStartFamily={launchFocusedPractice}
-        />
 
         <div className="skill-map-grid">
           {loading && !error && <p className="skill-map-intro">Loading readiness overview...</p>}
