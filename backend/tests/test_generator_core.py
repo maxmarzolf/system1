@@ -182,9 +182,9 @@ def test_focused_generator_context_preserves_dashboard_method_order(progress_sum
         count=3,
         templateMode=TemplateMode.algorithm,
         skillMap=[
-            SkillMapNode(pattern="Binary Search", methods=["left / right bounds"]),
-            SkillMapNode(pattern="Binary Search", methods=["mid calculation"]),
-            SkillMapNode(pattern="Binary Search", methods=["first / last occurrence"]),
+            SkillMapNode(algorithm="Binary Search", skills=["left / right bounds"]),
+            SkillMapNode(algorithm="Binary Search", skills=["mid calculation"]),
+            SkillMapNode(algorithm="Binary Search", skills=["first / last occurrence"]),
         ],
     )
 
@@ -196,7 +196,7 @@ def test_focused_generator_context_preserves_dashboard_method_order(progress_sum
         tuning=GeneratorTuning(),
     )
 
-    assert [node.methods[0] for node in context.generation_skill_map] == [
+    assert [node.skills[0] for node in context.generation_skill_map] == [
         "left / right bounds",
         "mid calculation",
         "first / last occurrence",
@@ -267,7 +267,7 @@ async def test_focused_generation_rewrites_drifting_llm_card(progress_summary) -
         questionType="skill-map-targeted",
         count=1,
         templateMode=TemplateMode.algorithm,
-        skillMap=[SkillMapNode(pattern="Binary Search", methods=["left / right bounds"])],
+        skillMap=[SkillMapNode(algorithm="Binary Search", skills=["left / right bounds"])],
     )
     persisted: dict = {}
 
@@ -327,7 +327,7 @@ async def test_focused_two_pointer_card_uses_problem_title_and_concrete_plain_en
         questionType="skill-map-targeted",
         count=1,
         templateMode=TemplateMode.algorithm,
-        skillMap=[SkillMapNode(pattern="Two Pointers", methods=["same-direction scan"])],
+        skillMap=[SkillMapNode(algorithm="Two Pointers", skills=["same-direction scan"])],
     )
 
     def call_llm_json(*_args, **_kwargs):
@@ -388,7 +388,7 @@ async def test_focused_binary_search_methods_get_distinct_cards_when_llm_is_miss
         questionType="skill-map-targeted",
         count=len(methods),
         templateMode=TemplateMode.algorithm,
-        skillMap=[SkillMapNode(pattern="Binary Search", methods=[method]) for method in methods],
+        skillMap=[SkillMapNode(algorithm="Binary Search", skills=[method]) for method in methods],
     )
 
     def raw_lower_bound(index: int) -> dict:

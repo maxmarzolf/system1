@@ -34,7 +34,7 @@ class McqAttemptDetailCreate(BaseModel):
 
 
 class SkillEvidenceCreate(BaseModel):
-    patternSlug: str = Field(min_length=1)
+    algorithmSlug: str = Field(min_length=1)
     skillSlug: str = Field(min_length=1)
     evidenceScore: float = Field(ge=0, le=1)
     confidence: float = Field(default=1, ge=0, le=1)
@@ -42,7 +42,7 @@ class SkillEvidenceCreate(BaseModel):
 
 
 class MisconceptionSignalCreate(BaseModel):
-    patternSlug: str = Field(min_length=1)
+    algorithmSlug: str = Field(min_length=1)
     skillSlug: str = Field(min_length=1)
     misconceptionTag: str = Field(min_length=1)
     evaluatorNote: str | None = None
@@ -189,8 +189,9 @@ class CoachProviderDefaultResponse(BaseModel):
 
 
 class SkillMapNode(BaseModel):
-    pattern: str = Field(min_length=1)
-    methods: list[str] = []
+    algorithm: str = Field(min_length=1)
+    skills: list[str] = []
+    techniques: list[str] = []
     questionTitle: str = ""
     playlistSlug: str = ""
 
@@ -243,7 +244,7 @@ class MultipleChoiceChoice(BaseModel):
 class MultipleChoiceCard(BaseModel):
     id: str = Field(min_length=1)
     title: str = Field(min_length=1)
-    pattern: str = Field(min_length=1)
+    algorithm: str = Field(min_length=1)
     skill: str = ""
     difficulty: str = Field(default="Med.")
     question: str = Field(min_length=1)
@@ -269,7 +270,7 @@ class MultipleChoiceSpecimenFocus(BaseModel):
 class MultipleChoiceSpecimenContext(BaseModel):
     cardId: str = ""
     cardTitle: str = ""
-    pattern: str = ""
+    algorithm: str = ""
     prompt: str = ""
     target: str = ""
     tags: list[str] = Field(default_factory=list)
@@ -383,18 +384,18 @@ class SkillMapModeActivity(BaseModel):
     days: list[SkillMapActivityDay] = []
 
 
-class SkillMapGhostRepMethodSegment(BaseModel):
-    method: str = ""
+class SkillMapGhostRepSkillSegment(BaseModel):
+    skill: str = ""
     slug: str = ""
     count: int = Field(default=0, ge=0)
 
 
 class SkillMapGhostRepSegment(BaseModel):
-    pattern: str = ""
+    algorithm: str = ""
     slug: str = ""
     workType: str = "ghost-reps"
     count: int = Field(default=0, ge=0)
-    methods: list[SkillMapGhostRepMethodSegment] = []
+    skills: list[SkillMapGhostRepSkillSegment] = []
 
 
 class SkillMapGhostRepActivityDay(BaseModel):
@@ -405,8 +406,8 @@ class SkillMapGhostRepActivityDay(BaseModel):
     segments: list[SkillMapGhostRepSegment] = []
 
 
-class SkillMapGhostRepPattern(BaseModel):
-    pattern: str = ""
+class SkillMapGhostRepAlgorithm(BaseModel):
+    algorithm: str = ""
     slug: str = ""
     totalGhostReps: int = Field(default=0, ge=0)
     totalMultipleChoice: int = Field(default=0, ge=0)
@@ -424,8 +425,7 @@ class SkillMapGhostRepActivity(BaseModel):
     activeDays: int = Field(default=0, ge=0)
     peakDailyCount: int = Field(default=0, ge=0)
     days: list[SkillMapGhostRepActivityDay] = []
-    patterns: list[SkillMapGhostRepPattern] = []
-
+    algorithms: list[SkillMapGhostRepAlgorithm] = []
 
 class SkillMapSpacedRepetitionDay(BaseModel):
     date: str = ""
@@ -484,10 +484,10 @@ class SkillMapModeReadiness(BaseModel):
     activity: SkillMapModeActivity = SkillMapModeActivity()
 
 
-class SkillMapPatternReadiness(BaseModel):
-    pattern: str = Field(min_length=1)
+class SkillMapAlgorithmReadiness(BaseModel):
+    algorithm: str = Field(min_length=1)
     slug: str = Field(min_length=1)
-    methods: list[str] = []
+    skills: list[str] = []
     overallReadiness: float = Field(default=0, ge=0, le=100)
     overallAttemptCount: int = Field(default=0, ge=0)
     ghostRepCount: int = Field(default=0, ge=0)
@@ -504,7 +504,7 @@ class SkillMapPatternReadiness(BaseModel):
 class SkillMapCardReadiness(BaseModel):
     cardId: str = Field(min_length=1)
     title: str = ""
-    pattern: str = ""
+    algorithm: str = ""
     templateMode: str = TemplateMode.algorithm.value
     readiness: float = Field(default=0, ge=0, le=100)
     attemptCount: int = Field(default=0, ge=0)
@@ -518,7 +518,7 @@ class SkillMapCardReadiness(BaseModel):
 
 class SkillMapOverviewResponse(BaseModel):
     summary: dict[str, Any] = {}
-    patterns: list[SkillMapPatternReadiness] = []
+    algorithms: list[SkillMapAlgorithmReadiness] = []
     reviewQueue: list[SkillMapCardReadiness] = []
     ghostRepActivity: SkillMapGhostRepActivity = SkillMapGhostRepActivity()
     spacedRepetition: SkillMapSpacedRepetition = SkillMapSpacedRepetition()

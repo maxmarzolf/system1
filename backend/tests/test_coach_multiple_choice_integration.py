@@ -89,7 +89,7 @@ def test_multiple_choice_route_persists_generated_question(monkeypatch: pytest.M
     question_payload = {
         "id": question_id,
         "title": "Binary Search Invariant",
-        "pattern": "Binary Search",
+        "algorithm": "Binary Search",
         "difficulty": "Med.",
         "question": question_text,
         "choices": [
@@ -146,8 +146,8 @@ def test_multiple_choice_route_persists_generated_question(monkeypatch: pytest.M
                 "llmProvider": "openai",
                 "skillMap": [
                     {
-                        "pattern": "binary-search",
-                        "methods": ["left / right bounds"],
+                        "algorithm": "binary-search",
+                        "skills": ["left / right bounds"],
                     }
                 ],
             },

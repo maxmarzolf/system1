@@ -132,11 +132,11 @@ def summarize_skill_map_progress(
     progress_by_pattern: dict[str, PatternProgressSummary] = {}
 
     for node in skill_map:
-        slug = _pattern_slug(getattr(node, "pattern", ""))
+        slug = _pattern_slug(getattr(node, "algorithm", ""))
         if not slug:
             continue
         progress_by_pattern[slug] = {
-            "pattern": getattr(node, "pattern", slug),
+            "pattern": getattr(node, "algorithm", slug),
             "attemptCount": 0,
             "avgAccuracy": 0.0,
             "readiness": 0.0,
@@ -219,6 +219,8 @@ def primary_pattern_tag(skill_tags: list[str]) -> str:
         "sliding-window",
         "two-pointers",
         "binary-search",
+        "trees",
+        "graphs",
         "dfs-bfs",
         "graph-traversal",
         "backtracking",
@@ -230,6 +232,12 @@ def primary_pattern_tag(skill_tags: list[str]) -> str:
         "intervals",
         "prefix-sums",
         "monotonic-stack",
+        "stacks-queues",
+        "linked-lists",
+        "matrix-grid",
+        "trie",
+        "sorting",
+        "greedy-sorting",
         "stack",
     ):
         if tag in skill_tags:
@@ -243,8 +251,10 @@ def pattern_display_name(skill_tags: list[str]) -> str:
         "sliding-window": "sliding window",
         "two-pointers": "two pointers",
         "binary-search": "binary search",
-        "dfs-bfs": "DFS/BFS",
-        "graph-traversal": "graph traversal",
+        "trees": "trees",
+        "graphs": "graphs",
+        "dfs-bfs": "graphs",
+        "graph-traversal": "graphs",
         "backtracking": "backtracking",
         "heap-priority-queue": "heap",
         "heap": "heap",
@@ -254,6 +264,12 @@ def pattern_display_name(skill_tags: list[str]) -> str:
         "intervals": "intervals",
         "prefix-sums": "prefix sums",
         "monotonic-stack": "monotonic stack",
+        "stacks-queues": "stacks and queues",
+        "linked-lists": "linked lists",
+        "matrix-grid": "matrix grid",
+        "trie": "trie",
+        "sorting": "sorting",
+        "greedy-sorting": "sorting",
         "stack": "stack",
     }.get(pattern_tag, "algorithm")
 

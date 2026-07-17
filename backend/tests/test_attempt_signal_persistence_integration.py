@@ -55,14 +55,14 @@ def test_mcq_attempt_persists_reasoning_evidence_and_hybrid_misconception() -> N
                         "reasoning": "Only the current value is needed.",
                     },
                     "skillEvidence": [{
-                        "patternSlug": "dynamic-programming",
+                        "algorithmSlug": "dynamic-programming",
                         "skillSlug": "state-definition",
                         "evidenceScore": 0,
                         "confidence": 0.95,
                         "evidenceSource": "mcq-with-reasoning",
                     }],
                     "misconceptionSignals": [{
-                        "patternSlug": "dynamic-programming",
+                        "algorithmSlug": "dynamic-programming",
                         "skillSlug": "state-definition",
                         "misconceptionTag": "insufficient-state",
                         "evaluatorNote": "The proposed state drops prior decisions.",

@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS answer_mcq_detail (
 CREATE TABLE IF NOT EXISTS answer_skill_evidence (
     id BIGSERIAL PRIMARY KEY,
     answer_id BIGINT NOT NULL REFERENCES answer(id) ON DELETE CASCADE,
-    pattern_slug TEXT NOT NULL,
+    algorithm_slug TEXT NOT NULL,
     skill_slug TEXT NOT NULL,
     evidence_score REAL NOT NULL CHECK (evidence_score >= 0 AND evidence_score <= 1),
     confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
@@ -129,35 +129,35 @@ CREATE TABLE IF NOT EXISTS answer_skill_evidence (
 );
 
 CREATE INDEX IF NOT EXISTS idx_answer_skill_evidence_skill
-    ON answer_skill_evidence(pattern_slug, skill_slug, created_at DESC);
+    ON answer_skill_evidence(algorithm_slug, skill_slug, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS skill_misconception_catalog (
     id BIGSERIAL PRIMARY KEY,
-    pattern_slug TEXT NOT NULL,
     skill_slug TEXT NOT NULL,
     misconception_tag TEXT NOT NULL,
     label TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     active BOOLEAN NOT NULL DEFAULT TRUE,
-    UNIQUE (pattern_slug, skill_slug, misconception_tag)
+    CONSTRAINT skill_misconception_catalog_skill_slug_misconception_tag_key
+        UNIQUE (skill_slug, misconception_tag)
 );
 
 INSERT INTO skill_misconception_catalog
-    (pattern_slug, skill_slug, misconception_tag, label, description)
+    (skill_slug, misconception_tag, label, description)
 VALUES
-    ('dynamic-programming', 'state-definition', 'insufficient-state', 'Insufficient state', 'The state omits information needed to determine future decisions.'),
-    ('dynamic-programming', 'state-definition', 'redundant-state', 'Redundant state', 'The state stores information already implied by other dimensions.'),
-    ('dynamic-programming', 'state-definition', 'state-transition-confusion', 'State/transition confusion', 'The learner describes how state changes instead of what the state means.'),
-    ('dynamic-programming', 'state-definition', 'unclear-dimensions', 'Unclear dimensions', 'One or more state dimensions do not have a precise meaning.'),
-    ('dynamic-programming', 'state-definition', 'future-state-collision', 'Future state collision', 'One state merges subproblems that require different future decisions.')
-ON CONFLICT (pattern_slug, skill_slug, misconception_tag) DO NOTHING;
+    ('state-definition', 'insufficient-state', 'Insufficient state', 'The state omits information needed to determine future decisions.'),
+    ('state-definition', 'redundant-state', 'Redundant state', 'The state stores information already implied by other dimensions.'),
+    ('state-definition', 'state-transition-confusion', 'State/transition confusion', 'The learner describes how state changes instead of what the state means.'),
+    ('state-definition', 'unclear-dimensions', 'Unclear dimensions', 'One or more state dimensions do not have a precise meaning.'),
+    ('state-definition', 'future-state-collision', 'Future state collision', 'One state merges subproblems that require different future decisions.')
+ON CONFLICT (skill_slug, misconception_tag) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS answer_misconception (
     id BIGSERIAL PRIMARY KEY,
     answer_id BIGINT NOT NULL REFERENCES answer(id) ON DELETE CASCADE,
     skill_evidence_id BIGINT REFERENCES answer_skill_evidence(id) ON DELETE SET NULL,
     misconception_id BIGINT REFERENCES skill_misconception_catalog(id) ON DELETE SET NULL,
-    pattern_slug TEXT NOT NULL,
+    algorithm_slug TEXT NOT NULL,
     skill_slug TEXT NOT NULL,
     misconception_tag TEXT NOT NULL,
     evaluator_note TEXT,
@@ -167,7 +167,7 @@ CREATE TABLE IF NOT EXISTS answer_misconception (
 );
 
 CREATE INDEX IF NOT EXISTS idx_answer_misconception_signal
-    ON answer_misconception(pattern_slug, skill_slug, misconception_tag, created_at DESC);
+    ON answer_misconception(algorithm_slug, skill_slug, misconception_tag, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_answer_question_type_created_at
     ON answer(question_type, created_at DESC);
@@ -191,28 +191,35 @@ CREATE INDEX IF NOT EXISTS idx_answer_session_id_created_at
     ON answer(session_id, created_at DESC);
 
 -- ============================================================================
--- Core Algorithm Bank
+-- Taxonomy: algorithm -> problem -> [skill, technique]
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS core_algorithm_patterns (
-    pattern_slug VARCHAR(80) PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS algorithm (
+    slug VARCHAR(80) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     display_order INTEGER NOT NULL DEFAULT 0,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS core_algorithm_methods (
-    pattern_slug VARCHAR(80) NOT NULL REFERENCES core_algorithm_patterns(pattern_slug) ON DELETE CASCADE,
-    method_slug VARCHAR(120) NOT NULL,
+CREATE TABLE IF NOT EXISTS technique (
+    slug VARCHAR(80) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     display_order INTEGER NOT NULL DEFAULT 0,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (pattern_slug, method_slug)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS core_algorithms (
-    name VARCHAR(120) PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS skill (
+    slug VARCHAR(120) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS problem (
+    slug VARCHAR(120) PRIMARY KEY,
+    algorithm_slug VARCHAR(80) NOT NULL REFERENCES algorithm(slug) ON DELETE RESTRICT,
     title VARCHAR(255) NOT NULL,
     difficulty VARCHAR(20) NOT NULL CHECK (difficulty IN ('Easy', 'Med.', 'Hard')),
     description TEXT NOT NULL DEFAULT '',
@@ -220,23 +227,35 @@ CREATE TABLE IF NOT EXISTS core_algorithms (
     tags TEXT[] DEFAULT '{}',
     leetcode_examples JSONB NOT NULL DEFAULT '[]'::jsonb,
     display_order INTEGER NOT NULL DEFAULT 0,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS core_algorithm_skill_map (
-    function_name VARCHAR(120) NOT NULL REFERENCES core_algorithms(name) ON DELETE CASCADE,
-    pattern_slug VARCHAR(80) NOT NULL REFERENCES core_algorithm_patterns(pattern_slug) ON DELETE CASCADE,
-    method_slug VARCHAR(120) NOT NULL,
+CREATE INDEX IF NOT EXISTS idx_problem_algorithm
+    ON problem(algorithm_slug, display_order);
+
+CREATE INDEX IF NOT EXISTS idx_problem_tags
+    ON problem USING GIN(tags);
+
+CREATE TABLE IF NOT EXISTS problem_skill (
+    problem_slug VARCHAR(120) NOT NULL REFERENCES problem(slug) ON DELETE CASCADE,
+    skill_slug VARCHAR(120) NOT NULL REFERENCES skill(slug) ON DELETE CASCADE,
     display_order INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (function_name, pattern_slug, method_slug)
+    PRIMARY KEY (problem_slug, skill_slug)
 );
 
-CREATE INDEX IF NOT EXISTS idx_core_algorithm_skill_map_pattern
-    ON core_algorithm_skill_map(pattern_slug, display_order);
+CREATE INDEX IF NOT EXISTS idx_problem_skill_skill
+    ON problem_skill(skill_slug);
 
-CREATE INDEX IF NOT EXISTS idx_core_algorithms_tags
-    ON core_algorithms USING GIN(tags);
+CREATE TABLE IF NOT EXISTS problem_technique (
+    problem_slug VARCHAR(120) NOT NULL REFERENCES problem(slug) ON DELETE CASCADE,
+    technique_slug VARCHAR(80) NOT NULL REFERENCES technique(slug) ON DELETE CASCADE,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (problem_slug, technique_slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_problem_technique_technique
+    ON problem_technique(technique_slug);
 
 -- ============================================================================
 -- Coach Feedback Events Table
@@ -281,35 +300,3 @@ CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_stage_created
 
 CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_skill_tags
     ON coach_feedback_events USING GIN(skill_tags);
-
--- ============================================================================
--- Patterns Table
--- ============================================================================
-CREATE TABLE IF NOT EXISTS patterns (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL UNIQUE,
-    description TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_patterns_name
-    ON patterns(name);
-
--- ============================================================================
--- Methods Table
--- ============================================================================
-CREATE TABLE IF NOT EXISTS methods (
-    id SERIAL PRIMARY KEY,
-    pattern_id INTEGER NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_methods_pattern
-    ON methods(pattern_id);
-
-CREATE INDEX IF NOT EXISTS idx_methods_name
-    ON methods(name);

@@ -8,11 +8,11 @@ from typing import cast
 
 from app.repositories.base import acquire_connection
 from app.repositories.types import (
-    PatternMethodRow,
+    AlgorithmSkillRow,
     ScoreAttemptInsertResult,
+    SkillMapOverviewAlgorithmRow,
     SkillMapOverviewAttemptRow,
     SkillMapOverviewGeneratedRow,
-    SkillMapOverviewPatternRow,
 )
 
 
@@ -216,19 +216,19 @@ async def insert_answer_attempt_row(
 
         evidence_ids: dict[tuple[str, str], int] = {}
         for evidence in skill_evidence:
-            pattern_slug = str(evidence.get("patternSlug") or "")
+            algorithm_slug = str(evidence.get("algorithmSlug") or "")
             skill_slug = str(evidence.get("skillSlug") or "")
             evidence_row = await conn.fetchrow(
                 """
                 INSERT INTO answer_skill_evidence (
-                    answer_id, pattern_slug, skill_slug, evidence_score, confidence,
+                    answer_id, algorithm_slug, skill_slug, evidence_score, confidence,
                     evidence_source, created_at
                 )
                 VALUES ($1,$2,$3,$4,$5,$6,$7)
                 RETURNING id
                 """,
                 answer_id,
-                pattern_slug,
+                algorithm_slug,
                 skill_slug,
                 float(evidence.get("evidenceScore") or 0),
                 float(evidence.get("confidence") or 0),
@@ -236,37 +236,35 @@ async def insert_answer_attempt_row(
                 created_at,
             )
             if evidence_row:
-                evidence_ids[(pattern_slug, skill_slug)] = int(evidence_row["id"])
+                evidence_ids[(algorithm_slug, skill_slug)] = int(evidence_row["id"])
 
         for signal in misconception_signals:
-            pattern_slug = str(signal.get("patternSlug") or "")
+            algorithm_slug = str(signal.get("algorithmSlug") or "")
             skill_slug = str(signal.get("skillSlug") or "")
             misconception_tag = str(signal.get("misconceptionTag") or "")
             catalog_row = await conn.fetchrow(
                 """
                 SELECT id
                 FROM skill_misconception_catalog
-                WHERE pattern_slug = $1
-                  AND skill_slug = $2
-                  AND misconception_tag = $3
+                WHERE skill_slug = $1
+                  AND misconception_tag = $2
                   AND active = TRUE
                 """,
-                pattern_slug,
                 skill_slug,
                 misconception_tag,
             )
             await conn.execute(
                 """
                 INSERT INTO answer_misconception (
-                    answer_id, skill_evidence_id, misconception_id, pattern_slug, skill_slug,
+                    answer_id, skill_evidence_id, misconception_id, algorithm_slug, skill_slug,
                     misconception_tag, evaluator_note, confidence, detected_by, created_at
                 )
                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
                 """,
                 answer_id,
-                evidence_ids.get((pattern_slug, skill_slug)),
+                evidence_ids.get((algorithm_slug, skill_slug)),
                 int(catalog_row["id"]) if catalog_row else None,
-                pattern_slug,
+                algorithm_slug,
                 skill_slug,
                 misconception_tag,
                 str(signal.get("evaluatorNote") or "").strip() or None,
@@ -277,37 +275,50 @@ async def insert_answer_attempt_row(
     return cast(ScoreAttemptInsertResult, dict(row)) if row else None
 
 
-async def fetch_patterns_with_methods_rows() -> list[PatternMethodRow]:
-    async with acquire_connection() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT
-                (DENSE_RANK() OVER (ORDER BY p.display_order ASC, p.pattern_slug ASC))::int AS pattern_id,
-                p.name AS pattern_name,
-                (ROW_NUMBER() OVER (ORDER BY p.display_order ASC, m.display_order ASC, m.method_slug ASC))::int AS method_id,
-                m.name AS method_name
-            FROM core_algorithm_patterns p
-            LEFT JOIN core_algorithm_methods m ON m.pattern_slug = p.pattern_slug
-            ORDER BY p.display_order ASC, m.display_order ASC, m.method_slug ASC
-            """
-        )
-    return [cast(PatternMethodRow, dict(row)) for row in rows]
+_ALGORITHM_SKILL_JOIN = """
+    FROM algorithm a
+    LEFT JOIN (
+        SELECT
+            p.algorithm_slug,
+            ps.skill_slug,
+            MIN(ps.display_order) AS display_order
+        FROM problem p
+        JOIN problem_skill ps ON ps.problem_slug = p.slug
+        GROUP BY p.algorithm_slug, ps.skill_slug
+    ) links ON links.algorithm_slug = a.slug
+    LEFT JOIN skill s ON s.slug = links.skill_slug
+"""
 
 
-async def fetch_skill_map_overview_pattern_rows() -> list[SkillMapOverviewPatternRow]:
+async def fetch_algorithms_with_skills_rows() -> list[AlgorithmSkillRow]:
     async with acquire_connection() as conn:
         rows = await conn.fetch(
-            """
+            f"""
             SELECT
-                (DENSE_RANK() OVER (ORDER BY p.display_order ASC, p.pattern_slug ASC))::int AS pattern_id,
-                p.name AS pattern_name,
-                m.name AS method_name
-            FROM core_algorithm_patterns p
-            LEFT JOIN core_algorithm_methods m ON m.pattern_slug = p.pattern_slug
-            ORDER BY p.display_order ASC, m.display_order ASC, m.method_slug ASC
+                (DENSE_RANK() OVER (ORDER BY a.display_order ASC, a.slug ASC))::int AS algorithm_id,
+                a.name AS algorithm_name,
+                (ROW_NUMBER() OVER (ORDER BY a.display_order ASC, links.display_order ASC, s.slug ASC))::int AS skill_id,
+                s.name AS skill_name
+            {_ALGORITHM_SKILL_JOIN}
+            ORDER BY a.display_order ASC, links.display_order ASC, s.slug ASC
             """
         )
-    return [cast(SkillMapOverviewPatternRow, dict(row)) for row in rows]
+    return [cast(AlgorithmSkillRow, dict(row)) for row in rows]
+
+
+async def fetch_skill_map_overview_algorithm_rows() -> list[SkillMapOverviewAlgorithmRow]:
+    async with acquire_connection() as conn:
+        rows = await conn.fetch(
+            f"""
+            SELECT
+                (DENSE_RANK() OVER (ORDER BY a.display_order ASC, a.slug ASC))::int AS algorithm_id,
+                a.name AS algorithm_name,
+                s.name AS skill_name
+            {_ALGORITHM_SKILL_JOIN}
+            ORDER BY a.display_order ASC, links.display_order ASC, s.slug ASC
+            """
+        )
+    return [cast(SkillMapOverviewAlgorithmRow, dict(row)) for row in rows]
 
 
 async def fetch_skill_map_overview_generated_rows() -> list[SkillMapOverviewGeneratedRow]:
@@ -317,11 +328,11 @@ async def fetch_skill_map_overview_generated_rows() -> list[SkillMapOverviewGene
             SELECT id, title, tags
             FROM (
                 SELECT
-                    'core-algorithm-' || name AS id,
+                    'core-algorithm-' || slug AS id,
                     title,
                     tags,
                     display_order
-                FROM core_algorithms
+                FROM problem
             ) rows
             ORDER BY display_order ASC
             """

@@ -38,7 +38,7 @@ async def coach_practice_history(body: CoachPracticeHistoryRequest) -> CoachPrac
 
 
 async def load_skill_map_generation_summary(body: SkillMapDrillsRequest) -> SkillMapProgressSummary:
-    pattern_tags = [_pattern_slug(node.pattern) for node in body.skillMap[: body.count] if _pattern_slug(node.pattern)]
+    pattern_tags = [_pattern_slug(node.algorithm) for node in body.skillMap[: body.count] if _pattern_slug(node.algorithm)]
     history = await fetch_practice_history_entries(
         card_id="",
         question_type=body.questionType,

@@ -321,7 +321,7 @@ def test_skill_map_overview_updates_after_real_attempt_write() -> None:
             after_work_count = int(after_payload.get("summary", {}).get("workCount", 0))
 
             assert after_work_count >= before_work_count + 1
-            assert "patterns" in after_payload
+            assert "algorithms" in after_payload
             assert "reviewQueue" in after_payload
             assert "ghostRepActivity" in after_payload
     except Exception as exc:
@@ -329,5 +329,100 @@ def test_skill_map_overview_updates_after_real_attempt_write() -> None:
     finally:
         try:
             asyncio.run(_cleanup_roundtrip_rows(settings.database_url, generated_card_id))
+        except Exception:
+            pass
+
+
+@pytest.mark.integration
+def test_taxonomy_remap_migration_is_idempotent_real_db() -> None:
+    token = uuid4().hex[:10]
+    question_id = f"fx-remap-q-{token}"
+    interaction_id = f"fx-remap-{token}"
+
+    async def _seed_legacy_rows() -> int:
+        conn = await asyncpg.connect(settings.database_url)
+        try:
+            await conn.execute(
+                "CREATE TABLE IF NOT EXISTS core_algorithm_patterns (pattern_slug VARCHAR(80) PRIMARY KEY)"
+            )
+            await conn.execute(
+                """
+                INSERT INTO question (id, question_text, fingerprint)
+                VALUES ($1, 'remap fixture', $1)
+                ON CONFLICT DO NOTHING
+                """,
+                question_id,
+            )
+            row = await conn.fetchrow(
+                """
+                INSERT INTO answer (session_id, question_id, answer, category_tags, interaction_id)
+                VALUES ($1, $2, 'x', ARRAY['skill-map', 'dfs-bfs', 'greedy-sorting'], $1)
+                RETURNING id
+                """,
+                interaction_id,
+                question_id,
+            )
+            answer_id = int(row["id"])
+            await conn.execute(
+                """
+                INSERT INTO answer_skill_evidence
+                    (answer_id, algorithm_slug, skill_slug, evidence_score, confidence, evidence_source)
+                VALUES ($1, 'dfs-bfs', 'visited-tracking', 0.5, 0.9, 'fixture')
+                """,
+                answer_id,
+            )
+            return answer_id
+        finally:
+            await conn.close()
+
+    async def _read_state(answer_id: int) -> tuple[list[str], str, bool]:
+        conn = await asyncpg.connect(settings.database_url)
+        try:
+            tags = await conn.fetchval("SELECT category_tags FROM answer WHERE id = $1", answer_id)
+            slug = await conn.fetchval(
+                "SELECT algorithm_slug FROM answer_skill_evidence WHERE answer_id = $1", answer_id
+            )
+            legacy_table = await conn.fetchval("SELECT to_regclass('public.core_algorithm_patterns')")
+            return list(tags or []), str(slug), legacy_table is not None
+        finally:
+            await conn.close()
+
+    async def _cleanup(answer_id: int | None) -> None:
+        conn = await asyncpg.connect(settings.database_url)
+        try:
+            if answer_id is not None:
+                await conn.execute("DELETE FROM answer WHERE id = $1", answer_id)
+            await conn.execute("DELETE FROM question WHERE id = $1", question_id)
+        finally:
+            await conn.close()
+
+    answer_id: int | None = None
+    try:
+        asyncio.run(database_module.connect())
+        pool = database_module.get_pool()
+        answer_id = asyncio.run(_seed_legacy_rows())
+
+        asyncio.run(database_module._apply_taxonomy_remap_migration(pool))
+        tags_first, slug_first, legacy_exists_first = asyncio.run(_read_state(answer_id))
+
+        asyncio.run(database_module._apply_taxonomy_remap_migration(pool))
+        tags_second, slug_second, legacy_exists_second = asyncio.run(_read_state(answer_id))
+
+        assert slug_first == "graphs"
+        assert "dfs-bfs" not in tags_first
+        assert "greedy-sorting" not in tags_first
+        assert "graphs" in tags_first
+        assert "sorting" in tags_first
+        assert legacy_exists_first is False
+        assert (tags_second, slug_second, legacy_exists_second) == (tags_first, slug_first, legacy_exists_first)
+    except Exception as exc:
+        pytest.skip(f"Postgres not available for integration test: {exc}")
+    finally:
+        try:
+            asyncio.run(_cleanup(answer_id))
+        except Exception:
+            pass
+        try:
+            asyncio.run(database_module.disconnect())
         except Exception:
             pass

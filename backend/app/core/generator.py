@@ -483,9 +483,9 @@ def _process_multiple_choice_card(raw: Any, index: int, body: MultipleChoiceDril
         return None
 
     source_node = body.skillMap[index % max(len(body.skillMap), 1)] if body.skillMap else None
-    pattern = str(raw.get("pattern") or getattr(source_node, "pattern", "") or "Algorithm").strip()
+    pattern = str(raw.get("pattern") or getattr(source_node, "algorithm", "") or "Algorithm").strip()
     skill = str(raw.get("skill") or "").strip()
-    source_methods = list(getattr(source_node, "methods", []) or [])
+    source_methods = list(getattr(source_node, "skills", []) or [])
     if not skill and body.sourceMode == "skill-map" and len(source_methods) == 1:
         skill = str(source_methods[0]).strip()
     pattern_slug = _pattern_slug(pattern) or "algorithm"
@@ -540,7 +540,7 @@ def _process_multiple_choice_card(raw: Any, index: int, body: MultipleChoiceDril
     return {
         "id": f"mcq-{stamp}-{index + 1}",
         "title": title,
-        "pattern": pattern,
+        "algorithm": pattern,
         "skill": skill,
         "difficulty": difficulty,
         "question": question,
@@ -579,7 +579,7 @@ async def generate_multiple_choice_drills_response(
     generation_seed = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S%f")
     skill_map = list(body.skillMap[: body.count])
     if not skill_map:
-        skill_map = [SkillMapNode(pattern="Algorithm", methods=[])]
+        skill_map = [SkillMapNode(algorithm="Algorithm", skills=[])]
     while len(skill_map) < body.count:
         skill_map.extend(skill_map[: body.count - len(skill_map)])
 
@@ -646,9 +646,9 @@ async def generate_multiple_choice_drills_response(
         "generationSeed": generation_seed,
         "skillMap": [
             {
-                "pattern": node.pattern,
-                "methods": node.methods,
-                "patternSlug": _pattern_slug(node.pattern),
+                "pattern": node.algorithm,
+                "methods": node.skills,
+                "patternSlug": _pattern_slug(node.algorithm),
             }
             for node in skill_map[: body.count]
         ],
@@ -1434,8 +1434,8 @@ def attach_plain_english_prompt_detail(
 
 
 def _focused_source_method(source_node: Any) -> str:
-    methods = list(getattr(source_node, "methods", []) or []) if source_node else []
-    return str(methods[0]).strip() if methods else "core method"
+    skills = list(getattr(source_node, "skills", []) or []) if source_node else []
+    return str(skills[0]).strip() if skills else "core method"
 
 
 def _should_rewrite_focused_drill(raw: SkillMapDrillPayload, pattern: str, method: str, target: str) -> bool:
@@ -1631,7 +1631,7 @@ def _process_raw_drill(
     if "skill-map" not in tags:
         tags = ["skill-map", *tags]
     source_node = generation_skill_map[index] if index < len(generation_skill_map) else None
-    pattern = source_node.pattern if source_node else str(raw.get("title", "algorithm"))
+    pattern = source_node.algorithm if source_node else str(raw.get("title", "algorithm"))
     pattern_slug = _pattern_slug(pattern)
     method = _focused_source_method(source_node)
     question_title = str(getattr(source_node, "questionTitle", "") or "").strip() if source_node else ""
@@ -1796,11 +1796,11 @@ def build_generator_context(
         rng.shuffle(generation_skill_map)
     trimmed_skill_map = [
         {
-            "pattern": node.pattern,
+            "pattern": node.algorithm,
             "methods": (
-                list(node.methods)
+                list(node.skills)
                 if playlist_request or focused_request
-                else rng.sample(list(node.methods), len(node.methods)) if node.methods else []
+                else rng.sample(list(node.skills), len(node.skills)) if node.skills else []
             ),
             "questionTitle": node.questionTitle,
             "playlistSlug": node.playlistSlug,
@@ -1891,12 +1891,12 @@ def fallback_skill_map_drills(context: GeneratorContext) -> SkillMapDrillsEnvelo
     drills: list[SkillMapDrillPayload] = []
     nodes = context.body.skillMap[: context.body.count]
     if not nodes:
-        nodes = [type("Node", (), {"pattern": "algorithm", "methods": []})()]
+        nodes = [type("Node", (), {"algorithm": "algorithm", "skills": []})()]
 
     progress_by_pattern = context.progress_summary.get("patterns", {}) if isinstance(context.progress_summary, dict) else {}
     for index, node in enumerate(nodes):
-        pattern = str(getattr(node, "pattern", "algorithm") or "algorithm")
-        methods = list(getattr(node, "methods", []) or [])
+        pattern = str(getattr(node, "algorithm", "algorithm") or "algorithm")
+        methods = list(getattr(node, "skills", []) or [])
         question_title = str(getattr(node, "questionTitle", "") or "").strip()
         playlist_slug = str(getattr(node, "playlistSlug", "") or "").strip()
         method_hint = str(methods[0]).strip() if methods else "core method"

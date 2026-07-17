@@ -1,17 +1,17 @@
 import { type CSSProperties, useEffect, useMemo, useState } from 'react'
 
+export type GhostRepActivitySkillSegment = {
+  skill: string
+  slug: string
+  count: number
+}
+
 export type GhostRepActivitySegment = {
-  pattern: string
+  algorithm: string
   slug: string
   workType?: 'ghost-reps' | 'multiple-choice'
   count: number
-  methods?: GhostRepActivityMethodSegment[]
-}
-
-export type GhostRepActivityMethodSegment = {
-  method: string
-  slug: string
-  count: number
+  skills?: GhostRepActivitySkillSegment[]
 }
 
 export type GhostRepActivityDay = {
@@ -22,8 +22,8 @@ export type GhostRepActivityDay = {
   segments: GhostRepActivitySegment[]
 }
 
-export type GhostRepActivityPattern = {
-  pattern: string
+export type GhostRepActivityAlgorithm = {
+  algorithm: string
   slug: string
   totalGhostReps: number
   totalMultipleChoice?: number
@@ -41,13 +41,13 @@ export type GhostRepActivity = {
   activeDays: number
   peakDailyCount: number
   days: GhostRepActivityDay[]
-  patterns: GhostRepActivityPattern[]
+  algorithms: GhostRepActivityAlgorithm[]
 }
 
-export type GhostRepPatternOrder = {
-  pattern: string
+export type GhostRepAlgorithmOrder = {
+  algorithm: string
   slug: string
-  methods?: string[]
+  skills?: string[]
 }
 
 export type GhostRepSpacedRepetitionDay = {
@@ -90,7 +90,7 @@ export type GhostRepSpacedRepetition = {
 type SwimLaneCell = {
   date: string
   count: number
-  methods: GhostRepActivityMethodSegment[]
+  skills: GhostRepActivitySkillSegment[]
   scheduleStatus?: GhostRepSpacedRepetitionDay['status']
   scheduleLabel?: string
 }
@@ -110,6 +110,7 @@ const CADENCE_PRESETS: Record<CadencePreset, { label: string; intervals: number[
   balanced: { label: 'Balanced', intervals: [0, 1, 3, 7, 14, 30, 60, 90] },
   wide: { label: 'Wide', intervals: [0, 2, 7, 21, 45, 90] },
 }
+
 const TRACKED_ALGORITHMS_STORAGE_KEY = 'system1.history.tracked-spaced-repetition-algorithms'
 
 const shortDateFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
@@ -136,29 +137,24 @@ const startOfCalendarWeek = (value: string) => {
   return toCalendarDate(date)
 }
 
-const compactPatternLabel = (pattern: string) => {
-  if (pattern.length <= 18) return pattern
-  return pattern
-    .replace('Dynamic Programming', 'DP')
-    .replace('Priority Queue', 'PQ')
-    .replace('Graph Traversal', 'Graphs')
+const compactAlgorithmLabel = (algorithm: string) => {
+  if (algorithm.length <= 18) return algorithm
+  return algorithm.replace('Dynamic Programming', 'DP').replace('Priority Queue', 'PQ')
 }
 
-const methodSummary = (methods: GhostRepActivityMethodSegment[]) => {
-  if (methods.length === 0) return ''
-  return methods
-    .map(method => `${method.method}: ${method.count}`)
-    .join(', ')
+const skillSummary = (skills: GhostRepActivitySkillSegment[]) => {
+  if (skills.length === 0) return ''
+  return skills.map(skill => `${skill.skill}: ${skill.count}`).join(', ')
 }
 
 export default function GhostRepActivityChart({
   activity,
-  patternOrder,
+  algorithmOrder,
   spacedRepetition,
   onSelectionChange,
 }: {
   activity?: GhostRepActivity
-  patternOrder: GhostRepPatternOrder[]
+  algorithmOrder: GhostRepAlgorithmOrder[]
   spacedRepetition?: GhostRepSpacedRepetition
   onSelectionChange?: (slugs: string[]) => void
 }) {
@@ -174,7 +170,8 @@ export default function GhostRepActivityChart({
       return new Set()
     }
   })
-  const drilldownPattern = patternOrder.find(pattern => pattern.slug === drilldownSlug)
+
+  const drilldownAlgorithm = algorithmOrder.find(algorithm => algorithm.slug === drilldownSlug) ?? null
   const today = spacedRepetition?.today ?? activity?.windowEnd
   const activityByDate = useMemo(
     () => new Map((activity?.days ?? []).map(day => [day.date, day])),
@@ -217,103 +214,93 @@ export default function GhostRepActivityChart({
   const rows = useMemo<SwimLaneRow[]>(() => {
     if (!activity) return []
 
-    if (drilldownPattern) {
-      const methodRows = (drilldownPattern.methods ?? []).map(method => ({
-        method,
-        slug: slugify(method),
-      }))
-      const observedMethodSlugs = new Map<string, string>()
+    if (drilldownAlgorithm) {
+      const skillRows = (drilldownAlgorithm.skills ?? []).map(skill => ({ skill, slug: slugify(skill) }))
+      const observedSkillSlugs = new Map<string, string>()
       for (const day of activity.days) {
         for (const segment of day.segments) {
-          if (segment.slug !== drilldownPattern.slug || segment.workType === 'multiple-choice') continue
-          for (const method of segment.methods ?? []) {
-            observedMethodSlugs.set(method.slug, method.method)
+          if (segment.slug !== drilldownAlgorithm.slug || segment.workType === 'multiple-choice') continue
+          for (const skill of segment.skills ?? []) {
+            observedSkillSlugs.set(skill.slug, skill.skill)
           }
         }
       }
-      for (const [slug, method] of observedMethodSlugs) {
-        if (!methodRows.some(row => row.slug === slug)) {
-          methodRows.push({ slug, method })
+      for (const [slug, skill] of observedSkillSlugs) {
+        if (!skillRows.some(row => row.slug === slug)) {
+          skillRows.push({ slug, skill })
         }
       }
 
-      return methodRows.map(method => {
-        const scheduleTrackId = `${drilldownPattern.slug}:${method.slug}`
-        const scheduleDays = scheduleByTrackId.get(scheduleTrackId)
-        const cells = chartDates.map(date => {
-          const day = activityByDate.get(date)
-          const ghostSegments = (day?.segments ?? []).filter(segment =>
-            segment.slug === drilldownPattern.slug && segment.workType !== 'multiple-choice'
+      return skillRows.map(skill => {
+        const cells = activity.days.map(day => {
+          const ghostSegments = day.segments.filter(segment =>
+            segment.slug === drilldownAlgorithm.slug && segment.workType !== 'multiple-choice',
           )
           const count = ghostSegments.reduce((sum, segment) => {
-            const methodCount = (segment.methods ?? [])
-              .filter(item => item.slug === method.slug)
-              .reduce((methodSum, item) => methodSum + item.count, 0)
-            return sum + methodCount
+            const skillCount = (segment.skills ?? [])
+              .filter(item => item.slug === skill.slug)
+              .reduce((skillSum, item) => skillSum + item.count, 0)
+            return sum + skillCount
           }, 0)
           return {
-            date,
+            date: day.date,
             count,
-            methods: count > 0 ? [{ method: method.method, slug: method.slug, count }] : [],
-            scheduleStatus: scheduleDays?.get(date)?.status,
-            scheduleLabel: scheduleDays?.get(date)?.label,
+            skills: count > 0 ? [{ skill: skill.skill, slug: skill.slug, count }] : [],
           }
         })
         return {
-          label: method.method,
-          slug: method.slug,
-          parentSlug: drilldownPattern.slug,
-          scheduleTrackId,
+          label: skill.skill,
+          slug: skill.slug,
+          parentSlug: drilldownAlgorithm.slug,
+          scheduleTrackId: drilldownAlgorithm.slug,
           cells,
         }
       })
     }
 
-    return patternOrder.map(pattern => {
-      const scheduleDays = scheduleByTrackId.get(pattern.slug)
+    return algorithmOrder.map(algorithm => {
+      const scheduleDays = scheduleByTrackId.get(algorithm.slug)
       const cells = chartDates.map(date => {
         const day = activityByDate.get(date)
         const ghostSegments = (day?.segments ?? []).filter(segment =>
-          segment.slug === pattern.slug && segment.workType !== 'multiple-choice'
+          segment.slug === algorithm.slug && segment.workType !== 'multiple-choice',
         )
         const count = ghostSegments.reduce((sum, segment) => sum + segment.count, 0)
-        const methodsBySlug = new Map<string, GhostRepActivityMethodSegment>()
+        const skillsBySlug = new Map<string, GhostRepActivitySkillSegment>()
         for (const segment of ghostSegments) {
-          for (const method of segment.methods ?? []) {
-            const current = methodsBySlug.get(method.slug)
-            methodsBySlug.set(method.slug, {
-              method: method.method,
-              slug: method.slug,
-              count: (current?.count ?? 0) + method.count,
+          for (const skill of segment.skills ?? []) {
+            const current = skillsBySlug.get(skill.slug)
+            skillsBySlug.set(skill.slug, {
+              skill: skill.skill,
+              slug: skill.slug,
+              count: (current?.count ?? 0) + skill.count,
             })
           }
         }
         return {
           date,
           count,
-          methods: [...methodsBySlug.values()],
+          skills: [...skillsBySlug.values()],
           scheduleStatus: scheduleDays?.get(date)?.status,
           scheduleLabel: scheduleDays?.get(date)?.label,
         }
       })
       return {
-        label: pattern.pattern,
-        slug: pattern.slug,
-        scheduleTrackId: pattern.slug,
+        label: algorithm.algorithm,
+        slug: algorithm.slug,
+        scheduleTrackId: algorithm.slug,
         cells,
       }
     })
-  }, [activity, activityByDate, chartDates, drilldownPattern, patternOrder, scheduleByTrackId])
+  }, [activity, activityByDate, algorithmOrder, chartDates, drilldownAlgorithm, scheduleByTrackId])
 
-  const selectedTrack = spacedRepetition?.tracks.find(
-    track => track.id === drilldownPattern?.slug,
-  )
+  const selectedTrack = spacedRepetition?.tracks.find(track => track.id === drilldownAlgorithm?.slug)
   const selectedTrend = useMemo(() => {
-    if (!activity || !drilldownPattern || !today) return null
+    if (!activity || !drilldownAlgorithm || !today) return null
     const relevantDays = activity.days.map(day => ({
       date: day.date,
       count: day.segments
-        .filter(segment => segment.slug === drilldownPattern.slug && segment.workType !== 'multiple-choice')
+        .filter(segment => segment.slug === drilldownAlgorithm.slug && segment.workType !== 'multiple-choice')
         .reduce((sum, segment) => sum + segment.count, 0),
     }))
     const currentWeekStart = startOfCalendarWeek(today)
@@ -327,9 +314,9 @@ export default function GhostRepActivityChart({
     const currentWeek = weeks.at(-1)?.count ?? 0
     const previousWeek = weeks.at(-2)?.count ?? 0
     const activeDays = relevantDays.filter(day => day.count > 0).length
-    const allTime = activity.patterns.find(pattern => pattern.slug === drilldownPattern.slug)?.totalGhostReps ?? 0
+    const allTime = activity.algorithms.find(algorithm => algorithm.slug === drilldownAlgorithm.slug)?.totalGhostReps ?? 0
     return { weeks, currentWeek, previousWeek, activeDays, allTime }
-  }, [activity, drilldownPattern, today])
+  }, [activity, drilldownAlgorithm, today])
 
   const forecast = useMemo(() => {
     if (!selectedTrack || !today) return []
@@ -368,7 +355,7 @@ export default function GhostRepActivityChart({
       <div className="daily-work-history-header">
         <div>
           <p className="dashboard-activity-eyebrow">Daily Work History</p>
-          {drilldownPattern && <h2>{drilldownPattern.pattern}</h2>}
+          {drilldownAlgorithm && <h2>{drilldownAlgorithm.algorithm}</h2>}
         </div>
         <div className="daily-work-history-stats">
           <span className="coach-metric-chip">{activity.totalGhostReps} Ghost Reps</span>
@@ -381,7 +368,7 @@ export default function GhostRepActivityChart({
         </div>
       </div>
 
-      {drilldownPattern && selectedTrend && (
+      {drilldownAlgorithm && selectedTrend && (
         <div className="repetition-outlook">
           <div className="repetition-outlook-header">
             <div>
@@ -391,10 +378,10 @@ export default function GhostRepActivityChart({
             <div className="repetition-outlook-header-actions">
               <button
                 type="button"
-                className={`repetition-track-toggle repetition-track-toggle-primary${trackedAlgorithms.has(drilldownPattern.slug) ? ' selected' : ''}`}
-                aria-pressed={trackedAlgorithms.has(drilldownPattern.slug)}
-                aria-label={`${trackedAlgorithms.has(drilldownPattern.slug) ? 'Stop tracking' : 'Track'} ${drilldownPattern.pattern} spaced repetitions`}
-                onClick={() => toggleTrackedAlgorithm(drilldownPattern.slug)}
+                className={`repetition-track-toggle repetition-track-toggle-primary${trackedAlgorithms.has(drilldownAlgorithm.slug) ? ' selected' : ''}`}
+                aria-pressed={trackedAlgorithms.has(drilldownAlgorithm.slug)}
+                aria-label={`${trackedAlgorithms.has(drilldownAlgorithm.slug) ? 'Stop tracking' : 'Track'} ${drilldownAlgorithm.algorithm} spaced repetitions`}
+                onClick={() => toggleTrackedAlgorithm(drilldownAlgorithm.slug)}
               >
                 <span>Spaced reps</span>
                 <span className="repetition-track-switch" aria-hidden="true"><i /></span>
@@ -409,7 +396,7 @@ export default function GhostRepActivityChart({
           </div>
 
           <div className="repetition-outlook-body">
-            <div className="repetition-weekly-trend" aria-label={`${drilldownPattern.pattern} weekly ghost rep trend`}>
+            <div className="repetition-weekly-trend" aria-label={`${drilldownAlgorithm.algorithm} weekly ghost rep trend`}>
               {selectedTrend.weeks.map(week => {
                 const peak = Math.max(...selectedTrend.weeks.map(item => item.count), 1)
                 return (
@@ -471,8 +458,8 @@ export default function GhostRepActivityChart({
         className="daily-work-history-swimlane"
         style={{ '--daily-work-history-days': chartDates.length } as CSSProperties}
       >
-        <div className={`daily-work-history-axis-corner${drilldownPattern ? ' daily-work-history-axis-corner-drilldown' : ''}`}>
-          {drilldownPattern ? (
+        <div className={`daily-work-history-axis-corner${drilldownAlgorithm ? ' daily-work-history-axis-corner-drilldown' : ''}`}>
+          {drilldownAlgorithm ? (
             <button
               type="button"
               className="daily-work-history-axis-button"
@@ -496,7 +483,7 @@ export default function GhostRepActivityChart({
         {rows.map(row => (
           <div key={row.slug} className="daily-work-history-lane">
             <div className={`daily-work-history-lane-label${trackedAlgorithms.has(row.parentSlug ?? row.slug) ? ' daily-work-history-lane-label-tracked' : ''}`}>
-              {drilldownPattern ? (
+              {drilldownAlgorithm ? (
                 <strong title={row.label}>{row.label}</strong>
               ) : (
                 <>
@@ -506,7 +493,7 @@ export default function GhostRepActivityChart({
                     title={row.label}
                     onClick={() => setDrilldownSlug(row.slug)}
                   >
-                    {compactPatternLabel(row.label)}
+                    {compactAlgorithmLabel(row.label)}
                   </button>
                   <button
                     type="button"
@@ -523,7 +510,7 @@ export default function GhostRepActivityChart({
             <div className="daily-work-history-lane-cells">
               {row.cells.map(cell => {
                 const intensity = cell.count > 0 ? `${Math.round(Math.max(0.28, cell.count / peakCellCount) * 72)}%` : '0%'
-                const methods = methodSummary(cell.methods)
+                const methods = skillSummary(cell.skills)
                 const isVisuallyTracked = trackedAlgorithms.has(row.parentSlug ?? row.slug)
                 const scheduleStatus = isVisuallyTracked && cell.scheduleStatus && cell.scheduleStatus !== 'empty'
                   ? cell.scheduleStatus
@@ -558,6 +545,13 @@ export default function GhostRepActivityChart({
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="daily-work-history-legend">
+        <span><i className="daily-work-history-cell daily-work-history-cell-active" /> Activity</span>
+        <span><i className="daily-work-history-cell daily-work-history-cell-on-track" /> On track</span>
+        <span><i className="daily-work-history-cell daily-work-history-cell-schedule-due" /> Due</span>
+        <span><i className="daily-work-history-cell daily-work-history-cell-schedule-overdue" /> Overdue</span>
       </div>
     </section>
   )

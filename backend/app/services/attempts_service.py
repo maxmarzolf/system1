@@ -9,30 +9,30 @@ from typing import Any, TypedDict
 from app.models import AttemptCreate, SkillMapNode
 from app.readiness import READINESS_MODE_ORDER, summarize_readiness
 from app.repositories.attempts_repository import (
-    fetch_patterns_with_methods_rows,
+    fetch_algorithms_with_skills_rows,
+    fetch_skill_map_overview_algorithm_rows,
     fetch_skill_map_overview_attempt_rows,
     fetch_skill_map_overview_generated_rows,
-    fetch_skill_map_overview_pattern_rows,
     insert_answer_attempt_row,
 )
 from app.repositories.types import (
-    PatternMethodRow,
+    AlgorithmSkillRow,
+    SkillMapOverviewAlgorithmRow,
     SkillMapOverviewAttemptRow,
     SkillMapOverviewGeneratedRow,
-    SkillMapOverviewPatternRow,
 )
 from app.submission_rubric import compact_submission_rubric, summarize_submission_rubrics
 from app.services.contracts import (
     AttemptSaveResult,
     SkillMapGhostRepActivity,
     SkillMapGhostRepActivityDay,
-    SkillMapGhostRepPattern,
+    SkillMapGhostRepAlgorithm,
     SkillMapModeActivity,
     SkillMapModeActivityDay,
     SkillMapModeSummary,
+    SkillMapAlgorithmSummary,
     SkillMapOverviewPayload,
     SkillMapOverviewSummary,
-    SkillMapPatternSummary,
     SkillMapReviewQueueItem,
     SkillMapSpacedRepetitionPayload,
 )
@@ -48,13 +48,51 @@ class AttemptOverviewItem(TypedDict):
 
 SPACED_REPETITION_REQUIRED_GHOST_REPS = 1
 SPACED_REPETITION_INTERVALS = (0, 1, 3, 7, 14, 30, 60, 90)
+SPACED_REPETITION_PACKET_DEFINITIONS = (
+    {
+        "id": "group-1a",
+        "label": "Group 1A",
+        "group": "Linear Scan / Index Control",
+        "algorithmSlugs": ("prefix-sums", "two-pointers", "sliding-window"),
+    },
+    {
+        "id": "group-1b",
+        "label": "Group 1B",
+        "group": "Linear Scan / Index Control",
+        "algorithmSlugs": ("binary-search", "intervals", "sorting"),
+    },
+    {
+        "id": "group-2a",
+        "label": "Group 2A",
+        "group": "Structure / Traversal / Search",
+        "algorithmSlugs": ("linked-lists", "stacks-queues", "monotonic-stack"),
+    },
+    {
+        "id": "group-2b",
+        "label": "Group 2B",
+        "group": "Structure / Traversal / Search",
+        "algorithmSlugs": ("trees", "backtracking", "trie"),
+    },
+    {
+        "id": "group-3a",
+        "label": "Group 3A",
+        "group": "Optimization / Connectivity / Advanced State",
+        "algorithmSlugs": ("heap", "union-find", "graphs"),
+    },
+    {
+        "id": "group-3b",
+        "label": "Group 3B",
+        "group": "Optimization / Connectivity / Advanced State",
+        "algorithmSlugs": ("dynamic-programming", "matrix-grid"),
+    },
+)
 
 
-def _pattern_slug(pattern: str) -> str:
+def _algorithm_slug(algorithm: str) -> str:
     return re.sub(
         r"\s+",
         "-",
-        re.sub(r"[^a-z0-9\s-]", " ", pattern.lower().replace("/", " ").replace("&", " ").replace("-", " ")).strip(),
+        re.sub(r"[^a-z0-9\s-]", " ", algorithm.lower().replace("/", " ").replace("&", " ").replace("-", " ")).strip(),
     )
 
 
@@ -160,13 +198,15 @@ def _build_ghost_rep_activity(
 ) -> SkillMapGhostRepActivity:
     today = datetime.now(timezone.utc).date()
     window_start = today - timedelta(days=max(window_days - 1, 0))
-    known_pattern_slugs = set(slug_to_pattern)
-    counts_by_day_type_pattern: dict[str, Counter[tuple[str, str]]] = {}
-    method_counts_by_day_type_pattern: dict[tuple[str, str, str], Counter[str]] = {}
-    pattern_ghost_totals: Counter[str] = Counter()
-    pattern_mcq_totals: Counter[str] = Counter()
-    last_ghost_seen_by_pattern: dict[str, date] = {}
-    last_work_seen_by_pattern: dict[str, date] = {}
+    slug_to_algorithm = slug_to_pattern
+    skills_by_algorithm_slug = methods_by_pattern_slug
+    known_algorithm_slugs = set(slug_to_algorithm)
+    counts_by_day_type_algorithm: dict[str, Counter[tuple[str, str]]] = {}
+    skill_counts_by_day_type_algorithm: dict[tuple[str, str, str], Counter[str]] = {}
+    algorithm_ghost_totals: Counter[str] = Counter()
+    algorithm_mcq_totals: Counter[str] = Counter()
+    last_ghost_seen_by_algorithm: dict[str, date] = {}
+    last_work_seen_by_algorithm: dict[str, date] = {}
 
     for row in attempt_rows:
         created_at = _coerce_utc_datetime(row["created_at"])
@@ -177,31 +217,31 @@ def _build_ghost_rep_activity(
         is_ghost_rep = str(row["support_layer"] or "none") == "ghost-reps"
         if not is_ghost_rep and not is_mcq:
             continue
-        matched_pattern_slugs = [tag for tag in category_tags if tag in known_pattern_slugs]
-        if not matched_pattern_slugs:
+        matched_algorithm_slugs = [tag for tag in category_tags if tag in known_algorithm_slugs]
+        if not matched_algorithm_slugs:
             continue
         work_type = "multiple-choice" if is_mcq else "ghost-reps"
         attempt_date = created_at.date()
         iso_date = attempt_date.isoformat()
-        for slug in matched_pattern_slugs:
-            known_methods = methods_by_pattern_slug.get(slug, [])
-            matched_method_slugs = [
-                _pattern_slug(method)
-                for method in known_methods
-                if _pattern_slug(method) in category_tags
+        for slug in matched_algorithm_slugs:
+            known_skills = skills_by_algorithm_slug.get(slug, [])
+            matched_skill_slugs = [
+                _algorithm_slug(skill)
+                for skill in known_skills
+                if _algorithm_slug(skill) in category_tags
             ]
-            method_slug = matched_method_slugs[0] if matched_method_slugs else "unclassified"
+            skill_slug = matched_skill_slugs[0] if matched_skill_slugs else "unclassified"
             if is_mcq:
-                pattern_mcq_totals[slug] += 1
+                algorithm_mcq_totals[slug] += 1
             else:
-                pattern_ghost_totals[slug] += 1
+                algorithm_ghost_totals[slug] += 1
             if attempt_date >= window_start:
-                counts_by_day_type_pattern.setdefault(iso_date, Counter())[(work_type, slug)] += 1
-                method_counts_by_day_type_pattern.setdefault((iso_date, work_type, slug), Counter())[method_slug] += 1
-            if is_ghost_rep and (slug not in last_ghost_seen_by_pattern or attempt_date > last_ghost_seen_by_pattern[slug]):
-                last_ghost_seen_by_pattern[slug] = attempt_date
-            if slug not in last_work_seen_by_pattern or attempt_date > last_work_seen_by_pattern[slug]:
-                last_work_seen_by_pattern[slug] = attempt_date
+                counts_by_day_type_algorithm.setdefault(iso_date, Counter())[(work_type, slug)] += 1
+                skill_counts_by_day_type_algorithm.setdefault((iso_date, work_type, slug), Counter())[skill_slug] += 1
+            if is_ghost_rep and (slug not in last_ghost_seen_by_algorithm or attempt_date > last_ghost_seen_by_algorithm[slug]):
+                last_ghost_seen_by_algorithm[slug] = attempt_date
+            if slug not in last_work_seen_by_algorithm or attempt_date > last_work_seen_by_algorithm[slug]:
+                last_work_seen_by_algorithm[slug] = attempt_date
 
     days: list[SkillMapGhostRepActivityDay] = []
     active_days = 0
@@ -209,7 +249,7 @@ def _build_ghost_rep_activity(
     cursor = window_start
     while cursor <= today:
         iso_date = cursor.isoformat()
-        day_counts = counts_by_day_type_pattern.get(iso_date, Counter())
+        day_counts = counts_by_day_type_algorithm.get(iso_date, Counter())
         total = sum(day_counts.values())
         ghost_rep_count = sum(count for (work_type, _slug), count in day_counts.items() if work_type == "ghost-reps")
         multiple_choice_count = sum(count for (work_type, _slug), count in day_counts.items() if work_type == "multiple-choice")
@@ -223,48 +263,48 @@ def _build_ghost_rep_activity(
             "multipleChoiceCount": multiple_choice_count,
             "segments": [
                 {
-                    "pattern": slug_to_pattern[slug],
+                    "algorithm": slug_to_algorithm[slug],
                     "slug": slug,
                     "workType": work_type,
                     "count": count,
-                    "methods": [
+                    "skills": [
                         {
-                            "method": next(
+                            "skill": next(
                                 (
-                                    method
-                                    for method in methods_by_pattern_slug.get(slug, [])
-                                    if _pattern_slug(method) == method_slug
+                                    skill
+                                    for skill in skills_by_algorithm_slug.get(slug, [])
+                                    if _algorithm_slug(skill) == skill_slug
                                 ),
                                 "Unclassified",
                             ),
-                            "slug": method_slug,
-                            "count": method_count,
+                            "slug": skill_slug,
+                            "count": skill_count,
                         }
-                        for method_slug, method_count in sorted(
-                            method_counts_by_day_type_pattern.get((iso_date, work_type, slug), Counter()).items(),
+                        for skill_slug, skill_count in sorted(
+                            skill_counts_by_day_type_algorithm.get((iso_date, work_type, slug), Counter()).items(),
                             key=lambda item: item[0],
                         )
                     ],
                 }
                 for (work_type, slug), count in sorted(
                     day_counts.items(),
-                    key=lambda item: (0 if item[0][0] == "ghost-reps" else 1, slug_to_pattern[item[0][1]], item[0][1]),
+                    key=lambda item: (0 if item[0][0] == "ghost-reps" else 1, slug_to_algorithm[item[0][1]], item[0][1]),
                 )
             ],
         })
         cursor += timedelta(days=1)
 
-    patterns: list[SkillMapGhostRepPattern] = [
+    algorithms: list[SkillMapGhostRepAlgorithm] = [
         {
-            "pattern": pattern,
+            "algorithm": algorithm,
             "slug": slug,
-            "totalGhostReps": int(pattern_ghost_totals.get(slug, 0)),
-            "totalMultipleChoice": int(pattern_mcq_totals.get(slug, 0)),
-            "totalWork": int(pattern_ghost_totals.get(slug, 0) + pattern_mcq_totals.get(slug, 0)),
-            "daysSinceLastGhostRep": (today - last_ghost_seen_by_pattern[slug]).days if slug in last_ghost_seen_by_pattern else None,
-            "daysSinceLastPractice": (today - last_work_seen_by_pattern[slug]).days if slug in last_work_seen_by_pattern else None,
+            "totalGhostReps": int(algorithm_ghost_totals.get(slug, 0)),
+            "totalMultipleChoice": int(algorithm_mcq_totals.get(slug, 0)),
+            "totalWork": int(algorithm_ghost_totals.get(slug, 0) + algorithm_mcq_totals.get(slug, 0)),
+            "daysSinceLastGhostRep": (today - last_ghost_seen_by_algorithm[slug]).days if slug in last_ghost_seen_by_algorithm else None,
+            "daysSinceLastPractice": (today - last_work_seen_by_algorithm[slug]).days if slug in last_work_seen_by_algorithm else None,
         }
-        for slug, pattern in slug_to_pattern.items()
+        for slug, algorithm in slug_to_algorithm.items()
     ]
 
     return {
@@ -276,7 +316,7 @@ def _build_ghost_rep_activity(
         "activeDays": active_days,
         "peakDailyCount": peak_daily_count,
         "days": days,
-        "patterns": patterns,
+        "algorithms": algorithms,
     }
 
 
@@ -330,7 +370,7 @@ def _build_spaced_repetition(
             card_to_track_ids.setdefault(card_id, set()).add(pattern_slug)
 
         for method in methods_by_pattern_slug.get(pattern_slug, []):
-            method_slug = _pattern_slug(method)
+            method_slug = _algorithm_slug(method)
             track_id = f"{pattern_slug}:{method_slug}"
             method_cards = card_ids_by_method.get((pattern_slug, method_slug), set())
             method_slug_lookup[(pattern_slug, method_slug)] = track_id
@@ -371,7 +411,7 @@ def _build_spaced_repetition(
         for pattern_slug in pattern_slugs:
             known_methods = methods_by_pattern_slug.get(pattern_slug, [])
             for method in known_methods:
-                method_slug = _pattern_slug(method)
+                method_slug = _algorithm_slug(method)
                 if method_slug in category_tags:
                     track_ids.add(method_slug_lookup[(pattern_slug, method_slug)])
 
@@ -527,55 +567,60 @@ def _build_spaced_repetition(
 
 
 def build_skill_map_overview(
-    pattern_rows: list[SkillMapOverviewPatternRow],
+    algorithm_rows: list[SkillMapOverviewAlgorithmRow],
     generated_rows: list[SkillMapOverviewGeneratedRow],
     attempt_rows: list[SkillMapOverviewAttemptRow],
 ) -> SkillMapOverviewPayload:
     grouped: dict[int, dict[str, Any]] = {}
-    for row in pattern_rows:
-        pattern_id = int(row["pattern_id"])
-        pattern_name = str(row["pattern_name"])
-        if pattern_id not in grouped:
-            grouped[pattern_id] = {
-                "pattern": pattern_name,
-                "slug": _pattern_slug(pattern_name),
-                "methods": [],
+    for row in algorithm_rows:
+        algorithm_id = int(row["algorithm_id"])
+        algorithm_name = str(row["algorithm_name"])
+        if algorithm_id not in grouped:
+            grouped[algorithm_id] = {
+                "algorithm": algorithm_name,
+                "slug": _algorithm_slug(algorithm_name),
+                "skills": [],
             }
-        if row["method_name"]:
-            grouped[pattern_id]["methods"].append(str(row["method_name"]))
+        if row["skill_name"]:
+            grouped[algorithm_id]["skills"].append(str(row["skill_name"]))
 
-    patterns = list(grouped.values())
-    slug_to_pattern = {str(item["slug"]): str(item["pattern"]) for item in patterns}
-    methods_by_pattern_slug = {
-        str(item["slug"]): [str(method) for method in item["methods"]]
-        for item in patterns
+    algorithms = list(grouped.values())
+    slug_to_algorithm = {str(item["slug"]): str(item["algorithm"]) for item in algorithms}
+    skills_by_algorithm_slug = {
+        str(item["slug"]): [str(skill) for skill in item["skills"]]
+        for item in algorithms
     }
-    known_pattern_slugs = set(slug_to_pattern)
+    known_algorithm_slugs = set(slug_to_algorithm)
+    known_pattern_slugs = known_algorithm_slugs
+    slug_to_pattern = slug_to_algorithm
+    methods_by_pattern_slug = skills_by_algorithm_slug
+    card_ids_by_algorithm: dict[str, set[str]] = {slug: set() for slug in known_algorithm_slugs}
 
     generated_cards: dict[str, dict[str, Any]] = {}
     card_ids_by_pattern: dict[str, set[str]] = {slug: set() for slug in known_pattern_slugs}
     card_ids_by_method: dict[tuple[str, str], set[str]] = {
-        (pattern_slug, _pattern_slug(method)): set()
+        (pattern_slug, _algorithm_slug(method)): set()
         for pattern_slug, methods in methods_by_pattern_slug.items()
         for method in methods
     }
     for row in generated_rows:
         tags = [str(tag) for tag in (row["tags"] or [])]
-        matched_pattern_slugs = [tag for tag in tags if tag in known_pattern_slugs]
+        matched_algorithm_slugs = [tag for tag in tags if tag in known_algorithm_slugs]
+        matched_pattern_slugs = matched_algorithm_slugs
         generated_cards[str(row["id"])] = {
             "cardId": str(row["id"]),
             "title": str(row["title"] or ""),
-            "patternSlugs": matched_pattern_slugs,
+            "algorithmSlugs": matched_algorithm_slugs,
         }
         for slug in matched_pattern_slugs:
             card_ids_by_pattern.setdefault(slug, set()).add(str(row["id"]))
             for method in methods_by_pattern_slug.get(slug, []):
-                method_slug = _pattern_slug(method)
+                method_slug = _algorithm_slug(method)
                 if method_slug in tags:
                     card_ids_by_method.setdefault((slug, method_slug), set()).add(str(row["id"]))
 
     attempts_by_card_mode: dict[tuple[str, str], list[AttemptOverviewItem]] = {}
-    attempts_by_pattern_mode: dict[tuple[str, str], list[AttemptOverviewItem]] = {}
+    attempts_by_algorithm_mode: dict[tuple[str, str], list[AttemptOverviewItem]] = {}
     attempted_card_ids: set[str] = set()
     total_ghost_rep_count = 0
     total_unsupported_attempt_count = 0
@@ -593,13 +638,13 @@ def build_skill_map_overview(
             total_ghost_rep_count += 1
         else:
             total_unsupported_attempt_count += 1
-        matched_pattern_slugs = [tag for tag in category_tags if tag in known_pattern_slugs]
+        matched_algorithm_slugs = [tag for tag in category_tags if tag in known_algorithm_slugs]
 
         if card_id not in generated_cards:
             generated_cards[card_id] = {
                 "cardId": card_id,
                 "title": str(row["card_title"] or card_id),
-                "patternSlugs": matched_pattern_slugs,
+                "algorithmSlugs": matched_algorithm_slugs,
             }
 
         attempt: AttemptOverviewItem = {
@@ -610,16 +655,16 @@ def build_skill_map_overview(
             "submissionRubric": compact_submission_rubric(row["submission_rubric"]),
         }
         attempts_by_card_mode.setdefault((card_id, template_mode), []).append(attempt)
-        for slug in matched_pattern_slugs:
-            attempts_by_pattern_mode.setdefault((slug, template_mode), []).append(attempt)
+        for slug in matched_algorithm_slugs:
+            attempts_by_algorithm_mode.setdefault((slug, template_mode), []).append(attempt)
         attempted_card_ids.add(card_id)
 
-    pattern_summaries: list[SkillMapPatternSummary] = []
+    algorithm_summaries: list[SkillMapAlgorithmSummary] = []
     card_mode_summaries: dict[tuple[str, str], SkillMapReviewQueueItem] = {}
 
-    for pattern in patterns:
-        slug = str(pattern["slug"])
-        pattern_card_ids = card_ids_by_pattern.get(slug, set())
+    for algorithm in algorithms:
+        slug = str(algorithm["slug"])
+        algorithm_card_ids = card_ids_by_algorithm.get(slug, set())
         mode_summaries: dict[str, SkillMapModeSummary] = {}
         practiced_cards_any_mode: set[str] = set()
         stale_cards_any_mode: set[str] = set()
@@ -628,11 +673,11 @@ def build_skill_map_overview(
         overall_unsupported_attempt_count = 0
 
         for template_mode in READINESS_MODE_ORDER:
-            pattern_mode_attempts = attempts_by_pattern_mode.get((slug, template_mode), [])
-            readiness_summary = summarize_readiness(pattern_mode_attempts)
-            mode_support_counts = _build_support_counts(pattern_mode_attempts)
+            algorithm_mode_attempts = attempts_by_algorithm_mode.get((slug, template_mode), [])
+            readiness_summary = summarize_readiness(algorithm_mode_attempts)
+            mode_support_counts = _build_support_counts(algorithm_mode_attempts)
             practiced_card_ids = {
-                card_id for card_id in pattern_card_ids if attempts_by_card_mode.get((card_id, template_mode))
+                card_id for card_id in algorithm_card_ids if attempts_by_card_mode.get((card_id, template_mode))
             }
             stale_card_count = 0
             for card_id in practiced_card_ids:
@@ -645,7 +690,7 @@ def build_skill_map_overview(
                 card_mode_summaries[(card_id, template_mode)] = {
                     "cardId": card_id,
                     "title": generated_cards.get(card_id, {}).get("title", card_id),
-                    "pattern": str(pattern["pattern"]),
+                    "algorithm": str(algorithm["algorithm"]),
                     "templateMode": template_mode,
                     "readiness": card_readiness["readiness"],
                     "attemptCount": card_readiness["attemptCount"],
@@ -659,12 +704,12 @@ def build_skill_map_overview(
             mode_summaries[template_mode] = {
                 **readiness_summary,
                 **mode_support_counts,
-                "totalCards": len(pattern_card_ids),
+                "totalCards": len(algorithm_card_ids),
                 "practicedCards": len(practiced_card_ids),
-                "untouchedCards": max(len(pattern_card_ids) - len(practiced_card_ids), 0),
+                "untouchedCards": max(len(algorithm_card_ids) - len(practiced_card_ids), 0),
                 "staleCards": stale_card_count,
-                "dimensionSummary": summarize_submission_rubrics(pattern_mode_attempts),
-                "activity": _build_mode_activity(pattern_mode_attempts),
+                "dimensionSummary": summarize_submission_rubrics(algorithm_mode_attempts),
+                "activity": _build_mode_activity(algorithm_mode_attempts),
             }
             overall_attempt_count += int(readiness_summary["attemptCount"])
             overall_ghost_rep_count += int(mode_support_counts["ghostRepCount"])
@@ -674,23 +719,23 @@ def build_skill_map_overview(
             sum(float(mode_summaries[mode]["readiness"]) for mode in READINESS_MODE_ORDER) / len(READINESS_MODE_ORDER),
             1,
         )
-        pattern_summaries.append({
-            "pattern": pattern["pattern"],
+        algorithm_summaries.append({
+            "algorithm": algorithm["algorithm"],
             "slug": slug,
-            "methods": pattern["methods"],
+            "skills": algorithm["skills"],
             "overallReadiness": overall_readiness,
             "overallAttemptCount": overall_attempt_count,
             "ghostRepCount": overall_ghost_rep_count,
             "unsupportedAttemptCount": overall_unsupported_attempt_count,
             "workCount": overall_attempt_count,
-            "totalCards": len(pattern_card_ids),
+            "totalCards": len(algorithm_card_ids),
             "practicedCards": len(practiced_cards_any_mode),
-            "untouchedCards": max(len(pattern_card_ids) - len(practiced_cards_any_mode), 0),
+            "untouchedCards": max(len(algorithm_card_ids) - len(practiced_cards_any_mode), 0),
             "staleCards": len(stale_cards_any_mode),
             "dimensionSummary": summarize_submission_rubrics([
                 item
                 for template_mode in READINESS_MODE_ORDER
-                for item in attempts_by_pattern_mode.get((slug, template_mode), [])
+                for item in attempts_by_algorithm_mode.get((slug, template_mode), [])
             ]),
             "modes": mode_summaries,
         })
@@ -710,10 +755,10 @@ def build_skill_map_overview(
     ][:8]
 
     stale_card_ids: set[str] = {item["cardId"] for item in card_mode_summaries.values() if item["stale"]}
-    avg_pattern_readiness = round(
-        sum(float(item["overallReadiness"]) for item in pattern_summaries) / len(pattern_summaries),
+    avg_algorithm_readiness = round(
+        sum(float(item["overallReadiness"]) for item in algorithm_summaries) / len(algorithm_summaries),
         1,
-    ) if pattern_summaries else 0.0
+    ) if algorithm_summaries else 0.0
 
     summary: SkillMapOverviewSummary = {
         "totalGeneratedCards": len(generated_cards),
@@ -723,9 +768,9 @@ def build_skill_map_overview(
         "ghostRepCount": total_ghost_rep_count,
         "unsupportedAttemptCount": total_unsupported_attempt_count,
         "workCount": total_ghost_rep_count + total_unsupported_attempt_count,
-        "patternsStarted": sum(1 for item in pattern_summaries if item["overallAttemptCount"] > 0),
-        "patternsUntouched": sum(1 for item in pattern_summaries if item["overallAttemptCount"] == 0),
-        "avgPatternReadiness": avg_pattern_readiness,
+        "algorithmsStarted": sum(1 for item in algorithm_summaries if item["overallAttemptCount"] > 0),
+        "algorithmsUntouched": sum(1 for item in algorithm_summaries if item["overallAttemptCount"] == 0),
+        "avgAlgorithmReadiness": avg_algorithm_readiness,
         "modeOrder": list(READINESS_MODE_ORDER),
         "successThreshold": 90,
         "staleAfterDays": 7,
@@ -733,7 +778,7 @@ def build_skill_map_overview(
 
     return {
         "summary": summary,
-        "patterns": pattern_summaries,
+        "algorithms": algorithm_summaries,
         "reviewQueue": review_queue,
         "ghostRepActivity": _build_ghost_rep_activity(attempt_rows, slug_to_pattern, methods_by_pattern_slug),
         "spacedRepetition": _build_spaced_repetition(
@@ -746,18 +791,18 @@ def build_skill_map_overview(
     }
 
 
-def build_skill_map_nodes(pattern_rows: list[PatternMethodRow]) -> list[SkillMapNode]:
+def build_skill_map_nodes(algorithm_rows: list[AlgorithmSkillRow]) -> list[SkillMapNode]:
     grouped: dict[int, SkillMapNode] = {}
-    for row in pattern_rows:
-        pattern_id = int(row["pattern_id"])
-        pattern_name = str(row["pattern_name"])
-        method_name = row.get("method_name")
+    for row in algorithm_rows:
+        algorithm_id = int(row["algorithm_id"])
+        algorithm_name = str(row["algorithm_name"])
+        skill_name = row.get("skill_name")
 
-        if pattern_id not in grouped:
-            grouped[pattern_id] = SkillMapNode(pattern=pattern_name, methods=[])
+        if algorithm_id not in grouped:
+            grouped[algorithm_id] = SkillMapNode(algorithm=algorithm_name, skills=[])
 
-        if method_name:
-            grouped[pattern_id].methods.append(str(method_name))
+        if skill_name:
+            grouped[algorithm_id].skills.append(str(skill_name))
 
     return list(grouped.values())
 
@@ -808,13 +853,13 @@ async def create_attempt(body: AttemptCreate) -> AttemptSaveResult:
 
 
 async def get_skill_map() -> list[SkillMapNode]:
-    rows = await fetch_patterns_with_methods_rows()
+    rows = await fetch_algorithms_with_skills_rows()
 
     return build_skill_map_nodes(rows)
 
 
 async def get_skill_map_overview() -> SkillMapOverviewPayload:
-    pattern_rows = await fetch_skill_map_overview_pattern_rows()
+    algorithm_rows = await fetch_skill_map_overview_algorithm_rows()
     generated_rows = await fetch_skill_map_overview_generated_rows()
     attempt_rows = await fetch_skill_map_overview_attempt_rows()
-    return build_skill_map_overview(pattern_rows, generated_rows, attempt_rows)
+    return build_skill_map_overview(algorithm_rows, generated_rows, attempt_rows)

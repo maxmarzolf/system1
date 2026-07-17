@@ -4,25 +4,16 @@ import inspect
 
 from app.core import core_algorithms as sf
 from app.core import core_meta
-from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG, CORE_META_CATALOG, function_names_for_skill
+from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG, CORE_META_CATALOG, problem_slugs_for_skill
 from app.core.core_algorithm_practice import build_core_algorithm_drill
-from app.core.skill_map_catalog import SKILL_MAP_METHODS as CANONICAL_SKILL_MAP_METHODS
-
-
-SKILL_MAP_METHODS = [
-    ("Sliding Window", ["fixed vs variable window", "expand / shrink rhythm", "frequency maps", "valid window rule", "window score updates"]),
-    ("Two Pointers", ["same-direction scan", "opposing pointers", "sorted-array leverage", "dedupe rules", "pointer move rule"]),
-    ("Binary Search", ["left / right bounds", "mid calculation", "search on answer", "first / last occurrence", "boundary rule handling"]),
-    ("DFS / BFS", ["base-case guards", "visited tracking", "pre / post-order thinking", "queue frontier management", "level-by-level expansion"]),
-    ("Backtracking", ["choice / explore / undo", "path state", "pruning conditions", "start index control", "result collection"]),
-    ("Heap / Priority Queue", ["top-k maintenance", "min vs max heap choice", "push / pop discipline", "stream processing", "lazy deletion patterns"]),
-    ("Union Find", ["parent initialization", "find with compression", "union by rank / size", "component counting", "cycle detection"]),
-    ("Dynamic Programming", ["overlapping subproblem recognition", "optimal substructure recognition", "state definition", "transition equation", "base cases", "top-down memoization", "bottom-up tabulation", "iteration order", "state dimensions and boundaries", "solution reconstruction", "time and space optimization", "correctness reasoning", "complexity analysis"]),
-    ("Graph Traversal", ["adjacency representation", "start state selection", "topological ordering", "indegree bookkeeping", "shortest-path framing"]),
-    ("Intervals", ["sort by start / end", "merge overlap logic", "sweep decisions", "room / resource counting", "boundary comparisons"]),
-    ("Prefix Sums", ["running total setup", "sum-to-index map", "subarray difference trick", "mod remainder buckets", "constant-time range queries"]),
-    ("Monotonic Stack", ["increasing vs decreasing stack", "next greater / smaller", "pop trigger rule", "index storage", "span / area computation"]),
-]
+from app.core.taxonomy_catalog import (
+    ALGORITHM_SKILLS,
+    ALGORITHMS,
+    CANONICAL_SKILLS,
+    PATTERN_TO_ALGORITHM,
+    RETIRED_SKILLS,
+    TECHNIQUES,
+)
 
 
 def core_algorithm_names() -> set[str]:
@@ -33,24 +24,37 @@ def core_algorithm_names() -> set[str]:
     }
 
 
-def test_skill_map_algorithms_have_intentionally_sized_unique_taxonomies() -> None:
+def test_algorithm_curricula_have_intentionally_sized_unique_taxonomies() -> None:
     expected_counts = {
         "sliding-window": 9,
         "two-pointers": 9,
         "binary-search": 11,
-        "dfs-bfs": 10,
+        "graphs": 22,
         "backtracking": 10,
         "heap": 10,
         "union-find": 10,
         "dynamic-programming": 13,
-        "graph-traversal": 12,
         "intervals": 10,
         "prefix-sums": 10,
         "monotonic-stack": 10,
     }
-    assert {pattern: len(methods) for pattern, methods in CANONICAL_SKILL_MAP_METHODS.items()} == expected_counts
-    for methods in CANONICAL_SKILL_MAP_METHODS.values():
-        assert len(set(methods)) == len(methods)
+    assert {algorithm: len(skills) for algorithm, skills in ALGORITHM_SKILLS.items()} == expected_counts
+    for skills in ALGORITHM_SKILLS.values():
+        assert len(set(skills)) == len(skills)
+
+
+def test_taxonomy_catalog_is_internally_consistent() -> None:
+    assert set(ALGORITHM_SKILLS) <= set(ALGORITHMS)
+    assert not set(RETIRED_SKILLS) & set(CANONICAL_SKILLS)
+    assert "correctness-reasoning" not in RETIRED_SKILLS
+    assert "complexity-analysis" not in RETIRED_SKILLS
+    assert "answer-update-timing" not in RETIRED_SKILLS
+    assert "space-optimization" in RETIRED_SKILLS
+    assert set(PATTERN_TO_ALGORITHM.values()) <= set(ALGORITHMS)
+    assert PATTERN_TO_ALGORITHM["dfs-bfs"] == "graphs"
+    assert PATTERN_TO_ALGORITHM["graph-traversal"] == "graphs"
+    assert PATTERN_TO_ALGORITHM["topological-sort"] == "graphs"
+    assert PATTERN_TO_ALGORITHM["greedy-sorting"] == "sorting"
 
 
 def test_core_algorithm_catalog_references_real_functions() -> None:
@@ -76,31 +80,38 @@ def test_core_meta_catalog_references_real_members() -> None:
     assert "meta_clone_graph" not in names
     assert "core-algorithm" not in CORE_META_CATALOG["meta_clone_graph"]["tags"]
     assert "core-algorithm" in CORE_META_CATALOG["meta_merge_intervals"]["tags"]
-    assert set(function_names_for_skill("Meta", "graph cloning")) == {"meta_clone_graph"}
+    assert set(problem_slugs_for_skill("graph cloning")) == {"meta_clone_graph"}
 
 
 def test_core_algorithm_catalog_has_required_metadata() -> None:
-    forbidden_patterns = {"arrays", "hashmaps", "arrays-hashmaps", "hash-maps"}
+    forbidden_algorithms = {"arrays", "hashmaps", "arrays-hashmaps", "hash-maps"}
 
     for name, meta in CORE_ALGORITHM_CATALOG.items():
         assert meta["title"]
         assert meta["difficulty"] in {"Easy", "Med.", "Hard"}
         assert meta["description"]
-        assert meta["patterns"]
-        assert meta["methods"]
+        assert meta["algorithm"] in ALGORITHMS
+        assert meta["algorithm"] not in forbidden_algorithms
+        assert meta["skills"]
+        assert set(meta["techniques"]) <= set(TECHNIQUES)
         assert meta["leetcodeExamples"]
-        assert name not in meta["patterns"]
-        assert not (set(meta["patterns"]) & forbidden_patterns)
+        assert name != meta["algorithm"]
 
 
-def test_current_skill_map_resolves_to_core_algorithms() -> None:
+def test_every_curriculum_algorithm_has_problems() -> None:
+    algorithms_with_problems = {meta["algorithm"] for meta in CORE_ALGORITHM_CATALOG.values()}
+
+    assert set(ALGORITHM_SKILLS) <= algorithms_with_problems
+
+
+def test_exercised_skills_resolve_to_problems() -> None:
     names = core_algorithm_names()
+    exercised = {slug for meta in CORE_ALGORITHM_CATALOG.values() for slug in meta["skills"]}
 
-    for pattern, methods in SKILL_MAP_METHODS:
-        for method in methods:
-            matches = function_names_for_skill(pattern, method)
-            assert matches, f"{pattern}: {method}"
-            assert set(matches) <= names
+    for skill in exercised:
+        matches = problem_slugs_for_skill(skill)
+        assert matches, skill
+        assert set(matches) <= names | set(CORE_META_CATALOG)
 
 
 def test_representative_core_algorithms_behave_correctly() -> None:
@@ -134,15 +145,17 @@ def test_trie_core_algorithms_share_plain_dict_shape() -> None:
 
 def test_core_algorithm_row_builds_skill_map_drill_card() -> None:
     row = {
-        "name": "binary_search",
+        "slug": "binary_search",
         "title": "Closed-Interval Binary Search",
         "difficulty": "Easy",
         "description": "Probe the middle and discard one half.",
         "code": "def binary_search(nums, target):\n    return -1",
         "tags": ["skill-map", "core-algorithm", "binary-search"],
         "leetcode_examples": ["Binary Search"],
-        "pattern_slug": "binary-search",
-        "pattern_name": "Binary Search",
+        "algorithm_slug": "binary-search",
+        "algorithm_name": "Binary Search",
+        "technique_slugs": [],
+        "skill_slugs": ["left-right-bounds", "mid-calculation"],
     }
 
     card = build_core_algorithm_drill(row)

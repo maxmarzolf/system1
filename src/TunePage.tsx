@@ -168,7 +168,7 @@ export default function TunePage() {
   const [specimenTuning, setSpecimenTuning] = useState<SpecimenTuning>(() => loadStoredSpecimenTuning())
   const [codeEditorTuning, setCodeEditorTuning] = useState<CodeEditorTuning>(() => loadStoredCodeEditorTuning())
   const [mcqTuning, setMcqTuning] = useState<McqTuning>(() => loadStoredMcqTuning())
-  const selectedMcqSkillNode = skillMap.find((node) => node.pattern === mcqTuning.skillMapPattern) ?? skillMap[0]
+  const selectedMcqSkillNode = skillMap.find((node) => node.algorithm === mcqTuning.skillMapAlgorithm) ?? skillMap[0]
 
   useEffect(() => {
     saveStoredLiveCoachTuning(liveCoachTuning)
@@ -211,24 +211,24 @@ export default function TunePage() {
   }
 
   const selectMcqSkillPattern = (pattern: string) => {
-    const node = skillMap.find((item) => item.pattern === pattern)
+    const node = skillMap.find((item) => item.algorithm === pattern)
     if (!node) return
     setMcqTuning((prev) => ({
       ...prev,
-      skillMapPattern: node.pattern,
-      skillMapMethods: [...node.methods],
+      skillMapAlgorithm: node.algorithm,
+      skillMapSkills: [...node.skills],
     }))
   }
 
   const toggleMcqSkillMethod = (method: string, checked: boolean) => {
     if (!selectedMcqSkillNode) return
     setMcqTuning((prev) => {
-      const selected = new Set(prev.skillMapMethods)
+      const selected = new Set(prev.skillMapSkills)
       if (checked) selected.add(method)
       if (!checked && selected.size > 1) selected.delete(method)
       return {
         ...prev,
-        skillMapMethods: selectedMcqSkillNode.methods.filter((item) => selected.has(item)),
+        skillMapSkills: selectedMcqSkillNode.skills.filter((item) => selected.has(item)),
       }
     })
   }
@@ -413,10 +413,10 @@ export default function TunePage() {
                 <div className="tune-skill-map-target" aria-label="MCQ skill-map target">
                   <SelectControl
                     label="Algorithm"
-                    value={selectedMcqSkillNode.pattern}
+                    value={selectedMcqSkillNode.algorithm}
                     onChange={selectMcqSkillPattern}
                     description="Questions will be generated only from the checked skills below."
-                    options={skillMap.map((node) => ({ value: node.pattern, label: node.pattern }))}
+                    options={skillMap.map((node) => ({ value: node.algorithm, label: node.algorithm }))}
                   />
                   <fieldset className="tune-skill-checklist">
                     <legend>Skills</legend>
@@ -424,16 +424,16 @@ export default function TunePage() {
                       <button
                         type="button"
                         className="secondary"
-                        onClick={() => updateMcqTuning('skillMapMethods', [...selectedMcqSkillNode.methods])}
+                        onClick={() => updateMcqTuning('skillMapSkills', [...selectedMcqSkillNode.skills])}
                       >
                         Check all
                       </button>
                     </div>
                     <div className="tune-skill-checklist-grid">
-                      {selectedMcqSkillNode.methods.map((method) => (
+                      {selectedMcqSkillNode.skills.map((method) => (
                         <ToggleControl
                           key={method}
-                          checked={mcqTuning.skillMapMethods.includes(method)}
+                          checked={mcqTuning.skillMapSkills.includes(method)}
                           onChange={(checked) => toggleMcqSkillMethod(method, checked)}
                           label={method}
                         />

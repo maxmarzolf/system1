@@ -23,7 +23,7 @@ from app.models import (
     SkillMapDrillsResponse,
 )
 from app.services import coach_service
-from app.services import core_algorithm_practice_service
+from app.services import problem_practice_service
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])
 
@@ -69,19 +69,24 @@ async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
     return StreamingResponse(stream, media_type="text/event-stream")
 
 
-@router.get("/core-algorithm-drills", response_model=SkillMapDrillsResponse)
-async def coach_random_core_algorithm_drills(
+@router.get("/problem-drills", response_model=SkillMapDrillsResponse)
+async def coach_random_problem_drills(
     count: int = Query(default=10, ge=1, le=30),
     tag: str | None = Query(default=None),
 ):
     if tag and tag.strip():
-        return await core_algorithm_practice_service.core_algorithm_drills_for_tag(tag.strip(), count)
-    return await core_algorithm_practice_service.random_core_algorithm_drills(count)
+        return await problem_practice_service.problem_drills_for_tag(tag.strip(), count)
+    return await problem_practice_service.random_problem_drills(count)
 
 
-@router.get("/core-algorithm-drills/{pattern_slug}", response_model=SkillMapDrillsResponse)
-async def coach_core_algorithm_drills(pattern_slug: str):
-    return await core_algorithm_practice_service.core_algorithm_drills_for_pattern(pattern_slug)
+@router.get("/problem-drills/{algorithm_slug}", response_model=SkillMapDrillsResponse)
+async def coach_problem_drills(algorithm_slug: str):
+    return await problem_practice_service.problem_drills_for_algorithm(algorithm_slug)
+
+
+@router.get("/problem-drills/technique/{technique_slug}", response_model=SkillMapDrillsResponse)
+async def coach_problem_drills_by_technique(technique_slug: str):
+    return await problem_practice_service.problem_drills_for_technique(technique_slug)
 
 
 @router.post("/multiple-choice-drills", response_model=MultipleChoiceDrillsResponse)

@@ -10,7 +10,7 @@ from app.repositories.coach_repository import _multiple_choice_question_fingerpr
 def test_process_multiple_choice_card_normalizes_tags_and_choices() -> None:
     request = MultipleChoiceDrillsRequest(
         count=1,
-        skillMap=[SkillMapNode(pattern="Binary Search", methods=["left / right bounds"])],
+        skillMap=[SkillMapNode(algorithm="Binary Search", skills=["left / right bounds"])],
         difficulty="Hard",
     )
 
@@ -51,7 +51,7 @@ def test_process_multiple_choice_card_normalizes_tags_and_choices() -> None:
 def test_process_multiple_choice_card_normalizes_python_code_blocks() -> None:
     request = MultipleChoiceDrillsRequest(
         count=1,
-        skillMap=[SkillMapNode(pattern="Sliding Window", methods=["expand / shrink rhythm"])],
+        skillMap=[SkillMapNode(algorithm="Sliding Window", skills=["expand / shrink rhythm"])],
         difficulty="Med.",
     )
 
@@ -117,7 +117,7 @@ def test_multiple_choice_question_fingerprint_is_shuffle_stable() -> None:
 async def test_generate_multiple_choice_drills_response_calls_persist_callback() -> None:
     request = MultipleChoiceDrillsRequest(
         count=1,
-        skillMap=[SkillMapNode(pattern="Binary Search", methods=["left / right bounds"])],
+        skillMap=[SkillMapNode(algorithm="Binary Search", skills=["left / right bounds"])],
         difficulty="Hard",
     )
     persisted: dict[str, object] = {}
@@ -168,7 +168,7 @@ async def test_generate_multiple_choice_drills_response_calls_persist_callback()
 async def test_generate_multiple_choice_drills_response_sends_card_progressive_context() -> None:
     request = MultipleChoiceDrillsRequest(
         count=1,
-        skillMap=[SkillMapNode(pattern="Sliding Window", methods=["current specimen"])],
+        skillMap=[SkillMapNode(algorithm="Sliding Window", skills=["current specimen"])],
         difficulty="Med.",
         sourceMode="card",
         flowMode="progressive",
@@ -242,7 +242,7 @@ async def test_generate_multiple_choice_drills_response_sends_card_progressive_c
 async def test_generate_multiple_choice_drills_response_is_fail_open_when_persist_fails() -> None:
     request = MultipleChoiceDrillsRequest(
         count=1,
-        skillMap=[SkillMapNode(pattern="Binary Search", methods=["left / right bounds"])],
+        skillMap=[SkillMapNode(algorithm="Binary Search", skills=["left / right bounds"])],
         difficulty="Hard",
     )
 
@@ -287,7 +287,7 @@ async def test_generate_multiple_choice_drills_response_is_fail_open_when_persis
 async def test_generate_multiple_choice_drills_response_falls_back_to_next_provider() -> None:
     request = MultipleChoiceDrillsRequest(
         count=1,
-        skillMap=[SkillMapNode(pattern="Binary Search", methods=["left / right bounds"])],
+        skillMap=[SkillMapNode(algorithm="Binary Search", skills=["left / right bounds"])],
         difficulty="Hard",
     )
     providers_seen: list[str] = []
@@ -337,7 +337,7 @@ async def test_generate_multiple_choice_drills_response_falls_back_to_next_provi
 async def test_generate_multiple_choice_drills_response_retries_transient_provider_failures() -> None:
     request = MultipleChoiceDrillsRequest(
         count=1,
-        skillMap=[SkillMapNode(pattern="Binary Search", methods=["left / right bounds"])],
+        skillMap=[SkillMapNode(algorithm="Binary Search", skills=["left / right bounds"])],
         difficulty="Hard",
     )
     attempts = {"count": 0}

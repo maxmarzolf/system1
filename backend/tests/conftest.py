@@ -14,8 +14,8 @@ def skill_map_request() -> SkillMapDrillsRequest:
         templateTargets={},
         llmProvider="openai",
         skillMap=[
-            SkillMapNode(pattern="sliding-window", methods=["expand-shrink"]),
-            SkillMapNode(pattern="two-pointers", methods=["left-right"]),
+            SkillMapNode(algorithm="sliding-window", skills=["expand-shrink"]),
+            SkillMapNode(algorithm="two-pointers", skills=["left-right"]),
         ],
     )
 

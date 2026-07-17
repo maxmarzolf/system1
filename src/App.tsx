@@ -50,7 +50,7 @@ type MultipleChoiceChoice = {
 type MultipleChoiceCard = {
   id: string
   title: string
-  pattern: string
+  algorithm: string
   skill?: string
   difficulty: MultipleChoiceDifficulty
   question: string
@@ -215,7 +215,7 @@ type MultipleChoiceDrillsRequest = {
 type MultipleChoiceSpecimenContext = {
   cardId: string
   cardTitle: string
-  pattern: string
+  algorithm: string
   prompt: string
   target: string
   tags: string[]
@@ -363,14 +363,14 @@ const skillMapDeckRequestCache = new Map<string, Promise<SkillMapDrillsResponse>
 const multipleChoiceDeckRequestCache = new Map<string, Promise<MultipleChoiceDrillsResponse>>()
 const promptToggleExplanationRequestCache = new Map<string, Promise<PromptToggleExplanationResponse>>()
 const MCQ_CORE_ALGORITHM_ANCHORS: SkillMapNode[] = [
-  { pattern: 'Sliding Window', methods: ['fixed vs variable window', 'expand / shrink rhythm', 'frequency maps'] },
-  { pattern: 'Two Pointers', methods: ['same-direction scan', 'opposing pointers', 'sorted-array leverage'] },
-  { pattern: 'Binary Search', methods: ['bounds invariant', 'search on answer', 'first / last occurrence'] },
-  { pattern: 'Trees', methods: ['recursive traversal', 'path state', 'subtree return values'] },
-  { pattern: 'Graph Traversal', methods: ['visited tracking', 'BFS frontier', 'DFS recursion'] },
+  { algorithm: 'Sliding Window', skills: ['fixed vs variable window', 'expand / shrink rhythm', 'frequency maps'] },
+  { algorithm: 'Two Pointers', skills: ['same-direction scan', 'opposing pointers', 'sorted-array leverage'] },
+  { algorithm: 'Binary Search', skills: ['bounds invariant', 'search on answer', 'first / last occurrence'] },
+  { algorithm: 'Trees', skills: ['recursive traversal', 'path state', 'subtree return values'] },
+  { algorithm: 'Graphs', skills: ['visited tracking', 'BFS frontier', 'DFS recursion'] },
   {
-    pattern: 'Dynamic Programming',
-    methods: [
+    algorithm: 'Dynamic Programming',
+    skills: [
       'overlapping subproblem recognition',
       'optimal substructure recognition',
       'state definition',
@@ -386,18 +386,17 @@ const MCQ_CORE_ALGORITHM_ANCHORS: SkillMapNode[] = [
       'complexity analysis',
     ],
   },
-  { pattern: 'Backtracking', methods: ['choice / explore / undo', 'path state', 'pruning'] },
-  { pattern: 'Tries', methods: ['prefix tree nodes', 'word markers', 'character transitions'] },
-  { pattern: 'Heap / Priority Queue', methods: ['top-k maintenance', 'min vs max heap', 'stream processing'] },
-  { pattern: 'Union Find', methods: ['find with compression', 'union by size', 'component counting'] },
-  { pattern: 'Intervals', methods: ['sort by boundary', 'merge overlaps', 'sweep decisions'] },
-  { pattern: 'Prefix Sums', methods: ['running total', 'difference trick', 'remainder buckets'] },
-  { pattern: 'Monotonic Stack', methods: ['pop trigger invariant', 'next greater / smaller', 'index storage'] },
-  { pattern: 'Stacks / Queues', methods: ['LIFO/FIFO state', 'simulation', 'monotonic queues'] },
-  { pattern: 'Linked Lists', methods: ['fast / slow pointers', 'pointer rewiring', 'dummy node'] },
-  { pattern: 'Matrix / Grid', methods: ['direction vectors', 'bounds checks', 'multi-source BFS'] },
-  { pattern: 'Greedy', methods: ['local choice rule', 'exchange argument', 'sorted decisions'] },
-  { pattern: 'Topological Sort', methods: ['indegree bookkeeping', 'DAG ordering', 'cycle detection'] },
+  { algorithm: 'Backtracking', skills: ['choice / explore / undo', 'path state', 'pruning'] },
+  { algorithm: 'Trie', skills: ['prefix tree nodes', 'word markers', 'character transitions'] },
+  { algorithm: 'Heap / Priority Queue', skills: ['top-k maintenance', 'min vs max heap', 'stream processing'] },
+  { algorithm: 'Union Find', skills: ['find with compression', 'union by size', 'component counting'] },
+  { algorithm: 'Intervals', skills: ['sort by boundary', 'merge overlaps', 'sweep decisions'] },
+  { algorithm: 'Prefix Sums', skills: ['running total', 'difference trick', 'remainder buckets'] },
+  { algorithm: 'Monotonic Stack', skills: ['pop trigger invariant', 'next greater / smaller', 'index storage'] },
+  { algorithm: 'Stacks / Queues', skills: ['LIFO/FIFO state', 'simulation', 'monotonic queues'] },
+  { algorithm: 'Linked Lists', skills: ['fast / slow pointers', 'pointer rewiring', 'dummy node'] },
+  { algorithm: 'Matrix / Grid', skills: ['direction vectors', 'bounds checks', 'multi-source BFS'] },
+  { algorithm: 'Sorting', skills: ['local choice rule', 'exchange argument', 'sorted decisions'] },
 ]
 
 const requestSkillMapDrills = (body: SkillMapDrillsRequest) => {
@@ -445,12 +444,12 @@ const requestSkillMapDrills = (body: SkillMapDrillsRequest) => {
   return request
 }
 
-const requestCoreAlgorithmDrills = (patternSlug: string) => {
-  const requestKey = `core-algorithm:${patternSlug}`
+const requestCoreAlgorithmDrills = (algorithmSlug: string) => {
+  const requestKey = `core-algorithm:${algorithmSlug}`
   const existingRequest = skillMapDeckRequestCache.get(requestKey)
   if (existingRequest) return existingRequest
 
-  const request = fetch(apiUrl(`/api/coach/core-algorithm-drills/${encodeURIComponent(patternSlug)}`))
+  const request = fetch(apiUrl(`/api/coach/problem-drills/${encodeURIComponent(algorithmSlug)}`))
     .then(async (response) => {
       if (!response.ok) {
         throw new Error('Unable to load core algorithms')
@@ -472,7 +471,7 @@ const requestRandomCoreAlgorithmDrills = (count = 10) => {
   const existingRequest = skillMapDeckRequestCache.get(requestKey)
   if (existingRequest) return existingRequest
 
-  const request = fetch(apiUrl(`/api/coach/core-algorithm-drills?count=${count}`))
+  const request = fetch(apiUrl(`/api/coach/problem-drills?count=${count}`))
     .then(async (response) => {
       if (!response.ok) {
         throw new Error('Unable to load core algorithms')
@@ -494,7 +493,7 @@ const requestCoreAlgorithmDrillsByTag = (tagSlug: string, count = 10) => {
   const existingRequest = skillMapDeckRequestCache.get(requestKey)
   if (existingRequest) return existingRequest
 
-  const request = fetch(apiUrl(`/api/coach/core-algorithm-drills?tag=${encodeURIComponent(tagSlug)}&count=${count}`))
+  const request = fetch(apiUrl(`/api/coach/problem-drills?tag=${encodeURIComponent(tagSlug)}&count=${count}`))
     .then(async (response) => {
       if (!response.ok) {
         throw new Error('Unable to load tagged core algorithms')
@@ -645,7 +644,9 @@ const patternToSlug = (pattern: string) =>
 
 const patternLabelFromSlug = (slug: string) => {
   const overrides: Record<string, string> = {
-    'dfs-bfs': 'DFS / BFS',
+    graphs: 'Graphs',
+    'dfs-bfs': 'Graphs',
+    'graph-traversal': 'Graphs',
     'heap-priority-queue': 'Heap / Priority Queue',
     heap: 'Heap / Priority Queue',
     'dynamic-programming': 'Dynamic Programming',
@@ -655,7 +656,8 @@ const patternLabelFromSlug = (slug: string) => {
     'linked-lists': 'Linked Lists',
     'matrix-grid': 'Matrix / Grid',
     'topological-sort': 'Topological Sort',
-    'greedy-sorting': 'Greedy / Sorting',
+    'greedy-sorting': 'Sorting',
+    sorting: 'Sorting',
     trie: 'Trie',
     trees: 'Trees',
   }
@@ -672,6 +674,7 @@ const getPrimaryPatternTag = (tags: string[]) => {
     'sliding-window',
     'two-pointers',
     'binary-search',
+    'graphs',
     'dfs-bfs',
     'graph-traversal',
     'backtracking',
@@ -687,6 +690,7 @@ const getPrimaryPatternTag = (tags: string[]) => {
     'linked-lists',
     'matrix-grid',
     'topological-sort',
+    'sorting',
     'greedy-sorting',
     'trie',
     'trees',
@@ -694,7 +698,7 @@ const getPrimaryPatternTag = (tags: string[]) => {
   ]) {
     if (tags.includes(tag)) return tag
   }
-  if (tags.includes('graph') || tags.includes('graph-bfs')) return 'graph-traversal'
+  if (tags.includes('graph') || tags.includes('graph-bfs')) return 'graphs'
   return 'generic'
 }
 
@@ -746,7 +750,7 @@ const fallbackPlainEnglishPromptDetails: Record<string, PlainEnglishPromptDetail
       'Koko Eating Bananas: binary search the answer.',
     ],
   },
-  'dfs-bfs': {
+  graphs: {
     plainEnglish: 'What nodes are reachable from this starting node?',
     interviewQuestion:
       'Given a graph represented as an adjacency list and a starting node, return all nodes that can be reached from the starting node.',
@@ -1286,6 +1290,7 @@ const patternInlineDecisionNoteForPattern = (patternTag: string) => {
     case 'dynamic-programming':
     case 'dp':
       return 'take skip summarize processed prefix'
+    case 'graphs':
     case 'graph-traversal':
     case 'dfs-bfs':
       return 'frontier holds unvisited work'
@@ -1349,7 +1354,7 @@ const patternInlineNoteForLine = (trimmedLine: string, patternTag: string) => {
   if (/^while\b/.test(trimmedLine)) {
     if (patternTag === 'sliding-window') return 'shrink until window is valid'
     if (patternTag === 'binary-search') return 'keep narrowing the search'
-    if (patternTag === 'dfs-bfs' || patternTag === 'graph-traversal') return 'process frontier until empty'
+    if (patternTag === 'graphs' || patternTag === 'dfs-bfs' || patternTag === 'graph-traversal') return 'process frontier until empty'
     return ''
   }
   if (/^(def|for|if|elif|else)\b/.test(trimmedLine)) return ''
@@ -1364,7 +1369,7 @@ const patternInlineNoteForLine = (trimmedLine: string, patternTag: string) => {
     if (/\.(append|add)\(/.test(trimmedLine) || /^(out|res|result)\s*=\s*\[/.test(trimmedLine)) return 'record current window'
     return ''
   }
-  if (patternTag === 'dfs-bfs' || patternTag === 'graph-traversal') {
+  if (patternTag === 'graphs' || patternTag === 'dfs-bfs' || patternTag === 'graph-traversal') {
     if (/\b(visited|seen)\.add\(/.test(trimmedLine)) return 'mark before enqueueing'
     if (/\b(popleft|pop)\(/.test(trimmedLine)) return 'take next frontier node'
     if (/\b(q|queue|frontier)\.(append|add|push)\(/.test(trimmedLine)) return 'enqueue unseen neighbor'
@@ -1692,6 +1697,9 @@ const buildPracticePrompt = (templateMode: TemplateMode, patternTag: string) => 
     dp: {
       algorithm: 'code the state-transition loop',
     },
+    graphs: {
+      algorithm: 'code the frontier plus visited loop',
+    },
     'graph-traversal': {
       algorithm: 'code the frontier plus visited loop',
     },
@@ -1730,6 +1738,7 @@ const buildPracticePrompt = (templateMode: TemplateMode, patternTag: string) => 
     'binary-search': 'exploit sorted data by discarding half',
     'dynamic-programming': 'reuse solved state instead of recomputing',
     dp: 'reuse solved state instead of recomputing',
+    graphs: 'expand the frontier and visit each state once',
     'graph-traversal': 'expand the frontier and visit each state once',
     'dfs-bfs': 'expand the frontier and visit each state once',
     backtracking: 'explore choices cleanly and undo without drift',
@@ -2325,7 +2334,7 @@ function App() {
     [requestedPlaylistSlug]
   )
   const focusedPatternNode = useMemo(
-    () => skillMap.find((node) => patternToSlug(node.pattern) === focusedPatternSlug) ?? null,
+    () => skillMap.find((node) => patternToSlug(node.algorithm) === focusedPatternSlug) ?? null,
     [focusedPatternSlug]
   )
   const focusedTemplateMode = useMemo<TemplateMode | null>(() => {
@@ -2339,12 +2348,12 @@ function App() {
     if (!focusedPatternNode) return skillMap
     const focusedMethodSet = new Set(focusedMethodParams)
     const focusedMethods = focusedMethodSet.size > 0
-      ? focusedPatternNode.methods.filter((method) => focusedMethodSet.has(method))
-      : focusedPatternNode.methods
-    const requestedMethods = focusedMethods.length > 0 ? focusedMethods : focusedPatternNode.methods
+      ? focusedPatternNode.skills.filter((method) => focusedMethodSet.has(method))
+      : focusedPatternNode.skills
+    const requestedMethods = focusedMethods.length > 0 ? focusedMethods : focusedPatternNode.skills
     return requestedMethods.map((method) => ({
-      pattern: focusedPatternNode.pattern,
-      methods: [method],
+      algorithm: focusedPatternNode.algorithm,
+      skills: [method],
     }))
   }, [focusedMethodParams, focusedPatternNode, requestedPlaylist])
   const requestedSkillMapSignature = useMemo(
@@ -2353,12 +2362,12 @@ function App() {
   )
   const multipleChoiceSkillMap = useMemo<SkillMapNode[]>(() => {
     if (mcqTuning.sourceMode === 'skill-map') {
-      const selectedNode = skillMap.find((node) => node.pattern === mcqTuning.skillMapPattern)
+      const selectedNode = skillMap.find((node) => node.algorithm === mcqTuning.skillMapAlgorithm)
       if (selectedNode) {
-        const selectedMethods = selectedNode.methods.filter((method) => mcqTuning.skillMapMethods.includes(method))
+        const selectedMethods = selectedNode.skills.filter((method) => mcqTuning.skillMapSkills.includes(method))
         return [{
-          pattern: selectedNode.pattern,
-          methods: selectedMethods.length > 0 ? selectedMethods : selectedNode.methods,
+          algorithm: selectedNode.algorithm,
+          skills: selectedMethods.length > 0 ? selectedMethods : selectedNode.skills,
         }]
       }
       return requestedSkillMap
@@ -2370,13 +2379,13 @@ function App() {
       // Anchored launch from dashboard — respect selected methods
       const focusedMethodSet = new Set(focusedMethodParams)
       const filteredMethods = focusedMethodSet.size > 0
-        ? focusedPatternNode.methods.filter((method) => focusedMethodSet.has(method))
-        : focusedPatternNode.methods
-      const methods = filteredMethods.length > 0 ? filteredMethods : focusedPatternNode.methods
-      return [{ pattern: focusedPatternNode.pattern, methods }]
+        ? focusedPatternNode.skills.filter((method) => focusedMethodSet.has(method))
+        : focusedPatternNode.skills
+      const methods = filteredMethods.length > 0 ? filteredMethods : focusedPatternNode.skills
+      return [{ algorithm: focusedPatternNode.algorithm, skills: methods }]
     }
     return MCQ_CORE_ALGORITHM_ANCHORS
-  }, [focusedMethodParams, focusedPatternNode, mcqTuning.skillMapMethods, mcqTuning.skillMapPattern, mcqTuning.sourceMode, requestedPlaylist, requestedSkillMap])
+  }, [focusedMethodParams, focusedPatternNode, mcqTuning.skillMapSkills, mcqTuning.skillMapAlgorithm, mcqTuning.sourceMode, requestedPlaylist, requestedSkillMap])
   const multipleChoiceSkillMapSignature = useMemo(
     () => JSON.stringify(multipleChoiceSkillMap),
     [multipleChoiceSkillMap]
@@ -2385,7 +2394,7 @@ function App() {
   const requestedTemplateTargets = useMemo(() => {
     const targets: Record<string, Partial<Record<TemplateMode, string>>> = {}
     requestedSkillMap.forEach((node) => {
-      const patternSlug = patternToSlug(node.pattern)
+      const patternSlug = patternToSlug(node.algorithm)
       targets[patternSlug] = {}
     })
     return targets
@@ -2397,7 +2406,7 @@ function App() {
     : focusedPatternSlug
       ? 'skill-map-core-algorithm'
       : questionType
-  const focusedPatternLabel = focusedPatternNode?.pattern ?? patternLabelFromSlug(focusedPatternSlug)
+  const focusedPatternLabel = focusedPatternNode?.algorithm ?? patternLabelFromSlug(focusedPatternSlug)
   const filteredDeck = useMemo(() => skillMapDeck, [skillMapDeck])
   const activeTemplateModes = useMemo(() => ensureTemplateModes(enabledTemplateModes), [enabledTemplateModes])
   const currentTemplateMode: TemplateMode = 'algorithm'
@@ -2496,13 +2505,13 @@ function App() {
     const cardPatternSlug = getPrimaryPatternTag(card.tags)
     const specimenPattern = cardPatternSlug ? patternLabelFromSlug(cardPatternSlug) : card.title
     const cardBasedSkillMap: SkillMapNode[] = [{
-      pattern: specimenPattern || 'Algorithm',
-      methods: [card.title, ...card.tags.filter((tag) => tag !== 'skill-map').slice(0, 4)],
+      algorithm: specimenPattern || 'Algorithm',
+      skills: [card.title, ...card.tags.filter((tag) => tag !== 'skill-map').slice(0, 4)],
     }]
     const specimenContext: MultipleChoiceSpecimenContext = {
       cardId: card.id,
       cardTitle: card.title,
-      pattern: specimenPattern || 'Algorithm',
+      algorithm: specimenPattern || 'Algorithm',
       prompt: practicePrompt,
       target: practiceTarget,
       tags: card.tags,
@@ -2559,13 +2568,13 @@ function App() {
     const cardPatternSlug = getPrimaryPatternTag(card.tags)
     const specimenPattern = cardPatternSlug ? patternLabelFromSlug(cardPatternSlug) : card.title
     const cardBasedSkillMap: SkillMapNode[] = [{
-      pattern: specimenPattern || 'Algorithm',
-      methods: [card.title, ...card.tags.filter((tag) => tag !== 'skill-map').slice(0, 4)],
+      algorithm: specimenPattern || 'Algorithm',
+      skills: [card.title, ...card.tags.filter((tag) => tag !== 'skill-map').slice(0, 4)],
     }]
     const specimenContext: MultipleChoiceSpecimenContext = {
       cardId: card.id,
       cardTitle: card.title,
-      pattern: specimenPattern || 'Algorithm',
+      algorithm: specimenPattern || 'Algorithm',
       prompt: practicePrompt,
       target: practiceTarget,
       tags: card.tags,
@@ -3054,7 +3063,7 @@ function App() {
           },
           skillEvidence: activeMultipleChoiceCard.skill?.trim()
             ? [{
-                patternSlug: patternToSlug(activeMultipleChoiceCard.pattern),
+                algorithmSlug: patternToSlug(activeMultipleChoiceCard.algorithm),
                 skillSlug: patternToSlug(activeMultipleChoiceCard.skill),
                 evidenceScore: payload.correct ? 1 : 0,
                 confidence: payload.reasoning.trim() ? 0.95 : 0.75,

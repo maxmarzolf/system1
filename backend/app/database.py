@@ -8,7 +8,13 @@ import asyncpg
 from app.config import settings
 from app.core import core_algorithms, core_meta
 from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG, CORE_META_CATALOG
-from app.core.skill_map_catalog import RETIRED_SKILL_MAP_METHODS, SKILL_MAP_METHODS
+from app.core.taxonomy_catalog import (
+    ALGORITHMS,
+    CANONICAL_SKILLS,
+    PATTERN_TO_ALGORITHM,
+    RETIRED_SKILLS,
+    TECHNIQUES,
+)
 
 pool: asyncpg.Pool | None = None
 
@@ -21,8 +27,9 @@ async def connect() -> asyncpg.Pool:
     await _ensure_practice_history_schema(pool)
     await _backfill_answer_attempts_from_score_attempts(pool)
     await _apply_core_algorithm_naming_migration(pool)
-    await _ensure_core_algorithm_schema(pool)
-    await _seed_core_algorithms(pool)
+    await _ensure_taxonomy_schema(pool)
+    await _seed_taxonomy(pool)
+    await _apply_taxonomy_remap_migration(pool)
     return pool
 
 
@@ -46,6 +53,9 @@ async def _apply_storage_cleanup(db_pool: asyncpg.Pool) -> None:
             DROP TABLE IF EXISTS question_topics CASCADE;
             DROP TABLE IF EXISTS answers CASCADE;
             DROP TABLE IF EXISTS questions CASCADE;
+            -- Legacy pattern/method taxonomy, superseded by algorithm/skill.
+            DROP TABLE IF EXISTS methods CASCADE;
+            DROP TABLE IF EXISTS patterns CASCADE;
             DROP TABLE IF EXISTS topics CASCADE;
             """
         )
@@ -80,6 +90,64 @@ async def _ensure_recall_history_schema(db_pool: asyncpg.Pool) -> None:
 
 async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
     async with db_pool.acquire() as conn:
+        # Structural taxonomy migration for databases created before the
+        # algorithm/problem/skill/technique rework: pattern_slug columns become
+        # algorithm_slug, and the misconception catalog is re-keyed on the
+        # global skill entity. Runs before the CREATE/seed block below so the
+        # new-shape ON CONFLICT targets exist on legacy databases.
+        await conn.execute(
+            """
+            DO $$
+            BEGIN
+                IF to_regclass('public.answer_skill_evidence') IS NOT NULL AND EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'answer_skill_evidence'
+                      AND column_name = 'pattern_slug'
+                ) THEN
+                    ALTER TABLE answer_skill_evidence RENAME COLUMN pattern_slug TO algorithm_slug;
+                END IF;
+
+                IF to_regclass('public.answer_misconception') IS NOT NULL AND EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'answer_misconception'
+                      AND column_name = 'pattern_slug'
+                ) THEN
+                    ALTER TABLE answer_misconception RENAME COLUMN pattern_slug TO algorithm_slug;
+                END IF;
+
+                IF to_regclass('public.skill_misconception_catalog') IS NOT NULL AND EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'skill_misconception_catalog'
+                      AND column_name = 'pattern_slug'
+                ) THEN
+                    DELETE FROM skill_misconception_catalog a
+                    USING skill_misconception_catalog b
+                    WHERE a.id > b.id
+                      AND a.skill_slug = b.skill_slug
+                      AND a.misconception_tag = b.misconception_tag;
+
+                    ALTER TABLE skill_misconception_catalog DROP COLUMN pattern_slug;
+                END IF;
+
+                IF to_regclass('public.skill_misconception_catalog') IS NOT NULL AND NOT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conrelid = 'public.skill_misconception_catalog'::regclass
+                      AND conname = 'skill_misconception_catalog_skill_slug_misconception_tag_key'
+                ) THEN
+                    ALTER TABLE skill_misconception_catalog
+                    ADD CONSTRAINT skill_misconception_catalog_skill_slug_misconception_tag_key
+                    UNIQUE (skill_slug, misconception_tag);
+                END IF;
+            END $$;
+            """
+        )
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS question (
@@ -247,7 +315,7 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
             CREATE TABLE IF NOT EXISTS answer_skill_evidence (
                 id BIGSERIAL PRIMARY KEY,
                 answer_id BIGINT NOT NULL REFERENCES answer(id) ON DELETE CASCADE,
-                pattern_slug TEXT NOT NULL,
+                algorithm_slug TEXT NOT NULL,
                 skill_slug TEXT NOT NULL,
                 evidence_score REAL NOT NULL CHECK (evidence_score >= 0 AND evidence_score <= 1),
                 confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
@@ -256,35 +324,35 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
             );
 
             CREATE INDEX IF NOT EXISTS idx_answer_skill_evidence_skill
-                ON answer_skill_evidence(pattern_slug, skill_slug, created_at DESC);
+                ON answer_skill_evidence(algorithm_slug, skill_slug, created_at DESC);
 
             CREATE TABLE IF NOT EXISTS skill_misconception_catalog (
                 id BIGSERIAL PRIMARY KEY,
-                pattern_slug TEXT NOT NULL,
                 skill_slug TEXT NOT NULL,
                 misconception_tag TEXT NOT NULL,
                 label TEXT NOT NULL,
                 description TEXT NOT NULL DEFAULT '',
                 active BOOLEAN NOT NULL DEFAULT TRUE,
-                UNIQUE (pattern_slug, skill_slug, misconception_tag)
+                CONSTRAINT skill_misconception_catalog_skill_slug_misconception_tag_key
+                    UNIQUE (skill_slug, misconception_tag)
             );
 
             INSERT INTO skill_misconception_catalog
-                (pattern_slug, skill_slug, misconception_tag, label, description)
+                (skill_slug, misconception_tag, label, description)
             VALUES
-                ('dynamic-programming', 'state-definition', 'insufficient-state', 'Insufficient state', 'The state omits information needed to determine future decisions.'),
-                ('dynamic-programming', 'state-definition', 'redundant-state', 'Redundant state', 'The state stores information already implied by other dimensions.'),
-                ('dynamic-programming', 'state-definition', 'state-transition-confusion', 'State/transition confusion', 'The learner describes how state changes instead of what the state means.'),
-                ('dynamic-programming', 'state-definition', 'unclear-dimensions', 'Unclear dimensions', 'One or more state dimensions do not have a precise meaning.'),
-                ('dynamic-programming', 'state-definition', 'future-state-collision', 'Future state collision', 'One state merges subproblems that require different future decisions.')
-            ON CONFLICT (pattern_slug, skill_slug, misconception_tag) DO NOTHING;
+                ('state-definition', 'insufficient-state', 'Insufficient state', 'The state omits information needed to determine future decisions.'),
+                ('state-definition', 'redundant-state', 'Redundant state', 'The state stores information already implied by other dimensions.'),
+                ('state-definition', 'state-transition-confusion', 'State/transition confusion', 'The learner describes how state changes instead of what the state means.'),
+                ('state-definition', 'unclear-dimensions', 'Unclear dimensions', 'One or more state dimensions do not have a precise meaning.'),
+                ('state-definition', 'future-state-collision', 'Future state collision', 'One state merges subproblems that require different future decisions.')
+            ON CONFLICT (skill_slug, misconception_tag) DO NOTHING;
 
             CREATE TABLE IF NOT EXISTS answer_misconception (
                 id BIGSERIAL PRIMARY KEY,
                 answer_id BIGINT NOT NULL REFERENCES answer(id) ON DELETE CASCADE,
                 skill_evidence_id BIGINT REFERENCES answer_skill_evidence(id) ON DELETE SET NULL,
                 misconception_id BIGINT REFERENCES skill_misconception_catalog(id) ON DELETE SET NULL,
-                pattern_slug TEXT NOT NULL,
+                algorithm_slug TEXT NOT NULL,
                 skill_slug TEXT NOT NULL,
                 misconception_tag TEXT NOT NULL,
                 evaluator_note TEXT,
@@ -298,7 +366,7 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                 REFERENCES skill_misconception_catalog(id) ON DELETE SET NULL;
 
             CREATE INDEX IF NOT EXISTS idx_answer_misconception_signal
-                ON answer_misconception(pattern_slug, skill_slug, misconception_tag, created_at DESC);
+                ON answer_misconception(algorithm_slug, skill_slug, misconception_tag, created_at DESC);
             """
         )
         await conn.execute(
@@ -717,30 +785,37 @@ def _display_label(slug: str) -> str:
     return " ".join(part.capitalize() for part in slug.split("-") if part)
 
 
-async def _ensure_core_algorithm_schema(db_pool: asyncpg.Pool) -> None:
+async def _ensure_taxonomy_schema(db_pool: asyncpg.Pool) -> None:
     async with db_pool.acquire() as conn:
         await conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS core_algorithm_patterns (
-                pattern_slug VARCHAR(80) PRIMARY KEY,
+            CREATE TABLE IF NOT EXISTS algorithm (
+                slug VARCHAR(80) PRIMARY KEY,
                 name VARCHAR(255) NOT NULL,
                 display_order INTEGER NOT NULL DEFAULT 0,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
-            CREATE TABLE IF NOT EXISTS core_algorithm_methods (
-                pattern_slug VARCHAR(80) NOT NULL REFERENCES core_algorithm_patterns(pattern_slug) ON DELETE CASCADE,
-                method_slug VARCHAR(120) NOT NULL,
+            CREATE TABLE IF NOT EXISTS technique (
+                slug VARCHAR(80) PRIMARY KEY,
                 name VARCHAR(255) NOT NULL,
                 display_order INTEGER NOT NULL DEFAULT 0,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (pattern_slug, method_slug)
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
-            CREATE TABLE IF NOT EXISTS core_algorithms (
-                name VARCHAR(120) PRIMARY KEY,
+            CREATE TABLE IF NOT EXISTS skill (
+                slug VARCHAR(120) PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                display_order INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS problem (
+                slug VARCHAR(120) PRIMARY KEY,
+                algorithm_slug VARCHAR(80) NOT NULL REFERENCES algorithm(slug) ON DELETE RESTRICT,
                 title VARCHAR(255) NOT NULL,
                 difficulty VARCHAR(20) NOT NULL CHECK (difficulty IN ('Easy', 'Med.', 'Hard')),
                 description TEXT NOT NULL DEFAULT '',
@@ -748,96 +823,118 @@ async def _ensure_core_algorithm_schema(db_pool: asyncpg.Pool) -> None:
                 tags TEXT[] DEFAULT '{}',
                 leetcode_examples JSONB NOT NULL DEFAULT '[]'::jsonb,
                 display_order INTEGER NOT NULL DEFAULT 0,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
-            CREATE TABLE IF NOT EXISTS core_algorithm_skill_map (
-                function_name VARCHAR(120) NOT NULL REFERENCES core_algorithms(name) ON DELETE CASCADE,
-                pattern_slug VARCHAR(80) NOT NULL REFERENCES core_algorithm_patterns(pattern_slug) ON DELETE CASCADE,
-                method_slug VARCHAR(120) NOT NULL,
+            CREATE INDEX IF NOT EXISTS idx_problem_algorithm
+                ON problem(algorithm_slug, display_order);
+
+            CREATE INDEX IF NOT EXISTS idx_problem_tags
+                ON problem USING GIN(tags);
+
+            CREATE TABLE IF NOT EXISTS problem_skill (
+                problem_slug VARCHAR(120) NOT NULL REFERENCES problem(slug) ON DELETE CASCADE,
+                skill_slug VARCHAR(120) NOT NULL REFERENCES skill(slug) ON DELETE CASCADE,
                 display_order INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY (function_name, pattern_slug, method_slug)
+                PRIMARY KEY (problem_slug, skill_slug)
             );
 
-            CREATE INDEX IF NOT EXISTS idx_core_algorithm_skill_map_pattern
-                ON core_algorithm_skill_map(pattern_slug, display_order);
+            CREATE INDEX IF NOT EXISTS idx_problem_skill_skill
+                ON problem_skill(skill_slug);
 
-            CREATE INDEX IF NOT EXISTS idx_core_algorithms_tags
-                ON core_algorithms USING GIN(tags);
+            CREATE TABLE IF NOT EXISTS problem_technique (
+                problem_slug VARCHAR(120) NOT NULL REFERENCES problem(slug) ON DELETE CASCADE,
+                technique_slug VARCHAR(80) NOT NULL REFERENCES technique(slug) ON DELETE CASCADE,
+                display_order INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (problem_slug, technique_slug)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_problem_technique_technique
+                ON problem_technique(technique_slug);
             """
         )
 
 
-async def _seed_core_algorithms(db_pool: asyncpg.Pool) -> None:
-    pattern_order: dict[str, int] = {}
-    method_order: dict[tuple[str, str], int] = {}
-    function_rows: list[tuple[str, dict, str, int]] = []
-    mapping_rows: list[tuple[str, str, str, int]] = []
+async def _seed_taxonomy(db_pool: asyncpg.Pool) -> None:
+    skill_order: dict[str, int] = {slug: index + 1 for index, slug in enumerate(CANONICAL_SKILLS)}
+    problem_rows: list[tuple[str, dict, str, int]] = []
+    problem_skill_rows: list[tuple[str, str, int]] = []
+    problem_technique_rows: list[tuple[str, str, int]] = []
 
     catalog_sources = (
         (core_algorithms, CORE_ALGORITHM_CATALOG),
         (core_meta, CORE_META_CATALOG),
     )
-    function_index = 0
+    problem_index = 0
     for source_module, catalog in catalog_sources:
-        for function_name, meta in catalog.items():
-            function_index += 1
-            source_name = str(meta.get("sourceName") or function_name)
+        for problem_slug, meta in catalog.items():
+            problem_index += 1
+            source_name = str(meta.get("sourceName") or problem_slug)
             code = inspect.getsource(getattr(source_module, source_name)).strip()
-            function_rows.append((function_name, meta, code, function_index))
-            for pattern_slug in meta["patterns"]:
-                pattern_order.setdefault(pattern_slug, len(pattern_order) + 1)
-                for method_slug in meta["methods"]:
-                    method_key = (pattern_slug, method_slug)
-                    method_order.setdefault(method_key, len(method_order) + 1)
-                    mapping_rows.append((function_name, pattern_slug, method_slug, function_index))
-
-    for pattern_slug, method_slugs in SKILL_MAP_METHODS.items():
-        pattern_order.setdefault(pattern_slug, len(pattern_order) + 1)
-        for method_slug in method_slugs:
-            method_order.setdefault((pattern_slug, method_slug), len(method_order) + 1)
+            problem_rows.append((problem_slug, meta, code, problem_index))
+            for skill_slug in meta["skills"]:
+                skill_order.setdefault(skill_slug, len(skill_order) + 1)
+                problem_skill_rows.append((problem_slug, skill_slug, problem_index))
+            for technique_slug in meta["techniques"]:
+                problem_technique_rows.append((problem_slug, technique_slug, problem_index))
 
     async with db_pool.acquire() as conn:
         async with conn.transaction():
-            for pattern_slug, display_order in pattern_order.items():
+            for display_order, (algorithm_slug, algorithm_name) in enumerate(ALGORITHMS.items(), start=1):
                 await conn.execute(
                     """
-                    INSERT INTO core_algorithm_patterns (pattern_slug, name, display_order, updated_at)
-                    VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-                    ON CONFLICT (pattern_slug) DO UPDATE SET
+                    INSERT INTO algorithm (slug, name, display_order, updated_at)
+                    VALUES ($1, $2, $3, NOW())
+                    ON CONFLICT (slug) DO UPDATE SET
                         name = EXCLUDED.name,
                         display_order = EXCLUDED.display_order,
-                        updated_at = CURRENT_TIMESTAMP
+                        updated_at = NOW()
                     """,
-                    pattern_slug,
-                    _display_label(pattern_slug),
+                    algorithm_slug,
+                    algorithm_name,
                     display_order,
                 )
 
-            for (pattern_slug, method_slug), display_order in method_order.items():
+            for display_order, (technique_slug, technique_name) in enumerate(TECHNIQUES.items(), start=1):
                 await conn.execute(
                     """
-                    INSERT INTO core_algorithm_methods (pattern_slug, method_slug, name, display_order, updated_at)
-                    VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-                    ON CONFLICT (pattern_slug, method_slug) DO UPDATE SET
+                    INSERT INTO technique (slug, name, display_order, updated_at)
+                    VALUES ($1, $2, $3, NOW())
+                    ON CONFLICT (slug) DO UPDATE SET
                         name = EXCLUDED.name,
                         display_order = EXCLUDED.display_order,
-                        updated_at = CURRENT_TIMESTAMP
+                        updated_at = NOW()
                     """,
-                    pattern_slug,
-                    method_slug,
-                    _display_label(method_slug).lower(),
+                    technique_slug,
+                    technique_name,
                     display_order,
                 )
 
-            for function_name, meta, code, display_order in function_rows:
+            for skill_slug, display_order in skill_order.items():
                 await conn.execute(
                     """
-                    INSERT INTO core_algorithms
-                        (name, title, difficulty, description, code, tags, leetcode_examples, display_order, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, CURRENT_TIMESTAMP)
-                    ON CONFLICT (name) DO UPDATE SET
+                    INSERT INTO skill (slug, name, display_order, updated_at)
+                    VALUES ($1, $2, $3, NOW())
+                    ON CONFLICT (slug) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        display_order = EXCLUDED.display_order,
+                        updated_at = NOW()
+                    """,
+                    skill_slug,
+                    _display_label(skill_slug).lower(),
+                    display_order,
+                )
+
+            for problem_slug, meta, code, display_order in problem_rows:
+                await conn.execute(
+                    """
+                    INSERT INTO problem
+                        (slug, algorithm_slug, title, difficulty, description, code,
+                         tags, leetcode_examples, display_order, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, NOW())
+                    ON CONFLICT (slug) DO UPDATE SET
+                        algorithm_slug = EXCLUDED.algorithm_slug,
                         title = EXCLUDED.title,
                         difficulty = EXCLUDED.difficulty,
                         description = EXCLUDED.description,
@@ -845,9 +942,10 @@ async def _seed_core_algorithms(db_pool: asyncpg.Pool) -> None:
                         tags = EXCLUDED.tags,
                         leetcode_examples = EXCLUDED.leetcode_examples,
                         display_order = EXCLUDED.display_order,
-                        updated_at = CURRENT_TIMESTAMP
+                        updated_at = NOW()
                     """,
-                    function_name,
+                    problem_slug,
+                    meta["algorithm"],
                     meta["title"],
                     meta["difficulty"],
                     meta["description"],
@@ -857,35 +955,101 @@ async def _seed_core_algorithms(db_pool: asyncpg.Pool) -> None:
                     display_order,
                 )
 
-            await conn.execute("DELETE FROM core_algorithm_skill_map")
-            for pattern_slug, method_slugs in RETIRED_SKILL_MAP_METHODS.items():
-                await conn.execute(
-                    """
-                    DELETE FROM core_algorithm_methods
-                    WHERE pattern_slug = $1
-                      AND method_slug = ANY($2::text[])
-                    """,
-                    pattern_slug,
-                    list(method_slugs),
-                )
             await conn.execute(
-                """
-                DELETE FROM core_algorithm_methods
-                WHERE pattern_slug = 'dynamic-programming'
-                  AND method_slug = 'space-optimization'
-                """
+                "DELETE FROM problem WHERE slug <> ALL($1::text[])",
+                [slug for slug, _, _, _ in problem_rows],
             )
-            for function_name, pattern_slug, method_slug, display_order in mapping_rows:
+
+            await conn.execute("DELETE FROM problem_skill")
+            for problem_slug, skill_slug, display_order in problem_skill_rows:
                 await conn.execute(
                     """
-                    INSERT INTO core_algorithm_skill_map
-                        (function_name, pattern_slug, method_slug, display_order)
-                    VALUES ($1, $2, $3, $4)
-                    ON CONFLICT (function_name, pattern_slug, method_slug) DO UPDATE SET
+                    INSERT INTO problem_skill (problem_slug, skill_slug, display_order)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (problem_slug, skill_slug) DO UPDATE SET
                         display_order = EXCLUDED.display_order
                     """,
-                    function_name,
-                    pattern_slug,
-                    method_slug,
+                    problem_slug,
+                    skill_slug,
                     display_order,
                 )
+
+            await conn.execute("DELETE FROM problem_technique")
+            for problem_slug, technique_slug, display_order in problem_technique_rows:
+                await conn.execute(
+                    """
+                    INSERT INTO problem_technique (problem_slug, technique_slug, display_order)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (problem_slug, technique_slug) DO UPDATE SET
+                        display_order = EXCLUDED.display_order
+                    """,
+                    problem_slug,
+                    technique_slug,
+                    display_order,
+                )
+
+            if RETIRED_SKILLS:
+                await conn.execute(
+                    "DELETE FROM skill WHERE slug = ANY($1::text[])",
+                    list(RETIRED_SKILLS),
+                )
+
+
+async def _apply_taxonomy_remap_migration(db_pool: asyncpg.Pool) -> None:
+    """Remap legacy pattern slugs in attempt history to the new taxonomy and
+    drop the superseded core_algorithm_* tables. Every statement is idempotent:
+    legacy slugs never reappear once rewritten."""
+    legacy_slugs = sorted(
+        slug for slug, target in PATTERN_TO_ALGORITHM.items() if slug != target
+    )
+    slug_cases = "\n".join(
+        f"            WHEN '{slug}' THEN '{PATTERN_TO_ALGORITHM[slug]}'" for slug in legacy_slugs
+    )
+    async with db_pool.acquire() as conn:
+        for table in ("answer_skill_evidence", "answer_misconception"):
+            await conn.execute(
+                f"""
+                UPDATE {table}
+                SET algorithm_slug = CASE algorithm_slug
+{slug_cases}
+                    ELSE algorithm_slug
+                END
+                WHERE algorithm_slug = ANY($1::text[])
+                """,
+                legacy_slugs,
+            )
+
+        for table, column in (("answer", "category_tags"), ("coach_feedback_events", "skill_tags")):
+            await conn.execute(
+                f"""
+                UPDATE {table}
+                SET {column} = (
+                    SELECT array_agg(DISTINCT CASE tag
+{slug_cases}
+                        ELSE tag
+                    END)
+                    FROM unnest({column}) AS tags(tag)
+                )
+                WHERE {column} && $1::text[]
+                """,
+                legacy_slugs,
+            )
+
+        await conn.execute(
+            """
+            UPDATE answer a
+            SET category_tags = p.tags
+            FROM problem p
+            WHERE a.generated_card_id = 'core-algorithm-' || p.slug
+              AND a.category_tags IS DISTINCT FROM p.tags
+            """
+        )
+
+        await conn.execute(
+            """
+            DROP TABLE IF EXISTS core_algorithm_skill_map CASCADE;
+            DROP TABLE IF EXISTS core_algorithm_methods CASCADE;
+            DROP TABLE IF EXISTS core_algorithms CASCADE;
+            DROP TABLE IF EXISTS core_algorithm_patterns CASCADE;
+            """
+        )

@@ -60,17 +60,17 @@ class QuestionInsertResult(TypedDict):
     id: str
 
 
-class PatternMethodRow(TypedDict):
-    pattern_id: int
-    pattern_name: str
-    method_id: int | None
-    method_name: str | None
+class AlgorithmSkillRow(TypedDict):
+    algorithm_id: int
+    algorithm_name: str
+    skill_id: int | None
+    skill_name: str | None
 
 
-class SkillMapOverviewPatternRow(TypedDict):
-    pattern_id: int
-    pattern_name: str
-    method_name: str | None
+class SkillMapOverviewAlgorithmRow(TypedDict):
+    algorithm_id: int
+    algorithm_name: str
+    skill_name: str | None
 
 
 class SkillMapOverviewGeneratedRow(TypedDict):
@@ -79,16 +79,18 @@ class SkillMapOverviewGeneratedRow(TypedDict):
     tags: list[str] | None
 
 
-class CoreAlgorithmPracticeRow(TypedDict):
-    name: str
+class ProblemPracticeRow(TypedDict):
+    slug: str
     title: str
     difficulty: str
     description: str
     code: str
     tags: list[str] | None
     leetcode_examples: list[str] | str | None
-    pattern_slug: str
-    pattern_name: str
+    algorithm_slug: str
+    algorithm_name: str
+    technique_slugs: list[str]
+    skill_slugs: list[str]
 
 
 class SkillMapOverviewAttemptRow(TypedDict):

@@ -108,11 +108,11 @@ def test_skill_map_overview_endpoint_contract(monkeypatch) -> None:
     async def _mock_overview():
         return {
             "summary": {"workCount": 1},
-            "patterns": [
+            "algorithms": [
                 {
-                    "pattern": "Sliding Window",
+                    "algorithm": "Sliding Window",
                     "slug": "sliding-window",
-                    "methods": ["expand / shrink rhythm"],
+                    "skills": ["expand / shrink rhythm"],
                     "overallReadiness": 90,
                     "overallAttemptCount": 1,
                     "ghostRepCount": 0,
@@ -136,7 +136,7 @@ def test_skill_map_overview_endpoint_contract(monkeypatch) -> None:
                 "activeDays": 1,
                 "peakDailyCount": 1,
                 "days": [],
-                "patterns": [],
+                "algorithms": [],
             },
         }
 
@@ -157,7 +157,7 @@ def test_skill_map_overview_endpoint_contract(monkeypatch) -> None:
     assert response.status_code == 200, response.text
     payload = response.json()
     assert "summary" in payload
-    assert "patterns" in payload
+    assert "algorithms" in payload
     assert "reviewQueue" in payload
     assert "ghostRepActivity" in payload
-    assert payload["patterns"][0]["slug"] == "sliding-window"
+    assert payload["algorithms"][0]["slug"] == "sliding-window"

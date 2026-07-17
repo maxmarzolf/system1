@@ -30,14 +30,14 @@ def test_create_attempt_forwards_mcq_evidence_and_misconceptions(monkeypatch) ->
             "reasoning": "The state only needs the current value.",
         },
         "skillEvidence": [{
-            "patternSlug": "dynamic-programming",
+            "algorithmSlug": "dynamic-programming",
             "skillSlug": "state-definition",
             "evidenceScore": 0,
             "confidence": 0.95,
             "evidenceSource": "mcq-with-reasoning",
         }],
         "misconceptionSignals": [{
-            "patternSlug": "dynamic-programming",
+            "algorithmSlug": "dynamic-programming",
             "skillSlug": "state-definition",
             "misconceptionTag": "insufficient-state",
             "evaluatorNote": "Tracks too little history.",
@@ -59,7 +59,7 @@ def test_create_attempt_forwards_mcq_evidence_and_misconceptions(monkeypatch) ->
         "reasoningEvaluation": None,
     }
     assert captured["skill_evidence"] == [{
-        "patternSlug": "dynamic-programming",
+        "algorithmSlug": "dynamic-programming",
         "skillSlug": "state-definition",
         "evidenceScore": 0.0,
         "confidence": 0.95,
@@ -75,10 +75,10 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
     five_days_ago = today - timedelta(days=5)
 
     overview = build_skill_map_overview(
-        pattern_rows=[
-            {"pattern_id": 1, "pattern_name": "Sliding Window", "method_name": "valid window rule"},
-            {"pattern_id": 2, "pattern_name": "Binary Search", "method_name": "left / right bounds"},
-            {"pattern_id": 2, "pattern_name": "Binary Search", "method_name": "search on answer"},
+        algorithm_rows=[
+            {"algorithm_id": 1, "algorithm_name": "Sliding Window", "skill_name": "valid window rule"},
+            {"algorithm_id": 2, "algorithm_name": "Binary Search", "skill_name": "left / right bounds"},
+            {"algorithm_id": 2, "algorithm_name": "Binary Search", "skill_name": "search on answer"},
         ],
         generated_rows=[
             {"id": "sw-1", "title": "Window", "tags": ["skill-map", "sliding-window"]},
@@ -139,7 +139,7 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
     activity = overview["ghostRepActivity"]
     today_bucket = next(day for day in activity["days"] if day["date"] == today.date().isoformat())
     yesterday_bucket = next(day for day in activity["days"] if day["date"] == yesterday.date().isoformat())
-    pattern_freshness = {item["slug"]: item for item in activity["patterns"]}
+    pattern_freshness = {item["slug"]: item for item in activity["algorithms"]}
 
     assert activity["totalGhostReps"] == 2
     assert activity["totalMultipleChoice"] == 1
@@ -148,20 +148,20 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
     assert today_bucket["multipleChoiceCount"] == 1
     assert today_bucket["segments"] == [
         {
-            "pattern": "Binary Search",
+            "algorithm": "Binary Search",
             "slug": "binary-search",
             "workType": "multiple-choice",
             "count": 1,
-            "methods": [{"method": "Unclassified", "slug": "unclassified", "count": 1}],
+            "skills": [{"skill": "Unclassified", "slug": "unclassified", "count": 1}],
         }
     ]
     assert yesterday_bucket["segments"] == [
         {
-            "pattern": "Binary Search",
+            "algorithm": "Binary Search",
             "slug": "binary-search",
             "workType": "ghost-reps",
             "count": 1,
-            "methods": [{"method": "left / right bounds", "slug": "left-right-bounds", "count": 1}],
+            "skills": [{"skill": "left / right bounds", "slug": "left-right-bounds", "count": 1}],
         }
     ]
     assert pattern_freshness["sliding-window"]["daysSinceLastGhostRep"] == 5
@@ -176,9 +176,9 @@ def test_spaced_repetition_schedules_algorithm_and_method_tracks_after_ghost_rep
     tomorrow = (today + timedelta(days=1)).date().isoformat()
 
     overview = build_skill_map_overview(
-        pattern_rows=[
-            {"pattern_id": 1, "pattern_name": "Sliding Window", "method_name": "fixed vs variable window"},
-            {"pattern_id": 1, "pattern_name": "Sliding Window", "method_name": "valid window rule"},
+        algorithm_rows=[
+            {"algorithm_id": 1, "algorithm_name": "Sliding Window", "skill_name": "fixed vs variable window"},
+            {"algorithm_id": 1, "algorithm_name": "Sliding Window", "skill_name": "valid window rule"},
         ],
         generated_rows=[
             {

@@ -33,6 +33,7 @@ __pycache__/
 
 # Database - ignore only postgres data, not init scripts
 backend/data/postgres/
+backend/data/backups/
 
 # Optional package manager lockfiles (uncomment if not used)
 # yarn.lock

@@ -39,7 +39,7 @@ class MultipleChoiceChoicePayload(TypedDict):
 class MultipleChoiceQuestionPayload(TypedDict, total=False):
 	id: str
 	title: str
-	pattern: str
+	algorithm: str
 	difficulty: str
 	question: str
 	choices: list[MultipleChoiceChoicePayload]
@@ -95,10 +95,10 @@ class SkillMapModeSummary(TypedDict, total=False):
 	activity: SkillMapModeActivity
 
 
-class SkillMapPatternSummary(TypedDict):
-	pattern: str
+class SkillMapAlgorithmSummary(TypedDict):
+	algorithm: str
 	slug: str
-	methods: list[str]
+	skills: list[str]
 	overallReadiness: float
 	overallAttemptCount: int
 	ghostRepCount: int
@@ -115,7 +115,7 @@ class SkillMapPatternSummary(TypedDict):
 class SkillMapReviewQueueItem(TypedDict):
 	cardId: str
 	title: str
-	pattern: str
+	algorithm: str
 	templateMode: str
 	readiness: float
 	attemptCount: int
@@ -127,18 +127,18 @@ class SkillMapReviewQueueItem(TypedDict):
 	dimensionSummary: dict[str, Any]
 
 
-class SkillMapGhostRepMethodSegment(TypedDict):
-	method: str
+class SkillMapGhostRepSkillSegment(TypedDict):
+	skill: str
 	slug: str
 	count: int
 
 
 class SkillMapGhostRepSegment(TypedDict):
-	pattern: str
+	algorithm: str
 	slug: str
 	workType: str
 	count: int
-	methods: list[SkillMapGhostRepMethodSegment]
+	skills: list[SkillMapGhostRepSkillSegment]
 
 
 class SkillMapGhostRepActivityDay(TypedDict):
@@ -149,8 +149,8 @@ class SkillMapGhostRepActivityDay(TypedDict):
 	segments: list[SkillMapGhostRepSegment]
 
 
-class SkillMapGhostRepPattern(TypedDict):
-	pattern: str
+class SkillMapGhostRepAlgorithm(TypedDict):
+	algorithm: str
 	slug: str
 	totalGhostReps: int
 	totalMultipleChoice: int
@@ -168,8 +168,7 @@ class SkillMapGhostRepActivity(TypedDict):
 	activeDays: int
 	peakDailyCount: int
 	days: list[SkillMapGhostRepActivityDay]
-	patterns: list[SkillMapGhostRepPattern]
-
+	algorithms: list[SkillMapGhostRepAlgorithm]
 
 class SkillMapSpacedRepetitionDay(TypedDict):
 	date: str
@@ -216,9 +215,9 @@ class SkillMapOverviewSummary(TypedDict):
 	ghostRepCount: int
 	unsupportedAttemptCount: int
 	workCount: int
-	patternsStarted: int
-	patternsUntouched: int
-	avgPatternReadiness: float
+	algorithmsStarted: int
+	algorithmsUntouched: int
+	avgAlgorithmReadiness: float
 	modeOrder: list[str]
 	successThreshold: int
 	staleAfterDays: int
@@ -226,7 +225,7 @@ class SkillMapOverviewSummary(TypedDict):
 
 class SkillMapOverviewPayload(TypedDict):
 	summary: SkillMapOverviewSummary
-	patterns: list[SkillMapPatternSummary]
+	algorithms: list[SkillMapAlgorithmSummary]
 	reviewQueue: list[SkillMapReviewQueueItem]
 	ghostRepActivity: SkillMapGhostRepActivity
 	spacedRepetition: SkillMapSpacedRepetitionPayload

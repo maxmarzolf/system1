@@ -3,7 +3,7 @@ import { apiUrl } from './api'
 import { skillMap } from './data/skill-map'
 import GhostRepActivityChart, {
   type GhostRepActivity,
-  type GhostRepPatternOrder,
+  type GhostRepAlgorithmOrder,
   type GhostRepSpacedRepetition,
 } from './GhostRepActivityChart'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
@@ -112,7 +112,7 @@ type PracticeHistoryResponse = {
 }
 
 type SkillMapOverviewForGhostReps = {
-  patterns: GhostRepPatternOrder[]
+  algorithms: GhostRepAlgorithmOrder[]
   ghostRepActivity: GhostRepActivity
   spacedRepetition: GhostRepSpacedRepetition
 }
@@ -217,13 +217,13 @@ export default function PracticeHistoryPage() {
     setSelectedSlugs(slugs)
   }, [])
 
-  const historyPatternOrder = useMemo(() => {
-    const canonicalMethods = new Map(skillMap.map(node => [node.pattern, node.methods]))
-    return (ghostRepOverview?.patterns ?? []).map(pattern => ({
-      ...pattern,
-      methods: canonicalMethods.get(pattern.pattern) ?? pattern.methods,
+  const historyAlgorithmOrder = useMemo(() => {
+    const canonicalSkills = new Map(skillMap.map(node => [node.algorithm, node.skills]))
+    return (ghostRepOverview?.algorithms ?? []).map(algorithm => ({
+      ...algorithm,
+      skills: canonicalSkills.get(algorithm.algorithm) ?? algorithm.skills,
     }))
-  }, [ghostRepOverview?.patterns])
+  }, [ghostRepOverview?.algorithms])
 
   const repeatedWeakDimensions = practiceHistorySummary?.dimensionSummary?.weakDimensions ?? []
 
@@ -233,7 +233,7 @@ export default function PracticeHistoryPage() {
 
       <GhostRepActivityChart
         activity={ghostRepOverview?.ghostRepActivity}
-        patternOrder={historyPatternOrder}
+        algorithmOrder={historyAlgorithmOrder}
         spacedRepetition={ghostRepOverview?.spacedRepetition}
         onSelectionChange={handleSelectionChange}
       />

@@ -23,33 +23,37 @@ def _entry_point_name(code: str) -> str:
 
 
 def build_core_algorithm_drill(row: dict[str, Any]) -> dict[str, Any]:
-    name = str(row["name"])
+    slug = str(row["slug"])
     code = str(row["code"]).strip()
-    pattern_slug = str(row["pattern_slug"])
-    pattern_name = str(row["pattern_name"])
+    algorithm_slug = str(row["algorithm_slug"])
+    algorithm_name = str(row["algorithm_name"])
+    technique_slugs = [str(item) for item in (row.get("technique_slugs") or []) if str(item).strip()]
     tags = [str(tag) for tag in (row.get("tags") or []) if str(tag).strip()]
-    is_meta = "core-meta" in tags or pattern_slug == "meta"
+    is_meta = "core-meta" in tags or algorithm_slug == "meta"
     if "skill-map" not in tags:
         tags.insert(0, "skill-map")
     if not is_meta and "core-algorithm" not in tags:
         tags.insert(1, "core-algorithm")
-    if pattern_slug not in tags:
-        tags.append(pattern_slug)
+    if algorithm_slug not in tags:
+        tags.append(algorithm_slug)
+    for technique_slug in technique_slugs:
+        if technique_slug not in tags:
+            tags.append(technique_slug)
     description = str(row.get("description") or "").strip()
     title = str(row["title"])
     prompt_subject = "Meta question" if "core-meta" in tags else "core algorithm"
-    prompt = f"{pattern_name}: memorize the {prompt_subject}."
-    entry_name = _entry_point_name(code) or name
+    prompt = f"{algorithm_name}: memorize the {prompt_subject}."
+    entry_name = _entry_point_name(code) or slug
     examples = _examples(row.get("leetcode_examples"))
     return {
-        "id": f"core-algorithm-{name}",
+        "id": f"core-algorithm-{slug}",
         "title": title,
         "difficulty": str(row["difficulty"]),
         "prompt": prompt,
         "templatePrompts": {
             "algorithm": prompt,
             "coreShape": prompt,
-            "inline": f"{pattern_name}: follow progressive conceptual line tasks.",
+            "inline": f"{algorithm_name}: follow progressive conceptual line tasks.",
         },
         "templateTargets": {
             "algorithm": code,
@@ -58,7 +62,7 @@ def build_core_algorithm_drill(row: dict[str, Any]) -> dict[str, Any]:
         },
         "solution": code,
         "missing": "# core algorithm complete",
-        "hint": description or f"Recall the reusable {pattern_name} function shape.",
+        "hint": description or f"Recall the reusable {algorithm_name} function shape.",
         "tags": tags,
         "plainEnglishPromptDetail": {
             "plainEnglish": f"What is the reusable move in {entry_name}?",
@@ -72,19 +76,19 @@ def build_core_algorithm_drill(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def core_algorithm_drills_for_pattern(pattern_slug: str) -> dict[str, Any]:
-    from app.services import core_algorithm_practice_service
+async def problem_drills_for_algorithm(algorithm_slug: str) -> dict[str, Any]:
+    from app.services import problem_practice_service
 
-    return await core_algorithm_practice_service.core_algorithm_drills_for_pattern(pattern_slug)
-
-
-async def core_algorithm_drills_for_tag(tag_slug: str, count: int = 10) -> dict[str, Any]:
-    from app.services import core_algorithm_practice_service
-
-    return await core_algorithm_practice_service.core_algorithm_drills_for_tag(tag_slug, count)
+    return await problem_practice_service.problem_drills_for_algorithm(algorithm_slug)
 
 
-async def random_core_algorithm_drills(count: int = 10) -> dict[str, Any]:
-    from app.services import core_algorithm_practice_service
+async def problem_drills_for_tag(tag_slug: str, count: int = 10) -> dict[str, Any]:
+    from app.services import problem_practice_service
 
-    return await core_algorithm_practice_service.random_core_algorithm_drills(count)
+    return await problem_practice_service.problem_drills_for_tag(tag_slug, count)
+
+
+async def random_problem_drills(count: int = 10) -> dict[str, Any]:
+    from app.services import problem_practice_service
+
+    return await problem_practice_service.random_problem_drills(count)

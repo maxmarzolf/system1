@@ -54,8 +54,8 @@ export const practicePlaylists: PracticePlaylist[] = [
 
 export const playlistQuestionsToSkillMap = (playlist: PracticePlaylist): SkillMapNode[] =>
   playlist.questions.map((question) => ({
-    pattern: question.coreShape,
-    methods: [question.title, ...question.methods],
+    algorithm: question.coreShape,
+    skills: [question.title, ...question.methods],
     questionTitle: question.title,
     playlistSlug: playlist.slug,
   }))

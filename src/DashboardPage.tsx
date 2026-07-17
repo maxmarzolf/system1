@@ -26,10 +26,10 @@ type SkillMapModeReadiness = {
   dimensionSummary: DimensionSummary
 }
 
-type SkillMapPatternReadiness = {
-  pattern: string
+type SkillMapAlgorithmReadiness = {
+  algorithm: string
   slug: string
-  methods: string[]
+  skills: string[]
   overallReadiness: number
   overallAttemptCount: number
   ghostRepCount: number
@@ -44,15 +44,200 @@ type SkillMapPatternReadiness = {
 }
 
 type SkillMapOverviewResponse = {
-  patterns: SkillMapPatternReadiness[]
+  algorithms: SkillMapAlgorithmReadiness[]
+  spacedRepetition?: SkillMapSpacedRepetition
 }
 
 type TemplateMode = 'algorithm'
+
+type SpacedRepetitionDay = {
+  date: string
+  status: 'empty' | 'completed' | 'failed' | 'due' | 'scheduled' | 'overdue'
+  label: string
+}
+
+type SpacedRepetitionFamily = {
+  algorithm: string
+  slug: string
+  coreAlgorithmCount: number
+}
+
+type SpacedRepetitionPacket = {
+  id: string
+  label: string
+  group: string
+  families: SpacedRepetitionFamily[]
+  coreAlgorithmCount: number
+  requiredGhostReps: number
+  status: 'not_started' | 'acquisition' | 'failed' | 'overdue' | 'due' | 'scheduled' | 'maintenance'
+  statusLabel: string
+  stageLabel: string
+  completedSessions: number
+  startedAt: string | null
+  lastAttemptedAt: string | null
+  lastCompletedAt: string | null
+  nextDueAt: string | null
+  daysUntilDue: number | null
+  days: SpacedRepetitionDay[]
+}
+
+type SkillMapSpacedRepetition = {
+  today: string
+  windowStart: string
+  windowEnd: string
+  intervals: number[]
+  requiredGhostReps: number
+  packets: SpacedRepetitionPacket[]
+  queue: SpacedRepetitionPacket[]
+}
 
 const readinessTone = (readiness: number) => {
   if (readiness >= 80) return 'success'
   if (readiness >= 50) return 'warning'
   return 'error'
+}
+
+const spacedStatusTone = (status: SpacedRepetitionPacket['status']) => {
+  if (status === 'overdue' || status === 'failed' || status === 'acquisition') return 'error'
+  if (status === 'due') return 'warning'
+  return 'success'
+}
+
+const formatShortDate = (value?: string | null) => {
+  if (!value) return 'Not scheduled'
+  return new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+const dueCopy = (packet: SpacedRepetitionPacket) => {
+  if (!packet.nextDueAt) return 'Not scheduled'
+  if (packet.daysUntilDue === null) return formatShortDate(packet.nextDueAt)
+  if (packet.daysUntilDue < 0) return `${Math.abs(packet.daysUntilDue)}d overdue`
+  if (packet.daysUntilDue === 0) return 'Today'
+  if (packet.daysUntilDue === 1) return 'Tomorrow'
+  return formatShortDate(packet.nextDueAt)
+}
+
+const nextScheduledPacket = (packets: SpacedRepetitionPacket[]) =>
+  packets
+    .filter(packet => packet.nextDueAt && packet.daysUntilDue !== null && packet.daysUntilDue > 0)
+    .sort((left, right) => (left.daysUntilDue ?? 999) - (right.daysUntilDue ?? 999))[0]
+
+export function SpacedRepetitionPanel({
+  spacedRepetition,
+  onStartFamily,
+}: {
+  spacedRepetition?: SkillMapSpacedRepetition
+  onStartFamily: (patternSlug: string) => void
+}) {
+  if (!spacedRepetition) {
+    return (
+      <section className="spaced-repetition-panel" aria-label="Spaced repetition">
+        <div className="spaced-repetition-header">
+          <div>
+            <p className="dashboard-activity-eyebrow">Spaced Repetition</p>
+            <h2>Loading schedule...</h2>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  const activeReviews = spacedRepetition.queue
+  const reviewPacket = activeReviews[0]
+    ?? nextScheduledPacket(spacedRepetition.packets)
+    ?? spacedRepetition.packets.find(packet => packet.status === 'not_started')
+  const hiddenActiveReviewCount = Math.max(activeReviews.length - 1, 0)
+  const activeReviewCopy = activeReviews.length === 0
+    ? 'No reviews due'
+    : activeReviews.length === 1
+      ? '1 needs review'
+      : `${activeReviews.length} need review`
+
+  return (
+    <section className="spaced-repetition-panel" aria-label="Spaced repetition">
+      <div className="spaced-repetition-header">
+        <div>
+          <p className="dashboard-activity-eyebrow">Spaced Repetition</p>
+          <h2>{reviewPacket ? `${reviewPacket.label}: ${reviewPacket.statusLabel}` : 'All packets scheduled'}</h2>
+        </div>
+        <div className="spaced-repetition-summary">
+          <span className="coach-metric-chip">{spacedRepetition.requiredGhostReps} ghost/core</span>
+          <span className="coach-metric-chip">{activeReviewCopy}</span>
+          <span className="coach-metric-chip">0 · 1 · 3 · 7 · 14 · 30</span>
+        </div>
+      </div>
+
+      {reviewPacket && (
+        <div className="spaced-repetition-focus" aria-label="Review focus">
+          <article className={`spaced-repetition-focus-card spaced-repetition-focus-card-${spacedStatusTone(reviewPacket.status)}`}>
+            <div>
+              <div className="spaced-repetition-focus-topline">
+                <strong>{activeReviews.length > 0 ? 'Review now' : 'Next review'}</strong>
+                <span>{reviewPacket.statusLabel}</span>
+              </div>
+              <p>{reviewPacket.families.map(family => family.algorithm).join(' / ')}</p>
+            </div>
+            <div className="spaced-repetition-focus-actions">
+              <span className="coach-metric-chip">Due {dueCopy(reviewPacket)}</span>
+              <span className="coach-metric-chip">{reviewPacket.coreAlgorithmCount} cores</span>
+              <span className="coach-metric-chip">{reviewPacket.stageLabel}</span>
+              {reviewPacket.families.map(family => (
+                <button key={family.slug} type="button" onClick={() => onStartFamily(family.slug)}>
+                  {family.algorithm}
+                </button>
+              ))}
+            </div>
+
+            <div className="spaced-repetition-focus-more">
+              +{hiddenActiveReviewCount} more due after this
+            </div>
+          </article>
+        </div>
+      )}
+
+      {reviewPacket && (
+        <div className="spaced-repetition-table" aria-label="Packet schedule">
+          <article key={reviewPacket.id} className="spaced-repetition-row">
+            <div className="spaced-repetition-row-meta">
+              <div className="spaced-repetition-row-title">
+                <strong>{reviewPacket.label}</strong>
+                <span className={`spaced-repetition-status spaced-repetition-status-${reviewPacket.status}`}>
+                  {reviewPacket.statusLabel}
+                </span>
+              </div>
+              <p>{reviewPacket.families.map(family => family.algorithm).join(' / ')}</p>
+              <div className="spaced-repetition-row-chips">
+                <span>{reviewPacket.coreAlgorithmCount} cores</span>
+                <span>{reviewPacket.stageLabel}</span>
+                <span>Due {dueCopy(reviewPacket)}</span>
+              </div>
+            </div>
+            <div className="spaced-repetition-days">
+              {reviewPacket.days.map(day => {
+                const isToday = day.date === spacedRepetition.today
+                return (
+                  <span
+                    key={`${reviewPacket.id}-${day.date}`}
+                    className={`spaced-repetition-day spaced-repetition-day-${day.status}${isToday ? ' spaced-repetition-day-today' : ''}`}
+                    title={`${formatShortDate(day.date)}${day.label ? `: ${day.label}` : ''}`}
+                    aria-label={`${reviewPacket.label} ${formatShortDate(day.date)} ${day.label || 'not due'}`}
+                  />
+                )
+              })}
+            </div>
+          </article>
+        </div>
+      )}
+
+      <div className="spaced-repetition-legend" aria-label="Schedule legend">
+        <span><i className="spaced-repetition-day spaced-repetition-day-completed" /> Completed</span>
+        <span><i className="spaced-repetition-day spaced-repetition-day-failed" /> Incomplete</span>
+        <span><i className="spaced-repetition-day spaced-repetition-day-due" /> Due</span>
+        <span><i className="spaced-repetition-day spaced-repetition-day-overdue" /> Overdue</span>
+        <span><i className="spaced-repetition-day spaced-repetition-day-scheduled" /> Scheduled</span>
+      </div>
+    </section>
+  )
 }
 
 const normalizePatternKey = (slug: string, pattern: string) =>
@@ -119,7 +304,7 @@ function SkillAlgorithmIllustration({ slug, pattern }: { slug: string; pattern: 
     )
   }
 
-  if (patternKey === 'dfs-bfs') {
+  if (patternKey === 'dfs-bfs' || patternKey === 'trees') {
     return (
       <div className="skill-map-illustration" aria-hidden="true">
         <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
@@ -221,7 +406,7 @@ function SkillAlgorithmIllustration({ slug, pattern }: { slug: string; pattern: 
     )
   }
 
-  if (patternKey === 'graph-traversal') {
+  if (patternKey === 'graphs' || patternKey === 'graph-traversal') {
     return (
       <div className="skill-map-illustration" aria-hidden="true">
         <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
@@ -493,7 +678,7 @@ export default function DashboardPage() {
     void loadOverview()
   }, [])
 
-  const patterns = overview?.patterns ?? []
+  const algorithms = overview?.algorithms ?? []
   const launchFocusedPractice = (patternSlug: string) => {
     const nextParams = new URLSearchParams({
       focusPattern: patternSlug,
@@ -510,12 +695,12 @@ export default function DashboardPage() {
 
         <div className="skill-map-grid">
           {loading && !error && <p className="skill-map-intro">Loading readiness overview...</p>}
-          {patterns.map((node) => {
+          {algorithms.map((node) => {
             const isMeta = node.slug === 'meta'
             return (
               <article key={node.slug} className="skill-map-card">
                 <div className="skill-map-header">
-                  <h3>{node.pattern}</h3>
+                  <h3>{node.algorithm}</h3>
                   <span className={`coach-status-value coach-status-value-${readinessTone(node.overallReadiness)}`}>
                     {node.overallReadiness}%
                   </span>
@@ -525,7 +710,7 @@ export default function DashboardPage() {
                   <span className="coach-metric-chip">{node.staleCards} stale</span>
                   <span className="coach-metric-chip">{node.ghostRepCount} Ghost Reps</span>
                 </div>
-                <SkillAlgorithmIllustration slug={node.slug} pattern={node.pattern} />
+                <SkillAlgorithmIllustration slug={node.slug} pattern={node.algorithm} />
                 <div className="dashboard-mode-tabs">
                   <button
                     type="button"
