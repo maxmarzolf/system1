@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Legacy Score Attempts Table
 -- ============================================================================
--- score_attempts has been replaced by answer as the canonical attempt ledger.
+-- score_attempts has been replaced by submission as the canonical attempt ledger.
 
 -- ============================================================================
 -- Generated Skill Map Cards
@@ -28,9 +28,9 @@ CREATE INDEX IF NOT EXISTS idx_generated_skill_map_cards_tags
     ON generated_skill_map_cards USING GIN(tags);
 
 -- ============================================================================
--- Question Table
+-- Multiple Choice Problem Table
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS question (
+CREATE TABLE IF NOT EXISTS multiple_choice_problem (
     id VARCHAR(80) PRIMARY KEY,
     user_id VARCHAR(80) NOT NULL DEFAULT '0000',
     question_text TEXT NOT NULL,
@@ -51,23 +51,23 @@ CREATE TABLE IF NOT EXISTS question (
     modified_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_question_fingerprint
-    ON question(fingerprint);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_multiple_choice_problem_fingerprint
+    ON multiple_choice_problem(fingerprint);
 
-CREATE INDEX IF NOT EXISTS idx_question_user_id
-    ON question(user_id);
+CREATE INDEX IF NOT EXISTS idx_multiple_choice_problem_user_id
+    ON multiple_choice_problem(user_id);
 
-CREATE INDEX IF NOT EXISTS idx_question_created_date
-    ON question(created_date DESC);
+CREATE INDEX IF NOT EXISTS idx_multiple_choice_problem_created_date
+    ON multiple_choice_problem(created_date DESC);
 
 -- ============================================================================
--- Answer Table
+-- Submission Table
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS answer (
+CREATE TABLE IF NOT EXISTS submission (
     id BIGSERIAL PRIMARY KEY,
     session_id VARCHAR(80) NOT NULL DEFAULT '0000',
     user_id VARCHAR(80) NOT NULL DEFAULT '0000',
-    question_id VARCHAR(80) NOT NULL REFERENCES question(id),
+    multiple_choice_problem_id VARCHAR(80) REFERENCES multiple_choice_problem(id) ON DELETE SET NULL,
     answer TEXT NOT NULL,
     question_type VARCHAR(50) NOT NULL DEFAULT '',
     category_tags TEXT[] NOT NULL DEFAULT '{}',
@@ -93,102 +93,39 @@ CREATE TABLE IF NOT EXISTS answer (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_answer_question_id
-    ON answer(question_id);
+CREATE INDEX IF NOT EXISTS idx_submission_multiple_choice_problem_id
+    ON submission(multiple_choice_problem_id);
 
-CREATE INDEX IF NOT EXISTS idx_answer_session_user
-    ON answer(session_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_submission_session_user
+    ON submission(session_id, user_id);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_answer_migration_key
-    ON answer(migration_key)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_submission_migration_key
+    ON submission(migration_key)
     WHERE migration_key IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_answer_created_at
-    ON answer(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_submission_created_at
+    ON submission(created_at DESC);
 
--- Format-specific response details remain linked to the shared answer event.
-CREATE TABLE IF NOT EXISTS answer_mcq_detail (
-    answer_id BIGINT PRIMARY KEY REFERENCES answer(id) ON DELETE CASCADE,
-    selected_choice_label VARCHAR(10) NOT NULL,
-    correct_choice_label VARCHAR(10) NOT NULL,
-    reasoning TEXT,
-    reasoning_quality REAL CHECK (reasoning_quality >= 0 AND reasoning_quality <= 1),
-    reasoning_evaluation JSONB,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+CREATE INDEX IF NOT EXISTS idx_submission_question_type_created_at
+    ON submission(question_type, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS answer_skill_evidence (
-    id BIGSERIAL PRIMARY KEY,
-    answer_id BIGINT NOT NULL REFERENCES answer(id) ON DELETE CASCADE,
-    algorithm_slug TEXT NOT NULL,
-    skill_slug TEXT NOT NULL,
-    evidence_score REAL NOT NULL CHECK (evidence_score >= 0 AND evidence_score <= 1),
-    confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
-    evidence_source TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+CREATE INDEX IF NOT EXISTS idx_submission_generated_card_id
+    ON submission(generated_card_id);
 
-CREATE INDEX IF NOT EXISTS idx_answer_skill_evidence_skill
-    ON answer_skill_evidence(algorithm_slug, skill_slug, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_submission_interaction_id
+    ON submission(interaction_id);
 
-CREATE TABLE IF NOT EXISTS skill_misconception_catalog (
-    id BIGSERIAL PRIMARY KEY,
-    skill_slug TEXT NOT NULL,
-    misconception_tag TEXT NOT NULL,
-    label TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    active BOOLEAN NOT NULL DEFAULT TRUE,
-    CONSTRAINT skill_misconception_catalog_skill_slug_misconception_tag_key
-        UNIQUE (skill_slug, misconception_tag)
-);
+CREATE INDEX IF NOT EXISTS idx_submission_category_tags
+    ON submission USING GIN(category_tags);
 
-INSERT INTO skill_misconception_catalog
-    (skill_slug, misconception_tag, label, description)
-VALUES
-    ('state-definition', 'insufficient-state', 'Insufficient state', 'The state omits information needed to determine future decisions.'),
-    ('state-definition', 'redundant-state', 'Redundant state', 'The state stores information already implied by other dimensions.'),
-    ('state-definition', 'state-transition-confusion', 'State/transition confusion', 'The learner describes how state changes instead of what the state means.'),
-    ('state-definition', 'unclear-dimensions', 'Unclear dimensions', 'One or more state dimensions do not have a precise meaning.'),
-    ('state-definition', 'future-state-collision', 'Future state collision', 'One state merges subproblems that require different future decisions.')
-ON CONFLICT (skill_slug, misconception_tag) DO NOTHING;
+CREATE INDEX IF NOT EXISTS idx_submission_template_support_created_at
+    ON submission(template_mode, support_layer, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS answer_misconception (
-    id BIGSERIAL PRIMARY KEY,
-    answer_id BIGINT NOT NULL REFERENCES answer(id) ON DELETE CASCADE,
-    skill_evidence_id BIGINT REFERENCES answer_skill_evidence(id) ON DELETE SET NULL,
-    misconception_id BIGINT REFERENCES skill_misconception_catalog(id) ON DELETE SET NULL,
-    algorithm_slug TEXT NOT NULL,
-    skill_slug TEXT NOT NULL,
-    misconception_tag TEXT NOT NULL,
-    evaluator_note TEXT,
-    confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
-    detected_by TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+CREATE INDEX IF NOT EXISTS idx_submission_multiple_choice_problem_id_created_at
+    ON submission(multiple_choice_problem_id, created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_answer_misconception_signal
-    ON answer_misconception(algorithm_slug, skill_slug, misconception_tag, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_answer_question_type_created_at
-    ON answer(question_type, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_answer_generated_card_id
-    ON answer(generated_card_id);
-
-CREATE INDEX IF NOT EXISTS idx_answer_interaction_id
-    ON answer(interaction_id);
-
-CREATE INDEX IF NOT EXISTS idx_answer_category_tags
-    ON answer USING GIN(category_tags);
-
-CREATE INDEX IF NOT EXISTS idx_answer_template_support_created_at
-    ON answer(template_mode, support_layer, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_answer_question_id_created_at
-    ON answer(question_id, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_answer_session_id_created_at
-    ON answer(session_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_submission_session_id_created_at
+    ON submission(session_id, created_at DESC);
 
 -- ============================================================================
 -- Taxonomy: algorithm -> problem -> [skill, technique]
@@ -264,7 +201,7 @@ CREATE TABLE IF NOT EXISTS coach_feedback_events (
     id SERIAL PRIMARY KEY,
     interaction_id VARCHAR(80),
     card_id VARCHAR(80) NOT NULL,
-    answer_id BIGINT REFERENCES answer(id) ON DELETE SET NULL,
+    submission_id BIGINT REFERENCES submission(id) ON DELETE SET NULL,
     generated_card_id VARCHAR(80),
     question_type VARCHAR(50) NOT NULL DEFAULT '',
     feedback_stage VARCHAR(20) NOT NULL CHECK (feedback_stage IN ('live', 'submission')),
@@ -292,8 +229,8 @@ CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_card
 CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_generated_card
     ON coach_feedback_events(generated_card_id);
 
-CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_answer_id
-    ON coach_feedback_events(answer_id);
+CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_submission_id
+    ON coach_feedback_events(submission_id);
 
 CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_stage_created
     ON coach_feedback_events(feedback_stage, created_at DESC);

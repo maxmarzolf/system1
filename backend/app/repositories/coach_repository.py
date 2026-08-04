@@ -7,16 +7,16 @@ from datetime import datetime
 from typing import Any, cast
 
 from app.repositories.base import acquire_connection
-from app.repositories.types import PracticeHistoryEntry, PracticeHistoryRow, QuestionInsertResult
+from app.repositories.types import MultipleChoiceProblemInsertResult, PracticeHistoryEntry, PracticeHistoryRow
 from app.submission_rubric import compact_submission_rubric
 
 _PRACTICE_HISTORY_SELECT = """
     SELECT
         a.id AS "attemptId",
         COALESCE(a.interaction_id, '') AS "interactionId",
-        COALESCE(a.generated_card_id, a.question_id) AS "cardId",
-        COALESCE(NULLIF(a.generated_card->>'title', ''), q.question_text, a.question_id) AS "cardTitle",
-        COALESCE(q.question_text, '') AS question,
+        COALESCE(a.generated_card_id, a.multiple_choice_problem_id) AS "cardId",
+        COALESCE(NULLIF(a.generated_card->>'title', ''), q.question_text, a.multiple_choice_problem_id) AS "cardTitle",
+        COALESCE(q.question_text, NULLIF(a.generated_card->>'prompt', ''), '') AS question,
         a.question_type AS "questionType",
         a.correct_answer AS "correctAnswer",
         a.answer AS "userAnswer",
@@ -33,18 +33,18 @@ _PRACTICE_HISTORY_SELECT = """
         a.created_at,
         COALESCE(live.live_feedback_count, 0) AS "liveFeedbackCount",
         latest.feedback AS "latestLiveFeedback"
-    FROM answer a
-    LEFT JOIN question q ON q.id = a.question_id
+    FROM submission a
+    LEFT JOIN multiple_choice_problem q ON q.id = a.multiple_choice_problem_id
     LEFT JOIN LATERAL (
         SELECT COUNT(*)::int AS live_feedback_count
         FROM coach_feedback_events fe
         WHERE fe.feedback_stage = 'live'
           AND (
-            (fe.answer_id IS NOT NULL AND fe.answer_id = a.id)
+            (fe.submission_id IS NOT NULL AND fe.submission_id = a.id)
             OR (a.interaction_id IS NOT NULL AND fe.interaction_id = a.interaction_id)
             OR (
                 a.interaction_id IS NULL
-                AND fe.card_id = COALESCE(a.generated_card_id, a.question_id)
+                AND fe.card_id = COALESCE(a.generated_card_id, a.multiple_choice_problem_id)
                 AND fe.question_type = a.question_type
                 AND fe.created_at <= a.created_at
             )
@@ -55,11 +55,11 @@ _PRACTICE_HISTORY_SELECT = """
         FROM coach_feedback_events fe
         WHERE fe.feedback_stage = 'live'
           AND (
-                        (fe.answer_id IS NOT NULL AND fe.answer_id = a.id)
+                        (fe.submission_id IS NOT NULL AND fe.submission_id = a.id)
                         OR (a.interaction_id IS NOT NULL AND fe.interaction_id = a.interaction_id)
             OR (
                                 a.interaction_id IS NULL
-                                AND fe.card_id = COALESCE(a.generated_card_id, a.question_id)
+                                AND fe.card_id = COALESCE(a.generated_card_id, a.multiple_choice_problem_id)
                                 AND fe.question_type = a.question_type
                                 AND fe.created_at <= a.created_at
             )
@@ -83,7 +83,7 @@ async def fetch_practice_history_rows(
                 f"""
                 {_PRACTICE_HISTORY_SELECT}
                                     AND a.question_type = $2
-                                    AND (COALESCE(a.generated_card_id, a.question_id) = $1 OR a.category_tags && $3::text[])
+                                    AND (COALESCE(a.generated_card_id, a.multiple_choice_problem_id) = $1 OR a.category_tags && $3::text[])
                                 ORDER BY a.created_at DESC
                 LIMIT $4
                 """,
@@ -96,7 +96,7 @@ async def fetch_practice_history_rows(
             rows = await conn.fetch(
                 f"""
                 {_PRACTICE_HISTORY_SELECT}
-                                    AND (COALESCE(a.generated_card_id, a.question_id) = $1 OR a.category_tags && $2::text[])
+                                    AND (COALESCE(a.generated_card_id, a.multiple_choice_problem_id) = $1 OR a.category_tags && $2::text[])
                                 ORDER BY a.created_at DESC
                 LIMIT $3
                 """,
@@ -108,7 +108,7 @@ async def fetch_practice_history_rows(
             rows = await conn.fetch(
                 f"""
                 {_PRACTICE_HISTORY_SELECT}
-                                    AND (COALESCE(a.generated_card_id, a.question_id) = $1)
+                                    AND (COALESCE(a.generated_card_id, a.multiple_choice_problem_id) = $1)
                                 ORDER BY a.created_at DESC
                 LIMIT $2
                 """,
@@ -203,7 +203,7 @@ async def fetch_practice_history_entries(
     return history
 
 
-async def fetch_latest_answer_id_for_feedback(
+async def fetch_latest_submission_id_for_feedback(
     *,
     interaction_id: str,
     card_id: str,
@@ -219,7 +219,7 @@ async def fetch_latest_answer_id_for_feedback(
             row = await conn.fetchrow(
                 """
                 SELECT id
-                FROM answer
+                FROM submission
                 WHERE interaction_id = $1
                 ORDER BY created_at DESC
                 LIMIT 1
@@ -235,9 +235,9 @@ async def fetch_latest_answer_id_for_feedback(
         row = await conn.fetchrow(
             """
             SELECT id
-            FROM answer
+            FROM submission
             WHERE question_type = $2
-              AND (generated_card_id = $1 OR question_id = $1)
+              AND (generated_card_id = $1 OR multiple_choice_problem_id = $1)
             ORDER BY created_at DESC
             LIMIT 1
             """,
@@ -270,20 +270,20 @@ async def insert_feedback_event_row(
     feedback_json: str,
     llm_used: bool,
     created_at: datetime,
-    answer_id: int | None = None,
+    submission_id: int | None = None,
 ) -> None:
     async with acquire_connection() as conn:
         await conn.execute(
             """
             INSERT INTO coach_feedback_events
-                (interaction_id, card_id, answer_id, generated_card_id, question_type, feedback_stage, live_mode,
+                (interaction_id, card_id, submission_id, generated_card_id, question_type, feedback_stage, live_mode,
                  prompt, expected_answer, user_answer, accuracy, exact, elapsed_ms, skill_tags,
                  previous_attempts, live_milestones, feedback, llm_used, created_at)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
             """,
             interaction_id,
             card_id,
-            answer_id,
+            submission_id,
             generated_card_id,
             question_type,
             feedback_stage,
@@ -364,7 +364,7 @@ async def insert_generated_multiple_choice_question_rows(
             fingerprint = _multiple_choice_question_fingerprint(question)
             row = await conn.fetchrow(
                 """
-                INSERT INTO question (
+                INSERT INTO multiple_choice_problem (
                     id, user_id, question_text, question_help_text, recall_answer,
                     multiple_choice_answer_label_1, multiple_choice_answer_text_1,
                     multiple_choice_answer_label_2, multiple_choice_answer_text_2,
@@ -406,5 +406,5 @@ async def insert_generated_multiple_choice_question_rows(
                 modified_date,
             )
             if row:
-                saved_ids.append(cast(QuestionInsertResult, dict(row))["id"])
+                saved_ids.append(cast(MultipleChoiceProblemInsertResult, dict(row))["id"])
     return saved_ids

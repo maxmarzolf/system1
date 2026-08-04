@@ -146,6 +146,7 @@ class SkillMapGhostRepActivityDay(TypedDict):
 	total: int
 	ghostRepCount: int
 	multipleChoiceCount: int
+	totalRecallCount: int
 	segments: list[SkillMapGhostRepSegment]
 
 
@@ -154,7 +155,9 @@ class SkillMapGhostRepAlgorithm(TypedDict):
 	slug: str
 	totalGhostReps: int
 	totalMultipleChoice: int
+	totalPerfectRecalls: int
 	totalWork: int
+	coreCardCount: int
 	daysSinceLastGhostRep: int | None
 	daysSinceLastPractice: int | None
 
@@ -164,6 +167,7 @@ class SkillMapGhostRepActivity(TypedDict):
 	windowEnd: str
 	totalGhostReps: int
 	totalMultipleChoice: int
+	totalPerfectRecalls: int
 	workCount: int
 	activeDays: int
 	peakDailyCount: int

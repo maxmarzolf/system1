@@ -25,31 +25,6 @@ class SupportLayer(str, Enum):
 # ─── Request schemas ───
 
 
-class McqAttemptDetailCreate(BaseModel):
-    selectedChoiceLabel: str = Field(min_length=1, max_length=10)
-    correctChoiceLabel: str = Field(min_length=1, max_length=10)
-    reasoning: str | None = None
-    reasoningQuality: float | None = Field(default=None, ge=0, le=1)
-    reasoningEvaluation: dict[str, Any] | None = None
-
-
-class SkillEvidenceCreate(BaseModel):
-    algorithmSlug: str = Field(min_length=1)
-    skillSlug: str = Field(min_length=1)
-    evidenceScore: float = Field(ge=0, le=1)
-    confidence: float = Field(default=1, ge=0, le=1)
-    evidenceSource: str = Field(min_length=1)
-
-
-class MisconceptionSignalCreate(BaseModel):
-    algorithmSlug: str = Field(min_length=1)
-    skillSlug: str = Field(min_length=1)
-    misconceptionTag: str = Field(min_length=1)
-    evaluatorNote: str | None = None
-    confidence: float = Field(default=1, ge=0, le=1)
-    detectedBy: str = Field(min_length=1)
-
-
 class AttemptCreate(BaseModel):
     cardId: str = Field(min_length=1)
     cardTitle: str | None = None
@@ -75,9 +50,6 @@ class AttemptCreate(BaseModel):
     targetSource: Literal["recall-miss", "algorithm", "skill-map"] | None = None
     targetControl: Literal["user", "system"] | None = None
     formatControl: Literal["user", "system"] | None = None
-    mcqDetail: McqAttemptDetailCreate | None = None
-    skillEvidence: list[SkillEvidenceCreate] = []
-    misconceptionSignals: list[MisconceptionSignalCreate] = []
 
 
 # ─── Response schemas ───

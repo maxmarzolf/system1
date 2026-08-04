@@ -9,7 +9,7 @@ export type GhostRepActivitySkillSegment = {
 export type GhostRepActivitySegment = {
   algorithm: string
   slug: string
-  workType?: 'ghost-reps' | 'multiple-choice'
+  workType?: 'ghost-reps' | 'multiple-choice' | 'total-recall'
   count: number
   skills?: GhostRepActivitySkillSegment[]
 }
@@ -19,6 +19,7 @@ export type GhostRepActivityDay = {
   total: number
   ghostRepCount?: number
   multipleChoiceCount?: number
+  totalRecallCount?: number
   segments: GhostRepActivitySegment[]
 }
 
@@ -27,7 +28,9 @@ export type GhostRepActivityAlgorithm = {
   slug: string
   totalGhostReps: number
   totalMultipleChoice?: number
+  totalPerfectRecalls?: number
   totalWork?: number
+  coreCardCount?: number
   daysSinceLastGhostRep: number | null
   daysSinceLastPractice?: number | null
 }
@@ -37,6 +40,7 @@ export type GhostRepActivity = {
   windowEnd: string
   totalGhostReps: number
   totalMultipleChoice?: number
+  totalPerfectRecalls?: number
   workCount?: number
   activeDays: number
   peakDailyCount: number
@@ -90,6 +94,7 @@ export type GhostRepSpacedRepetition = {
 type SwimLaneCell = {
   date: string
   count: number
+  totalRecallCount: number
   skills: GhostRepActivitySkillSegment[]
   scheduleStatus?: GhostRepSpacedRepetitionDay['status']
   scheduleLabel?: string
@@ -100,6 +105,7 @@ type SwimLaneRow = {
   slug: string
   parentSlug?: string
   scheduleTrackId: string
+  coreCardCount: number
   cells: SwimLaneCell[]
 }
 
@@ -146,6 +152,12 @@ const skillSummary = (skills: GhostRepActivitySkillSegment[]) => {
   if (skills.length === 0) return ''
   return skills.map(skill => `${skill.skill}: ${skill.count}`).join(', ')
 }
+
+const TrophyIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="daily-work-history-trophy" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" />
+  </svg>
+)
 
 export default function GhostRepActivityChart({
   activity,
@@ -219,7 +231,7 @@ export default function GhostRepActivityChart({
       const observedSkillSlugs = new Map<string, string>()
       for (const day of activity.days) {
         for (const segment of day.segments) {
-          if (segment.slug !== drilldownAlgorithm.slug || segment.workType === 'multiple-choice') continue
+          if (segment.slug !== drilldownAlgorithm.slug || segment.workType !== 'ghost-reps' && segment.workType !== 'total-recall') continue
           for (const skill of segment.skills ?? []) {
             observedSkillSlugs.set(skill.slug, skill.skill)
           }
@@ -234,7 +246,10 @@ export default function GhostRepActivityChart({
       return skillRows.map(skill => {
         const cells = activity.days.map(day => {
           const ghostSegments = day.segments.filter(segment =>
-            segment.slug === drilldownAlgorithm.slug && segment.workType !== 'multiple-choice',
+            segment.slug === drilldownAlgorithm.slug && segment.workType === 'ghost-reps',
+          )
+          const totalRecallSegments = day.segments.filter(segment =>
+            segment.slug === drilldownAlgorithm.slug && segment.workType === 'total-recall',
           )
           const count = ghostSegments.reduce((sum, segment) => {
             const skillCount = (segment.skills ?? [])
@@ -245,6 +260,11 @@ export default function GhostRepActivityChart({
           return {
             date: day.date,
             count,
+            totalRecallCount: totalRecallSegments.reduce((sum, segment) => {
+              return sum + (segment.skills ?? [])
+                .filter(item => item.slug === skill.slug)
+                .reduce((skillSum, item) => skillSum + item.count, 0)
+            }, 0),
             skills: count > 0 ? [{ skill: skill.skill, slug: skill.slug, count }] : [],
           }
         })
@@ -253,6 +273,7 @@ export default function GhostRepActivityChart({
           slug: skill.slug,
           parentSlug: drilldownAlgorithm.slug,
           scheduleTrackId: drilldownAlgorithm.slug,
+          coreCardCount: activity.algorithms.find(item => item.slug === drilldownAlgorithm.slug)?.coreCardCount ?? 0,
           cells,
         }
       })
@@ -263,7 +284,10 @@ export default function GhostRepActivityChart({
       const cells = chartDates.map(date => {
         const day = activityByDate.get(date)
         const ghostSegments = (day?.segments ?? []).filter(segment =>
-          segment.slug === algorithm.slug && segment.workType !== 'multiple-choice',
+          segment.slug === algorithm.slug && segment.workType === 'ghost-reps',
+        )
+        const totalRecallSegments = (day?.segments ?? []).filter(segment =>
+          segment.slug === algorithm.slug && segment.workType === 'total-recall',
         )
         const count = ghostSegments.reduce((sum, segment) => sum + segment.count, 0)
         const skillsBySlug = new Map<string, GhostRepActivitySkillSegment>()
@@ -280,6 +304,7 @@ export default function GhostRepActivityChart({
         return {
           date,
           count,
+          totalRecallCount: totalRecallSegments.reduce((sum, segment) => sum + segment.count, 0),
           skills: [...skillsBySlug.values()],
           scheduleStatus: scheduleDays?.get(date)?.status,
           scheduleLabel: scheduleDays?.get(date)?.label,
@@ -289,6 +314,7 @@ export default function GhostRepActivityChart({
         label: algorithm.algorithm,
         slug: algorithm.slug,
         scheduleTrackId: algorithm.slug,
+        coreCardCount: activity.algorithms.find(item => item.slug === algorithm.slug)?.coreCardCount ?? 0,
         cells,
       }
     })
@@ -300,7 +326,7 @@ export default function GhostRepActivityChart({
     const relevantDays = activity.days.map(day => ({
       date: day.date,
       count: day.segments
-        .filter(segment => segment.slug === drilldownAlgorithm.slug && segment.workType !== 'multiple-choice')
+        .filter(segment => segment.slug === drilldownAlgorithm.slug && segment.workType === 'ghost-reps')
         .reduce((sum, segment) => sum + segment.count, 0),
     }))
     const currentWeekStart = startOfCalendarWeek(today)
@@ -359,6 +385,7 @@ export default function GhostRepActivityChart({
         </div>
         <div className="daily-work-history-stats">
           <span className="coach-metric-chip">{activity.totalGhostReps} Ghost Reps</span>
+          <span className="coach-metric-chip">{activity.totalPerfectRecalls ?? 0} Perfect Recalls</span>
           <span className="coach-metric-chip">{activity.activeDays} active days</span>
           {spacedRepetition && (
             <span className="coach-metric-chip">
@@ -510,6 +537,10 @@ export default function GhostRepActivityChart({
             <div className="daily-work-history-lane-cells">
               {row.cells.map(cell => {
                 const intensity = cell.count > 0 ? `${Math.round(Math.max(0.28, cell.count / peakCellCount) * 72)}%` : '0%'
+                const totalRecallCount = cell.totalRecallCount
+                const totalRecallGlow = totalRecallCount > 0
+                  ? `${Math.round(Math.max(0.16, Math.min(totalRecallCount / Math.max(row.coreCardCount, 6), 1)) * 100)}%`
+                  : '0%'
                 const methods = skillSummary(cell.skills)
                 const isVisuallyTracked = trackedAlgorithms.has(row.parentSlug ?? row.slug)
                 const scheduleStatus = isVisuallyTracked && cell.scheduleStatus && cell.scheduleStatus !== 'empty'
@@ -518,12 +549,17 @@ export default function GhostRepActivityChart({
                 const scheduleCopy = scheduleStatus && cell.scheduleLabel
                   ? `; ${cell.scheduleLabel.toLowerCase()} for spaced repetition`
                   : ''
-                const title = cell.count > 0
-                  ? `${row.label} on ${formatCalendarDate(cell.date)}: ${cell.count} ghost rep${cell.count === 1 ? '' : 's'}${methods ? ` (${methods})` : ''}${scheduleCopy}`
-                  : `${row.label} on ${formatCalendarDate(cell.date)}: no ghost reps${scheduleCopy}`
+                const activityCopy = [
+                  cell.count > 0 ? `${cell.count} ghost rep${cell.count === 1 ? '' : 's'}` : '',
+                  totalRecallCount > 0 ? `${totalRecallCount} perfect total recall${totalRecallCount === 1 ? '' : 's'}` : '',
+                ].filter(Boolean).join('; ')
+                const title = activityCopy
+                  ? `${row.label} on ${formatCalendarDate(cell.date)}: ${activityCopy}${methods ? ` (${methods})` : ''}${scheduleCopy}`
+                  : `${row.label} on ${formatCalendarDate(cell.date)}: no tracked work${scheduleCopy}`
                 const className = [
                   'daily-work-history-cell',
                   cell.count > 0 ? 'daily-work-history-cell-active' : '',
+                  totalRecallCount > 0 ? 'daily-work-history-cell-total-recall' : '',
                   scheduleStatus ? `daily-work-history-cell-schedule-${scheduleStatus}` : '',
                   scheduleStatus === 'completed' && cell.count > 0 ? 'daily-work-history-cell-on-track' : '',
                 ].filter(Boolean).join(' ')
@@ -532,12 +568,16 @@ export default function GhostRepActivityChart({
                     key={`${row.slug}-${cell.date}`}
                     type="button"
                     className={className}
-                    style={{ '--daily-work-history-cell-alpha': intensity } as CSSProperties}
+                    style={{
+                      '--daily-work-history-cell-alpha': intensity,
+                      '--daily-work-history-recall-glow': totalRecallGlow,
+                    } as CSSProperties}
                     title={title}
                     aria-label={title}
-                    disabled={cell.count === 0}
-                    onClick={cell.count > 0 ? () => onSelectionChange?.([row.parentSlug ?? row.slug]) : undefined}
+                    disabled={cell.count === 0 && totalRecallCount === 0}
+                    onClick={cell.count > 0 || totalRecallCount > 0 ? () => onSelectionChange?.([row.parentSlug ?? row.slug]) : undefined}
                   >
+                    {totalRecallCount > 0 && <TrophyIcon />}
                     {cell.count > 0 && <span>{cell.count}</span>}
                   </button>
                 )
@@ -549,6 +589,7 @@ export default function GhostRepActivityChart({
 
       <div className="daily-work-history-legend">
         <span><i className="daily-work-history-cell daily-work-history-cell-active" /> Activity</span>
+        <span><i className="daily-work-history-cell daily-work-history-cell-total-recall"><TrophyIcon /></i> Perfect total recall</span>
         <span><i className="daily-work-history-cell daily-work-history-cell-on-track" /> On track</span>
         <span><i className="daily-work-history-cell daily-work-history-cell-schedule-due" /> Due</span>
         <span><i className="daily-work-history-cell daily-work-history-cell-schedule-overdue" /> Overdue</span>

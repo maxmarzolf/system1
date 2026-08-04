@@ -59,15 +59,15 @@ Core algorithm naming is canonical throughout the app (`core_algorithm_*`, `core
 ## Data Model (Current)
 
 Primary tables:
-- `question`: canonical prompt/MCQ stem records plus fingerprint.
-- `answer`: canonical attempt ledger (replaces `score_attempts`).
-- `coach_feedback_events`: live/submission feedback events, linked by `answer_id` when available.
+- `multiple_choice_problem`: canonical generated MCQ problem records (ids prefixed `mcq-`) plus fingerprint.
+- `submission`: canonical attempt ledger (replaces `score_attempts`).
+- `coach_feedback_events`: live/submission feedback events, linked by `submission_id` when available.
 - `generated_skill_map_cards`: generated drill artifacts and context.
 - `core_algorithm_patterns`, `core_algorithm_methods`, `core_algorithms`, `core_algorithm_skill_map`: core algorithm bank and taxonomy.
 
 Important migration behavior in `backend/app/database.py`:
-- Backfills legacy `score_attempts` into `question` + `answer` when present.
-- Uses fingerprint-based question reconciliation for idempotency and duplicate tolerance.
+- Backfills legacy `score_attempts` into `multiple_choice_problem` + `submission` for MCQ ids when present.
+- Uses fingerprint-based multiple-choice problem reconciliation for idempotency and duplicate tolerance.
 - Drops `score_attempts` after successful backfill.
 - Migrates legacy `static_function*` table naming and identifiers to `core_algorithm*` naming.
 
@@ -196,7 +196,7 @@ Equivalent API call:
 
 Current reset scope:
 - `coach_feedback_events`
-- `answer`
+- `submission`
 - `generated_skill_map_cards`
 
 The request requires the token configured via `ADMIN_RESET_TOKEN`.

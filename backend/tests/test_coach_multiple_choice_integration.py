@@ -14,7 +14,7 @@ from app.services import drill_generation_service
 
 
 QUESTION_SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS question (
+CREATE TABLE IF NOT EXISTS multiple_choice_problem (
     id VARCHAR(80) PRIMARY KEY,
     user_id VARCHAR(80) NOT NULL DEFAULT '0000',
     question_text TEXT NOT NULL,
@@ -35,8 +35,8 @@ CREATE TABLE IF NOT EXISTS question (
     modified_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_question_fingerprint
-    ON question(fingerprint);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_multiple_choice_problem_fingerprint
+    ON multiple_choice_problem(fingerprint);
 """
 
 
@@ -59,7 +59,7 @@ async def _fetch_question_row(database_url: str, question_id: str) -> asyncpg.Re
                 question_text,
                 multiple_choice_correct_answer_label,
                 multiple_choice_correct_answer_text
-            FROM question
+            FROM multiple_choice_problem
             WHERE id = $1
             """,
             question_id,
@@ -71,7 +71,7 @@ async def _fetch_question_row(database_url: str, question_id: str) -> asyncpg.Re
 async def _delete_question_row(database_url: str, question_id: str) -> None:
     conn = await asyncpg.connect(database_url)
     try:
-        await conn.execute("DELETE FROM question WHERE id = $1", question_id)
+        await conn.execute("DELETE FROM multiple_choice_problem WHERE id = $1", question_id)
     finally:
         await conn.close()
 
@@ -84,7 +84,7 @@ def test_multiple_choice_route_persists_generated_question(monkeypatch: pytest.M
         pytest.skip(f"Postgres not available for integration test: {exc}")
 
     request_token = uuid4().hex[:10]
-    question_id = f"itest-mcq-{request_token}"
+    question_id = f"mcq-itest-{request_token}"
     question_text = f"Which invariant prevents infinite loops in binary search? ({request_token})"
     question_payload = {
         "id": question_id,

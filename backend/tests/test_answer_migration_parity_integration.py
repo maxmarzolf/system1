@@ -29,17 +29,17 @@ async def _cleanup_fixture_rows(database_url: str) -> None:
     try:
         await conn.execute("DELETE FROM coach_feedback_events WHERE id = 910001 OR interaction_id = 'fx-parity-interaction-1'")
         await conn.execute(
-            "DELETE FROM answer WHERE id = 910001 OR migration_key = 'fx-parity-migration-1' OR question_id = 'fx-parity-q1'"
+            "DELETE FROM submission WHERE id = 910001 OR migration_key = 'fx-parity-migration-1' OR multiple_choice_problem_id = 'mcq-fx-parity-q1'"
         )
-        await conn.execute("DELETE FROM question WHERE id = 'fx-parity-q1'")
+        await conn.execute("DELETE FROM multiple_choice_problem WHERE id = 'mcq-fx-parity-q1'")
     finally:
         await conn.close()
 
 
-async def _count_answer_rows(database_url: str, migration_key: str) -> int:
+async def _count_submission_rows(database_url: str, migration_key: str) -> int:
     conn = await asyncpg.connect(database_url)
     try:
-        row = await conn.fetchrow("SELECT COUNT(*)::int AS count FROM answer WHERE migration_key = $1", migration_key)
+        row = await conn.fetchrow("SELECT COUNT(*)::int AS count FROM submission WHERE migration_key = $1", migration_key)
         return int(row["count"] if row else 0)
     finally:
         await conn.close()
@@ -49,7 +49,7 @@ async def _cleanup_roundtrip_rows(database_url: str, generated_card_id: str) -> 
     conn = await asyncpg.connect(database_url)
     try:
         await conn.execute("DELETE FROM coach_feedback_events WHERE card_id = $1 OR generated_card_id = $1", generated_card_id)
-        await conn.execute("DELETE FROM answer WHERE generated_card_id = $1", generated_card_id)
+        await conn.execute("DELETE FROM submission WHERE generated_card_id = $1", generated_card_id)
     finally:
         await conn.close()
 
@@ -133,7 +133,7 @@ async def _prepare_legacy_score_attempts_table(database_url: str, migration_key:
             """
         )
         await conn.execute(
-            "DELETE FROM answer WHERE migration_key = $1",
+            "DELETE FROM submission WHERE migration_key = $1",
             migration_key,
         )
     finally:
@@ -254,12 +254,12 @@ def test_backfill_idempotency_behavior_with_real_table() -> None:
         asyncio.run(_prepare_legacy_score_attempts_table(settings.database_url, migration_key))
         pool = database_module.get_pool()
 
-        asyncio.run(database_module._backfill_answer_attempts_from_score_attempts(pool))
-        first_count = asyncio.run(_count_answer_rows(settings.database_url, migration_key))
+        asyncio.run(database_module._backfill_submission_attempts_from_score_attempts(pool))
+        first_count = asyncio.run(_count_submission_rows(settings.database_url, migration_key))
 
         asyncio.run(_prepare_legacy_score_attempts_table(settings.database_url, migration_key))
-        asyncio.run(database_module._backfill_answer_attempts_from_score_attempts(pool))
-        second_count = asyncio.run(_count_answer_rows(settings.database_url, migration_key))
+        asyncio.run(database_module._backfill_submission_attempts_from_score_attempts(pool))
+        second_count = asyncio.run(_count_submission_rows(settings.database_url, migration_key))
 
         assert first_count == 1
         assert second_count == 1
@@ -336,7 +336,6 @@ def test_skill_map_overview_updates_after_real_attempt_write() -> None:
 @pytest.mark.integration
 def test_taxonomy_remap_migration_is_idempotent_real_db() -> None:
     token = uuid4().hex[:10]
-    question_id = f"fx-remap-q-{token}"
     interaction_id = f"fx-remap-{token}"
 
     async def _seed_legacy_rows() -> int:
@@ -345,81 +344,58 @@ def test_taxonomy_remap_migration_is_idempotent_real_db() -> None:
             await conn.execute(
                 "CREATE TABLE IF NOT EXISTS core_algorithm_patterns (pattern_slug VARCHAR(80) PRIMARY KEY)"
             )
-            await conn.execute(
-                """
-                INSERT INTO question (id, question_text, fingerprint)
-                VALUES ($1, 'remap fixture', $1)
-                ON CONFLICT DO NOTHING
-                """,
-                question_id,
-            )
             row = await conn.fetchrow(
                 """
-                INSERT INTO answer (session_id, question_id, answer, category_tags, interaction_id)
-                VALUES ($1, $2, 'x', ARRAY['skill-map', 'dfs-bfs', 'greedy-sorting'], $1)
+                INSERT INTO submission (session_id, answer, category_tags, interaction_id)
+                VALUES ($1, 'x', ARRAY['skill-map', 'dfs-bfs', 'greedy-sorting'], $1)
                 RETURNING id
                 """,
                 interaction_id,
-                question_id,
             )
-            answer_id = int(row["id"])
-            await conn.execute(
-                """
-                INSERT INTO answer_skill_evidence
-                    (answer_id, algorithm_slug, skill_slug, evidence_score, confidence, evidence_source)
-                VALUES ($1, 'dfs-bfs', 'visited-tracking', 0.5, 0.9, 'fixture')
-                """,
-                answer_id,
-            )
-            return answer_id
+            return int(row["id"])
         finally:
             await conn.close()
 
-    async def _read_state(answer_id: int) -> tuple[list[str], str, bool]:
+    async def _read_state(submission_id: int) -> tuple[list[str], bool]:
         conn = await asyncpg.connect(settings.database_url)
         try:
-            tags = await conn.fetchval("SELECT category_tags FROM answer WHERE id = $1", answer_id)
-            slug = await conn.fetchval(
-                "SELECT algorithm_slug FROM answer_skill_evidence WHERE answer_id = $1", answer_id
-            )
+            tags = await conn.fetchval("SELECT category_tags FROM submission WHERE id = $1", submission_id)
             legacy_table = await conn.fetchval("SELECT to_regclass('public.core_algorithm_patterns')")
-            return list(tags or []), str(slug), legacy_table is not None
+            return list(tags or []), legacy_table is not None
         finally:
             await conn.close()
 
-    async def _cleanup(answer_id: int | None) -> None:
+    async def _cleanup(submission_id: int | None) -> None:
         conn = await asyncpg.connect(settings.database_url)
         try:
-            if answer_id is not None:
-                await conn.execute("DELETE FROM answer WHERE id = $1", answer_id)
-            await conn.execute("DELETE FROM question WHERE id = $1", question_id)
+            if submission_id is not None:
+                await conn.execute("DELETE FROM submission WHERE id = $1", submission_id)
         finally:
             await conn.close()
 
-    answer_id: int | None = None
+    submission_id: int | None = None
     try:
         asyncio.run(database_module.connect())
         pool = database_module.get_pool()
-        answer_id = asyncio.run(_seed_legacy_rows())
+        submission_id = asyncio.run(_seed_legacy_rows())
 
         asyncio.run(database_module._apply_taxonomy_remap_migration(pool))
-        tags_first, slug_first, legacy_exists_first = asyncio.run(_read_state(answer_id))
+        tags_first, legacy_exists_first = asyncio.run(_read_state(submission_id))
 
         asyncio.run(database_module._apply_taxonomy_remap_migration(pool))
-        tags_second, slug_second, legacy_exists_second = asyncio.run(_read_state(answer_id))
+        tags_second, legacy_exists_second = asyncio.run(_read_state(submission_id))
 
-        assert slug_first == "graphs"
         assert "dfs-bfs" not in tags_first
         assert "greedy-sorting" not in tags_first
         assert "graphs" in tags_first
         assert "sorting" in tags_first
         assert legacy_exists_first is False
-        assert (tags_second, slug_second, legacy_exists_second) == (tags_first, slug_first, legacy_exists_first)
+        assert (tags_second, legacy_exists_second) == (tags_first, legacy_exists_first)
     except Exception as exc:
         pytest.skip(f"Postgres not available for integration test: {exc}")
     finally:
         try:
-            asyncio.run(_cleanup(answer_id))
+            asyncio.run(_cleanup(submission_id))
         except Exception:
             pass
         try:

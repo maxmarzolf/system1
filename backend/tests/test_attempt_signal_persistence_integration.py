@@ -11,26 +11,25 @@ from app.config import settings
 from app.main import create_app
 
 
-async def _read_and_cleanup(attempt_id: int, question_id: str) -> tuple[asyncpg.Record, asyncpg.Record, asyncpg.Record]:
+async def _read_and_cleanup(attempt_id: int, question_id: str) -> asyncpg.Record:
     conn = await asyncpg.connect(settings.database_url)
     try:
-        mcq = await conn.fetchrow("SELECT * FROM answer_mcq_detail WHERE answer_id = $1", attempt_id)
-        evidence = await conn.fetchrow("SELECT * FROM answer_skill_evidence WHERE answer_id = $1", attempt_id)
-        misconception = await conn.fetchrow("SELECT * FROM answer_misconception WHERE answer_id = $1", attempt_id)
-        await conn.execute("DELETE FROM answer WHERE id = $1", attempt_id)
-        await conn.execute("DELETE FROM question WHERE id = $1", question_id)
-        assert mcq is not None
-        assert evidence is not None
-        assert misconception is not None
-        return mcq, evidence, misconception
+        submission = await conn.fetchrow(
+            "SELECT multiple_choice_problem_id, activity_format FROM submission WHERE id = $1",
+            attempt_id,
+        )
+        await conn.execute("DELETE FROM submission WHERE id = $1", attempt_id)
+        await conn.execute("DELETE FROM multiple_choice_problem WHERE id = $1", question_id)
+        assert submission is not None
+        return submission
     finally:
         await conn.close()
 
 
 @pytest.mark.integration
-def test_mcq_attempt_persists_reasoning_evidence_and_hybrid_misconception() -> None:
+def test_mcq_attempt_persists_multiple_choice_problem_link() -> None:
     token = uuid4().hex[:12]
-    question_id = f"itest-signal-{token}"
+    question_id = f"mcq-itest-signal-{token}"
     try:
         with TestClient(create_app()) as client:
             response = client.post(
@@ -49,26 +48,6 @@ def test_mcq_attempt_persists_reasoning_evidence_and_hybrid_misconception() -> N
                     "targetSource": "skill-map",
                     "targetControl": "user",
                     "formatControl": "user",
-                    "mcqDetail": {
-                        "selectedChoiceLabel": "B",
-                        "correctChoiceLabel": "C",
-                        "reasoning": "Only the current value is needed.",
-                    },
-                    "skillEvidence": [{
-                        "algorithmSlug": "dynamic-programming",
-                        "skillSlug": "state-definition",
-                        "evidenceScore": 0,
-                        "confidence": 0.95,
-                        "evidenceSource": "mcq-with-reasoning",
-                    }],
-                    "misconceptionSignals": [{
-                        "algorithmSlug": "dynamic-programming",
-                        "skillSlug": "state-definition",
-                        "misconceptionTag": "insufficient-state",
-                        "evaluatorNote": "The proposed state drops prior decisions.",
-                        "confidence": 0.9,
-                        "detectedBy": "reasoning-evaluator",
-                    }],
                 },
             )
     except Exception as exc:  # pragma: no cover - environment-dependent integration guard
@@ -76,10 +55,7 @@ def test_mcq_attempt_persists_reasoning_evidence_and_hybrid_misconception() -> N
 
     assert response.status_code == 201, response.text
     attempt_id = int(response.json()["attemptId"])
-    mcq, evidence, misconception = asyncio.run(_read_and_cleanup(attempt_id, question_id))
+    submission = asyncio.run(_read_and_cleanup(attempt_id, question_id))
 
-    assert mcq["reasoning"] == "Only the current value is needed."
-    assert evidence["skill_slug"] == "state-definition"
-    assert evidence["evidence_source"] == "mcq-with-reasoning"
-    assert misconception["misconception_tag"] == "insufficient-state"
-    assert misconception["misconception_id"] is not None
+    assert submission["multiple_choice_problem_id"] == question_id
+    assert submission["activity_format"] == "multiple-choice"

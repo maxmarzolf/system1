@@ -27,6 +27,7 @@ import {
   bracketMatching,
   defaultHighlightStyle,
   foldGutter,
+  HighlightStyle,
   foldKeymap,
   indentOnInput,
   indentUnit,
@@ -34,7 +35,7 @@ import {
 } from '@codemirror/language'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { lintKeymap } from '@codemirror/lint'
-import { oneDark } from '@codemirror/theme-one-dark'
+import { tags } from '@lezer/highlight'
 import { python } from '@codemirror/lang-python'
 import { javascript } from '@codemirror/lang-javascript'
 import { java } from '@codemirror/lang-java'
@@ -401,13 +402,122 @@ const buildRecallDecorations = (
 const recallDecorations = (lineMeta: RecallEditorLineMeta[], ghostTarget?: string, inlineTask?: string) =>
   EditorView.decorations.of((view) => buildRecallDecorations(view, lineMeta, ghostTarget, inlineTask))
 
+const vscodeHighContrastDarkHighlightStyle = HighlightStyle.define([
+  { tag: [tags.keyword, tags.operatorKeyword, tags.modifier, tags.self], color: '#569cd6' },
+  { tag: [tags.controlKeyword, tags.definitionKeyword], color: '#c586c0' },
+  { tag: [tags.atom, tags.bool], color: '#569cd6' },
+  { tag: [tags.number, tags.unit], color: '#b5cea8' },
+  { tag: [tags.string, tags.special(tags.string), tags.inserted], color: '#ce9178' },
+  { tag: [tags.regexp, tags.escape], color: '#d16969' },
+  { tag: [tags.comment, tags.meta], color: '#7ca668' },
+  { tag: [tags.function(tags.variableName), tags.labelName], color: '#dcdcaa' },
+  { tag: [tags.typeName, tags.className, tags.namespace], color: '#4ec9b0' },
+  { tag: [tags.variableName, tags.propertyName, tags.attributeName], color: '#9cdcfe' },
+  { tag: [tags.tagName, tags.constant(tags.name)], color: '#569cd6' },
+  { tag: [tags.operator, tags.punctuation, tags.separator, tags.bracket], color: '#d4d4d4' },
+  { tag: [tags.deleted, tags.invalid], color: '#f44747' },
+  { tag: tags.heading, color: '#6796e6', fontWeight: 'bold' },
+  { tag: tags.strong, fontWeight: 'bold' },
+  { tag: tags.emphasis, fontStyle: 'italic' },
+  { tag: tags.link, color: '#9cdcfe', textDecoration: 'underline' },
+])
+
+const vscodeHighContrastDarkTheme = EditorView.theme({
+  '&': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  '.cm-content': {
+    caretColor: '#ffffff',
+  },
+  '.cm-cursor, .cm-dropCursor': {
+    borderLeftColor: '#ffffff',
+  },
+  '.cm-gutters': {
+    backgroundColor: '#000000',
+    color: '#7c7c7c',
+    borderRight: 'none',
+  },
+  '.cm-panels': {
+    backgroundColor: '#000000',
+    color: '#ffffff',
+    borderColor: '#ffffff',
+  },
+  '.cm-panels.cm-panels-top': {
+    borderBottom: '1px solid #ffffff',
+  },
+  '.cm-panels.cm-panels-bottom': {
+    borderTop: '1px solid #ffffff',
+  },
+  '.cm-textfield': {
+    backgroundColor: '#000000',
+    color: '#ffffff',
+    border: '1px solid #ffffff',
+  },
+  '.cm-button': {
+    backgroundImage: 'none',
+    backgroundColor: '#000000',
+    color: '#ffffff',
+    border: '1px solid #ffffff',
+  },
+  '.cm-tooltip': {
+    backgroundColor: '#000000',
+    color: '#ffffff',
+    border: '1px solid #ffffff',
+  },
+  '.cm-tooltip .cm-tooltip-arrow:before': {
+    borderTopColor: '#ffffff',
+    borderBottomColor: '#ffffff',
+  },
+  '.cm-tooltip .cm-tooltip-arrow:after': {
+    borderTopColor: '#000000',
+    borderBottomColor: '#000000',
+  },
+  '.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+    backgroundColor: '#ffffff',
+    color: '#000000',
+  },
+  '.cm-searchMatch': {
+    backgroundColor: '#ffff0052',
+    outline: '1px solid #ffff00',
+  },
+  '.cm-searchMatch.cm-searchMatch-selected': {
+    backgroundColor: '#ffff0080',
+  },
+  '.cm-selectionMatch': {
+    backgroundColor: '#ffffff24',
+    outline: '1px solid #ffffff',
+  },
+  '&.cm-focused .cm-matchingBracket': {
+    backgroundColor: '#ffffff24',
+    outline: '1px solid #ffffff',
+  },
+  '&.cm-focused .cm-nonmatchingBracket': {
+    backgroundColor: '#f4474740',
+    outline: '1px solid #f44747',
+  },
+  '.cm-foldPlaceholder': {
+    backgroundColor: '#000000',
+    color: '#ffffff',
+    border: '1px solid #ffffff',
+  },
+  '.cm-diagnostic-error': {
+    borderLeftColor: '#f44747',
+  },
+  '.cm-diagnostic-warning': {
+    borderLeftColor: '#cca700',
+  },
+}, { dark: true })
+
 const recallTheme = (theme: AppTheme) => [
-  theme === 'dark-high-contrast' ? oneDark : [],
+  theme === 'dark-high-contrast'
+    ? [vscodeHighContrastDarkTheme, syntaxHighlighting(vscodeHighContrastDarkHighlightStyle)]
+    : [],
   EditorView.theme({
     '&': {
       minHeight: '12rem',
       backgroundColor: 'var(--hc-editor-bg)',
-      color: 'var(--hc-code-fg)',
+      color: theme === 'dark-high-contrast' ? '#ffffff' : 'var(--hc-code-fg)',
       fontSize: '0.75rem',
     },
     '.cm-scroller': {
@@ -424,7 +534,7 @@ const recallTheme = (theme: AppTheme) => [
     },
     '.cm-gutters': {
       backgroundColor: 'var(--hc-editor-bg)',
-      color: 'var(--hc-gutter-fg)',
+      color: theme === 'dark-high-contrast' ? '#7c7c7c' : 'var(--hc-gutter-fg)',
       borderRight: 'none',
     },
     '.cm-gutters::before': {
@@ -438,7 +548,10 @@ const recallTheme = (theme: AppTheme) => [
       backgroundColor: 'transparent',
     },
     '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
-      backgroundColor: 'color-mix(in srgb, var(--hc-accent) 32%, transparent)',
+      backgroundColor: theme === 'dark-high-contrast'
+        ? 'rgba(255, 255, 255, 0.32)'
+        : 'color-mix(in srgb, var(--hc-accent) 32%, transparent)',
+      outline: theme === 'dark-high-contrast' ? '1px solid #ffffff' : 'none',
     },
     '.cm-placeholder': {
       color: 'var(--hc-fg-dim)',

@@ -25,7 +25,7 @@ async def connect() -> asyncpg.Pool:
     await _ensure_recall_history_schema(pool)
     await _ensure_generated_question_schema(pool)
     await _ensure_practice_history_schema(pool)
-    await _backfill_answer_attempts_from_score_attempts(pool)
+    await _backfill_submission_attempts_from_score_attempts(pool)
     await _apply_core_algorithm_naming_migration(pool)
     await _ensure_taxonomy_schema(pool)
     await _seed_taxonomy(pool)
@@ -90,67 +90,377 @@ async def _ensure_recall_history_schema(db_pool: asyncpg.Pool) -> None:
 
 async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
     async with db_pool.acquire() as conn:
-        # Structural taxonomy migration for databases created before the
-        # algorithm/problem/skill/technique rework: pattern_slug columns become
-        # algorithm_slug, and the misconception catalog is re-keyed on the
-        # global skill entity. Runs before the CREATE/seed block below so the
-        # new-shape ON CONFLICT targets exist on legacy databases.
+        # Rename the canonical attempt ledger from answer -> submission without
+        # losing existing practice history on long-lived local databases.
         await conn.execute(
             """
             DO $$
+            DECLARE
+                old_index text;
+                new_index text;
             BEGIN
-                IF to_regclass('public.answer_skill_evidence') IS NOT NULL AND EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                      AND table_name = 'answer_skill_evidence'
-                      AND column_name = 'pattern_slug'
-                ) THEN
-                    ALTER TABLE answer_skill_evidence RENAME COLUMN pattern_slug TO algorithm_slug;
+                IF to_regclass('public.multiple_choice_problem') IS NULL
+                   AND to_regclass('public.question') IS NOT NULL THEN
+                    ALTER TABLE question RENAME TO multiple_choice_problem;
                 END IF;
 
-                IF to_regclass('public.answer_misconception') IS NOT NULL AND EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                      AND table_name = 'answer_misconception'
-                      AND column_name = 'pattern_slug'
-                ) THEN
-                    ALTER TABLE answer_misconception RENAME COLUMN pattern_slug TO algorithm_slug;
+                IF to_regclass('public.answer') IS NOT NULL THEN
+                    ALTER TABLE answer DROP CONSTRAINT IF EXISTS answer_question_id_fkey;
+                    ALTER TABLE answer DROP CONSTRAINT IF EXISTS submission_question_id_fkey;
                 END IF;
 
-                IF to_regclass('public.skill_misconception_catalog') IS NOT NULL AND EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                      AND table_name = 'skill_misconception_catalog'
-                      AND column_name = 'pattern_slug'
-                ) THEN
-                    DELETE FROM skill_misconception_catalog a
-                    USING skill_misconception_catalog b
-                    WHERE a.id > b.id
-                      AND a.skill_slug = b.skill_slug
-                      AND a.misconception_tag = b.misconception_tag;
+                IF to_regclass('public.submission') IS NOT NULL THEN
+                    ALTER TABLE submission DROP CONSTRAINT IF EXISTS submission_question_id_fkey;
+                    ALTER TABLE submission DROP CONSTRAINT IF EXISTS answer_question_id_fkey;
+                    ALTER TABLE submission DROP CONSTRAINT IF EXISTS submission_multiple_choice_problem_id_fkey;
 
-                    ALTER TABLE skill_misconception_catalog DROP COLUMN pattern_slug;
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'submission'
+                          AND column_name = 'question_id'
+                    )
+                       AND NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'submission'
+                          AND column_name = 'multiple_choice_problem_id'
+                    ) THEN
+                        ALTER TABLE submission RENAME COLUMN question_id TO multiple_choice_problem_id;
+                    END IF;
+
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'submission'
+                          AND column_name = 'question_id'
+                    )
+                       AND EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'submission'
+                          AND column_name = 'multiple_choice_problem_id'
+                    ) THEN
+                        UPDATE submission
+                        SET multiple_choice_problem_id = question_id
+                        WHERE multiple_choice_problem_id IS NULL
+                          AND question_id LIKE 'mcq-%';
+
+                        ALTER TABLE submission DROP COLUMN question_id;
+                    END IF;
+
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'submission'
+                          AND column_name = 'multiple_choice_problem_id'
+                    ) THEN
+                        ALTER TABLE submission ALTER COLUMN multiple_choice_problem_id DROP NOT NULL;
+
+                        UPDATE submission
+                        SET multiple_choice_problem_id = NULL
+                        WHERE multiple_choice_problem_id IS NOT NULL
+                          AND multiple_choice_problem_id NOT LIKE 'mcq-%';
+                    END IF;
                 END IF;
 
-                IF to_regclass('public.skill_misconception_catalog') IS NOT NULL AND NOT EXISTS (
-                    SELECT 1
-                    FROM pg_constraint
-                    WHERE conrelid = 'public.skill_misconception_catalog'::regclass
-                      AND conname = 'skill_misconception_catalog_skill_slug_misconception_tag_key'
+                IF to_regclass('public.multiple_choice_problem') IS NOT NULL
+                   AND to_regclass('public.question') IS NOT NULL THEN
+                    INSERT INTO multiple_choice_problem (
+                        id,
+                        user_id,
+                        question_text,
+                        question_help_text,
+                        recall_answer,
+                        multiple_choice_answer_label_1,
+                        multiple_choice_answer_text_1,
+                        multiple_choice_answer_label_2,
+                        multiple_choice_answer_text_2,
+                        multiple_choice_answer_label_3,
+                        multiple_choice_answer_text_3,
+                        multiple_choice_answer_label_4,
+                        multiple_choice_answer_text_4,
+                        multiple_choice_correct_answer_label,
+                        multiple_choice_correct_answer_text,
+                        fingerprint,
+                        created_date,
+                        modified_date
+                    )
+                    SELECT
+                        id,
+                        user_id,
+                        question_text,
+                        question_help_text,
+                        recall_answer,
+                        multiple_choice_answer_label_1,
+                        multiple_choice_answer_text_1,
+                        multiple_choice_answer_label_2,
+                        multiple_choice_answer_text_2,
+                        multiple_choice_answer_label_3,
+                        multiple_choice_answer_text_3,
+                        multiple_choice_answer_label_4,
+                        multiple_choice_answer_text_4,
+                        multiple_choice_correct_answer_label,
+                        multiple_choice_correct_answer_text,
+                        fingerprint,
+                        created_date,
+                        modified_date
+                    FROM question
+                    WHERE id LIKE 'mcq-%'
+                    ON CONFLICT (id) DO NOTHING;
+
+                    DROP TABLE question;
+                END IF;
+
+                IF to_regclass('public.multiple_choice_problem') IS NOT NULL THEN
+                    DELETE FROM multiple_choice_problem
+                    WHERE id NOT LIKE 'mcq-%';
+
+                    IF to_regclass('public.submission') IS NOT NULL
+                       AND EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'submission'
+                          AND column_name = 'multiple_choice_problem_id'
+                    ) THEN
+                        UPDATE submission s
+                        SET multiple_choice_problem_id = NULL
+                        WHERE s.multiple_choice_problem_id IS NOT NULL
+                          AND NOT EXISTS (
+                            SELECT 1
+                            FROM multiple_choice_problem p
+                            WHERE p.id = s.multiple_choice_problem_id
+                        );
+                    END IF;
+                END IF;
+
+                IF to_regclass('public.submission') IS NULL
+                   AND to_regclass('public.answer') IS NOT NULL THEN
+                    ALTER TABLE answer RENAME TO submission;
+                END IF;
+
+                IF to_regclass('public.submission') IS NOT NULL THEN
+                    ALTER TABLE submission DROP CONSTRAINT IF EXISTS submission_question_id_fkey;
+                    ALTER TABLE submission DROP CONSTRAINT IF EXISTS answer_question_id_fkey;
+                    ALTER TABLE submission DROP CONSTRAINT IF EXISTS submission_multiple_choice_problem_id_fkey;
+
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'submission'
+                          AND column_name = 'question_id'
+                    )
+                       AND NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'submission'
+                          AND column_name = 'multiple_choice_problem_id'
+                    ) THEN
+                        ALTER TABLE submission RENAME COLUMN question_id TO multiple_choice_problem_id;
+                    END IF;
+
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'submission'
+                          AND column_name = 'question_id'
+                    )
+                       AND EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'submission'
+                          AND column_name = 'multiple_choice_problem_id'
+                    ) THEN
+                        UPDATE submission
+                        SET multiple_choice_problem_id = question_id
+                        WHERE multiple_choice_problem_id IS NULL
+                          AND question_id LIKE 'mcq-%';
+
+                        ALTER TABLE submission DROP COLUMN question_id;
+                    END IF;
+
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'submission'
+                          AND column_name = 'multiple_choice_problem_id'
+                    ) THEN
+                        ALTER TABLE submission ALTER COLUMN multiple_choice_problem_id DROP NOT NULL;
+
+                        UPDATE submission
+                        SET multiple_choice_problem_id = NULL
+                        WHERE multiple_choice_problem_id IS NOT NULL
+                          AND multiple_choice_problem_id NOT LIKE 'mcq-%';
+                    END IF;
+                END IF;
+
+                IF to_regclass('public.submission') IS NOT NULL
+                   AND to_regclass('public.answer') IS NOT NULL THEN
+                    INSERT INTO submission (
+                        id,
+                        session_id,
+                        user_id,
+                        multiple_choice_problem_id,
+                        answer,
+                        question_type,
+                        category_tags,
+                        correct_answer,
+                        is_correct,
+                        accuracy,
+                        exact,
+                        elapsed_ms,
+                        interaction_id,
+                        generated_card_id,
+                        generated_card,
+                        template_mode,
+                        support_layer,
+                        live_coach_used,
+                        coach_feedback,
+                        submission_rubric,
+                        activity_format,
+                        target_source,
+                        target_control,
+                        format_control,
+                        migration_key,
+                        created_at,
+                        updated_at
+                    )
+                    SELECT
+                        id,
+                        session_id,
+                        user_id,
+                        CASE WHEN question_id LIKE 'mcq-%' THEN question_id ELSE NULL END,
+                        answer,
+                        question_type,
+                        category_tags,
+                        correct_answer,
+                        is_correct,
+                        accuracy,
+                        exact,
+                        elapsed_ms,
+                        interaction_id,
+                        generated_card_id,
+                        generated_card,
+                        template_mode,
+                        support_layer,
+                        live_coach_used,
+                        coach_feedback,
+                        submission_rubric,
+                        activity_format,
+                        target_source,
+                        target_control,
+                        format_control,
+                        migration_key,
+                        created_at,
+                        updated_at
+                    FROM answer
+                    ON CONFLICT (id) DO NOTHING;
+                END IF;
+
+                IF to_regclass('public.submission_id_seq') IS NULL
+                   AND to_regclass('public.answer_id_seq') IS NOT NULL THEN
+                    ALTER SEQUENCE answer_id_seq RENAME TO submission_id_seq;
+                END IF;
+
+                IF to_regclass('public.submission') IS NOT NULL
+                   AND to_regclass('public.submission_id_seq') IS NOT NULL THEN
+                    ALTER TABLE submission
+                    ALTER COLUMN id SET DEFAULT nextval('submission_id_seq');
+                    ALTER SEQUENCE submission_id_seq OWNED BY submission.id;
+                END IF;
+
+                IF to_regclass('public.coach_feedback_events') IS NOT NULL
+                   AND EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'coach_feedback_events'
+                      AND column_name = 'answer_id'
+                )
+                   AND NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'coach_feedback_events'
+                      AND column_name = 'submission_id'
                 ) THEN
-                    ALTER TABLE skill_misconception_catalog
-                    ADD CONSTRAINT skill_misconception_catalog_skill_slug_misconception_tag_key
-                    UNIQUE (skill_slug, misconception_tag);
+                    ALTER TABLE coach_feedback_events RENAME COLUMN answer_id TO submission_id;
+                END IF;
+
+                IF to_regclass('public.coach_feedback_events') IS NOT NULL
+                   AND EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'coach_feedback_events'
+                      AND column_name = 'answer_id'
+                )
+                   AND EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'coach_feedback_events'
+                      AND column_name = 'submission_id'
+                ) THEN
+                    UPDATE coach_feedback_events
+                    SET submission_id = answer_id
+                    WHERE submission_id IS NULL
+                      AND answer_id IS NOT NULL;
+
+                    ALTER TABLE coach_feedback_events DROP COLUMN answer_id;
+                END IF;
+
+                DROP TABLE IF EXISTS answer_misconception CASCADE;
+                DROP TABLE IF EXISTS submission_misconception CASCADE;
+                DROP TABLE IF EXISTS skill_misconception_catalog CASCADE;
+                DROP TABLE IF EXISTS answer_skill_evidence CASCADE;
+                DROP TABLE IF EXISTS submission_skill_evidence CASCADE;
+                DROP TABLE IF EXISTS answer_mcq_detail;
+                DROP TABLE IF EXISTS submission_mcq_detail;
+
+                IF to_regclass('public.submission') IS NOT NULL
+                   AND to_regclass('public.answer') IS NOT NULL THEN
+                    DROP TABLE answer;
+                END IF;
+
+                FOR old_index, new_index IN
+                    SELECT *
+                    FROM (VALUES
+                        ('idx_answer_question_id', 'idx_submission_multiple_choice_problem_id'),
+                        ('idx_answer_session_user', 'idx_submission_session_user'),
+                        ('idx_answer_migration_key', 'idx_submission_migration_key'),
+                        ('idx_answer_created_at', 'idx_submission_created_at'),
+                        ('idx_answer_question_type_created_at', 'idx_submission_question_type_created_at'),
+                        ('idx_answer_generated_card_id', 'idx_submission_generated_card_id'),
+                        ('idx_answer_interaction_id', 'idx_submission_interaction_id'),
+                        ('idx_answer_category_tags', 'idx_submission_category_tags'),
+                        ('idx_answer_template_support_created_at', 'idx_submission_template_support_created_at'),
+                        ('idx_answer_question_id_created_at', 'idx_submission_multiple_choice_problem_id_created_at'),
+                        ('idx_submission_question_id', 'idx_submission_multiple_choice_problem_id'),
+                        ('idx_submission_question_id_created_at', 'idx_submission_multiple_choice_problem_id_created_at'),
+                        ('idx_answer_session_id_created_at', 'idx_submission_session_id_created_at'),
+                        ('idx_coach_feedback_events_answer_id', 'idx_coach_feedback_events_submission_id'),
+                        ('idx_question_fingerprint', 'idx_multiple_choice_problem_fingerprint'),
+                        ('idx_question_user_id', 'idx_multiple_choice_problem_user_id'),
+                        ('idx_question_created_date', 'idx_multiple_choice_problem_created_date')
+                    ) AS renamed(old_name, new_name)
+                LOOP
+                    IF to_regclass('public.' || old_index) IS NOT NULL
+                       AND to_regclass('public.' || new_index) IS NULL THEN
+                        EXECUTE format('ALTER INDEX %I RENAME TO %I', old_index, new_index);
+                    END IF;
+                END LOOP;
+
+                IF to_regclass('public.idx_submission_multiple_choice_problem_id') IS NOT NULL THEN
+                    DROP INDEX IF EXISTS idx_submission_question_id;
+                END IF;
+
+                IF to_regclass('public.idx_submission_multiple_choice_problem_id_created_at') IS NOT NULL THEN
+                    DROP INDEX IF EXISTS idx_submission_question_id_created_at;
                 END IF;
             END $$;
             """
         )
+
         await conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS question (
+            CREATE TABLE IF NOT EXISTS multiple_choice_problem (
                 id VARCHAR(80) PRIMARY KEY,
                 user_id VARCHAR(80) NOT NULL DEFAULT '0000',
                 question_text TEXT NOT NULL,
@@ -171,202 +481,180 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                 modified_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_question_fingerprint
-                ON question(fingerprint);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_multiple_choice_problem_fingerprint
+                ON multiple_choice_problem(fingerprint);
 
-            CREATE INDEX IF NOT EXISTS idx_question_user_id
-                ON question(user_id);
+            CREATE INDEX IF NOT EXISTS idx_multiple_choice_problem_user_id
+                ON multiple_choice_problem(user_id);
 
-            CREATE INDEX IF NOT EXISTS idx_question_created_date
-                ON question(created_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_multiple_choice_problem_created_date
+                ON multiple_choice_problem(created_date DESC);
 
-            CREATE TABLE IF NOT EXISTS answer (
+            CREATE TABLE IF NOT EXISTS submission (
                 id BIGSERIAL PRIMARY KEY,
                 session_id VARCHAR(80) NOT NULL DEFAULT '0000',
                 user_id VARCHAR(80) NOT NULL DEFAULT '0000',
-                question_id VARCHAR(80) NOT NULL REFERENCES question(id),
+                multiple_choice_problem_id VARCHAR(80) REFERENCES multiple_choice_problem(id) ON DELETE SET NULL,
                 answer TEXT NOT NULL
             );
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS question_type VARCHAR(50) NOT NULL DEFAULT '';
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS category_tags TEXT[] NOT NULL DEFAULT '{}';
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS correct_answer TEXT;
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS is_correct BOOLEAN NOT NULL DEFAULT FALSE;
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS accuracy REAL NOT NULL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100);
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS exact BOOLEAN NOT NULL DEFAULT FALSE;
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS elapsed_ms INTEGER NOT NULL DEFAULT 0 CHECK (elapsed_ms >= 0);
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS interaction_id VARCHAR(80);
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS generated_card_id VARCHAR(80);
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS generated_card JSONB;
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS template_mode VARCHAR(20) NOT NULL DEFAULT 'algorithm';
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS support_layer VARCHAR(30) NOT NULL DEFAULT 'none';
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS live_coach_used BOOLEAN NOT NULL DEFAULT FALSE;
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS coach_feedback JSONB;
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS submission_rubric JSONB;
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS activity_format VARCHAR(30);
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS target_source VARCHAR(30);
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS target_control VARCHAR(20);
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS format_control VARCHAR(20);
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS migration_key TEXT;
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             DROP CONSTRAINT IF EXISTS answer_template_mode_check;
 
-            ALTER TABLE answer
-            ADD CONSTRAINT answer_template_mode_check
+            ALTER TABLE submission
+            DROP CONSTRAINT IF EXISTS submission_template_mode_check;
+
+            ALTER TABLE submission
+            ADD CONSTRAINT submission_template_mode_check
             CHECK (template_mode IN ('algorithm'));
 
-            ALTER TABLE answer
+            ALTER TABLE submission
             DROP CONSTRAINT IF EXISTS answer_support_layer_check;
 
-            ALTER TABLE answer
-            ADD CONSTRAINT answer_support_layer_check
+            ALTER TABLE submission
+            DROP CONSTRAINT IF EXISTS submission_support_layer_check;
+
+            ALTER TABLE submission
+            ADD CONSTRAINT submission_support_layer_check
             CHECK (support_layer IN ('none', 'ghost-reps'));
 
-            CREATE INDEX IF NOT EXISTS idx_answer_question_id
-                ON answer(question_id);
+            ALTER TABLE submission
+            ADD COLUMN IF NOT EXISTS multiple_choice_problem_id VARCHAR(80)
+                REFERENCES multiple_choice_problem(id) ON DELETE SET NULL;
 
-            CREATE INDEX IF NOT EXISTS idx_answer_session_user
-                ON answer(session_id, user_id);
+            ALTER TABLE submission
+            ALTER COLUMN multiple_choice_problem_id DROP NOT NULL;
 
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_answer_migration_key
-                ON answer(migration_key)
+            UPDATE submission
+            SET multiple_choice_problem_id = NULL
+            WHERE multiple_choice_problem_id IS NOT NULL
+              AND multiple_choice_problem_id NOT LIKE 'mcq-%';
+
+            UPDATE submission s
+            SET multiple_choice_problem_id = NULL
+            WHERE s.multiple_choice_problem_id IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1
+                FROM multiple_choice_problem p
+                WHERE p.id = s.multiple_choice_problem_id
+              );
+
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conrelid = 'public.submission'::regclass
+                      AND conname = 'submission_multiple_choice_problem_id_fkey'
+                ) THEN
+                    ALTER TABLE submission
+                    ADD CONSTRAINT submission_multiple_choice_problem_id_fkey
+                    FOREIGN KEY (multiple_choice_problem_id)
+                    REFERENCES multiple_choice_problem(id)
+                    ON DELETE SET NULL;
+                END IF;
+            END $$;
+
+            CREATE INDEX IF NOT EXISTS idx_submission_multiple_choice_problem_id
+                ON submission(multiple_choice_problem_id);
+
+            CREATE INDEX IF NOT EXISTS idx_submission_session_user
+                ON submission(session_id, user_id);
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_submission_migration_key
+                ON submission(migration_key)
                 WHERE migration_key IS NOT NULL;
 
-            CREATE INDEX IF NOT EXISTS idx_answer_created_at
-                ON answer(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_submission_created_at
+                ON submission(created_at DESC);
 
-            CREATE INDEX IF NOT EXISTS idx_answer_question_type_created_at
-                ON answer(question_type, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_submission_question_type_created_at
+                ON submission(question_type, created_at DESC);
 
-            CREATE INDEX IF NOT EXISTS idx_answer_generated_card_id
-                ON answer(generated_card_id);
+            CREATE INDEX IF NOT EXISTS idx_submission_generated_card_id
+                ON submission(generated_card_id);
 
-            CREATE INDEX IF NOT EXISTS idx_answer_interaction_id
-                ON answer(interaction_id);
+            CREATE INDEX IF NOT EXISTS idx_submission_interaction_id
+                ON submission(interaction_id);
 
-            CREATE INDEX IF NOT EXISTS idx_answer_category_tags
-                ON answer USING GIN(category_tags);
+            CREATE INDEX IF NOT EXISTS idx_submission_category_tags
+                ON submission USING GIN(category_tags);
 
-            CREATE INDEX IF NOT EXISTS idx_answer_template_support_created_at
-                ON answer(template_mode, support_layer, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_submission_template_support_created_at
+                ON submission(template_mode, support_layer, created_at DESC);
 
-            CREATE INDEX IF NOT EXISTS idx_answer_question_id_created_at
-                ON answer(question_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_submission_multiple_choice_problem_id_created_at
+                ON submission(multiple_choice_problem_id, created_at DESC);
 
-            CREATE INDEX IF NOT EXISTS idx_answer_session_id_created_at
-                ON answer(session_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_submission_session_id_created_at
+                ON submission(session_id, created_at DESC);
 
-            CREATE TABLE IF NOT EXISTS answer_mcq_detail (
-                answer_id BIGINT PRIMARY KEY REFERENCES answer(id) ON DELETE CASCADE,
-                selected_choice_label VARCHAR(10) NOT NULL,
-                correct_choice_label VARCHAR(10) NOT NULL,
-                reasoning TEXT,
-                reasoning_quality REAL CHECK (reasoning_quality >= 0 AND reasoning_quality <= 1),
-                reasoning_evaluation JSONB,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            );
-
-            CREATE TABLE IF NOT EXISTS answer_skill_evidence (
-                id BIGSERIAL PRIMARY KEY,
-                answer_id BIGINT NOT NULL REFERENCES answer(id) ON DELETE CASCADE,
-                algorithm_slug TEXT NOT NULL,
-                skill_slug TEXT NOT NULL,
-                evidence_score REAL NOT NULL CHECK (evidence_score >= 0 AND evidence_score <= 1),
-                confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
-                evidence_source TEXT NOT NULL,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_answer_skill_evidence_skill
-                ON answer_skill_evidence(algorithm_slug, skill_slug, created_at DESC);
-
-            CREATE TABLE IF NOT EXISTS skill_misconception_catalog (
-                id BIGSERIAL PRIMARY KEY,
-                skill_slug TEXT NOT NULL,
-                misconception_tag TEXT NOT NULL,
-                label TEXT NOT NULL,
-                description TEXT NOT NULL DEFAULT '',
-                active BOOLEAN NOT NULL DEFAULT TRUE,
-                CONSTRAINT skill_misconception_catalog_skill_slug_misconception_tag_key
-                    UNIQUE (skill_slug, misconception_tag)
-            );
-
-            INSERT INTO skill_misconception_catalog
-                (skill_slug, misconception_tag, label, description)
-            VALUES
-                ('state-definition', 'insufficient-state', 'Insufficient state', 'The state omits information needed to determine future decisions.'),
-                ('state-definition', 'redundant-state', 'Redundant state', 'The state stores information already implied by other dimensions.'),
-                ('state-definition', 'state-transition-confusion', 'State/transition confusion', 'The learner describes how state changes instead of what the state means.'),
-                ('state-definition', 'unclear-dimensions', 'Unclear dimensions', 'One or more state dimensions do not have a precise meaning.'),
-                ('state-definition', 'future-state-collision', 'Future state collision', 'One state merges subproblems that require different future decisions.')
-            ON CONFLICT (skill_slug, misconception_tag) DO NOTHING;
-
-            CREATE TABLE IF NOT EXISTS answer_misconception (
-                id BIGSERIAL PRIMARY KEY,
-                answer_id BIGINT NOT NULL REFERENCES answer(id) ON DELETE CASCADE,
-                skill_evidence_id BIGINT REFERENCES answer_skill_evidence(id) ON DELETE SET NULL,
-                misconception_id BIGINT REFERENCES skill_misconception_catalog(id) ON DELETE SET NULL,
-                algorithm_slug TEXT NOT NULL,
-                skill_slug TEXT NOT NULL,
-                misconception_tag TEXT NOT NULL,
-                evaluator_note TEXT,
-                confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
-                detected_by TEXT NOT NULL,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            );
-
-            ALTER TABLE answer_misconception
-            ADD COLUMN IF NOT EXISTS misconception_id BIGINT
-                REFERENCES skill_misconception_catalog(id) ON DELETE SET NULL;
-
-            CREATE INDEX IF NOT EXISTS idx_answer_misconception_signal
-                ON answer_misconception(algorithm_slug, skill_slug, misconception_tag, created_at DESC);
             """
         )
         await conn.execute(
@@ -377,12 +665,12 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                     SELECT 1
                     FROM information_schema.columns
                     WHERE table_schema = 'public'
-                      AND table_name = 'answer'
+                      AND table_name = 'submission'
                       AND column_name = 'created_at'
                       AND data_type = 'timestamp without time zone'
                 ) THEN
                     EXECUTE $sql$
-                        ALTER TABLE answer
+                        ALTER TABLE submission
                         ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE 'UTC'
                     $sql$;
                 END IF;
@@ -391,12 +679,12 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                     SELECT 1
                     FROM information_schema.columns
                     WHERE table_schema = 'public'
-                      AND table_name = 'answer'
+                      AND table_name = 'submission'
                       AND column_name = 'updated_at'
                       AND data_type = 'timestamp without time zone'
                 ) THEN
                     EXECUTE $sql$
-                        ALTER TABLE answer
+                        ALTER TABLE submission
                         ALTER COLUMN updated_at TYPE TIMESTAMPTZ USING updated_at AT TIME ZONE 'UTC'
                     $sql$;
                 END IF;
@@ -416,7 +704,7 @@ async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
                 id SERIAL PRIMARY KEY,
                 interaction_id VARCHAR(80),
                 card_id VARCHAR(80) NOT NULL,
-                answer_id BIGINT REFERENCES answer(id) ON DELETE SET NULL,
+                submission_id BIGINT REFERENCES submission(id) ON DELETE SET NULL,
                 generated_card_id VARCHAR(80),
                 question_type VARCHAR(50) NOT NULL DEFAULT '',
                 feedback_stage VARCHAR(20) NOT NULL CHECK (feedback_stage IN ('live', 'submission')),
@@ -442,7 +730,7 @@ async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
             ADD COLUMN IF NOT EXISTS live_milestones JSONB;
 
             ALTER TABLE coach_feedback_events
-            ADD COLUMN IF NOT EXISTS answer_id BIGINT REFERENCES answer(id) ON DELETE SET NULL;
+            ADD COLUMN IF NOT EXISTS submission_id BIGINT REFERENCES submission(id) ON DELETE SET NULL;
 
             CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_interaction
                 ON coach_feedback_events(interaction_id);
@@ -453,8 +741,8 @@ async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
             CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_generated_card
                 ON coach_feedback_events(generated_card_id);
 
-            CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_answer_id
-                ON coach_feedback_events(answer_id);
+            CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_submission_id
+                ON coach_feedback_events(submission_id);
 
             CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_stage_created
                 ON coach_feedback_events(feedback_stage, created_at DESC);
@@ -486,9 +774,9 @@ async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
         await conn.execute(
             """
             UPDATE coach_feedback_events fe
-            SET answer_id = a.id
-            FROM answer a
-            WHERE fe.answer_id IS NULL
+            SET submission_id = a.id
+            FROM submission a
+            WHERE fe.submission_id IS NULL
               AND fe.interaction_id IS NOT NULL
               AND fe.interaction_id <> ''
               AND a.interaction_id = fe.interaction_id;
@@ -535,7 +823,7 @@ async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
         )
 
 
-async def _backfill_answer_attempts_from_score_attempts(db_pool: asyncpg.Pool) -> None:
+async def _backfill_submission_attempts_from_score_attempts(db_pool: asyncpg.Pool) -> None:
     async with db_pool.acquire() as conn:
         await conn.execute(
             """
@@ -574,7 +862,7 @@ async def _backfill_answer_attempts_from_score_attempts(db_pool: asyncpg.Pool) -
                         FROM source_attempts s
                         ORDER BY s.fingerprint_norm, s.updated_at_norm DESC, s.legacy_attempt_id DESC
                     )
-                    INSERT INTO question (
+                    INSERT INTO multiple_choice_problem (
                         id,
                         user_id,
                         question_text,
@@ -596,6 +884,7 @@ async def _backfill_answer_attempts_from_score_attempts(db_pool: asyncpg.Pool) -
                         s.created_at_norm,
                         s.updated_at_norm
                     FROM source_questions s
+                    WHERE s.canonical_question_id LIKE 'mcq-%'
                     ON CONFLICT DO NOTHING;
 
                     WITH source_attempts AS (
@@ -612,10 +901,10 @@ async def _backfill_answer_attempts_from_score_attempts(db_pool: asyncpg.Pool) -
                             sa.*
                         FROM score_attempts sa
                     )
-                    INSERT INTO answer (
+                    INSERT INTO submission (
                         session_id,
                         user_id,
-                        question_id,
+                        multiple_choice_problem_id,
                         answer,
                         question_type,
                         category_tags,
@@ -639,7 +928,7 @@ async def _backfill_answer_attempts_from_score_attempts(db_pool: asyncpg.Pool) -
                     SELECT
                         COALESCE(NULLIF(s.interaction_id, ''), 'legacy-session-' || s.legacy_attempt_id::text),
                         '0000',
-                        COALESCE(q.id, s.canonical_question_id),
+                        COALESCE(q.id, CASE WHEN s.canonical_question_id LIKE 'mcq-%' THEN s.canonical_question_id ELSE NULL END),
                         COALESCE(s.user_answer, ''),
                         COALESCE(s.question_type, ''),
                         COALESCE(s.category_tags, '{}'),
@@ -660,7 +949,7 @@ async def _backfill_answer_attempts_from_score_attempts(db_pool: asyncpg.Pool) -
                         s.created_at_norm,
                         s.updated_at_norm
                     FROM source_attempts s
-                    LEFT JOIN question q ON q.fingerprint = s.fingerprint_norm
+                    LEFT JOIN multiple_choice_problem q ON q.fingerprint = s.fingerprint_norm
                     ON CONFLICT (migration_key) WHERE migration_key IS NOT NULL DO NOTHING;
 
                     DROP TABLE IF EXISTS score_attempts CASCADE;
@@ -1003,23 +1292,10 @@ async def _apply_taxonomy_remap_migration(db_pool: asyncpg.Pool) -> None:
         slug for slug, target in PATTERN_TO_ALGORITHM.items() if slug != target
     )
     slug_cases = "\n".join(
-        f"            WHEN '{slug}' THEN '{PATTERN_TO_ALGORITHM[slug]}'" for slug in legacy_slugs
+        f"                        WHEN '{slug}' THEN '{PATTERN_TO_ALGORITHM[slug]}'" for slug in legacy_slugs
     )
     async with db_pool.acquire() as conn:
-        for table in ("answer_skill_evidence", "answer_misconception"):
-            await conn.execute(
-                f"""
-                UPDATE {table}
-                SET algorithm_slug = CASE algorithm_slug
-{slug_cases}
-                    ELSE algorithm_slug
-                END
-                WHERE algorithm_slug = ANY($1::text[])
-                """,
-                legacy_slugs,
-            )
-
-        for table, column in (("answer", "category_tags"), ("coach_feedback_events", "skill_tags")):
+        for table, column in (("submission", "category_tags"), ("coach_feedback_events", "skill_tags")):
             await conn.execute(
                 f"""
                 UPDATE {table}
@@ -1037,7 +1313,7 @@ async def _apply_taxonomy_remap_migration(db_pool: asyncpg.Pool) -> None:
 
         await conn.execute(
             """
-            UPDATE answer a
+            UPDATE submission a
             SET category_tags = p.tags
             FROM problem p
             WHERE a.generated_card_id = 'core-algorithm-' || p.slug

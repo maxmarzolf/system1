@@ -33,7 +33,7 @@ from app.domain.llm_resilience import (
 )
 from app.domain.template_evaluator import merged_submission_tuning as _domain_merged_submission_tuning
 from app.models import CoachAttemptFeedbackRequest, CoachAttemptFeedbackResponse
-from app.repositories.coach_repository import fetch_latest_answer_id_for_feedback, insert_feedback_event_row
+from app.repositories.coach_repository import fetch_latest_submission_id_for_feedback, insert_feedback_event_row
 from app.services.contracts import FeedbackPayload, HistoryEntry, HistorySummary
 from app.services import history_service
 
@@ -141,7 +141,7 @@ def _finalize_feedback_payload(
 
 async def persist_feedback_event(body: CoachAttemptFeedbackRequest, feedback: CoachAttemptFeedbackResponse) -> None:
     now = datetime.now(tz=timezone.utc)
-    answer_id = await fetch_latest_answer_id_for_feedback(
+    submission_id = await fetch_latest_submission_id_for_feedback(
         interaction_id=body.interactionId or "",
         card_id=body.cardId,
         question_type=body.questionType,
@@ -169,7 +169,7 @@ async def persist_feedback_event(body: CoachAttemptFeedbackRequest, feedback: Co
         feedback_json=json.dumps(feedback_payload),
         llm_used=bool(feedback.llmUsed),
         created_at=now,
-        answer_id=answer_id,
+        submission_id=submission_id,
     )
 
 async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest) -> CoachAttemptFeedbackResponse:

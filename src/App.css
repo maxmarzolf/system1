@@ -592,7 +592,7 @@
 
 .skill-map-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.85rem;
 }
 
@@ -1463,6 +1463,23 @@
   filter: brightness(1.12);
 }
 
+.daily-work-history-cell-total-recall {
+  border-color: color-mix(in srgb, var(--hc-warning) var(--daily-work-history-recall-glow), var(--hc-border-dim));
+  background: radial-gradient(
+    circle at 50% 45%,
+    color-mix(in srgb, var(--hc-warning) var(--daily-work-history-recall-glow), white) 0 18%,
+    color-mix(in srgb, var(--hc-warning) var(--daily-work-history-recall-glow), var(--hc-bg)) 100%
+  );
+  box-shadow: 0 0 12px color-mix(in srgb, var(--hc-warning) var(--daily-work-history-recall-glow), transparent);
+  color: var(--hc-warning);
+}
+
+.daily-work-history-trophy {
+  width: 1rem;
+  height: 1rem;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--hc-warning) var(--daily-work-history-recall-glow), transparent));
+}
+
 .daily-work-history-cell-on-track {
   border-color: color-mix(in srgb, var(--hc-accent) 88%, white);
   background:
@@ -2144,8 +2161,8 @@
 }
 
 .app-dashboard .dashboard {
-  margin-bottom: 1.35rem;
-  padding: 0.9rem;
+  margin-bottom: 1rem;
+  padding: 0.7rem;
 }
 
 .app-dashboard .dashboard h2 {
@@ -2170,22 +2187,24 @@
 }
 
 .app-dashboard .coach-metric-chip {
-  font-size: 0.66rem;
-  line-height: 1.3;
+  padding: 0.18rem 0.32rem;
+  font-size: 0.56rem;
+  line-height: 1.2;
 }
 
 .app-dashboard .coach-status-value {
-  font-size: 0.72rem;
+  font-size: 0.64rem;
 }
 
 .app-dashboard .skill-map-grid {
-  gap: 0.6rem;
+  gap: 0.45rem;
 }
 
 .app-dashboard .skill-map-card {
-  gap: 0.4rem;
-  padding: 0.7rem;
-  min-height: 15.25rem;
+  grid-template-rows: auto auto minmax(3.75rem, 1fr) auto auto;
+  gap: 0.28rem;
+  padding: 0.52rem;
+  min-height: 12rem;
 }
 
 .app-dashboard .skill-map-header {
@@ -2194,7 +2213,16 @@
 }
 
 .app-dashboard .skill-map-header h3 {
-  font-size: 0.92rem;
+  font-size: 0.8rem;
+}
+
+.app-dashboard .skill-map-illustration {
+  padding: 0;
+}
+
+.app-dashboard .skill-map-illustration-svg {
+  width: min(100%, 9.5rem);
+  max-height: 4.8rem;
 }
 
 .app-dashboard .skill-method-list {
@@ -2216,9 +2244,9 @@
 }
 
 .app-dashboard .skill-map-card .dashboard-mode-tab {
-  min-width: 8.8rem;
-  min-height: 1.85rem;
-  padding: 0.34rem 0.58rem;
+  min-width: 7.35rem;
+  min-height: 1.6rem;
+  padding: 0.25rem 0.45rem;
 }
 
 .app-dashboard .skill-map-card .dashboard-mode-tab:last-child {
@@ -2226,7 +2254,7 @@
 }
 
 .app-dashboard .dashboard-mode-tab-label {
-  font-size: 0.6rem;
+  font-size: 0.54rem;
 }
 
 .app-dashboard .dashboard-mode-meta {
@@ -2515,6 +2543,122 @@ button.link:hover {
   align-items: flex-start;
   gap: 0.9rem;
   flex: 0 0 auto;
+  transition: gap 260ms ease;
+}
+
+.card-header-controls-panel {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(0.6rem);
+  transition:
+    max-width 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease,
+    transform 300ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 360ms;
+}
+
+.card-header-aside-open .card-header-controls-panel {
+  max-width: 24rem;
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0);
+  transition-delay: 0s;
+}
+
+.card-header-controls-panel .card-header-side {
+  min-width: max-content;
+}
+
+.card-header-settings-close {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 2.35rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--hc-fg-dim);
+  opacity: 0.72;
+  transition: color 180ms ease, opacity 180ms ease, transform 220ms ease;
+}
+
+.card-header-settings-close:hover {
+  border: 0;
+  background: transparent;
+  color: var(--hc-accent);
+  opacity: 1;
+  transform: translateX(0.14rem);
+}
+
+.card-header-settings-close svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.card-header-settings-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--hc-fg-dim);
+  opacity: 1;
+  transform: scale(1);
+  visibility: visible;
+  transition:
+    width 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 180ms ease,
+    opacity 160ms ease,
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0s;
+}
+
+.card-header-settings-toggle:hover,
+.card-header-settings-toggle.active {
+  border: 0;
+  background: transparent;
+  color: var(--hc-accent);
+}
+
+.card-header-settings-toggle svg {
+  width: 1.35rem;
+  height: 1.35rem;
+  transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.card-header-aside-open {
+  gap: 0;
+}
+
+.card-header-settings-toggle.active {
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.55) rotate(45deg);
+  visibility: hidden;
+  transition-delay: 0s, 0s, 0s, 0s, 0s, 260ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-header-controls-panel,
+  .card-header-settings-toggle,
+  .card-header-settings-toggle svg,
+  .card-header-settings-close {
+    transition: none;
+  }
 }
 
 .card-flow-panel {
@@ -3206,7 +3350,7 @@ button.link:hover {
   }
 
   .skill-map-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .card-side-drawer-actions {
@@ -3228,6 +3372,12 @@ button.link:hover {
 
   .feedback-rails {
     display: none;
+  }
+}
+
+@media (max-width: 840px) {
+  .skill-map-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -5126,9 +5276,9 @@ button.tune-reset {
   min-height: 3.4rem;
   margin-bottom: 1rem;
   padding: 0.35rem 0.5rem;
-  border: 1px solid var(--workbench-edge);
-  border-radius: var(--workbench-radius);
-  background: var(--workbench-surface);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .app > .navbar .navbar-brand {
@@ -5228,6 +5378,7 @@ button.tune-reset {
 
 .card-shell .card-header-aside {
   align-items: center;
+  gap: 0.55rem;
 }
 
 .card-shell .card-header-side {
@@ -5416,6 +5567,7 @@ button.tune-reset {
   z-index: auto;
   width: 100%;
   flex-direction: row;
+  align-items: center;
   justify-content: flex-start;
   gap: 0;
   padding: 0.2rem;
@@ -5426,11 +5578,21 @@ button.tune-reset {
 }
 
 .card-side-drawer-toggle {
-  width: 2rem;
-  height: 2rem;
+  width: auto;
+  min-width: 2.15rem;
+  min-height: 1.95rem;
+  height: auto;
+  padding: 0.4rem 0.58rem;
   border-color: transparent;
   border-radius: var(--workbench-radius-sm);
   background: transparent;
+  line-height: 1;
+}
+
+.card-side-drawer-toggle svg,
+.card-tags-drawer-toggle svg {
+  width: 1rem;
+  height: 1rem;
 }
 
 .card-side-drawer-toggle:hover,
@@ -5488,6 +5650,51 @@ button.tune-reset {
     padding: 0.8rem 0 0;
     border-top: 1px solid var(--workbench-edge);
     border-left: 0;
+  }
+
+  .card-shell .card-header-aside {
+    align-items: flex-end;
+  }
+
+  .card-shell .card-header-settings-toggle {
+    order: 0;
+  }
+
+  .card-shell .card-header-controls-panel {
+    order: 1;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    max-width: 100%;
+    max-height: 0;
+    transform: translateY(-0.4rem);
+    transition:
+      max-height 360ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 180ms ease,
+      transform 300ms cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0s linear 360ms;
+  }
+
+  .card-shell .card-header-aside-open .card-header-controls-panel {
+    max-height: 12rem;
+    transform: translateY(0);
+    transition-delay: 0s;
+  }
+
+  .card-shell .card-header-controls-panel .card-header-side {
+    min-width: 0;
+  }
+
+  .card-shell .card-header-settings-close {
+    align-self: flex-end;
+    order: -1;
+    width: 2rem;
+    height: 1.6rem;
+    transform: rotate(90deg);
+  }
+
+  .card-shell .card-header-settings-close:hover {
+    transform: rotate(90deg) translateX(0.14rem);
   }
 
   .card-shell .card-grid {

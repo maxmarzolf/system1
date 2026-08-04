@@ -52,11 +52,11 @@ class PracticeHistoryEntry(TypedDict):
     createdAt: str
 
 
-class ScoreAttemptInsertResult(TypedDict):
+class SubmissionInsertResult(TypedDict):
     id: int
 
 
-class QuestionInsertResult(TypedDict):
+class MultipleChoiceProblemInsertResult(TypedDict):
     id: str
 
 
@@ -102,5 +102,6 @@ class SkillMapOverviewAttemptRow(TypedDict):
     created_at: datetime
     template_mode: str
     support_layer: str
+    activity_format: str | None
     live_coach_used: bool
     submission_rubric: dict[str, Any] | str | None

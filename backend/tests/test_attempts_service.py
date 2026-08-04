@@ -8,14 +8,14 @@ from app.services import attempts_service
 from app.services.attempts_service import build_skill_map_overview
 
 
-def test_create_attempt_forwards_mcq_evidence_and_misconceptions(monkeypatch) -> None:
+def test_create_attempt_forwards_multiple_choice_metadata(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     async def _insert(**kwargs):
         captured.update(kwargs)
         return {"id": 91}
 
-    monkeypatch.setattr(attempts_service, "insert_answer_attempt_row", _insert)
+    monkeypatch.setattr(attempts_service, "insert_submission_attempt_row", _insert)
     body = AttemptCreate.model_validate({
         "cardId": "mcq-1",
         "mode": "main-recall",
@@ -24,26 +24,6 @@ def test_create_attempt_forwards_mcq_evidence_and_misconceptions(monkeypatch) ->
         "targetSource": "skill-map",
         "targetControl": "user",
         "formatControl": "user",
-        "mcqDetail": {
-            "selectedChoiceLabel": "B",
-            "correctChoiceLabel": "C",
-            "reasoning": "The state only needs the current value.",
-        },
-        "skillEvidence": [{
-            "algorithmSlug": "dynamic-programming",
-            "skillSlug": "state-definition",
-            "evidenceScore": 0,
-            "confidence": 0.95,
-            "evidenceSource": "mcq-with-reasoning",
-        }],
-        "misconceptionSignals": [{
-            "algorithmSlug": "dynamic-programming",
-            "skillSlug": "state-definition",
-            "misconceptionTag": "insufficient-state",
-            "evaluatorNote": "Tracks too little history.",
-            "confidence": 0.9,
-            "detectedBy": "reasoning-evaluator",
-        }],
     })
 
     result = asyncio.run(attempts_service.create_attempt(body))
@@ -51,21 +31,6 @@ def test_create_attempt_forwards_mcq_evidence_and_misconceptions(monkeypatch) ->
     assert result == {"saved": True, "attemptId": 91}
     assert captured["activity_format"] == "multiple-choice"
     assert captured["target_source"] == "skill-map"
-    assert captured["mcq_detail"] == {
-        "selectedChoiceLabel": "B",
-        "correctChoiceLabel": "C",
-        "reasoning": "The state only needs the current value.",
-        "reasoningQuality": None,
-        "reasoningEvaluation": None,
-    }
-    assert captured["skill_evidence"] == [{
-        "algorithmSlug": "dynamic-programming",
-        "skillSlug": "state-definition",
-        "evidenceScore": 0.0,
-        "confidence": 0.95,
-        "evidenceSource": "mcq-with-reasoning",
-    }]
-    assert captured["misconception_signals"][0]["misconceptionTag"] == "insufficient-state"
 
 
 def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
@@ -133,6 +98,19 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
                 "live_coach_used": False,
                 "submission_rubric": {},
             },
+            {
+                "tracked_card_id": "sw-1",
+                "card_title": "Window",
+                "category_tags": ["skill-map", "sliding-window", "fixed-vs-variable-window"],
+                "accuracy": 100,
+                "exact": True,
+                "created_at": today,
+                "template_mode": "algorithm",
+                "support_layer": "none",
+                "activity_format": "recall",
+                "live_coach_used": False,
+                "submission_rubric": {},
+            },
         ],
     )
 
@@ -143,9 +121,11 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
 
     assert activity["totalGhostReps"] == 2
     assert activity["totalMultipleChoice"] == 1
-    assert activity["workCount"] == 3
+    assert activity["totalPerfectRecalls"] == 1
+    assert activity["workCount"] == 4
     assert today_bucket["ghostRepCount"] == 0
     assert today_bucket["multipleChoiceCount"] == 1
+    assert today_bucket["totalRecallCount"] == 1
     assert today_bucket["segments"] == [
         {
             "algorithm": "Binary Search",
@@ -153,7 +133,14 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
             "workType": "multiple-choice",
             "count": 1,
             "skills": [{"skill": "Unclassified", "slug": "unclassified", "count": 1}],
-        }
+        },
+        {
+            "algorithm": "Sliding Window",
+            "slug": "sliding-window",
+            "workType": "total-recall",
+            "count": 1,
+            "skills": [{"skill": "Unclassified", "slug": "unclassified", "count": 1}],
+        },
     ]
     assert yesterday_bucket["segments"] == [
         {
@@ -167,7 +154,7 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
     assert pattern_freshness["sliding-window"]["daysSinceLastGhostRep"] == 5
     assert pattern_freshness["binary-search"]["daysSinceLastGhostRep"] == 1
     assert pattern_freshness["binary-search"]["daysSinceLastPractice"] == 0
-    assert overview["summary"]["workCount"] == 3
+    assert overview["summary"]["workCount"] == 4
 
 
 def test_spaced_repetition_schedules_algorithm_and_method_tracks_after_ghost_reps() -> None:

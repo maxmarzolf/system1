@@ -9,7 +9,7 @@ from typing import cast
 from app.repositories.base import acquire_connection
 from app.repositories.types import (
     AlgorithmSkillRow,
-    ScoreAttemptInsertResult,
+    SubmissionInsertResult,
     SkillMapOverviewAlgorithmRow,
     SkillMapOverviewAttemptRow,
     SkillMapOverviewGeneratedRow,
@@ -22,7 +22,7 @@ def _normalize_question_fingerprint_text(value: str) -> str:
     return "\n".join(lines).strip()
 
 
-def _attempt_question_fingerprint(
+def _attempt_problem_fingerprint(
     *,
     question: str,
     correct_answer: str,
@@ -31,7 +31,7 @@ def _attempt_question_fingerprint(
 ) -> str:
     payload = json.dumps(
         {
-            "kind": "attempt-question",
+            "kind": "attempt-problem",
             "question": _normalize_question_fingerprint_text(question),
             "correctAnswer": _normalize_question_fingerprint_text(correct_answer),
             "questionType": _normalize_question_fingerprint_text(question_type),
@@ -44,36 +44,63 @@ def _attempt_question_fingerprint(
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-async def _resolve_question_id(
+def _is_multiple_choice_attempt(
+    *,
+    generated_card_id: str | None,
+    question_type: str,
+    category_tags: list[str],
+    activity_format: str | None,
+) -> bool:
+    return (
+        activity_format == "multiple-choice"
+        or str(question_type or "").startswith("skill-map-mcq")
+        or "skill-map-mcq" in category_tags
+        or str(generated_card_id or "").startswith("mcq-")
+    )
+
+
+async def _resolve_multiple_choice_problem_id(
     *,
     generated_card_id: str | None,
     question: str,
     question_type: str,
     correct_answer: str,
     generated_card_json: str | None,
+    category_tags: list[str],
+    activity_format: str | None,
     created_at: datetime,
     updated_at: datetime,
-) -> str:
-    fingerprint = _attempt_question_fingerprint(
+) -> str | None:
+    if not _is_multiple_choice_attempt(
+        generated_card_id=generated_card_id,
+        question_type=question_type,
+        category_tags=category_tags,
+        activity_format=activity_format,
+    ):
+        return None
+
+    fingerprint = _attempt_problem_fingerprint(
         question=question,
         correct_answer=correct_answer,
         question_type=question_type,
         generated_card_json=generated_card_json,
     )
-    default_question_id = f"q-{fingerprint[:24]}"
-    question_id = (generated_card_id or "").strip() or default_question_id
+    default_problem_id = f"mcq-{fingerprint[:24]}"
+    problem_id = (generated_card_id or "").strip() or default_problem_id
+    if not problem_id.startswith("mcq-"):
+        problem_id = default_problem_id
     created_date = created_at.replace(tzinfo=None) if created_at.tzinfo else created_at
     modified_date = updated_at.replace(tzinfo=None) if updated_at.tzinfo else updated_at
 
     async with acquire_connection() as conn:
         if generated_card_id:
-            existing = await conn.fetchrow("SELECT id FROM question WHERE id = $1", generated_card_id)
+            existing = await conn.fetchrow("SELECT id FROM multiple_choice_problem WHERE id = $1", generated_card_id)
             if existing:
                 return str(existing["id"])
 
         row = await conn.fetchrow(
             """
-            INSERT INTO question (
+            INSERT INTO multiple_choice_problem (
                 id,
                 user_id,
                 question_text,
@@ -89,7 +116,7 @@ async def _resolve_question_id(
             SET modified_date = EXCLUDED.modified_date
             RETURNING id
             """,
-            question_id,
+            problem_id,
             "0000",
             question,
             "",
@@ -101,11 +128,11 @@ async def _resolve_question_id(
         )
 
     if not row:
-        return question_id
+        return problem_id
     return str(row["id"])
 
 
-async def insert_answer_attempt_row(
+async def insert_submission_attempt_row(
     *,
     card_id: str,
     card_title: str,
@@ -131,23 +158,22 @@ async def insert_answer_attempt_row(
     target_source: str | None,
     target_control: str | None,
     format_control: str | None,
-    mcq_detail: dict[str, object] | None,
-    skill_evidence: list[dict[str, object]],
-    misconception_signals: list[dict[str, object]],
     created_at: datetime,
     updated_at: datetime,
-) -> ScoreAttemptInsertResult | None:
+) -> SubmissionInsertResult | None:
     del card_id, card_title, mode
 
     normalized_question = str(question or "")
     normalized_correct_answer = str(correct_answer or "")
     normalized_user_answer = str(user_answer or "")
-    question_id = await _resolve_question_id(
+    multiple_choice_problem_id = await _resolve_multiple_choice_problem_id(
         generated_card_id=generated_card_id,
         question=normalized_question,
         question_type=question_type,
         correct_answer=normalized_correct_answer,
         generated_card_json=generated_card_json,
+        category_tags=category_tags,
+        activity_format=activity_format,
         created_at=created_at,
         updated_at=updated_at,
     )
@@ -155,8 +181,8 @@ async def insert_answer_attempt_row(
     async with acquire_connection() as conn, conn.transaction():
         row = await conn.fetchrow(
             """
-            INSERT INTO answer
-                (session_id, user_id, question_id, answer, question_type, category_tags,
+            INSERT INTO submission
+                (session_id, user_id, multiple_choice_problem_id, answer, question_type, category_tags,
                  correct_answer, is_correct, accuracy, exact, elapsed_ms, interaction_id,
                  generated_card_id, generated_card, template_mode, support_layer,
                  live_coach_used, coach_feedback, submission_rubric, activity_format,
@@ -164,9 +190,9 @@ async def insert_answer_attempt_row(
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
             RETURNING id
             """,
-            interaction_id or question_id,
+            interaction_id or generated_card_id or multiple_choice_problem_id or "0000",
             "0000",
-            question_id,
+            multiple_choice_problem_id,
             normalized_user_answer,
             question_type,
             category_tags,
@@ -193,86 +219,7 @@ async def insert_answer_attempt_row(
         if not row:
             return None
 
-        answer_id = int(row["id"])
-        if mcq_detail:
-            reasoning = str(mcq_detail.get("reasoning") or "").strip() or None
-            reasoning_evaluation = mcq_detail.get("reasoningEvaluation")
-            await conn.execute(
-                """
-                INSERT INTO answer_mcq_detail (
-                    answer_id, selected_choice_label, correct_choice_label, reasoning,
-                    reasoning_quality, reasoning_evaluation, created_at
-                )
-                VALUES ($1,$2,$3,$4,$5,$6,$7)
-                """,
-                answer_id,
-                str(mcq_detail.get("selectedChoiceLabel") or ""),
-                str(mcq_detail.get("correctChoiceLabel") or ""),
-                reasoning,
-                mcq_detail.get("reasoningQuality"),
-                json.dumps(reasoning_evaluation) if reasoning_evaluation else None,
-                created_at,
-            )
-
-        evidence_ids: dict[tuple[str, str], int] = {}
-        for evidence in skill_evidence:
-            algorithm_slug = str(evidence.get("algorithmSlug") or "")
-            skill_slug = str(evidence.get("skillSlug") or "")
-            evidence_row = await conn.fetchrow(
-                """
-                INSERT INTO answer_skill_evidence (
-                    answer_id, algorithm_slug, skill_slug, evidence_score, confidence,
-                    evidence_source, created_at
-                )
-                VALUES ($1,$2,$3,$4,$5,$6,$7)
-                RETURNING id
-                """,
-                answer_id,
-                algorithm_slug,
-                skill_slug,
-                float(evidence.get("evidenceScore") or 0),
-                float(evidence.get("confidence") or 0),
-                str(evidence.get("evidenceSource") or ""),
-                created_at,
-            )
-            if evidence_row:
-                evidence_ids[(algorithm_slug, skill_slug)] = int(evidence_row["id"])
-
-        for signal in misconception_signals:
-            algorithm_slug = str(signal.get("algorithmSlug") or "")
-            skill_slug = str(signal.get("skillSlug") or "")
-            misconception_tag = str(signal.get("misconceptionTag") or "")
-            catalog_row = await conn.fetchrow(
-                """
-                SELECT id
-                FROM skill_misconception_catalog
-                WHERE skill_slug = $1
-                  AND misconception_tag = $2
-                  AND active = TRUE
-                """,
-                skill_slug,
-                misconception_tag,
-            )
-            await conn.execute(
-                """
-                INSERT INTO answer_misconception (
-                    answer_id, skill_evidence_id, misconception_id, algorithm_slug, skill_slug,
-                    misconception_tag, evaluator_note, confidence, detected_by, created_at
-                )
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-                """,
-                answer_id,
-                evidence_ids.get((algorithm_slug, skill_slug)),
-                int(catalog_row["id"]) if catalog_row else None,
-                algorithm_slug,
-                skill_slug,
-                misconception_tag,
-                str(signal.get("evaluatorNote") or "").strip() or None,
-                float(signal.get("confidence") or 0),
-                str(signal.get("detectedBy") or ""),
-                created_at,
-            )
-    return cast(ScoreAttemptInsertResult, dict(row)) if row else None
+    return cast(SubmissionInsertResult, dict(row)) if row else None
 
 
 _ALGORITHM_SKILL_JOIN = """
@@ -345,18 +292,19 @@ async def fetch_skill_map_overview_attempt_rows() -> list[SkillMapOverviewAttemp
         rows = await conn.fetch(
             """
             SELECT
-                COALESCE(a.generated_card_id, a.question_id) AS tracked_card_id,
-                COALESCE(NULLIF(a.generated_card->>'title', ''), q.question_text, a.question_id) AS card_title,
+                COALESCE(a.generated_card_id, a.multiple_choice_problem_id) AS tracked_card_id,
+                COALESCE(NULLIF(a.generated_card->>'title', ''), q.question_text, a.multiple_choice_problem_id) AS card_title,
                 a.category_tags AS category_tags,
                 a.accuracy,
                 a.exact,
                 a.created_at,
                 a.template_mode,
                 a.support_layer,
+                a.activity_format,
                 a.live_coach_used,
                 a.submission_rubric
-            FROM answer a
-            LEFT JOIN question q ON q.id = a.question_id
+            FROM submission a
+            LEFT JOIN multiple_choice_problem q ON q.id = a.multiple_choice_problem_id
             WHERE a.question_type LIKE 'skill-map%'
             ORDER BY a.created_at DESC
             """

@@ -16,7 +16,7 @@ async def _connect_db() -> asyncpg.Connection:
 async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
     await conn.execute(
         """
-        INSERT INTO question (
+        INSERT INTO multiple_choice_problem (
             id,
             user_id,
             question_text,
@@ -28,7 +28,7 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
             modified_date
         )
         VALUES (
-            'fx-perf-q',
+            'mcq-fx-perf-q',
             '0000',
             'Performance fixture question',
             '',
@@ -43,11 +43,11 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
     )
     await conn.execute(
         """
-        INSERT INTO answer (
+        INSERT INTO submission (
             id,
             session_id,
             user_id,
-            question_id,
+            multiple_choice_problem_id,
             answer,
             question_type,
             category_tags,
@@ -72,7 +72,7 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
             920000 + s,
             'fx-perf-session-' || s::text,
             '0000',
-            'fx-perf-q',
+            'mcq-fx-perf-q',
             'user-answer-' || s::text,
             CASE WHEN s % 10 = 0 THEN 'skill-map-lite' ELSE 'skill-map' END,
             ARRAY['skill-map', CASE WHEN s % 2 = 0 THEN 'two-pointers' ELSE 'binary-search' END],
@@ -102,7 +102,7 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
             id,
             interaction_id,
             card_id,
-            answer_id,
+            submission_id,
             generated_card_id,
             question_type,
             feedback_stage,
@@ -149,8 +149,8 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
 
 async def _cleanup_performance_fixture(conn: asyncpg.Connection) -> None:
     await conn.execute("DELETE FROM coach_feedback_events WHERE id BETWEEN 930001 AND 930300")
-    await conn.execute("DELETE FROM answer WHERE id BETWEEN 920001 AND 920800")
-    await conn.execute("DELETE FROM question WHERE id = 'fx-perf-q'")
+    await conn.execute("DELETE FROM submission WHERE id BETWEEN 920001 AND 920800")
+    await conn.execute("DELETE FROM multiple_choice_problem WHERE id = 'mcq-fx-perf-q'")
 
 
 async def _fetch_index_names(conn: asyncpg.Connection, table_name: str) -> set[str]:
@@ -214,14 +214,14 @@ def test_performance_guard_required_indexes_exist() -> None:
         return
 
     try:
-        answer_indexes = asyncio.run(_fetch_index_names(conn, "answer"))
+        submission_indexes = asyncio.run(_fetch_index_names(conn, "submission"))
         feedback_indexes = asyncio.run(_fetch_index_names(conn, "coach_feedback_events"))
 
-        assert "idx_answer_question_type_created_at" in answer_indexes
-        assert "idx_answer_generated_card_id" in answer_indexes
-        assert "idx_answer_category_tags" in answer_indexes
-        assert "idx_answer_created_at" in answer_indexes
-        assert "idx_coach_feedback_events_answer_id" in feedback_indexes
+        assert "idx_submission_question_type_created_at" in submission_indexes
+        assert "idx_submission_generated_card_id" in submission_indexes
+        assert "idx_submission_category_tags" in submission_indexes
+        assert "idx_submission_created_at" in submission_indexes
+        assert "idx_coach_feedback_events_submission_id" in feedback_indexes
         assert "idx_coach_feedback_events_stage_created" in feedback_indexes
     finally:
         asyncio.run(conn.close())
@@ -243,9 +243,9 @@ def test_performance_guard_history_and_overview_queries_avoid_seq_scan() -> None
                 conn,
                 """
                 SELECT a.id
-                FROM answer a
+                FROM submission a
                 WHERE a.question_type = $1
-                  AND (COALESCE(a.generated_card_id, a.question_id) = $2 OR a.category_tags && $3::text[])
+                  AND (COALESCE(a.generated_card_id, a.multiple_choice_problem_id) = $2 OR a.category_tags && $3::text[])
                 ORDER BY a.created_at DESC
                 LIMIT $4
                 """,
@@ -260,14 +260,14 @@ def test_performance_guard_history_and_overview_queries_avoid_seq_scan() -> None
         history_index_names = _collect_index_names(history_plan)
 
         assert "Seq Scan" not in history_nodes
-        assert any("Index" in name or "idx_answer_" in name for name in history_index_names)
+        assert any("Index" in name or "idx_submission_" in name for name in history_index_names)
 
         overview_explain = asyncio.run(
             _explain_json(
                 conn,
                 """
                 SELECT a.created_at
-                FROM answer a
+                FROM submission a
                 WHERE a.question_type LIKE 'skill-map%'
                 ORDER BY a.created_at DESC
                 LIMIT 100
@@ -280,7 +280,7 @@ def test_performance_guard_history_and_overview_queries_avoid_seq_scan() -> None
 
         assert "Limit" in overview_nodes
         assert "Seq Scan" not in overview_nodes
-        assert any(name in {"idx_answer_question_type_created_at", "idx_answer_created_at"} for name in overview_index_names)
+        assert any(name in {"idx_submission_question_type_created_at", "idx_submission_created_at"} for name in overview_index_names)
     finally:
         try:
             asyncio.run(_cleanup_performance_fixture(conn))
@@ -306,7 +306,7 @@ def test_performance_guard_latest_feedback_query_uses_index_path() -> None:
                 SELECT fe.feedback
                 FROM coach_feedback_events fe
                 WHERE fe.feedback_stage = 'live'
-                  AND fe.answer_id = $1
+                  AND fe.submission_id = $1
                 ORDER BY fe.created_at DESC
                 LIMIT 1
                 """,
@@ -319,7 +319,7 @@ def test_performance_guard_latest_feedback_query_uses_index_path() -> None:
 
         assert "Seq Scan" not in node_types
         assert any(
-            name in {"idx_coach_feedback_events_answer_id", "idx_coach_feedback_events_stage_created"}
+            name in {"idx_coach_feedback_events_submission_id", "idx_coach_feedback_events_stage_created"}
             for name in index_names
         )
     finally:

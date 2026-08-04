@@ -13,7 +13,7 @@ from app.repositories.attempts_repository import (
     fetch_skill_map_overview_algorithm_rows,
     fetch_skill_map_overview_attempt_rows,
     fetch_skill_map_overview_generated_rows,
-    insert_answer_attempt_row,
+    insert_submission_attempt_row,
 )
 from app.repositories.types import (
     AlgorithmSkillRow,
@@ -194,6 +194,7 @@ def _build_ghost_rep_activity(
     attempt_rows: list[SkillMapOverviewAttemptRow],
     slug_to_pattern: dict[str, str],
     methods_by_pattern_slug: dict[str, list[str]],
+    core_card_counts: dict[str, int] | None = None,
     window_days: int = 42,
 ) -> SkillMapGhostRepActivity:
     today = datetime.now(timezone.utc).date()
@@ -205,6 +206,7 @@ def _build_ghost_rep_activity(
     skill_counts_by_day_type_algorithm: dict[tuple[str, str, str], Counter[str]] = {}
     algorithm_ghost_totals: Counter[str] = Counter()
     algorithm_mcq_totals: Counter[str] = Counter()
+    algorithm_perfect_recall_totals: Counter[str] = Counter()
     last_ghost_seen_by_algorithm: dict[str, date] = {}
     last_work_seen_by_algorithm: dict[str, date] = {}
 
@@ -215,12 +217,19 @@ def _build_ghost_rep_activity(
         category_tags = [str(tag) for tag in (row["category_tags"] or [])]
         is_mcq = "skill-map-mcq" in category_tags
         is_ghost_rep = str(row["support_layer"] or "none") == "ghost-reps"
-        if not is_ghost_rep and not is_mcq:
+        is_perfect_total_recall = (
+            str(row.get("activity_format") or "") == "recall"
+            and not is_ghost_rep
+            and float(row.get("accuracy") or 0) >= 100
+        )
+        if not is_ghost_rep and not is_mcq and not is_perfect_total_recall:
             continue
         matched_algorithm_slugs = [tag for tag in category_tags if tag in known_algorithm_slugs]
         if not matched_algorithm_slugs:
             continue
         work_type = "multiple-choice" if is_mcq else "ghost-reps"
+        if is_perfect_total_recall:
+            work_type = "total-recall"
         attempt_date = created_at.date()
         iso_date = attempt_date.isoformat()
         for slug in matched_algorithm_slugs:
@@ -233,6 +242,8 @@ def _build_ghost_rep_activity(
             skill_slug = matched_skill_slugs[0] if matched_skill_slugs else "unclassified"
             if is_mcq:
                 algorithm_mcq_totals[slug] += 1
+            elif is_perfect_total_recall:
+                algorithm_perfect_recall_totals[slug] += 1
             else:
                 algorithm_ghost_totals[slug] += 1
             if attempt_date >= window_start:
@@ -253,6 +264,7 @@ def _build_ghost_rep_activity(
         total = sum(day_counts.values())
         ghost_rep_count = sum(count for (work_type, _slug), count in day_counts.items() if work_type == "ghost-reps")
         multiple_choice_count = sum(count for (work_type, _slug), count in day_counts.items() if work_type == "multiple-choice")
+        total_recall_count = sum(count for (work_type, _slug), count in day_counts.items() if work_type == "total-recall")
         if total > 0:
             active_days += 1
         peak_daily_count = max(peak_daily_count, total)
@@ -261,6 +273,7 @@ def _build_ghost_rep_activity(
             "total": total,
             "ghostRepCount": ghost_rep_count,
             "multipleChoiceCount": multiple_choice_count,
+            "totalRecallCount": total_recall_count,
             "segments": [
                 {
                     "algorithm": slug_to_algorithm[slug],
@@ -300,7 +313,13 @@ def _build_ghost_rep_activity(
             "slug": slug,
             "totalGhostReps": int(algorithm_ghost_totals.get(slug, 0)),
             "totalMultipleChoice": int(algorithm_mcq_totals.get(slug, 0)),
-            "totalWork": int(algorithm_ghost_totals.get(slug, 0) + algorithm_mcq_totals.get(slug, 0)),
+            "totalPerfectRecalls": int(algorithm_perfect_recall_totals.get(slug, 0)),
+            "totalWork": int(
+                algorithm_ghost_totals.get(slug, 0)
+                + algorithm_mcq_totals.get(slug, 0)
+                + algorithm_perfect_recall_totals.get(slug, 0)
+            ),
+            "coreCardCount": int((core_card_counts or {}).get(slug, 0)),
             "daysSinceLastGhostRep": (today - last_ghost_seen_by_algorithm[slug]).days if slug in last_ghost_seen_by_algorithm else None,
             "daysSinceLastPractice": (today - last_work_seen_by_algorithm[slug]).days if slug in last_work_seen_by_algorithm else None,
         }
@@ -312,6 +331,7 @@ def _build_ghost_rep_activity(
         "windowEnd": today.isoformat(),
         "totalGhostReps": sum(day["ghostRepCount"] for day in days),
         "totalMultipleChoice": sum(day["multipleChoiceCount"] for day in days),
+        "totalPerfectRecalls": sum(day["totalRecallCount"] for day in days),
         "workCount": sum(day["total"] for day in days),
         "activeDays": active_days,
         "peakDailyCount": peak_daily_count,
@@ -780,7 +800,12 @@ def build_skill_map_overview(
         "summary": summary,
         "algorithms": algorithm_summaries,
         "reviewQueue": review_queue,
-        "ghostRepActivity": _build_ghost_rep_activity(attempt_rows, slug_to_pattern, methods_by_pattern_slug),
+        "ghostRepActivity": _build_ghost_rep_activity(
+            attempt_rows,
+            slug_to_pattern,
+            methods_by_pattern_slug,
+            {slug: len(card_ids_by_pattern.get(slug, set())) for slug in known_pattern_slugs},
+        ),
         "spacedRepetition": _build_spaced_repetition(
             attempt_rows,
             card_ids_by_pattern,
@@ -813,11 +838,7 @@ async def create_attempt(body: AttemptCreate) -> AttemptSaveResult:
         body.submissionRubric
         or (body.coachFeedback or {}).get("submissionRubric")
     )
-    mcq_detail = body.mcqDetail.model_dump() if body.mcqDetail else None
-    skill_evidence = [item.model_dump() for item in body.skillEvidence]
-    misconception_signals = [item.model_dump() for item in body.misconceptionSignals]
-
-    row = await insert_answer_attempt_row(
+    row = await insert_submission_attempt_row(
         card_id=body.cardId,
         card_title=body.cardTitle,
         question=body.question,
@@ -842,9 +863,6 @@ async def create_attempt(body: AttemptCreate) -> AttemptSaveResult:
         target_source=body.targetSource,
         target_control=body.targetControl,
         format_control=body.formatControl,
-        mcq_detail=mcq_detail,
-        skill_evidence=skill_evidence,
-        misconception_signals=misconception_signals,
         created_at=now,
         updated_at=now,
     )

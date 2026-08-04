@@ -1,4 +1,4 @@
-INSERT INTO question (
+INSERT INTO multiple_choice_problem (
     id,
     user_id,
     question_text,
@@ -10,7 +10,7 @@ INSERT INTO question (
     modified_date
 )
 VALUES (
-    'fx-parity-q1',
+    'mcq-fx-parity-q1',
     '0000',
     'Given a sorted array, return the first index whose value is >= target.',
     '',
@@ -22,11 +22,11 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO answer (
+INSERT INTO submission (
     id,
     session_id,
     user_id,
-    question_id,
+    multiple_choice_problem_id,
     answer,
     question_type,
     category_tags,
@@ -51,7 +51,7 @@ VALUES (
     910001,
     'fx-parity-session-1',
     '0000',
-    'fx-parity-q1',
+    'mcq-fx-parity-q1',
     'while left <= right: ...',
     'skill-map',
     ARRAY['skill-map', 'binary-search', 'fx-parity-tag'],
@@ -78,7 +78,7 @@ INSERT INTO coach_feedback_events (
     id,
     interaction_id,
     card_id,
-    answer_id,
+    submission_id,
     generated_card_id,
     question_type,
     feedback_stage,
