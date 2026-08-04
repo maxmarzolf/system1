@@ -97,6 +97,7 @@ class SkillMapOverviewAttemptRow(TypedDict):
     tracked_card_id: str
     card_title: str
     category_tags: list[str] | None
+    question_type: str | None
     accuracy: float
     exact: bool
     created_at: datetime

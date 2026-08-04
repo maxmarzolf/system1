@@ -367,6 +367,16 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                     ALTER TABLE submission
                     ALTER COLUMN id SET DEFAULT nextval('submission_id_seq');
                     ALTER SEQUENCE submission_id_seq OWNED BY submission.id;
+
+                    -- Historical imports preserve their original IDs, so the
+                    -- sequence can lag behind the existing ledger. Realign it
+                    -- before accepting another submission to prevent duplicate
+                    -- primary-key failures.
+                    PERFORM setval(
+                        'public.submission_id_seq',
+                        GREATEST((SELECT COALESCE(MAX(id), 0) + 1 FROM submission), 1),
+                        false
+                    );
                 END IF;
 
                 IF to_regclass('public.coach_feedback_events') IS NOT NULL

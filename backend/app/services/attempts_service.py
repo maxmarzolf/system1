@@ -215,7 +215,11 @@ def _build_ghost_rep_activity(
         if created_at is None:
             continue
         category_tags = [str(tag) for tag in (row["category_tags"] or [])]
-        is_mcq = "skill-map-mcq" in category_tags
+        is_mcq = (
+            str(row.get("activity_format") or "") == "multiple-choice"
+            or str(row.get("question_type") or "").startswith("skill-map-mcq")
+            or "skill-map-mcq" in category_tags
+        )
         is_ghost_rep = str(row["support_layer"] or "none") == "ghost-reps"
         is_perfect_total_recall = (
             str(row.get("activity_format") or "") == "recall"
@@ -650,7 +654,11 @@ def build_skill_map_overview(
         if not card_id:
             continue
         category_tags = [str(tag) for tag in (row["category_tags"] or [])]
-        if "skill-map-mcq" in category_tags:
+        if (
+            str(row.get("activity_format") or "") == "multiple-choice"
+            or str(row.get("question_type") or "").startswith("skill-map-mcq")
+            or "skill-map-mcq" in category_tags
+        ):
             continue
         template_mode = str(row["template_mode"] or "algorithm").strip() or "algorithm"
         support_layer = str(row["support_layer"] or "none")

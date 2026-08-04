@@ -132,6 +132,7 @@ def test_skill_map_overview_endpoint_contract(monkeypatch) -> None:
                 "windowEnd": "2026-05-24",
                 "totalGhostReps": 0,
                 "totalMultipleChoice": 0,
+                "totalPerfectRecalls": 3,
                 "workCount": 1,
                 "activeDays": 1,
                 "peakDailyCount": 1,
@@ -161,3 +162,4 @@ def test_skill_map_overview_endpoint_contract(monkeypatch) -> None:
     assert "reviewQueue" in payload
     assert "ghostRepActivity" in payload
     assert payload["algorithms"][0]["slug"] == "sliding-window"
+    assert payload["ghostRepActivity"]["totalPerfectRecalls"] == 3

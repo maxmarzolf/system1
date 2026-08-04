@@ -895,6 +895,56 @@
   margin: 0.15rem 0 0;
 }
 
+.daily-work-history-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  color: var(--hc-fg-dim);
+}
+
+.daily-work-history-title .dashboard-activity-eyebrow {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.daily-work-history-title-divider {
+  width: 1px;
+  height: 1rem;
+  margin: 0 0.5rem;
+  overflow: hidden;
+  background: var(--hc-border-dim);
+  color: transparent;
+  flex-shrink: 0;
+}
+
+.daily-work-history-title button {
+  min-height: unset;
+  padding: 0.22rem 0.48rem;
+  border: 0;
+  border-left: 1px solid var(--hc-border-dim);
+  background: transparent;
+  color: var(--hc-fg-dim);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.daily-work-history-title button:first-of-type {
+  border-left: 0;
+}
+
+.daily-work-history-title button:hover,
+.daily-work-history-title button:focus-visible,
+.daily-work-history-title button.active {
+  color: var(--hc-fg);
+}
+
+.daily-work-history-title button.active {
+  background: color-mix(in srgb, var(--hc-accent) 16%, var(--hc-bg));
+  box-shadow: inset 0 -1px 0 var(--hc-accent);
+}
+
 .repetition-outlook {
   display: grid;
   gap: 0.85rem;
@@ -1464,14 +1514,15 @@
 }
 
 .daily-work-history-cell-total-recall {
-  border-color: color-mix(in srgb, var(--hc-warning) var(--daily-work-history-recall-glow), var(--hc-border-dim));
-  background: radial-gradient(
-    circle at 50% 45%,
-    color-mix(in srgb, var(--hc-warning) var(--daily-work-history-recall-glow), white) 0 18%,
-    color-mix(in srgb, var(--hc-warning) var(--daily-work-history-recall-glow), var(--hc-bg)) 100%
-  );
-  box-shadow: 0 0 12px color-mix(in srgb, var(--hc-warning) var(--daily-work-history-recall-glow), transparent);
+  border-color: color-mix(in srgb, var(--hc-warning) 72%, var(--hc-border-dim));
+  background: color-mix(in srgb, var(--hc-warning) var(--daily-work-history-cell-alpha), var(--hc-bg));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--hc-warning) 28%, transparent);
   color: var(--hc-warning);
+}
+
+.daily-work-history-cell-multiple-choice.daily-work-history-cell-active {
+  border-color: color-mix(in srgb, #bf7af0 72%, var(--hc-border-dim));
+  background: color-mix(in srgb, #bf7af0 var(--daily-work-history-cell-alpha), var(--hc-bg));
 }
 
 .daily-work-history-trophy {

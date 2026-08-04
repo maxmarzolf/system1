@@ -375,6 +375,7 @@ class SkillMapGhostRepActivityDay(BaseModel):
     total: int = Field(default=0, ge=0)
     ghostRepCount: int = Field(default=0, ge=0)
     multipleChoiceCount: int = Field(default=0, ge=0)
+    totalRecallCount: int = Field(default=0, ge=0)
     segments: list[SkillMapGhostRepSegment] = []
 
 
@@ -383,7 +384,9 @@ class SkillMapGhostRepAlgorithm(BaseModel):
     slug: str = ""
     totalGhostReps: int = Field(default=0, ge=0)
     totalMultipleChoice: int = Field(default=0, ge=0)
+    totalPerfectRecalls: int = Field(default=0, ge=0)
     totalWork: int = Field(default=0, ge=0)
+    coreCardCount: int = Field(default=0, ge=0)
     daysSinceLastGhostRep: int | None = Field(default=None, ge=0)
     daysSinceLastPractice: int | None = Field(default=None, ge=0)
 
@@ -393,6 +396,7 @@ class SkillMapGhostRepActivity(BaseModel):
     windowEnd: str = ""
     totalGhostReps: int = Field(default=0, ge=0)
     totalMultipleChoice: int = Field(default=0, ge=0)
+    totalPerfectRecalls: int = Field(default=0, ge=0)
     workCount: int = Field(default=0, ge=0)
     activeDays: int = Field(default=0, ge=0)
     peakDailyCount: int = Field(default=0, ge=0)
