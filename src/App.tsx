@@ -12,10 +12,11 @@ import { loadStoredSpecimenTuning } from './specimenTuning'
 import type { SpecimenTuning } from './specimenTuning'
 import { loadStoredCodeEditorTuning } from './codeEditorTuning'
 import { loadStoredMcqTuning, type McqFlowMode, type McqSourceMode } from './mcqTuning'
+import { loadStoredGooglePlaylistTuning, type GooglePlaylistOrder } from './googlePlaylistTuning'
 import { apiUrl } from './api'
 import { providerDisplayLabel, useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
-import { useTheme } from './theme'
+import { useTheme, type AppTheme } from './theme'
 import RecallCodeEditor, { type RecallCodeEditorHandle, type RecallEditorLineMeta } from './RecallCodeEditor'
 import FeedbackRails, { type FeedbackRailModel } from './FeedbackRails'
 import {
@@ -87,6 +88,7 @@ type PracticeFlowState = {
 
 const FLOW_GHOST_REP_TARGET = 5
 const FLOW_MCQ_TARGET = 5
+const CARD_MOVE_DOUBLE_TAP_WINDOW_MS = 350
 const SUBMISSION_FEEDBACK_ENABLED = true
 const INLINE_FEEDBACK_ENABLED = true
 const LIVE_FEEDBACK_ENABLED = true
@@ -497,6 +499,29 @@ const requestCoreAlgorithmDrillsByTag = (tagSlug: string, count = 10) => {
     .then(async (response) => {
       if (!response.ok) {
         throw new Error('Unable to load tagged core algorithms')
+      }
+      return (await response.json()) as SkillMapDrillsResponse
+    })
+    .finally(() => {
+      if (skillMapDeckRequestCache.get(requestKey) === request) {
+        skillMapDeckRequestCache.delete(requestKey)
+      }
+    })
+
+  skillMapDeckRequestCache.set(requestKey, request)
+  return request
+}
+
+const requestStaticPlaylistDrills = (playlistSlug: string, order: GooglePlaylistOrder) => {
+  const requestKey = `static-playlist:${playlistSlug}:${order}`
+  const existingRequest = skillMapDeckRequestCache.get(requestKey)
+  if (existingRequest) return existingRequest
+
+  const params = new URLSearchParams({ order })
+  const request = fetch(apiUrl(`/api/coach/playlist-drills/${encodeURIComponent(playlistSlug)}?${params.toString()}`))
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new Error('Unable to load static playlist')
       }
       return (await response.json()) as SkillMapDrillsResponse
     })
@@ -2172,16 +2197,47 @@ const renderInlineMarkdownText = (text: string) => {
 function MarkdownCodeContent({
   text,
   syntaxTheme,
+  theme,
   compact = false,
+  editorBlocks = false,
 }: {
   text: string
   syntaxTheme: Record<string, CSSProperties>
+  theme?: AppTheme
   compact?: boolean
+  editorBlocks?: boolean
 }) {
+  const Wrapper = editorBlocks ? 'div' : 'span'
+
   return (
-    <span className={compact ? 'multiple-choice-markdown compact' : 'multiple-choice-markdown'}>
+    <Wrapper className={compact ? 'multiple-choice-markdown compact' : 'multiple-choice-markdown'}>
       {parseMarkdownCodeSegments(text).map((segment, index) => {
         if (segment.type === 'code') {
+          const normalizedCode = normalizePythonCodeForDisplay(segment.code, segment.language)
+          const lineCount = Math.max(normalizedCode.split('\n').length, 1)
+          const snippetMinHeight = Math.min(Math.max(lineCount * 19 + 30, 82), 240)
+
+          if (editorBlocks && theme) {
+            return (
+              <div key={index} className="multiple-choice-code-editor-block">
+                <RecallCodeEditor
+                  value={normalizedCode}
+                  language={segment.language}
+                  theme={theme}
+                  editable={false}
+                  placeholder=""
+                  lineMeta={[]}
+                  minHeight={snippetMinHeight}
+                  intellisense={false}
+                  commonPatterns={false}
+                  className="recall-code-editor-snippet"
+                  onChange={() => undefined}
+                  onSubmitHotkey={() => undefined}
+                />
+              </div>
+            )
+          }
+
           return (
             <span key={index} className="multiple-choice-code-text-block">
               <SyntaxHighlighter
@@ -2210,7 +2266,7 @@ function MarkdownCodeContent({
                   },
                 }}
               >
-                {normalizePythonCodeForDisplay(segment.code, segment.language)}
+                {normalizedCode}
               </SyntaxHighlighter>
             </span>
           )
@@ -2222,7 +2278,7 @@ function MarkdownCodeContent({
           </span>
         )
       })}
-    </span>
+    </Wrapper>
   )
 }
 
@@ -2305,8 +2361,10 @@ function App() {
   const [sessionPlanLoading, setSessionPlanLoading] = useState(false)
   const [sessionPlanError, setSessionPlanError] = useState('')
   const mcqTuning = useMemo(() => loadStoredMcqTuning(), [])
+  const googlePlaylistTuning = useMemo(() => loadStoredGooglePlaylistTuning(), [])
   const multipleChoiceQuestionCount = mcqTuning.questionCount
   const mainInputRef = useRef<RecallCodeEditorHandle | null>(null)
+  const lastCardMoveKeyRef = useRef<{ key: 'ArrowLeft' | 'ArrowRight', pressedAt: number } | null>(null)
   const shouldFocusMainInputRef = useRef(false)
   const pendingGhostFocusLineRef = useRef<number | null>(null)
   const previewCodeContainerRef = useRef<HTMLDivElement | null>(null)
@@ -2462,6 +2520,14 @@ function App() {
         return
       }
 
+      if (requestedPlaylist.staticDeck) {
+        const payload = await requestStaticPlaylistDrills(requestedPlaylist.slug, googlePlaylistTuning.order)
+        if (skillMapDeckRequestVersionRef.current !== requestVersion) return
+        setSkillMapDeck(payload.drills)
+        setSkillMapSessionVersion((prev) => prev + 1)
+        return
+      }
+
       const result = await requestSkillMapDrillsStream(
         requestBody,
         (drill) => {
@@ -2473,6 +2539,14 @@ function App() {
       setSkillMapDeck(result.drills)
       setSkillMapSessionVersion((prev) => prev + 1)
     } catch {
+      if (requestedPlaylist?.staticDeck) {
+        if (skillMapDeckRequestVersionRef.current !== requestVersion) return
+        setSkillMapDeck([])
+        setSkillMapSessionVersion((prev) => prev + 1)
+        setSkillMapError('Static playlist is unavailable right now.')
+        return
+      }
+
       // Fallback to non-streaming endpoint
       try {
         const payload = await requestSkillMapDrills(requestBody)
@@ -2660,7 +2734,7 @@ function App() {
   useEffect(() => {
     void fetchSkillMapDeck()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedPatternSlug, focusedTagSlug, llmProvider, requestLlmProvider, requestedQuestionType, requestedSkillMapSignature, requestedTemplateMode, skillMapRefreshToken])
+  }, [focusedPatternSlug, focusedTagSlug, googlePlaylistTuning.order, llmProvider, requestLlmProvider, requestedQuestionType, requestedSkillMapSignature, requestedTemplateMode, skillMapRefreshToken])
 
   useEffect(() => {
     if (practiceMode !== 'multiple-choice') return
@@ -4140,16 +4214,29 @@ function App() {
   useEffect(() => {
     if (isFlowActive) return
     const handler = (event: KeyboardEvent) => {
-      if (matchesHotkey(event, 'move-cards') && event.key === 'ArrowLeft') {
-        event.preventDefault()
-        if (canGoPrev) goPrev()
-        return
-      }
+      if (
+        event.repeat
+        || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')
+        || event.metaKey
+        || event.ctrlKey
+        || event.altKey
+        || event.shiftKey
+      ) return
 
-      if (matchesHotkey(event, 'move-cards') && event.key === 'ArrowRight') {
-        event.preventDefault()
-        if (canGoNext) goNext()
-      }
+      const now = performance.now()
+      const previousPress = lastCardMoveKeyRef.current
+      const doubleTapped = previousPress?.key === event.key
+        && now - previousPress.pressedAt <= CARD_MOVE_DOUBLE_TAP_WINDOW_MS
+
+      lastCardMoveKeyRef.current = doubleTapped
+        ? null
+        : { key: event.key, pressedAt: now }
+
+      if (!doubleTapped) return
+
+      event.preventDefault()
+      if (event.key === 'ArrowLeft' && canGoPrev) goPrev()
+      if (event.key === 'ArrowRight' && canGoNext) goNext()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -4669,7 +4756,12 @@ function App() {
               ) : activeMultipleChoiceCard ? (
                 <div className="multiple-choice-question-panel">
                   <div className="prompt multiple-choice-question">
-                    <MarkdownCodeContent text={activeMultipleChoiceCard.question} syntaxTheme={syntaxTheme} />
+                    <MarkdownCodeContent
+                      text={activeMultipleChoiceCard.question}
+                      syntaxTheme={syntaxTheme}
+                      theme={theme}
+                      editorBlocks
+                    />
                   </div>
                 </div>
               ) : null

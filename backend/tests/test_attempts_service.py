@@ -158,6 +158,92 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
     assert overview["summary"]["workCount"] == 4
 
 
+def test_skill_map_overview_counts_static_catalog_cards() -> None:
+    now = datetime.now(timezone.utc)
+
+    overview = build_skill_map_overview(
+        algorithm_rows=[
+            {"algorithm_id": 1, "algorithm_name": "Arrays / Hash Maps", "skill_name": None},
+            {"algorithm_id": 2, "algorithm_name": "Sliding Window", "skill_name": "valid window rule"},
+        ],
+        generated_rows=[
+            {"id": "playlist-google-1-two-sum", "title": "1. Two Sum", "tags": ["skill-map", "static-playlist", "google", "arrays-hash-maps"]},
+            {"id": "playlist-google-3-longest-substring-without-repeating-characters", "title": "3. Longest Substring Without Repeating Characters", "tags": ["skill-map", "static-playlist", "google", "sliding-window", "valid-window-rule"]},
+            {"id": "playlist-google-skeletons-bfs-skeleton", "title": "BFS Skeleton", "tags": ["skill-map", "static-playlist", "google-skeletons", "graphs", "bfs-skeleton"]},
+        ],
+        attempt_rows=[
+            {
+                "tracked_card_id": "playlist-google-1-two-sum",
+                "card_title": "1. Two Sum",
+                "category_tags": ["skill-map", "static-playlist", "google", "arrays-hash-maps"],
+                "question_type": "playlist:google:algorithm",
+                "accuracy": 100,
+                "exact": True,
+                "created_at": now,
+                "template_mode": "algorithm",
+                "support_layer": "none",
+                "activity_format": "recall",
+                "live_coach_used": False,
+                "submission_rubric": {},
+            },
+            {
+                "tracked_card_id": "playlist-google-skeletons-bfs-skeleton",
+                "card_title": "BFS Skeleton",
+                "category_tags": ["skill-map", "static-playlist", "google-skeletons", "graphs", "bfs-skeleton"],
+                "question_type": "playlist:google-skeletons:algorithm",
+                "accuracy": 100,
+                "exact": True,
+                "created_at": now,
+                "template_mode": "algorithm",
+                "support_layer": "none",
+                "activity_format": "recall",
+                "live_coach_used": False,
+                "submission_rubric": {},
+            }
+        ],
+    )
+
+    arrays = next(item for item in overview["algorithms"] if item["slug"] == "arrays-hash-maps")
+    sliding = next(item for item in overview["algorithms"] if item["slug"] == "sliding-window")
+    google = next(item for item in overview["algorithms"] if item["slug"] == "google")
+    google_skeletons = next(item for item in overview["algorithms"] if item["slug"] == "google-skeletons")
+
+    assert arrays["totalCards"] == 1
+    assert arrays["untouchedCards"] == 0
+    assert arrays["overallAttemptCount"] == 1
+    assert sliding["totalCards"] == 1
+    assert sliding["untouchedCards"] == 1
+    assert google["totalCards"] == 2
+    assert google["overallAttemptCount"] == 1
+    assert google_skeletons["totalCards"] == 1
+    assert google_skeletons["overallAttemptCount"] == 1
+    assert overview["summary"]["totalGeneratedCards"] == 3
+
+    today_bucket = next(
+        day for day in overview["ghostRepActivity"]["days"]
+        if day["date"] == now.date().isoformat()
+    )
+    assert overview["ghostRepActivity"]["totalPerfectRecalls"] == 2
+    assert today_bucket["totalRecallCount"] == 2
+    assert today_bucket["total"] == 2
+    assert [segment["slug"] for segment in today_bucket["segments"]] == [
+        "google",
+        "google-skeletons",
+    ]
+    google_activity = next(
+        item for item in overview["ghostRepActivity"]["algorithms"]
+        if item["slug"] == "google"
+    )
+    skeleton_activity = next(
+        item for item in overview["ghostRepActivity"]["algorithms"]
+        if item["slug"] == "google-skeletons"
+    )
+    assert google_activity["totalPerfectRecalls"] == 1
+    assert google_activity["coreCardCount"] == 2
+    assert skeleton_activity["totalPerfectRecalls"] == 1
+    assert skeleton_activity["coreCardCount"] == 1
+
+
 def test_spaced_repetition_schedules_algorithm_and_method_tracks_after_ghost_reps() -> None:
     now = datetime.now(timezone.utc)
     today = now.replace(hour=12, minute=0, second=0, microsecond=0)

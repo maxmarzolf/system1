@@ -15,6 +15,7 @@ from app.repositories.attempts_repository import (
     fetch_skill_map_overview_generated_rows,
     insert_submission_attempt_row,
 )
+from app.core.static_playlists import static_playlist_activity_rows, static_playlist_overview_rows
 from app.repositories.types import (
     AlgorithmSkillRow,
     SkillMapOverviewAlgorithmRow,
@@ -195,6 +196,7 @@ def _build_ghost_rep_activity(
     slug_to_pattern: dict[str, str],
     methods_by_pattern_slug: dict[str, list[str]],
     core_card_counts: dict[str, int] | None = None,
+    primary_activity_slugs: set[str] | None = None,
     window_days: int = 42,
 ) -> SkillMapGhostRepActivity:
     today = datetime.now(timezone.utc).date()
@@ -229,6 +231,13 @@ def _build_ghost_rep_activity(
         if not is_ghost_rep and not is_mcq and not is_perfect_total_recall:
             continue
         matched_algorithm_slugs = [tag for tag in category_tags if tag in known_algorithm_slugs]
+        primary_matches = [
+            slug
+            for slug in matched_algorithm_slugs
+            if slug in (primary_activity_slugs or set())
+        ]
+        if "static-playlist" in category_tags and primary_matches:
+            matched_algorithm_slugs = primary_matches
         if not matched_algorithm_slugs:
             continue
         work_type = "multiple-choice" if is_mcq else "ghost-reps"
@@ -608,7 +617,8 @@ def build_skill_map_overview(
         if row["skill_name"]:
             grouped[algorithm_id]["skills"].append(str(row["skill_name"]))
 
-    algorithms = list(grouped.values())
+    static_playlist_algorithms = static_playlist_activity_rows()
+    algorithms = [*list(grouped.values()), *static_playlist_algorithms]
     slug_to_algorithm = {str(item["slug"]): str(item["algorithm"]) for item in algorithms}
     skills_by_algorithm_slug = {
         str(item["slug"]): [str(skill) for skill in item["skills"]]
@@ -636,6 +646,8 @@ def build_skill_map_overview(
             "title": str(row["title"] or ""),
             "algorithmSlugs": matched_algorithm_slugs,
         }
+        for slug in matched_algorithm_slugs:
+            card_ids_by_algorithm.setdefault(slug, set()).add(str(row["id"]))
         for slug in matched_pattern_slugs:
             card_ids_by_pattern.setdefault(slug, set()).add(str(row["id"]))
             for method in methods_by_pattern_slug.get(slug, []):
@@ -813,6 +825,7 @@ def build_skill_map_overview(
             slug_to_pattern,
             methods_by_pattern_slug,
             {slug: len(card_ids_by_pattern.get(slug, set())) for slug in known_pattern_slugs},
+            {str(item["slug"]) for item in static_playlist_algorithms},
         ),
         "spacedRepetition": _build_spaced_repetition(
             attempt_rows,
@@ -886,6 +899,9 @@ async def get_skill_map() -> list[SkillMapNode]:
 
 async def get_skill_map_overview() -> SkillMapOverviewPayload:
     algorithm_rows = await fetch_skill_map_overview_algorithm_rows()
-    generated_rows = await fetch_skill_map_overview_generated_rows()
+    generated_rows = [
+        *await fetch_skill_map_overview_generated_rows(),
+        *static_playlist_overview_rows(),
+    ]
     attempt_rows = await fetch_skill_map_overview_attempt_rows()
     return build_skill_map_overview(algorithm_rows, generated_rows, attempt_rows)

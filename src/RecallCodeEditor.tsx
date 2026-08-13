@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
+import { forwardRef, type CSSProperties, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import { Compartment, EditorSelection, EditorState, Prec, RangeSetBuilder, type Extension } from '@codemirror/state'
 import {
   crosshairCursor,
@@ -86,6 +86,7 @@ type RecallCodeEditorProps = {
   commonPatterns?: boolean
   foldControls?: boolean
   showSearchPanel?: boolean
+  className?: string
   onChange: (nextValue: string, context: { cursorLineNumber: number }) => void
   onSubmitHotkey: () => void
   onEnterKey?: (context: { value: string, cursorLineNumber: number }) => boolean
@@ -597,6 +598,7 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
     commonPatterns = true,
     foldControls = false,
     showSearchPanel = false,
+    className,
     onChange,
     onSubmitHotkey,
     onEnterKey,
@@ -659,7 +661,7 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
       if (!view) return Math.max(value.split('\n').length, 1)
       return view.state.doc.lineAt(view.state.selection.main.head).number
     },
-  }), [value.length])
+  }), [value])
 
   useEffect(() => {
     if (!hostRef.current) return
@@ -786,11 +788,18 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
     })
   }, [searchPanelCompartment, showSearchPanel])
 
+  const editorStyle = minHeight
+    ? ({
+      minHeight,
+      '--recall-editor-min-height': `${minHeight}px`,
+    } as CSSProperties)
+    : undefined
+
   return (
     <div
       ref={hostRef}
-      className="recall-code-editor"
-      style={minHeight ? { minHeight } : undefined}
+      className={['recall-code-editor', className].filter(Boolean).join(' ')}
+      style={editorStyle}
     />
   )
 })

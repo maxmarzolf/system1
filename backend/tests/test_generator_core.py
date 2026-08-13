@@ -209,6 +209,36 @@ def test_focused_generator_context_preserves_dashboard_method_order(progress_sum
     assert "target-locked" in context.system_prompt
 
 
+def test_playlist_generator_context_accepts_google_sized_deck(progress_summary) -> None:
+    request = SkillMapDrillsRequest(
+        questionType="playlist:google",
+        count=50,
+        templateMode=TemplateMode.algorithm,
+        skillMap=[
+            SkillMapNode(
+                algorithm="Sliding Window",
+                skills=[f"{index}. Problem", "Tier 1: Must Know"],
+                questionTitle=f"{index}. Problem",
+                playlistSlug="google",
+            )
+            for index in range(1, 51)
+        ],
+    )
+
+    context = build_generator_context(
+        request,
+        progress_summary,
+        provider="openai",
+        provider_label="ChatGPT",
+        tuning=GeneratorTuning(),
+    )
+
+    assert len(context.generation_skill_map) == 50
+    assert len(context.llm_payload["skillMap"]) == 50
+    assert context.llm_payload["skillMap"][49]["questionTitle"] == "50. Problem"
+    assert context.llm_payload["skillMap"][49]["playlistSlug"] == "google"
+
+
 def test_focused_core_algorithm_catalog_covers_dashboard_methods() -> None:
     dashboard_skill_map = [
         ("Sliding Window", ["fixed vs variable window", "expand / shrink rhythm", "frequency maps", "valid window rule", "window score updates"]),

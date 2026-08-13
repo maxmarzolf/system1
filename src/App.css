@@ -359,7 +359,8 @@
 
 .multiple-choice-question-panel {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.7rem;
+  min-width: 0;
 }
 
 .multiple-choice-question {
@@ -370,18 +371,18 @@
 
 .multiple-choice-markdown {
   display: grid;
-  gap: 0.08rem;
+  gap: 0.55rem;
   min-width: 0;
 }
 
 .multiple-choice-markdown.compact {
-  gap: 0.06rem;
+  gap: 0.2rem;
 }
 
 .multiple-choice-text-block {
   display: block;
   min-width: 0;
-  line-height: 1.38;
+  line-height: 1.52;
   white-space: pre-wrap;
 }
 
@@ -391,20 +392,28 @@
 
 .multiple-choice-inline-code {
   display: inline;
-  padding: 0.08rem 0.24rem;
-  border: 1px solid var(--hc-border-dim);
-  background: var(--hc-editor-bg);
+  padding: 0.07rem 0.26rem 0.09rem;
+  border: 1px solid color-mix(in srgb, var(--hc-border-dim) 70%, transparent);
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--hc-editor-bg) 86%, var(--hc-accent));
   color: var(--hc-code-fg);
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   font-size: 0.92em;
+}
+
+.multiple-choice-code-editor-block {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .multiple-choice-code-text-block {
   display: block;
   min-width: 0;
   overflow-x: auto;
-  padding: 1rem 0;
-  border: 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--hc-border-dim) 64%, transparent);
+  border-radius: 0.38rem;
   background: var(--hc-editor-bg);
   color: var(--hc-code-fg);
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
@@ -414,26 +423,28 @@
 }
 
 .multiple-choice-option .multiple-choice-code-text-block {
-  margin-top: 0.15rem;
-  padding: 0.12rem 0;
+  margin-top: 0.3rem;
+  padding: 0.45rem 0.55rem;
   font-size: 0.72rem;
 }
 
 .multiple-choice-card {
   display: grid;
-  gap: 0.85rem;
+  gap: 0.9rem;
+  min-width: 0;
 }
 
 .multiple-choice-options {
   display: grid;
-  gap: 0.55rem;
+  gap: 0.5rem;
 }
 
 .multiple-choice-reasoning {
   display: grid;
-  gap: 0.4rem;
+  gap: 0.45rem;
   color: var(--hc-fg);
   font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .multiple-choice-reasoning-optional {
@@ -446,10 +457,12 @@
   width: 100%;
   resize: vertical;
   border: 1px solid var(--hc-border-dim);
-  background: var(--hc-input-bg);
+  border-radius: 0.45rem;
+  background: var(--hc-field-gradient);
   color: var(--hc-fg);
-  padding: 0.65rem 0.75rem;
+  padding: 0.7rem 0.8rem;
   font: inherit;
+  font-weight: 400;
   line-height: 1.45;
 }
 
@@ -463,13 +476,19 @@
   min-height: 3.2rem;
   display: grid;
   grid-template-columns: 2rem minmax(0, 1fr);
-  align-items: center;
+  align-items: start;
   gap: 0.7rem;
-  padding: 0.65rem 0.75rem;
+  padding: 0.72rem 0.8rem;
   border: 1px solid var(--hc-border-dim);
+  border-radius: 0.45rem;
   background: var(--hc-mcq-option-bg);
   color: var(--hc-fg);
   text-align: left;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
 }
 
 .multiple-choice-option:has(.multiple-choice-inline-result) {
@@ -479,6 +498,7 @@
 .multiple-choice-option:hover:not(:disabled) {
   border-color: var(--hc-accent);
   background: var(--hc-option-hover-bg);
+  transform: translateY(-1px);
 }
 
 .multiple-choice-option.selected {
@@ -510,7 +530,9 @@
   justify-content: center;
   width: 1.7rem;
   height: 1.7rem;
+  margin-top: 0.05rem;
   border: 1px solid currentColor;
+  border-radius: 0.35rem;
   font-size: 0.78rem;
   font-weight: 800;
 }
@@ -524,9 +546,9 @@
 .multiple-choice-inline-result {
   display: block;
   margin-top: 0.6rem;
-  padding-top: 0.55rem;
-  border-top: 1px solid currentColor;
-  opacity: 0.85;
+  padding-top: 0.6rem;
+  border-top: 1px solid color-mix(in srgb, currentColor 42%, transparent);
+  opacity: 0.9;
 }
 
 .multiple-choice-inline-result-wrong {
@@ -3500,7 +3522,7 @@ button.link:hover {
 }
 
 .recall-code-editor {
-  min-height: 12rem;
+  min-height: var(--recall-editor-min-height, 12rem);
   background: var(--hc-editor-bg);
 }
 
@@ -3516,6 +3538,19 @@ button.link:hover {
 
 .recall-code-editor .cm-content {
   min-height: inherit;
+}
+
+.recall-code-editor-snippet {
+  border-radius: inherit;
+}
+
+.recall-code-editor-snippet .cm-content {
+  padding: 0.45rem 0.75rem;
+}
+
+.recall-code-editor-snippet .cm-lineNumbers .cm-gutterElement {
+  min-width: 2.2rem;
+  padding: 0 0.55rem 0 0.35rem;
 }
 
 .recall-code-editor .cm-line {
@@ -5466,14 +5501,22 @@ button.tune-reset {
 }
 
 .card-shell .card-grid {
-  gap: 1rem;
-  padding: 1.5rem;
+  gap: 0;
+  padding: 0;
   background: var(--workbench-surface-soft);
+}
+
+.card-shell .card-grid > .panel {
+  padding: 1.35rem 1.5rem;
+}
+
+.card-shell .card-grid > .panel + .panel {
+  border-top: 1px solid var(--workbench-edge);
 }
 
 .card-shell .prompt-toggle-card,
 .card-shell .multiple-choice-question-panel {
-  margin: 0 0 1rem;
+  margin: 0;
   padding: 1rem 1.1rem;
   border: 1px solid var(--workbench-edge);
   border-radius: var(--workbench-radius-sm);
@@ -5493,6 +5536,70 @@ button.tune-reset {
 .card-shell .multiple-choice-question {
   font-size: 1rem;
   line-height: 1.6;
+}
+
+.card-shell .multiple-choice-code-editor-block {
+  border: 1px solid var(--workbench-edge-strong);
+  border-radius: var(--workbench-radius-sm);
+  background: var(--hc-editor-bg);
+}
+
+.card-shell .multiple-choice-code-editor-block .recall-code-editor {
+  min-height: var(--recall-editor-min-height, 5rem);
+}
+
+.card-shell .multiple-choice-code-text-block {
+  border-color: var(--workbench-edge);
+  background: color-mix(in srgb, var(--hc-editor-bg) 94%, var(--workbench-surface-raised));
+}
+
+.card-shell .multiple-choice-card {
+  gap: 0.85rem;
+}
+
+.card-shell .multiple-choice-option {
+  border-color: var(--workbench-edge);
+  border-radius: var(--workbench-radius-sm);
+  background: color-mix(in srgb, var(--workbench-surface-raised) 82%, var(--hc-editor-bg));
+}
+
+.card-shell .multiple-choice-option:hover:not(:disabled) {
+  border-color: var(--workbench-edge-strong);
+  background: color-mix(in srgb, var(--hc-option-hover-bg) 62%, var(--workbench-surface-raised));
+}
+
+.card-shell .multiple-choice-option.selected {
+  border-color: var(--workbench-edge-strong);
+  background: color-mix(in srgb, var(--hc-picker-active-bg) 74%, var(--workbench-surface-raised));
+  box-shadow:
+    inset 3px 0 0 var(--hc-accent),
+    0 0 0 1px color-mix(in srgb, var(--hc-accent) 10%, transparent);
+}
+
+.card-shell .multiple-choice-option.correct {
+  border-color: var(--hc-status-chip-success-border);
+  background: color-mix(in srgb, var(--hc-status-chip-success-bg) 76%, var(--workbench-surface-raised));
+}
+
+.card-shell .multiple-choice-option.incorrect {
+  border-color: var(--hc-status-chip-error-border);
+  background: color-mix(in srgb, var(--hc-status-chip-error-bg) 76%, var(--workbench-surface-raised));
+}
+
+.card-shell .multiple-choice-reasoning {
+  padding-top: 0.15rem;
+}
+
+.card-shell .multiple-choice-reasoning textarea {
+  border-color: var(--workbench-edge);
+  border-radius: var(--workbench-radius-sm);
+  background: color-mix(in srgb, var(--hc-editor-bg) 76%, var(--workbench-surface-raised));
+}
+
+.card-shell .multiple-choice-reasoning textarea:focus {
+  border-color: var(--hc-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--hc-accent) 14%, transparent);
+  outline: none;
 }
 
 .card-shell .prompt-toggle-button {
@@ -5749,6 +5856,10 @@ button.tune-reset {
   }
 
   .card-shell .card-grid {
+    padding: 0;
+  }
+
+  .card-shell .card-grid > .panel {
     padding: 1rem;
   }
 

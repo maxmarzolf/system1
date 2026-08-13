@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import ast
 import inspect
 
 from app.core import core_algorithms as sf
 from app.core import core_meta
 from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG, CORE_META_CATALOG, problem_slugs_for_skill
 from app.core.core_algorithm_practice import build_core_algorithm_drill
+from app.core.static_playlists import GOOGLE_QUESTIONS, build_static_playlist_drills, static_playlist_overview_rows
 from app.core.taxonomy_catalog import (
     ALGORITHM_SKILLS,
     ALGORITHMS,
@@ -167,3 +169,242 @@ def test_core_algorithm_row_builds_skill_map_drill_card() -> None:
     assert card["templateTargets"]["algorithm"] == row["code"]
     assert "binary-search" in card["tags"]
     assert card["plainEnglishPromptDetail"]["leetcodeExamples"] == ["Binary Search"]
+
+
+def test_google_static_playlist_contains_requested_questions() -> None:
+    expected_titles = [
+        "1. Two Sum",
+        "49. Group Anagrams",
+        "128. Longest Consecutive Sequence",
+        "347. Top K Frequent Elements",
+        "238. Product of Array Except Self",
+        "3. Longest Substring Without Repeating Characters",
+        "424. Longest Repeating Character Replacement",
+        "567. Permutation in String",
+        "76. Minimum Window Substring",
+        "209. Minimum Size Subarray Sum",
+        "11. Container With Most Water",
+        "15. 3Sum",
+        "42. Trapping Rain Water",
+        "125. Valid Palindrome",
+        "33. Search in Rotated Sorted Array",
+        "153. Find Minimum in Rotated Sorted Array",
+        "875. Koko Eating Bananas",
+        "981. Time Based Key-Value Store",
+        "98. Validate BST",
+        "102. Binary Tree Level Order Traversal",
+        "236. Lowest Common Ancestor",
+        "543. Diameter of Binary Tree",
+        "124. Binary Tree Maximum Path Sum",
+        "200. Number of Islands",
+        "133. Clone Graph",
+        "207. Course Schedule",
+        "210. Course Schedule II",
+        "994. Rotting Oranges",
+        "417. Pacific Atlantic Water Flow",
+        "215. Kth Largest Element",
+        "295. Find Median from Data Stream",
+        "973. K Closest Points",
+        "39. Combination Sum",
+        "46. Permutations",
+        "79. Word Search",
+        "51. N-Queens",
+        "70. Climbing Stairs",
+        "198. House Robber",
+        "322. Coin Change",
+        "300. Longest Increasing Subsequence",
+        "1143. Longest Common Subsequence",
+        "56. Merge Intervals",
+        "57. Insert Interval",
+        "435. Non-overlapping Intervals",
+        "84. Largest Rectangle in Histogram",
+        "239. Sliding Window Maximum",
+        "297. Serialize and Deserialize Binary Tree",
+        "23. Merge k Sorted Lists",
+        "269. Alien Dictionary",
+        "642. Design Search Autocomplete System",
+    ]
+
+    assert [str(question["title"]) for question in GOOGLE_QUESTIONS] == expected_titles
+
+    deck = build_static_playlist_drills("google")
+    assert deck is not None
+    assert deck["llmUsed"] is False
+    assert [card["title"] for card in deck["drills"]] == expected_titles
+    assert deck["drills"][0]["id"] == "playlist-google-1-two-sum"
+    assert "static-playlist" in deck["drills"][0]["tags"]
+    assert deck["drills"][0]["solution"].startswith("def solution(nums, target):")
+    assert "need = target - num" in deck["drills"][0]["solution"]
+    assert "google_124_binary_tree_maximum_path_sum_approach" not in next(
+        card for card in deck["drills"] if card["title"] == "124. Binary Tree Maximum Path Sum"
+    )["solution"]
+    assert next(card for card in deck["drills"] if card["title"] == "124. Binary Tree Maximum Path Sum")[
+        "solution"
+    ].startswith("def solution(root):")
+    for card in deck["drills"]:
+        compile(card["solution"], f"<{card['id']}>", "exec")
+    assert all(card["solution"].replace("# static playlist outline complete", "").strip() for card in deck["drills"])
+    assert "heap" in next(card for card in deck["drills"] if card["title"] == "215. Kth Largest Element")["tags"]
+    assert "heap-priority-queue" not in next(card for card in deck["drills"] if card["title"] == "215. Kth Largest Element")["tags"]
+    overview_rows = static_playlist_overview_rows()
+    assert len([row for row in overview_rows if "google" in row["tags"]]) == 50
+    assert len([row for row in overview_rows if "google-skeletons" in row["tags"]]) == 2
+    assert len(overview_rows) == 52
+
+
+def test_google_skeleton_static_playlist_serves_graph_skeletons() -> None:
+    deck = build_static_playlist_drills("google-skeletons")
+
+    assert deck is not None
+    assert deck["llmUsed"] is False
+    assert len(deck["drills"]) == 2
+    assert [card["title"] for card in deck["drills"]] == [
+        "BFS Skeleton",
+        "DFS Skeleton",
+    ]
+
+    cards = {card["title"]: card for card in deck["drills"]}
+    bfs_card = cards["BFS Skeleton"]
+    dfs_card = cards["DFS Skeleton"]
+
+    assert bfs_card["id"] == "playlist-google-skeletons-bfs-skeleton"
+    assert "google-skeletons" in bfs_card["tags"]
+    assert bfs_card["solution"].startswith("from collections import deque")
+    assert "def bfs(start, graph):" in bfs_card["solution"]
+    assert "q = deque([start])" in bfs_card["solution"]
+    assert "for ngbr in graph[node]:" in bfs_card["solution"]
+
+    assert dfs_card["id"] == "playlist-google-skeletons-dfs-skeleton"
+    assert "google-skeletons" in dfs_card["tags"]
+    assert dfs_card["solution"].startswith("def dfs(start, graph):")
+    assert "visited = set()" in dfs_card["solution"]
+    assert "def walk(node):" in dfs_card["solution"]
+    assert "for ngbr in graph[node]:" in dfs_card["solution"]
+
+    graph = {
+        "a": ["b", "c"],
+        "b": ["d"],
+        "c": [],
+        "d": [],
+    }
+
+    namespace: dict[str, object] = {}
+    compile(bfs_card["solution"], f"<{bfs_card['id']}>", "exec")
+    exec(bfs_card["solution"], namespace)
+    assert namespace["bfs"]("a", graph) == ["a", "b", "c", "d"]
+    assert namespace["bfs"]("missing", graph) == []
+
+    namespace = {}
+    compile(dfs_card["solution"], f"<{dfs_card['id']}>", "exec")
+    exec(dfs_card["solution"], namespace)
+    assert namespace["dfs"]("a", graph) == ["a", "b", "d", "c"]
+    assert namespace["dfs"]("missing", graph) == []
+
+
+def test_google_static_solutions_keep_imports_at_top_level() -> None:
+    deck = build_static_playlist_drills("google")
+    assert deck is not None
+
+    for card in deck["drills"]:
+        tree = ast.parse(card["solution"])
+        top_level_functions = [node.name for node in tree.body if isinstance(node, ast.FunctionDef)]
+        if top_level_functions:
+            assert top_level_functions == ["solution"], card["title"]
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                nested_imports = [
+                    child
+                    for child in ast.walk(node)
+                    if isinstance(child, (ast.Import, ast.ImportFrom))
+                ]
+                assert nested_imports == [], card["title"]
+            if isinstance(node, ast.Name):
+                assert node.id != "last_seen", card["title"]
+                assert node.id != "queue", card["title"]
+        assert all(len(line) <= 88 for line in card["solution"].splitlines()), card["title"]
+
+
+def test_google_static_playlist_order_modes() -> None:
+    curated = build_static_playlist_drills("google", "curated")
+    mastery = build_static_playlist_drills("google", "mastery")
+    family = build_static_playlist_drills("google", "family")
+    difficulty = build_static_playlist_drills("google", "difficulty")
+    solution_length = build_static_playlist_drills("google", "solution-length")
+    google_15 = build_static_playlist_drills("google", "google-15")
+
+    assert curated and mastery and family and difficulty and solution_length and google_15
+    assert curated["drills"][0]["title"] == "1. Two Sum"
+    assert [card["title"] for card in google_15["drills"]] == [
+        "1. Two Sum",
+        "3. Longest Substring Without Repeating Characters",
+        "49. Group Anagrams",
+        "347. Top K Frequent Elements",
+        "15. 3Sum",
+        "33. Search in Rotated Sorted Array",
+        "102. Binary Tree Level Order Traversal",
+        "236. Lowest Common Ancestor",
+        "200. Number of Islands",
+        "207. Course Schedule",
+        "215. Kth Largest Element",
+        "56. Merge Intervals",
+        "322. Coin Change",
+        "239. Sliding Window Maximum",
+        "84. Largest Rectangle in Histogram",
+    ]
+    assert [card["title"] for card in mastery["drills"][:5]] == [
+        "1. Two Sum",
+        "49. Group Anagrams",
+        "238. Product of Array Except Self",
+        "3. Longest Substring Without Repeating Characters",
+        "125. Valid Palindrome",
+    ]
+    assert [card["title"] for card in family["drills"][:5]] == [
+        "1. Two Sum",
+        "49. Group Anagrams",
+        "128. Longest Consecutive Sequence",
+        "347. Top K Frequent Elements",
+        "238. Product of Array Except Self",
+    ]
+    difficulty_ranks = {"Easy": 0, "Med.": 1, "Hard": 2}
+    ranks = [difficulty_ranks[card["difficulty"]] for card in difficulty["drills"]]
+    assert ranks == sorted(ranks)
+    lengths = [len(card["solution"].splitlines()) for card in solution_length["drills"]]
+    assert lengths == sorted(lengths)
+
+
+def test_representative_google_static_solutions_behave_correctly() -> None:
+    deck = build_static_playlist_drills("google")
+    assert deck is not None
+    solutions = {card["title"]: card["solution"] for card in deck["drills"]}
+
+    namespace: dict[str, object] = {}
+    exec(solutions["1. Two Sum"], namespace)
+    assert namespace["solution"]([2, 7, 11, 15], 9) == [0, 1]
+
+    namespace = {}
+    exec(solutions["76. Minimum Window Substring"], namespace)
+    assert namespace["solution"]("ADOBECODEBANC", "ABC") == "BANC"
+
+    namespace = {}
+    exec(solutions["124. Binary Tree Maximum Path Sum"], namespace)
+
+    class TreeNode:
+        def __init__(self, val=0, left=None, right=None):
+            self.val = val
+            self.left = left
+            self.right = right
+
+    root = TreeNode(-10, TreeNode(9), TreeNode(20, TreeNode(15), TreeNode(7)))
+    assert namespace["solution"](root) == 42
+
+    namespace = {}
+    exec(solutions["981. Time Based Key-Value Store"], namespace)
+    time_map = namespace["TimeMap"]()
+    time_map.set("foo", "bar", 1)
+    assert time_map.get("foo", 1) == "bar"
+    assert time_map.get("foo", 3) == "bar"
+
+    namespace = {}
+    exec(solutions["642. Design Search Autocomplete System"], namespace)
+    autocomplete = namespace["AutocompleteSystem"](["i love you", "island", "ironman", "i love leetcode"], [5, 3, 2, 2])
+    assert autocomplete.input("i") == ["i love you", "island", "i love leetcode"]

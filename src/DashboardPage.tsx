@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiUrl } from './api'
+import { practicePlaylists } from './data/playlists'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 
@@ -678,10 +679,30 @@ export default function DashboardPage() {
     void loadOverview()
   }, [])
 
-  const algorithms = overview?.algorithms ?? []
+  const skillMapPlaylists = practicePlaylists
+    .filter((playlist) => playlist.showOnSkillMap)
+    .filter((playlist, index, playlists) =>
+      playlists.findIndex((candidate) => candidate.slug === playlist.slug) === index
+    )
+  const skillMapPlaylistSlugs = new Set(skillMapPlaylists.map((playlist) => playlist.slug))
+  const algorithms = (overview?.algorithms ?? []).filter((node) => !skillMapPlaylistSlugs.has(node.slug))
+  const playlistPatternCount = (playlist: (typeof skillMapPlaylists)[number]) =>
+    new Set(playlist.questions.map((question) => question.coreShape)).size
+  const playlistTierCount = (playlist: (typeof skillMapPlaylists)[number]) =>
+    new Set(
+      playlist.questions.flatMap((question) =>
+        question.methods.filter((method) => method.startsWith('Tier ')),
+      ),
+    ).size
   const launchFocusedPractice = (patternSlug: string) => {
     const nextParams = new URLSearchParams({
       focusPattern: patternSlug,
+    })
+    navigate(`/?${nextParams.toString()}`)
+  }
+  const launchPlaylist = (playlistSlug: string) => {
+    const nextParams = new URLSearchParams({
+      playlist: playlistSlug,
     })
     navigate(`/?${nextParams.toString()}`)
   }
@@ -718,6 +739,40 @@ export default function DashboardPage() {
                     onClick={() => launchFocusedPractice(node.slug)}
                   >
                     <span className="dashboard-mode-tab-label">{isMeta ? 'Start playlist' : 'Start practice'}</span>
+                  </button>
+                </div>
+              </article>
+            )
+          })}
+          {skillMapPlaylists.map((playlist) => {
+            const tierCount = playlistTierCount(playlist)
+            const problemLabel = playlist.questions.length === 1 ? 'problem' : 'problems'
+            const patternCount = playlistPatternCount(playlist)
+            const patternLabel = patternCount === 1 ? 'pattern' : 'patterns'
+
+            return (
+              <article key={playlist.slug} className="skill-map-card">
+                <div className="skill-map-header">
+                  <h3>{playlist.title}</h3>
+                  <span className="coach-status-value coach-status-value-success">Playlist</span>
+                </div>
+                <div className="dashboard-summary skill-map-card-stats">
+                  <span className="coach-metric-chip">
+                    {playlist.questions.length} {problemLabel}
+                  </span>
+                  <span className="coach-metric-chip">
+                    {tierCount > 0 ? `${tierCount} tiers` : 'Static'}
+                  </span>
+                  <span className="coach-metric-chip">{patternCount} {patternLabel}</span>
+                </div>
+                <SkillAlgorithmIllustration slug={playlist.slug} pattern={playlist.title} />
+                <div className="dashboard-mode-tabs">
+                  <button
+                    type="button"
+                    className="dashboard-mode-tab dashboard-mode-tab-actionable"
+                    onClick={() => launchPlaylist(playlist.slug)}
+                  >
+                    <span className="dashboard-mode-tab-label">Start playlist</span>
                   </button>
                 </div>
               </article>

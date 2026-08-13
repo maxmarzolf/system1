@@ -195,7 +195,7 @@ class SkillMapDrillCard(BaseModel):
 
 class SkillMapDrillsRequest(BaseModel):
     questionType: str = "skill-map"
-    count: int = Field(default=12, ge=1, le=30)
+    count: int = Field(default=12, ge=1, le=60)
     skillMap: list[SkillMapNode] = []
     templateMode: TemplateMode = TemplateMode.algorithm
     templateTargets: dict[str, dict[str, str]] = Field(default_factory=dict)

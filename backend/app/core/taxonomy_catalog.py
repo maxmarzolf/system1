@@ -7,6 +7,7 @@ from __future__ import annotations
 
 # Top-level algorithm families a leetcode problem belongs to (exactly one each).
 ALGORITHMS: dict[str, str] = {
+    "arrays-hash-maps": "Arrays / Hash Maps",
     "sliding-window": "Sliding Window",
     "two-pointers": "Two Pointers",
     "binary-search": "Binary Search",

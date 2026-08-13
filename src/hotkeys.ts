@@ -95,13 +95,10 @@ const hotkeyDefinitions: HotkeyDefinition[] = [
   {
     id: 'move-cards',
     group: 'Recall and Ghost Reps',
-    displayKeys: ['Mod', '← / →'],
+    displayKeys: ['← ← / → →'],
     label: 'Move cards',
-    description: 'Move between cards anytime outside a Flow.',
-    bindings: [
-      { key: 'ArrowLeft', modifier: 'mod' },
-      { key: 'ArrowRight', modifier: 'mod' },
-    ],
+    description: 'Double-tap an arrow key to move between cards outside a Flow.',
+    bindings: [],
   },
   {
     id: 'indent-outdent',

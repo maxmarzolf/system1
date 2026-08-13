@@ -611,14 +611,6 @@ export default function GhostRepActivityChart({
         ))}
       </div>
 
-      <div className="daily-work-history-legend">
-        <span><i className="daily-work-history-cell daily-work-history-cell-active" /> Activity</span>
-        {activityScope === 'ghost-reps' && <>
-          <span><i className="daily-work-history-cell daily-work-history-cell-on-track" /> On track</span>
-          <span><i className="daily-work-history-cell daily-work-history-cell-schedule-due" /> Due</span>
-          <span><i className="daily-work-history-cell daily-work-history-cell-schedule-overdue" /> Overdue</span>
-        </>}
-      </div>
     </section>
   )
 }

@@ -28,6 +28,12 @@ import {
   saveStoredMcqTuning,
 } from './mcqTuning'
 import type { McqTuning } from './mcqTuning'
+import {
+  defaultGooglePlaylistTuning,
+  loadStoredGooglePlaylistTuning,
+  saveStoredGooglePlaylistTuning,
+} from './googlePlaylistTuning'
+import type { GooglePlaylistTuning } from './googlePlaylistTuning'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 import { getHotkeyReferenceGroups } from './hotkeys'
@@ -168,6 +174,7 @@ export default function TunePage() {
   const [specimenTuning, setSpecimenTuning] = useState<SpecimenTuning>(() => loadStoredSpecimenTuning())
   const [codeEditorTuning, setCodeEditorTuning] = useState<CodeEditorTuning>(() => loadStoredCodeEditorTuning())
   const [mcqTuning, setMcqTuning] = useState<McqTuning>(() => loadStoredMcqTuning())
+  const [googlePlaylistTuning, setGooglePlaylistTuning] = useState<GooglePlaylistTuning>(() => loadStoredGooglePlaylistTuning())
   const selectedMcqSkillNode = skillMap.find((node) => node.algorithm === mcqTuning.skillMapAlgorithm) ?? skillMap[0]
 
   useEffect(() => {
@@ -190,6 +197,10 @@ export default function TunePage() {
     saveStoredMcqTuning(mcqTuning)
   }, [mcqTuning])
 
+  useEffect(() => {
+    saveStoredGooglePlaylistTuning(googlePlaylistTuning)
+  }, [googlePlaylistTuning])
+
   const updateLiveCoachTuning = <K extends keyof LiveCoachTuning>(key: K, value: LiveCoachTuning[K]) => {
     setLiveCoachTuning((prev) => ({ ...prev, [key]: value }))
   }
@@ -208,6 +219,10 @@ export default function TunePage() {
 
   const updateMcqTuning = <K extends keyof McqTuning>(key: K, value: McqTuning[K]) => {
     setMcqTuning((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const updateGooglePlaylistTuning = <K extends keyof GooglePlaylistTuning>(key: K, value: GooglePlaylistTuning[K]) => {
+    setGooglePlaylistTuning((prev) => ({ ...prev, [key]: value }))
   }
 
   const selectMcqSkillPattern = (pattern: string) => {
@@ -253,6 +268,7 @@ export default function TunePage() {
           <aside className="tune-rail" aria-label="Tune sections">
             <a href="#specimen">Specimen</a>
             <a href="#code-editor">Code editor</a>
+            <a href="#google-playlist">Google</a>
             <a href="#mcq">MCQ</a>
             <a href="#live-coach">Live coach</a>
             <a href="#submission">Submission</a>
@@ -370,6 +386,34 @@ export default function TunePage() {
 
             <TuneSection
               eyebrow="03"
+              title="Google Playlist"
+              copy="Choose how the static Google deck is ordered before a practice session starts."
+              action={(
+                <button className="secondary tune-reset" type="button" onClick={() => setGooglePlaylistTuning(defaultGooglePlaylistTuning)}>
+                  Reset
+                </button>
+              )}
+            >
+              <div className="tune-control-grid" id="google-playlist">
+                <SelectControl
+                  label="Deck order"
+                  value={googlePlaylistTuning.order}
+                  onChange={(value) => updateGooglePlaylistTuning('order', value)}
+                  description="Master first is a high-value progression from fundamentals to harder synthesis questions."
+                  options={[
+                    { value: 'mastery', label: 'Master first' },
+                    { value: 'google-15', label: 'Google 15' },
+                    { value: 'family', label: 'Group by algorithm family' },
+                    { value: 'difficulty', label: 'Sort by difficulty' },
+                    { value: 'solution-length', label: 'Sort by solution length' },
+                    { value: 'curated', label: 'Original tier order' },
+                  ]}
+                />
+              </div>
+            </TuneSection>
+
+            <TuneSection
+              eyebrow="04"
               title="MCQ"
               copy="Choose where multiple-choice questions come from and how the set should move from one question to the next."
               action={(
@@ -448,7 +492,7 @@ export default function TunePage() {
             </TuneSection>
 
             <TuneSection
-              eyebrow="04"
+              eyebrow="05"
               title="Live Coach"
               copy="Control on-demand coach feedback and how specific it can be while you type."
               action={(
@@ -530,7 +574,7 @@ export default function TunePage() {
             </TuneSection>
 
             <TuneSection
-              eyebrow="05"
+              eyebrow="06"
               title="Submission"
               copy="Preserve the algorithm first, then tighten contract drift and wording as secondary signals."
               action={(
@@ -583,7 +627,7 @@ export default function TunePage() {
             </TuneSection>
 
             <TuneSection
-              eyebrow="06"
+              eyebrow="07"
               title="Tracked Dimensions"
               copy="Signals the Signal Assessor checks for submitted attempts."
             >
@@ -602,7 +646,7 @@ export default function TunePage() {
             </TuneSection>
 
             <TuneSection
-              eyebrow="07"
+              eyebrow="08"
               title="Hotkeys"
               copy="Reference the keyboard controls available during recall practice and a Flow."
             >

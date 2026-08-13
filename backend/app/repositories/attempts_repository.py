@@ -307,6 +307,8 @@ async def fetch_skill_map_overview_attempt_rows() -> list[SkillMapOverviewAttemp
             FROM submission a
             LEFT JOIN multiple_choice_problem q ON q.id = a.multiple_choice_problem_id
             WHERE a.question_type LIKE 'skill-map%'
+               OR a.question_type LIKE 'playlist:%'
+               OR a.category_tags && ARRAY['skill-map']::text[]
             ORDER BY a.created_at DESC
             """
         )
