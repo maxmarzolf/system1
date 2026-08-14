@@ -94,14 +94,14 @@ GOOGLE_SKELETON_QUESTIONS: tuple[dict[str, Any], ...] = (
     _question(
         "BFS Skeleton",
         "Graphs",
-        "Google Skeletons",
+        "Skeletons",
         "Easy",
         ("BFS queue", "visited set", "neighbor expansion"),
     ),
     _question(
         "DFS Skeleton",
         "Graphs",
-        "Google Skeletons",
+        "Skeletons",
         "Easy",
         ("recursive DFS", "visited set", "neighbor expansion"),
     ),
@@ -114,7 +114,7 @@ STATIC_PLAYLISTS: dict[str, dict[str, Any]] = {
         "questions": GOOGLE_QUESTIONS,
     },
     "google-skeletons": {
-        "title": "Google Skeletons",
+        "title": "Skeletons",
         "questions": GOOGLE_SKELETON_QUESTIONS,
     },
 }

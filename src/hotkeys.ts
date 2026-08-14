@@ -95,9 +95,9 @@ const hotkeyDefinitions: HotkeyDefinition[] = [
   {
     id: 'move-cards',
     group: 'Recall and Ghost Reps',
-    displayKeys: ['← ← / → →'],
+    displayKeys: ['Mod + ← ← / Mod + → →'],
     label: 'Move cards',
-    description: 'Double-tap an arrow key to move between cards outside a Flow.',
+    description: 'Double-tap the modified arrow shortcut to move between cards outside a Flow.',
     bindings: [],
   },
   {
@@ -147,7 +147,7 @@ export const getHotkeyModifierLabel = (isMac: boolean) => isMac ? '⌘' : 'Ctrl'
 
 export const getHotkeyDisplayKeys = (id: HotkeyId, isMac: boolean) => {
   const modifierLabel = getHotkeyModifierLabel(isMac)
-  return requireHotkey(id).displayKeys.map((key) => key === 'Mod' ? modifierLabel : key)
+  return requireHotkey(id).displayKeys.map((key) => key.replace(/\bMod\b/g, modifierLabel))
 }
 
 export const formatHotkey = (id: HotkeyId, isMac: boolean) => getHotkeyDisplayKeys(id, isMac).join('+')

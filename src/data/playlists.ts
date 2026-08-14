@@ -123,8 +123,8 @@ export const practicePlaylists: PracticePlaylist[] = [
   },
   {
     slug: 'google-skeletons',
-    title: 'Google Skeletons',
-    description: 'Static Google skeleton drills for reusable interview traversal patterns.',
+    title: 'Skeletons',
+    description: 'Static skeleton drills for reusable interview traversal patterns.',
     showOnSkillMap: true,
     staticDeck: true,
     questions: [

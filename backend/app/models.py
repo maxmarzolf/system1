@@ -98,17 +98,21 @@ class CoachAttemptFeedbackResponse(BaseModel):
 
 
 class CoachAttemptEvaluationRequest(BaseModel):
+    cardTitle: str = ""
+    prompt: str = ""
     expectedAnswer: str = ""
     userAnswer: str = ""
     skillTags: list[str] = []
     templateMode: TemplateMode = TemplateMode.algorithm
     submissionTuning: dict[str, Any] = {}
+    llmProvider: str = "openai"
 
 
 class CoachAttemptEvaluationResponse(BaseModel):
     accuracy: float = Field(default=0, ge=0, le=100)
     sound: bool = False
     syntaxValid: bool = False
+    llmUsed: bool = False
 
 
 class SessionWeakCard(BaseModel):

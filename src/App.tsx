@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vs, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useSearchParams } from 'react-router-dom'
@@ -18,7 +18,6 @@ import { providerDisplayLabel, useConfiguredProviderLabel } from './llmProviderD
 import TopNav from './TopNav'
 import { useTheme, type AppTheme } from './theme'
 import RecallCodeEditor, { type RecallCodeEditorHandle, type RecallEditorLineMeta } from './RecallCodeEditor'
-import FeedbackRails, { type FeedbackRailModel } from './FeedbackRails'
 import {
   formatHotkey,
   matchesHotkey,
@@ -146,6 +145,13 @@ type CoachAttemptFeedback = {
   llmProvider?: string
 }
 
+type FeedbackRailModel = {
+  source: 'Live' | 'Submission'
+  items: string[]
+  loading?: boolean
+  submitted?: boolean
+}
+
 type SubmissionFailureModalState = {
   providerLabel: string
   message: string
@@ -244,6 +250,7 @@ type AttemptEvaluationResponse = {
   accuracy: number
   sound: boolean
   syntaxValid: boolean
+  llmUsed: boolean
 }
 
 type PlainEnglishPromptDetail = {
@@ -2305,6 +2312,7 @@ function App() {
   const [inlineLens] = useState<InlineLens>('pattern')
   const [inlineTaskProgress, setInlineTaskProgress] = useState(0)
   const [plainEnglishPromptOpen, setPlainEnglishPromptOpen] = useState(false)
+  const [submissionFeedbackOpen, setSubmissionFeedbackOpen] = useState(false)
   const [promptToggleDetail, setPromptToggleDetail] = useState<PromptToggleExplanationResponse | null>(null)
   const [plainEnglishPromptLoading, setPlainEnglishPromptLoading] = useState(false)
   const [headerControlsOpen, setHeaderControlsOpen] = useState(false)
@@ -2346,7 +2354,7 @@ function App() {
   const [mainRecallHistoryByCard, setMainRecallHistoryByCard] = useState<Record<string, RecallAttemptSnapshot[]>>({})
   const [liveCoachFeedback, setLiveCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
   const [liveCoachFeedbackMeta, setLiveCoachFeedbackMeta] = useState<LiveFeedbackMeta>({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
-  const [liveCoachLoading, setLiveCoachLoading] = useState(false)
+  const [, setLiveCoachLoading] = useState(false)
   const [liveCoachError, setLiveCoachError] = useState('')
   const [liveCoachTuning, setLiveCoachTuning] = useState(() => loadStoredLiveCoachTuning())
   const [submissionTuning] = useState(() => loadStoredSubmissionTuning())
@@ -2368,11 +2376,10 @@ function App() {
   const shouldFocusMainInputRef = useRef(false)
   const pendingGhostFocusLineRef = useRef<number | null>(null)
   const previewCodeContainerRef = useRef<HTMLDivElement | null>(null)
-  const cardShellRef = useRef<HTMLDivElement | null>(null)
-  const [feedbackRailsPosition, setFeedbackRailsPosition] = useState({ top: 0, height: 0 })
   const [recallMinHeight, setRecallMinHeight] = useState<number | undefined>(undefined)
   const currentCardIdRef = useRef('')
   const liveCoachRequestVersionRef = useRef(0)
+  const recallEvaluationPendingRef = useRef(false)
   const liveCoachSnapshotRef = useRef<LiveCoachSnapshot | null>(null)
   const lastLiveCoachDecisionKeyRef = useRef('')
   const stuckHintDepthRef = useRef(0)
@@ -2838,6 +2845,7 @@ function App() {
   )
   const isPlainEnglishPromptOpen = plainEnglishPromptOpen
   const plainEnglishPromptDetailId = `plain-english-prompt-${card.id}`
+  const submissionFeedbackDetailId = `submission-feedback-detail-${card.id}`
   const promptToggleRequestKey = `${card.id}:${practicePrompt}:${practiceTarget}:${requestLlmProvider}`
   const tagsListId = `card-tags-${card.id}`
 
@@ -3144,11 +3152,14 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          cardTitle: card.title,
+          prompt: practicePrompt,
           expectedAnswer,
           userAnswer,
           skillTags: currentSkillTags,
           templateMode: currentTemplateMode,
           submissionTuning,
+          llmProvider: requestLlmProvider,
         }),
       })
       if (!response.ok) throw new Error('Unable to evaluate attempt')
@@ -3158,6 +3169,7 @@ function App() {
         accuracy: estimateTemplateAccuracy(expectedAnswer, userAnswer),
         sound: userAnswer === expectedAnswer,
         syntaxValid: userAnswer.trim().length > 0,
+        llmUsed: false,
       }
     }
   }
@@ -3186,6 +3198,7 @@ function App() {
     setCoachError('')
     setSubmissionFailureModal(null)
     setPlainEnglishPromptOpen(false)
+    setSubmissionFeedbackOpen(false)
     setPromptToggleDetail(null)
     setPlainEnglishPromptLoading(false)
     setTagsExpanded(false)
@@ -3615,7 +3628,14 @@ function App() {
   }
 
   const submitMainRecall = async () => {
-    if (currentPracticeMode !== 'recall' || !hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'typing') return
+    if (
+      currentPracticeMode !== 'recall'
+      || !hasDeck
+      || hasAnsweredCurrent
+      || sessionFinished
+      || mainPhase !== 'typing'
+      || recallEvaluationPendingRef.current
+    ) return
 
     const startedAt = mainStartedAt ?? Date.now()
     const interactionId = currentInteractionId || createInteractionId()
@@ -3624,7 +3644,11 @@ function App() {
     const normalizedInput = currentRecallSubmissionInput
     const normalizedInputLines = normalizedInput.split('\n')
     const normalizedTarget = activeRecallTarget
+    recallEvaluationPendingRef.current = true
     const evaluation = await evaluateSubmittedRecall(normalizedTarget, normalizedInput)
+      .finally(() => {
+        recallEvaluationPendingRef.current = false
+      })
     const accuracy = Math.round(evaluation.accuracy)
     const sound = evaluation.sound
     const isGhostRep = effectiveSupportLayer === 'ghost-reps'
@@ -3875,10 +3899,6 @@ function App() {
   const liveStructure = useMemo(
     () => analyzeLiveStructure(mainInput, currentTemplateMode),
     [currentTemplateMode, mainInput]
-  )
-  const lineReview = useMemo(
-    () => computeLineReview(practiceTarget, mainInput.replace(/\r\n/g, '\n')),
-    [practiceTarget, mainInput]
   )
   const currentCardRecallHistory = useMemo(
     () => mainRecallHistoryByCard[currentRecallHistoryKey] ?? [],
@@ -4217,12 +4237,12 @@ function App() {
       if (
         event.repeat
         || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')
-        || event.metaKey
-        || event.ctrlKey
+        || (!event.metaKey && !event.ctrlKey)
         || event.altKey
         || event.shiftKey
       ) return
 
+      event.preventDefault()
       const now = performance.now()
       const previousPress = lastCardMoveKeyRef.current
       const doubleTapped = previousPress?.key === event.key
@@ -4234,7 +4254,6 @@ function App() {
 
       if (!doubleTapped) return
 
-      event.preventDefault()
       if (event.key === 'ArrowLeft' && canGoPrev) goPrev()
       if (event.key === 'ArrowRight' && canGoNext) goNext()
     }
@@ -4289,27 +4308,6 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainPhase, practiceFlow])
 
-  const submissionResultLabel = latestSubmittedWasGhostRep
-    ? 'Ghost Rep'
-    : latestSubmittedAttempt?.exact
-      ? 'Sound'
-      : 'Needs work'
-  const submissionResultTone = latestSubmittedAttempt?.exact
-    ? 'success'
-    : latestSubmittedWasGhostRep || mainCloseEnough
-      ? 'warning'
-      : 'error'
-  const submissionCoachLabel = !coachFeedback
-    ? 'Rules'
-    : coachFeedback.llmUsed
-      ? coachFeedback.llmProvider === 'claude'
-        ? 'Claude'
-        : coachFeedback.llmProvider === 'openai'
-          ? 'ChatGPT'
-          : coachFeedback.llmProvider === 'gemma'
-            ? 'Gemma 4'
-            : 'LLM'
-      : 'Rules'
   const flowStatusText = !practiceFlow
     ? 'Anchor the current card, run a full recall, then sequence targeted ghost reps and MCQs from the lines you missed.'
     : practiceFlow.stage === 'recall'
@@ -4322,21 +4320,16 @@ function App() {
   const primaryRecallHotkey = formatHotkey('primary-recall-action', isMac)
   const moveCardsHotkey = formatHotkey('move-cards', isMac)
   const indentOutdentHotkey = formatHotkey('indent-outdent', isMac)
-  const showSubmittedLineReview = mainPhase === 'submitted' && !mainCloseEnough && !latestSubmittedWasGhostRep
   const recallEditorLineMeta = useMemo<RecallEditorLineMeta[]>(() => {
     const lineCount = Math.max((mainInput || '').split('\n').length, displayLines.length, 1)
 
     return Array.from({ length: lineCount }, (_, index) => {
       const displayLine = displayLines[index]
       const sourceLineNumber = displayLine?.sourceLineNumber ?? index + 1
-      const status =
-        showSubmittedLineReview && sourceLineNumber
-          ? lineReview.actualStatuses[sourceLineNumber - 1] ?? 'match'
-          : null
 
       return {
         sourceLineNumber,
-        status,
+        status: null,
         liveTone: null,
         inlineDecision: false,
         inlineNote: undefined,
@@ -4344,9 +4337,7 @@ function App() {
     })
   }, [
     displayLines,
-    lineReview.actualStatuses,
     mainInput,
-    showSubmittedLineReview,
   ])
   const previewEditorLineMeta = useMemo<RecallEditorLineMeta[]>(() => (
     plainPracticeTarget.split('\n').map((_, index) => ({
@@ -4377,12 +4368,13 @@ function App() {
   }, [liveFeedbackEnabled])
 
   const feedbackRailModel = useMemo<FeedbackRailModel | null>(() => {
-    if (currentPracticeMode !== 'recall') return null
+    if (currentPracticeMode !== 'recall' || !hasDeck) return null
 
     if (mainPhase === 'submitted' && !latestSubmittedWasGhostRep && SUBMISSION_FEEDBACK_ENABLED) {
       return {
         source: 'Submission',
         loading: coachLoading && !coachFeedback,
+        submitted: true,
         items: compactFeedbackItems([
           coachFeedback?.affirmation,
           ...(coachFeedback?.strengths ?? []),
@@ -4396,74 +4388,85 @@ function App() {
       }
     }
 
-    if (mainPhase === 'typing' && liveFeedbackEnabled && (liveCoachLoading || liveCoachFeedback || liveCoachError)) {
-      return {
-        source: 'Live',
-        loading: liveCoachLoading && !liveCoachFeedback,
-        items: compactFeedbackItems([
-          liveCoachFeedback?.affirmation,
-          ...(liveCoachFeedback?.strengths ?? []),
-          liveCoachFeedback?.keepInMind,
-          liveCoachError,
-          liveCoachFeedback?.diagnosis,
-          liveCoachFeedback?.primaryFocus,
-          liveCoachFeedback?.immediateCorrection,
-          liveCoachFeedback?.why,
-        ], 8),
-      }
-    }
-
     return null
   }, [
     coachError,
     coachFeedback,
     coachLoading,
     currentPracticeMode,
+    hasDeck,
     latestSubmittedWasGhostRep,
-    liveCoachError,
-    liveCoachFeedback,
-    liveCoachLoading,
-    liveFeedbackEnabled,
     mainPhase,
   ])
-
-  useLayoutEffect(() => {
-    const shell = cardShellRef.current
-    const editor = shell?.querySelector<HTMLElement>('.recall-editor-container') ?? null
-    if (!shell || !editor || !feedbackRailModel) {
-      setFeedbackRailsPosition({ top: 0, height: 0 })
-      return
-    }
-
-    const measure = () => {
-      const shellRect = shell.getBoundingClientRect()
-      const editorRect = editor.getBoundingClientRect()
-      const nextPosition = {
-        top: editorRect.top - shellRect.top,
-        height: editorRect.height,
-      }
-      setFeedbackRailsPosition((current) => (
-        Math.abs(current.top - nextPosition.top) < 0.25 && Math.abs(current.height - nextPosition.height) < 0.25
-          ? current
-          : nextPosition
-      ))
-    }
-    measure()
-    const animationFrame = window.requestAnimationFrame(measure)
-    const settleTimer = window.setTimeout(measure, 250)
-    const alignmentTimer = window.setInterval(measure, 250)
-    const observer = new ResizeObserver(measure)
-    observer.observe(shell)
-    observer.observe(editor)
-    window.addEventListener('resize', measure)
-    return () => {
-      window.cancelAnimationFrame(animationFrame)
-      window.clearTimeout(settleTimer)
-      window.clearInterval(alignmentTimer)
-      observer.disconnect()
-      window.removeEventListener('resize', measure)
-    }
-  }, [feedbackRailModel, mainPhase, plainEnglishPromptOpen, recallMinHeight])
+  const submissionFeedbackBlock = feedbackRailModel ? (
+    <div
+      className={[
+        'submission-feedback-block',
+        feedbackRailModel.submitted && !feedbackRailModel.loading && feedbackRailModel.items.length > 0
+          ? 'submission-feedback-block-ready'
+          : '',
+      ].filter(Boolean).join(' ')}
+      aria-label={`${feedbackRailModel.source} feedback`}
+    >
+      <div className="prompt-toggle-header">
+        <div className="submission-feedback-heading">
+          <span className="submission-feedback-label">
+            <span className="submission-feedback-dot" aria-hidden="true" />
+            Feedback
+          </span>
+          <span className="submission-feedback-summary" aria-live="polite">
+            {feedbackRailModel.loading
+              ? 'Generating your review…'
+              : feedbackRailModel.items.length > 0
+                ? 'Ready to review'
+                : 'No feedback returned'}
+          </span>
+        </div>
+        {!feedbackRailModel.loading && feedbackRailModel.items.length > 0 && (
+          <button
+            type="button"
+            className={submissionFeedbackOpen ? 'prompt-toggle-button active' : 'prompt-toggle-button'}
+            onClick={() => setSubmissionFeedbackOpen((current) => !current)}
+            aria-expanded={submissionFeedbackOpen}
+            aria-controls={submissionFeedbackDetailId}
+            title={submissionFeedbackOpen ? 'Close feedback' : 'View feedback'}
+          >
+            <span>{submissionFeedbackOpen ? 'Hide' : 'Review'}</span>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d={submissionFeedbackOpen ? 'm18 15-6-6-6 6' : 'm6 9 6 6 6-6'} />
+            </svg>
+          </button>
+        )}
+      </div>
+      {submissionFeedbackOpen && (
+        <div className="prompt-detail submission-feedback-detail" id={submissionFeedbackDetailId}>
+          <div className="prompt-detail-section">
+            {feedbackRailModel.loading && <p>Generating feedback...</p>}
+            {!feedbackRailModel.loading && feedbackRailModel.items.length === 0 && (
+              <p>{feedbackRailModel.submitted ? 'No feedback returned.' : 'No submission yet.'}</p>
+            )}
+            {!feedbackRailModel.loading && feedbackRailModel.items.length > 0 && (
+              <div className="submission-feedback-block-list">
+                {feedbackRailModel.items.map((item, index) => (
+                  <p key={`${index}-${item}`}>{item}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  ) : null
 
   return (
     <div className={(flowDrawerOpen || (relatedDrawerOpen && relatedLeetCodeSet)) ? 'app app-side-drawer-open' : 'app'}>
@@ -4497,7 +4500,7 @@ function App() {
         practiceHistoryHref={practiceHistoryHref}
       />
 
-  <div ref={cardShellRef} className={relatedLeetCodeSet ? 'card-shell card-shell-has-drawer' : 'card-shell'}>
+  <div className={relatedLeetCodeSet ? 'card-shell card-shell-has-drawer' : 'card-shell'}>
       <section className="card">
         <div className="card-header">
           <div className="card-header-main">
@@ -4780,42 +4783,46 @@ function App() {
               )
             ) : (
               <div className="drill-fade-in">
-                <div className={isPlainEnglishPromptOpen ? 'prompt-toggle-card expanded' : 'prompt-toggle-card'}>
-                  <div className="prompt-toggle-header">
-                    <p className="prompt prompt-bar prompt-toggle-text">{practicePrompt}</p>
-                    {fallbackPlainEnglishPromptDetail && (
-                      <button
-                        type="button"
-                        className={isPlainEnglishPromptOpen ? 'prompt-toggle-button active' : 'prompt-toggle-button'}
-                        onClick={() => {
-                          if (!plainEnglishPromptOpen && !promptToggleDetail && !plainEnglishPromptLoading) {
-                            void fetchPlainEnglishPromptExplanation()
-                          }
-                          setPlainEnglishPromptOpen((current) => !current)
-                        }}
-                        aria-expanded={isPlainEnglishPromptOpen}
-                        aria-controls={plainEnglishPromptDetailId}
-                        title={isPlainEnglishPromptOpen ? 'Hide explanation' : 'Show explanation'}
-                      >
-                        <span>{isPlainEnglishPromptOpen ? 'Hide' : 'Explanation'}</span>
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
+                <div className={isPlainEnglishPromptOpen ? 'prompt-toggle-card prompt-feedback-surface expanded' : 'prompt-toggle-card prompt-feedback-surface'}>
+                  <div className="prompt-surface-section">
+                    <div className="prompt-toggle-header">
+                      <div className="prompt-section-content">
+                        <span className="prompt-section-label">Prompt</span>
+                        <p className="prompt prompt-toggle-text">{practicePrompt}</p>
+                      </div>
+                      {fallbackPlainEnglishPromptDetail && (
+                        <button
+                          type="button"
+                          className={isPlainEnglishPromptOpen ? 'prompt-toggle-button active' : 'prompt-toggle-button'}
+                          onClick={() => {
+                            if (!plainEnglishPromptOpen && !promptToggleDetail && !plainEnglishPromptLoading) {
+                              void fetchPlainEnglishPromptExplanation()
+                            }
+                            setPlainEnglishPromptOpen((current) => !current)
+                          }}
+                          aria-expanded={isPlainEnglishPromptOpen}
+                          aria-controls={plainEnglishPromptDetailId}
+                          title={isPlainEnglishPromptOpen ? 'Hide explanation' : 'Show explanation'}
                         >
-                          <path d={isPlainEnglishPromptOpen ? 'm18 15-6-6-6 6' : 'm6 9 6 6 6-6'} />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                  {isPlainEnglishPromptOpen && fallbackPlainEnglishPromptDetail && (
-                    <div className="prompt-detail" id={plainEnglishPromptDetailId}>
+                          <span>{isPlainEnglishPromptOpen ? 'Hide' : 'Explain'}</span>
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d={isPlainEnglishPromptOpen ? 'm18 15-6-6-6 6' : 'm6 9 6 6 6-6'} />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                    {isPlainEnglishPromptOpen && fallbackPlainEnglishPromptDetail && (
+                      <div className="prompt-detail" id={plainEnglishPromptDetailId}>
                       <div className="prompt-detail-section">
                         <h3>Explanation</h3>
                         <p>
@@ -4871,8 +4878,10 @@ function App() {
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                      </div>
+                    )}
+                  </div>
+                  {submissionFeedbackBlock}
                 </div>
               </div>
             )}
@@ -5039,18 +5048,15 @@ function App() {
                     <div className="recall-editor-code-wrap">
                       <div className="recall-submit-summary-slot" aria-live="polite">
                         {mainPhase === 'submitted' && latestSubmittedAttempt && (
-                          <div
-                            className={[
-                              'recall-submit-summary',
-                              latestSubmittedWasGhostRep
-                                ? 'recall-submit-summary-ghost'
-                                : `recall-submit-summary-${submissionResultTone}`,
-                            ].join(' ')}
-                          >
-                            <span>{submissionResultLabel}</span>
-                            <span>Accuracy {latestSubmittedAttempt.accuracy}%</span>
-                            <span>Time {(latestSubmittedAttempt.elapsedMs / 1000).toFixed(1)}s</span>
-                            {SUBMISSION_FEEDBACK_ENABLED && !latestSubmittedWasGhostRep && <span>Coach {submissionCoachLabel}</span>}
+                          <div className="recall-submit-summary">
+                            <span className="recall-submit-metric">
+                              <span className="recall-submit-metric-name">Accuracy</span>
+                              <span className="recall-submit-metric-value">{latestSubmittedAttempt.accuracy}%</span>
+                            </span>
+                            <span className="recall-submit-metric">
+                              <span className="recall-submit-metric-name">Time</span>
+                              <span className="recall-submit-metric-value">{(latestSubmittedAttempt.elapsedMs / 1000).toFixed(1)}s</span>
+                            </span>
                           </div>
                         )}
                       </div>
@@ -5125,13 +5131,6 @@ function App() {
           )}
         </div>
       </section>
-      {feedbackRailModel && feedbackRailsPosition.height > 0 && (
-        <FeedbackRails
-          feedback={feedbackRailModel}
-          top={feedbackRailsPosition.top}
-          height={feedbackRailsPosition.height}
-        />
-      )}
       <aside
         id="card-flow-panel"
         className={flowDrawerOpen ? 'card-flow-panel card-flow-panel-open' : 'card-flow-panel'}
