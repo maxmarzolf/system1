@@ -394,63 +394,113 @@ def palindrome_partitions(text):
 def climb_stairs(n):
     if n <= 2:
         return n
-    prev2, prev1 = 1, 2
-    for _ in range(3, n + 1):
-        prev2, prev1 = prev1, prev1 + prev2
-    return prev1
+
+    dp = [0] * (n + 1)
+    dp[1], dp[2] = 1, 2
+
+    for state in range(3, n + 1):
+        candidates = [dp[state - 1], dp[state - 2]]
+        dp[state] = sum(candidates)
+
+    return dp[n]
 
 
 def house_robber(nums):
-    take = skip = 0
-    for val in nums:
-        take, skip = skip + val, max(take, skip)
-    return max(take, skip)
+    memo = {}
+
+    def solve(state):
+        if state >= len(nums):
+            return 0
+        if state in memo:
+            return memo[state]
+
+        candidates = [
+            solve(state + 1),
+            nums[state] + solve(state + 2),
+        ]
+        memo[state] = max(candidates)
+        return memo[state]
+
+    return solve(0)
 
 
 def min_cost_climbing_stairs(cost):
-    prev2 = prev1 = 0
-    for i in range(2, len(cost) + 1):
-        prev2, prev1 = prev1, min(prev1 + cost[i - 1], prev2 + cost[i - 2])
-    return prev1
+    dp = [0] * (len(cost) + 1)
+
+    for state in range(2, len(cost) + 1):
+        candidates = [
+            dp[state - 1] + cost[state - 1],
+            dp[state - 2] + cost[state - 2],
+        ]
+        dp[state] = min(candidates)
+
+    return dp[len(cost)]
 
 
 def coin_change_min(coins, amount):
     dp = [0] + [float("inf")] * amount
-    for total in range(1, amount + 1):
+
+    for state in range(1, amount + 1):
+        candidates = []
         for coin in coins:
-            if total >= coin:
-                dp[total] = min(dp[total], dp[total - coin] + 1)
+            if coin <= state:
+                candidates.append(dp[state - coin] + 1)
+        dp[state] = min(candidates, default=float("inf"))
+
     return -1 if dp[amount] == float("inf") else dp[amount]
 
 
 def unique_paths(rows, cols):
-    dp = [1] * cols
-    for _ in range(1, rows):
-        for col in range(1, cols):
-            dp[col] += dp[col - 1]
-    return dp[-1]
+    if rows <= 0 or cols <= 0:
+        return 0
+
+    dp = [[0] * cols for _ in range(rows)]
+    dp[0][0] = 1
+
+    for row in range(rows):
+        for col in range(cols):
+            if row == 0 and col == 0:
+                continue
+
+            candidates = []
+            if row > 0:
+                candidates.append(dp[row - 1][col])
+            if col > 0:
+                candidates.append(dp[row][col - 1])
+            dp[row][col] = sum(candidates)
+
+    return dp[rows - 1][cols - 1]
 
 
 def longest_increasing_subsequence(nums):
-    tails = []
-    for val in nums:
-        i = lower_bound(tails, val)
-        if i == len(tails):
-            tails.append(val)
-        else:
-            tails[i] = val
-    return len(tails)
+    if not nums:
+        return 0
+
+    dp = [1] * len(nums)
+
+    for state in range(len(nums)):
+        candidates = [
+            dp[previous_state] + 1
+            for previous_state in range(state)
+            if nums[previous_state] < nums[state]
+        ]
+        dp[state] = max(candidates, default=1)
+
+    return max(dp)
 
 
 def longest_common_subsequence(a, b):
-    dp = [0] * (len(b) + 1)
-    for ca in a:
-        prev = 0
-        for j, cb in enumerate(b, 1):
-            old = dp[j]
-            dp[j] = prev + 1 if ca == cb else max(dp[j], dp[j - 1])
-            prev = old
-    return dp[-1]
+    dp = [[0] * (len(b) + 1) for _ in range(len(a) + 1)]
+
+    for row in range(1, len(a) + 1):
+        for col in range(1, len(b) + 1):
+            if a[row - 1] == b[col - 1]:
+                dp[row][col] = dp[row - 1][col - 1] + 1
+            else:
+                candidates = [dp[row - 1][col], dp[row][col - 1]]
+                dp[row][col] = max(candidates)
+
+    return dp[len(a)][len(b)]
 
 
 def keep_top_k(nums, k):
@@ -939,22 +989,39 @@ def erase_overlap_intervals(intervals):
 
 
 def can_jump(nums):
-    reach = 0
-    for i, jump in enumerate(nums):
-        if i > reach:
-            return False
-        reach = max(reach, i + jump)
-    return True
+    if not nums:
+        return True
+
+    dp = [False] * len(nums)
+    dp[0] = True
+
+    for state in range(1, len(nums)):
+        candidates = [
+            dp[previous_state]
+            and previous_state + nums[previous_state] >= state
+            for previous_state in range(state)
+        ]
+        dp[state] = any(candidates)
+
+    return dp[-1]
 
 
 def jump_game_min_jumps(nums):
-    jumps = end = farthest = 0
-    for i in range(len(nums) - 1):
-        farthest = max(farthest, i + nums[i])
-        if i == end:
-            jumps += 1
-            end = farthest
-    return jumps
+    if len(nums) <= 1:
+        return 0
+
+    dp = [float("inf")] * len(nums)
+    dp[0] = 0
+
+    for state in range(1, len(nums)):
+        candidates = [
+            dp[previous_state] + 1
+            for previous_state in range(state)
+            if previous_state + nums[previous_state] >= state
+        ]
+        dp[state] = min(candidates, default=float("inf"))
+
+    return -1 if dp[-1] == float("inf") else dp[-1]
 
 
 def partition_labels(text):

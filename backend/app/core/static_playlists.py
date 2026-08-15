@@ -105,6 +105,20 @@ GOOGLE_SKELETON_QUESTIONS: tuple[dict[str, Any], ...] = (
         "Easy",
         ("recursive DFS", "visited set", "neighbor expansion"),
     ),
+    _question(
+        "Top-Down DP Skeleton",
+        "Dynamic Programming",
+        "Skeletons",
+        "Med.",
+        ("memoization", "base cases", "state transitions"),
+    ),
+    _question(
+        "Bottom-Up DP Skeleton",
+        "Dynamic Programming",
+        "Skeletons",
+        "Med.",
+        ("tabulation", "base cases", "dependency order"),
+    ),
 )
 
 
@@ -247,6 +261,59 @@ def dfs(start, graph):
 
     walk(start)
     return out
+""",
+    "Top-Down DP Skeleton": """
+def top_down_dp(
+    start_state,
+    is_base,
+    base_value,
+    next_states,
+    transition,
+    combine,
+):
+    memo = {}
+
+    def solve(state):
+        if is_base(state):
+            return base_value(state)
+        if state in memo:
+            return memo[state]
+
+        candidates = []
+        for next_state in next_states(state):
+            next_value = solve(next_state)
+            candidates.append(transition(state, next_state, next_value))
+
+        memo[state] = combine(candidates)
+        return memo[state]
+
+    return solve(start_state)
+""",
+    "Bottom-Up DP Skeleton": """
+def bottom_up_dp(
+    states,
+    base_cases,
+    previous_states,
+    transition,
+    combine,
+    target_state,
+):
+    dp = dict(base_cases)
+
+    for state in states:
+        if state in dp:
+            continue
+
+        candidates = []
+        for previous_state in previous_states(state):
+            previous_value = dp[previous_state]
+            candidates.append(
+                transition(state, previous_state, previous_value)
+            )
+
+        dp[state] = combine(candidates)
+
+    return dp[target_state]
 """,
     "1. Two Sum": """
 def solution(nums, target):
@@ -898,57 +965,80 @@ def solution(n):
 """,
     "70. Climbing Stairs": """
 def solution(n):
-    prev = 1
-    curr = 1
-    for _ in range(2, n + 1):
-        prev, curr = curr, prev + curr
-    return curr
+    if n <= 2:
+        return n
+
+    dp = [0] * (n + 1)
+    dp[1], dp[2] = 1, 2
+
+    for state in range(3, n + 1):
+        candidates = [dp[state - 1], dp[state - 2]]
+        dp[state] = sum(candidates)
+
+    return dp[n]
 """,
     "198. House Robber": """
 def solution(nums):
-    skip = 0
-    take = 0
-    for num in nums:
-        skip, take = max(skip, take), skip + num
-    return max(skip, take)
+    memo = {}
+
+    def solve(state):
+        if state >= len(nums):
+            return 0
+        if state in memo:
+            return memo[state]
+
+        candidates = [
+            solve(state + 1),
+            nums[state] + solve(state + 2),
+        ]
+        memo[state] = max(candidates)
+        return memo[state]
+
+    return solve(0)
 """,
     "322. Coin Change": """
 def solution(coins, amount):
-    dp = [amount + 1] * (amount + 1)
-    dp[0] = 0
-    for value in range(1, amount + 1):
+    dp = [0] + [float("inf")] * amount
+
+    for state in range(1, amount + 1):
+        candidates = []
         for coin in coins:
-            if coin <= value:
-                dp[value] = min(dp[value], dp[value - coin] + 1)
-    return -1 if dp[amount] == amount + 1 else dp[amount]
+            if coin <= state:
+                candidates.append(dp[state - coin] + 1)
+        dp[state] = min(candidates, default=float("inf"))
+
+    return -1 if dp[amount] == float("inf") else dp[amount]
 """,
     "300. Longest Increasing Subsequence": """
-import bisect
-
-
 def solution(nums):
-    tails = []
-    for num in nums:
-        index = bisect.bisect_left(tails, num)
-        if index == len(tails):
-            tails.append(num)
-        else:
-            tails[index] = num
-    return len(tails)
+    if not nums:
+        return 0
+
+    dp = [1] * len(nums)
+
+    for state in range(len(nums)):
+        candidates = [
+            dp[previous_state] + 1
+            for previous_state in range(state)
+            if nums[previous_state] < nums[state]
+        ]
+        dp[state] = max(candidates, default=1)
+
+    return max(dp)
 """,
     "1143. Longest Common Subsequence": """
 def solution(text1, text2):
-    dp = [0] * (len(text2) + 1)
-    for char1 in text1:
-        prev_diag = 0
-        for col, char2 in enumerate(text2, start=1):
-            saved = dp[col]
-            if char1 == char2:
-                dp[col] = prev_diag + 1
+    dp = [[0] * (len(text2) + 1) for _ in range(len(text1) + 1)]
+
+    for row in range(1, len(text1) + 1):
+        for col in range(1, len(text2) + 1):
+            if text1[row - 1] == text2[col - 1]:
+                dp[row][col] = dp[row - 1][col - 1] + 1
             else:
-                dp[col] = max(dp[col], dp[col - 1])
-            prev_diag = saved
-    return dp[-1]
+                candidates = [dp[row - 1][col], dp[row][col - 1]]
+                dp[row][col] = max(candidates)
+
+    return dp[len(text1)][len(text2)]
 """,
     "56. Merge Intervals": """
 def solution(intervals):

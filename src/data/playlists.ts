@@ -124,12 +124,14 @@ export const practicePlaylists: PracticePlaylist[] = [
   {
     slug: 'google-skeletons',
     title: 'Skeletons',
-    description: 'Static skeleton drills for reusable interview traversal patterns.',
+    description: 'Static skeleton drills for reusable traversal and dynamic programming patterns.',
     showOnSkillMap: true,
     staticDeck: true,
     questions: [
       { title: 'BFS Skeleton', coreShape: 'Graphs', methods: ['BFS queue', 'visited set', 'neighbor expansion'] },
       { title: 'DFS Skeleton', coreShape: 'Graphs', methods: ['recursive DFS', 'visited set', 'neighbor expansion'] },
+      { title: 'Top-Down DP Skeleton', coreShape: 'Dynamic Programming', methods: ['memoization', 'base cases', 'state transitions'] },
+      { title: 'Bottom-Up DP Skeleton', coreShape: 'Dynamic Programming', methods: ['tabulation', 'base cases', 'dependency order'] },
     ],
   },
 ]

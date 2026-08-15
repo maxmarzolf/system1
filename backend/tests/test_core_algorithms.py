@@ -135,6 +135,33 @@ def test_representative_core_algorithms_behave_correctly() -> None:
     assert sf.topo_order({0: [1], 1: []}) == [0, 1]
 
 
+def test_dynamic_programming_core_algorithms_use_dp_recurrences() -> None:
+    assert sf.climb_stairs(5) == 8
+    assert sf.house_robber([2, 7, 9, 3, 1]) == 12
+    assert sf.min_cost_climbing_stairs([10, 15, 20]) == 15
+    assert sf.coin_change_min([1, 2, 5], 11) == 3
+    assert sf.coin_change_min([2], 3) == -1
+    assert sf.unique_paths(3, 7) == 28
+    assert sf.longest_increasing_subsequence([10, 9, 2, 5, 3, 7, 101, 18]) == 4
+    assert sf.longest_common_subsequence("abcde", "ace") == 3
+    assert sf.can_jump([2, 3, 1, 1, 4]) is True
+    assert sf.can_jump([3, 2, 1, 0, 4]) is False
+    assert sf.jump_game_min_jumps([2, 3, 1, 1, 4]) == 2
+    assert sf.jump_game_min_jumps([0, 1]) == -1
+
+    dp_entries = {
+        name: meta
+        for name, meta in CORE_ALGORITHM_CATALOG.items()
+        if meta["algorithm"] == "dynamic-programming"
+    }
+    assert len(dp_entries) == 9
+    for name, meta in dp_entries.items():
+        source = inspect.getsource(getattr(sf, name))
+        assert "dp" in source or "solve" in source
+        assert "greedy" not in meta["techniques"]
+        assert "binary-search" not in meta["techniques"]
+
+
 def test_trie_core_algorithms_share_plain_dict_shape() -> None:
     root = {}
     sf.trie_insert(root, "code")
@@ -248,24 +275,28 @@ def test_google_static_playlist_contains_requested_questions() -> None:
     assert "heap-priority-queue" not in next(card for card in deck["drills"] if card["title"] == "215. Kth Largest Element")["tags"]
     overview_rows = static_playlist_overview_rows()
     assert len([row for row in overview_rows if "google" in row["tags"]]) == 50
-    assert len([row for row in overview_rows if "google-skeletons" in row["tags"]]) == 2
-    assert len(overview_rows) == 52
+    assert len([row for row in overview_rows if "google-skeletons" in row["tags"]]) == 4
+    assert len(overview_rows) == 54
 
 
-def test_google_skeleton_static_playlist_serves_graph_skeletons() -> None:
+def test_google_skeleton_static_playlist_serves_graph_and_dp_skeletons() -> None:
     deck = build_static_playlist_drills("google-skeletons")
 
     assert deck is not None
     assert deck["llmUsed"] is False
-    assert len(deck["drills"]) == 2
+    assert len(deck["drills"]) == 4
     assert [card["title"] for card in deck["drills"]] == [
         "BFS Skeleton",
         "DFS Skeleton",
+        "Top-Down DP Skeleton",
+        "Bottom-Up DP Skeleton",
     ]
 
     cards = {card["title"]: card for card in deck["drills"]}
     bfs_card = cards["BFS Skeleton"]
     dfs_card = cards["DFS Skeleton"]
+    top_down_card = cards["Top-Down DP Skeleton"]
+    bottom_up_card = cards["Bottom-Up DP Skeleton"]
 
     assert bfs_card["id"] == "playlist-google-skeletons-bfs-skeleton"
     assert "google-skeletons" in bfs_card["tags"]
@@ -280,6 +311,17 @@ def test_google_skeleton_static_playlist_serves_graph_skeletons() -> None:
     assert "visited = set()" in dfs_card["solution"]
     assert "def walk(node):" in dfs_card["solution"]
     assert "for ngbr in graph[node]:" in dfs_card["solution"]
+
+    assert top_down_card["id"] == "playlist-google-skeletons-top-down-dp-skeleton"
+    assert top_down_card["solution"].startswith("def top_down_dp(")
+    assert "memo = {}" in top_down_card["solution"]
+    assert "def solve(state):" in top_down_card["solution"]
+    assert "candidates = []" in top_down_card["solution"]
+
+    assert bottom_up_card["id"] == "playlist-google-skeletons-bottom-up-dp-skeleton"
+    assert bottom_up_card["solution"].startswith("def bottom_up_dp(")
+    assert "dp = dict(base_cases)" in bottom_up_card["solution"]
+    assert "for state in states:" in bottom_up_card["solution"]
 
     graph = {
         "a": ["b", "c"],
@@ -299,6 +341,28 @@ def test_google_skeleton_static_playlist_serves_graph_skeletons() -> None:
     exec(dfs_card["solution"], namespace)
     assert namespace["dfs"]("a", graph) == ["a", "b", "d", "c"]
     assert namespace["dfs"]("missing", graph) == []
+
+    namespace = {}
+    exec(top_down_card["solution"], namespace)
+    assert namespace["top_down_dp"](
+        5,
+        lambda state: state == 0,
+        lambda state: 0,
+        lambda state: [state - step for step in (1, 2) if step <= state],
+        lambda state, next_state, next_value: next_value + 1,
+        min,
+    ) == 3
+
+    namespace = {}
+    exec(bottom_up_card["solution"], namespace)
+    assert namespace["bottom_up_dp"](
+        range(6),
+        {0: 0},
+        lambda state: [state - step for step in (1, 2) if step <= state],
+        lambda state, previous_state, previous_value: previous_value + 1,
+        min,
+        5,
+    ) == 3
 
 
 def test_google_static_solutions_keep_imports_at_top_level() -> None:
