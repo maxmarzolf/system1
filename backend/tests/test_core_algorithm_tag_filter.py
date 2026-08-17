@@ -88,19 +88,23 @@ def test_static_playlist_drills_route_serves_google_skeletons(monkeypatch) -> No
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload['llmUsed'] is False
-    assert len(payload['drills']) == 4
+    assert len(payload['drills']) == 6
     assert payload['drills'][0]['id'] == 'playlist-google-skeletons-bfs-skeleton'
     assert payload['drills'][0]['title'] == 'BFS Skeleton'
     assert 'def bfs(start, graph):' in payload['drills'][0]['solution']
     assert payload['drills'][1]['id'] == 'playlist-google-skeletons-dfs-skeleton'
     assert payload['drills'][1]['title'] == 'DFS Skeleton'
     assert 'def dfs(start, graph):' in payload['drills'][1]['solution']
-    assert payload['drills'][2]['id'] == 'playlist-google-skeletons-top-down-dp-skeleton'
-    assert payload['drills'][2]['title'] == 'Top-Down DP Skeleton'
-    assert 'def solve(state):' in payload['drills'][2]['solution']
-    assert payload['drills'][3]['id'] == 'playlist-google-skeletons-bottom-up-dp-skeleton'
-    assert payload['drills'][3]['title'] == 'Bottom-Up DP Skeleton'
-    assert 'for state in states:' in payload['drills'][3]['solution']
+    assert payload['drills'][2]['title'] == 'Fixed-Size Sliding Window Skeleton'
+    assert 'def fixed_size_window(items, k):' in payload['drills'][2]['solution']
+    assert payload['drills'][3]['title'] == 'Variable-Size Sliding Window Skeleton'
+    assert 'def variable_size_window(items):' in payload['drills'][3]['solution']
+    assert payload['drills'][4]['id'] == 'playlist-google-skeletons-top-down-dp-skeleton'
+    assert payload['drills'][4]['title'] == 'Top-Down DP Skeleton'
+    assert 'def solve(state):' in payload['drills'][4]['solution']
+    assert payload['drills'][5]['id'] == 'playlist-google-skeletons-bottom-up-dp-skeleton'
+    assert payload['drills'][5]['title'] == 'Bottom-Up DP Skeleton'
+    assert 'for state in dependency_order(problem):' in payload['drills'][5]['solution']
 
 
 def test_static_playlist_drills_route_accepts_order(monkeypatch) -> None:

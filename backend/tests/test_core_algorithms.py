@@ -275,8 +275,8 @@ def test_google_static_playlist_contains_requested_questions() -> None:
     assert "heap-priority-queue" not in next(card for card in deck["drills"] if card["title"] == "215. Kth Largest Element")["tags"]
     overview_rows = static_playlist_overview_rows()
     assert len([row for row in overview_rows if "google" in row["tags"]]) == 50
-    assert len([row for row in overview_rows if "google-skeletons" in row["tags"]]) == 4
-    assert len(overview_rows) == 54
+    assert len([row for row in overview_rows if "google-skeletons" in row["tags"]]) == 6
+    assert len(overview_rows) == 56
 
 
 def test_google_skeleton_static_playlist_serves_graph_and_dp_skeletons() -> None:
@@ -284,10 +284,12 @@ def test_google_skeleton_static_playlist_serves_graph_and_dp_skeletons() -> None
 
     assert deck is not None
     assert deck["llmUsed"] is False
-    assert len(deck["drills"]) == 4
+    assert len(deck["drills"]) == 6
     assert [card["title"] for card in deck["drills"]] == [
         "BFS Skeleton",
         "DFS Skeleton",
+        "Fixed-Size Sliding Window Skeleton",
+        "Variable-Size Sliding Window Skeleton",
         "Top-Down DP Skeleton",
         "Bottom-Up DP Skeleton",
     ]
@@ -295,6 +297,8 @@ def test_google_skeleton_static_playlist_serves_graph_and_dp_skeletons() -> None
     cards = {card["title"]: card for card in deck["drills"]}
     bfs_card = cards["BFS Skeleton"]
     dfs_card = cards["DFS Skeleton"]
+    fixed_window_card = cards["Fixed-Size Sliding Window Skeleton"]
+    variable_window_card = cards["Variable-Size Sliding Window Skeleton"]
     top_down_card = cards["Top-Down DP Skeleton"]
     bottom_up_card = cards["Bottom-Up DP Skeleton"]
 
@@ -312,16 +316,39 @@ def test_google_skeleton_static_playlist_serves_graph_and_dp_skeletons() -> None
     assert "def walk(node):" in dfs_card["solution"]
     assert "for ngbr in graph[node]:" in dfs_card["solution"]
 
+    assert fixed_window_card["id"] == (
+        "playlist-google-skeletons-fixed-size-sliding-window-skeleton"
+    )
+    assert fixed_window_card["solution"].startswith("def fixed_size_window(items, k):")
+    assert "# Add the item that entered the window." in fixed_window_card["solution"]
+    assert "add_to_window(state, item)" in fixed_window_card["solution"]
+    assert "remove_from_window(state, items[left])" in fixed_window_card["solution"]
+    compile(fixed_window_card["solution"], f"<{fixed_window_card['id']}>", "exec")
+
+    assert variable_window_card["id"] == (
+        "playlist-google-skeletons-variable-size-sliding-window-skeleton"
+    )
+    assert variable_window_card["solution"].startswith("def variable_size_window(items):")
+    assert "while window_is_invalid(state):" in variable_window_card["solution"]
+    assert "# Shrink from the left until the invariant is restored." in variable_window_card["solution"]
+    compile(variable_window_card["solution"], f"<{variable_window_card['id']}>", "exec")
+
     assert top_down_card["id"] == "playlist-google-skeletons-top-down-dp-skeleton"
-    assert top_down_card["solution"].startswith("def top_down_dp(")
+    assert top_down_card["solution"].startswith("def top_down_dp(problem):")
     assert "memo = {}" in top_down_card["solution"]
     assert "def solve(state):" in top_down_card["solution"]
     assert "candidates = []" in top_down_card["solution"]
+    assert "memo[state] = optimize(candidates)" in top_down_card["solution"]
+    assert "# Keep the best candidate for this state." in top_down_card["solution"]
+    compile(top_down_card["solution"], f"<{top_down_card['id']}>", "exec")
 
     assert bottom_up_card["id"] == "playlist-google-skeletons-bottom-up-dp-skeleton"
-    assert bottom_up_card["solution"].startswith("def bottom_up_dp(")
-    assert "dp = dict(base_cases)" in bottom_up_card["solution"]
-    assert "for state in states:" in bottom_up_card["solution"]
+    assert bottom_up_card["solution"].startswith("def bottom_up_dp(problem):")
+    assert "dp = initialize_base_cases(problem)" in bottom_up_card["solution"]
+    assert "for state in dependency_order(problem):" in bottom_up_card["solution"]
+    assert "dp[state] = optimize(candidates)" in bottom_up_card["solution"]
+    assert "# Seed every base case before filling dependent states." in bottom_up_card["solution"]
+    compile(bottom_up_card["solution"], f"<{bottom_up_card['id']}>", "exec")
 
     graph = {
         "a": ["b", "c"],
@@ -341,29 +368,6 @@ def test_google_skeleton_static_playlist_serves_graph_and_dp_skeletons() -> None
     exec(dfs_card["solution"], namespace)
     assert namespace["dfs"]("a", graph) == ["a", "b", "d", "c"]
     assert namespace["dfs"]("missing", graph) == []
-
-    namespace = {}
-    exec(top_down_card["solution"], namespace)
-    assert namespace["top_down_dp"](
-        5,
-        lambda state: state == 0,
-        lambda state: 0,
-        lambda state: [state - step for step in (1, 2) if step <= state],
-        lambda state, next_state, next_value: next_value + 1,
-        min,
-    ) == 3
-
-    namespace = {}
-    exec(bottom_up_card["solution"], namespace)
-    assert namespace["bottom_up_dp"](
-        range(6),
-        {0: 0},
-        lambda state: [state - step for step in (1, 2) if step <= state],
-        lambda state, previous_state, previous_value: previous_value + 1,
-        min,
-        5,
-    ) == 3
-
 
 def test_google_static_solutions_keep_imports_at_top_level() -> None:
     deck = build_static_playlist_drills("google")

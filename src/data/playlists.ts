@@ -124,12 +124,14 @@ export const practicePlaylists: PracticePlaylist[] = [
   {
     slug: 'google-skeletons',
     title: 'Skeletons',
-    description: 'Static skeleton drills for reusable traversal and dynamic programming patterns.',
+    description: 'Static skeleton drills for traversal, sliding window, and dynamic programming patterns.',
     showOnSkillMap: true,
     staticDeck: true,
     questions: [
       { title: 'BFS Skeleton', coreShape: 'Graphs', methods: ['BFS queue', 'visited set', 'neighbor expansion'] },
       { title: 'DFS Skeleton', coreShape: 'Graphs', methods: ['recursive DFS', 'visited set', 'neighbor expansion'] },
+      { title: 'Fixed-Size Sliding Window Skeleton', coreShape: 'Sliding Window', methods: ['fixed window', 'rolling state', 'enter / leave updates'] },
+      { title: 'Variable-Size Sliding Window Skeleton', coreShape: 'Sliding Window', methods: ['variable window', 'expand / shrink rhythm', 'valid window rule'] },
       { title: 'Top-Down DP Skeleton', coreShape: 'Dynamic Programming', methods: ['memoization', 'base cases', 'state transitions'] },
       { title: 'Bottom-Up DP Skeleton', coreShape: 'Dynamic Programming', methods: ['tabulation', 'base cases', 'dependency order'] },
     ],

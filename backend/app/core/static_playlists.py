@@ -106,6 +106,20 @@ GOOGLE_SKELETON_QUESTIONS: tuple[dict[str, Any], ...] = (
         ("recursive DFS", "visited set", "neighbor expansion"),
     ),
     _question(
+        "Fixed-Size Sliding Window Skeleton",
+        "Sliding Window",
+        "Skeletons",
+        "Easy",
+        ("fixed window", "rolling state", "enter / leave updates"),
+    ),
+    _question(
+        "Variable-Size Sliding Window Skeleton",
+        "Sliding Window",
+        "Skeletons",
+        "Med.",
+        ("variable window", "expand / shrink rhythm", "valid window rule"),
+    ),
+    _question(
         "Top-Down DP Skeleton",
         "Dynamic Programming",
         "Skeletons",
@@ -262,58 +276,95 @@ def dfs(start, graph):
     walk(start)
     return out
 """,
+    "Fixed-Size Sliding Window Skeleton": """
+def fixed_size_window(items, k):
+    left = 0
+    state = initialize_state()
+    answer = initialize_answer()
+
+    for right, item in enumerate(items):
+        # Add the item that entered the window.
+        add_to_window(state, item)
+
+        if right - left + 1 > k:
+            # Remove the item that left the window.
+            remove_from_window(state, items[left])
+            left += 1
+
+        if right - left + 1 == k:
+            # Score the current window without rebuilding it.
+            answer = update_answer(answer, state, left, right)
+
+    return answer
+""",
+    "Variable-Size Sliding Window Skeleton": """
+def variable_size_window(items):
+    left = 0
+    state = initialize_state()
+    answer = initialize_answer()
+
+    for right, item in enumerate(items):
+        # Expand the window with the new rightmost item.
+        add_to_window(state, item)
+
+        while window_is_invalid(state):
+            # Shrink from the left until the invariant is restored.
+            remove_from_window(state, items[left])
+            left += 1
+
+        # For minimum-window problems, update before each valid shrink instead.
+        answer = update_answer(answer, state, left, right)
+
+    return answer
+""",
     "Top-Down DP Skeleton": """
-def top_down_dp(
-    start_state,
-    is_base,
-    base_value,
-    next_states,
-    transition,
-    combine,
-):
+def top_down_dp(problem):
     memo = {}
 
     def solve(state):
-        if is_base(state):
+        # Return the known answer for a base-case state.
+        if is_base_case(state):
             return base_value(state)
         if state in memo:
             return memo[state]
 
         candidates = []
-        for next_state in next_states(state):
-            next_value = solve(next_state)
-            candidates.append(transition(state, next_state, next_value))
+        for choice in choices(state):
+            next_state = next_state_for(state, choice)
+            # Combine this choice with the solved subproblem.
+            candidate = transition(
+                state,
+                choice,
+                solve(next_state),
+            )
+            candidates.append(candidate)
 
-        memo[state] = combine(candidates)
+        # Keep the best candidate for this state.
+        memo[state] = optimize(candidates)
         return memo[state]
 
-    return solve(start_state)
+    return solve(start_state(problem))
 """,
     "Bottom-Up DP Skeleton": """
-def bottom_up_dp(
-    states,
-    base_cases,
-    previous_states,
-    transition,
-    combine,
-    target_state,
-):
-    dp = dict(base_cases)
+def bottom_up_dp(problem):
+    # Seed every base case before filling dependent states.
+    dp = initialize_base_cases(problem)
 
-    for state in states:
-        if state in dp:
-            continue
-
+    for state in dependency_order(problem):
         candidates = []
         for previous_state in previous_states(state):
-            previous_value = dp[previous_state]
-            candidates.append(
-                transition(state, previous_state, previous_value)
+            # Build a candidate from an already-solved state.
+            candidate = transition(
+                state,
+                previous_state,
+                dp[previous_state],
             )
+            candidates.append(candidate)
 
-        dp[state] = combine(candidates)
+        # Store the best result after considering every transition.
+        dp[state] = optimize(candidates)
 
-    return dp[target_state]
+    return dp[target_state(problem)]
 """,
     "1. Two Sum": """
 def solution(nums, target):
