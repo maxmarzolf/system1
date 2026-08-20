@@ -37,6 +37,11 @@ type Flashcard = {
   hint: string
   tags: string[]
   plainEnglishPromptDetail?: PlainEnglishPromptDetail
+  skeletonApplicability?: {
+    templateStrength: number
+    applicationAbstraction: number
+    summary: string
+  } | null
 }
 
 type PracticeMode = 'recall' | 'multiple-choice'
@@ -4789,6 +4794,25 @@ function App() {
                       <div className="prompt-section-content">
                         <span className="prompt-section-label">Prompt</span>
                         <p className="prompt prompt-toggle-text">{practicePrompt}</p>
+                        {card.skeletonApplicability && (
+                          <div className="skeleton-applicability" aria-label="Skeleton applicability">
+                            <div
+                              className="skeleton-applicability-score template-strength"
+                              title="Once you recognize the pattern, how much of the code can you write almost automatically?"
+                            >
+                              <span>Template strength</span>
+                              <strong>{card.skeletonApplicability.templateStrength}/10</strong>
+                            </div>
+                            <div
+                              className="skeleton-applicability-score application-abstraction"
+                              title="How much reasoning is still required to map the problem onto this pattern?"
+                            >
+                              <span>Application abstraction</span>
+                              <strong>{card.skeletonApplicability.applicationAbstraction}/10</strong>
+                            </div>
+                            <p className="skeleton-applicability-summary">{card.skeletonApplicability.summary}</p>
+                          </div>
+                        )}
                       </div>
                       {fallbackPlainEnglishPromptDetail && (
                         <button

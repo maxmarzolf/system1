@@ -133,7 +133,209 @@ GOOGLE_SKELETON_QUESTIONS: tuple[dict[str, Any], ...] = (
         "Med.",
         ("tabulation", "base cases", "dependency order"),
     ),
+    _question(
+        "Binary Search Skeleton",
+        "Binary Search",
+        "Skeletons",
+        "Easy",
+        ("left / right bounds", "midpoint", "discard half"),
+    ),
+    _question(
+        "Backtracking Skeleton",
+        "Backtracking",
+        "Skeletons",
+        "Med.",
+        ("choose / explore / undo", "valid choices", "goal state"),
+    ),
+    _question(
+        "Two Pointers Skeleton",
+        "Two Pointers",
+        "Skeletons",
+        "Easy",
+        ("opposing pointers", "movement rule", "termination condition"),
+    ),
+    _question(
+        "Monotonic Stack Skeleton",
+        "Monotonic Stack",
+        "Skeletons",
+        "Med.",
+        ("index stack", "pop trigger", "next greater element"),
+    ),
+    _question(
+        "Heap / Top-K Skeleton",
+        "Heap / Priority Queue",
+        "Skeletons",
+        "Easy",
+        ("min heap", "top-k maintenance", "push / pop discipline"),
+    ),
+    _question(
+        "Merge Intervals Skeleton",
+        "Intervals",
+        "Skeletons",
+        "Easy",
+        ("sort by start", "overlap check", "merge endpoints"),
+    ),
+    _question(
+        "Prefix Sum Skeleton",
+        "Prefix Sums",
+        "Skeletons",
+        "Easy",
+        ("leading zero", "running total", "range difference"),
+    ),
+    _question(
+        "Union-Find / Disjoint Set Skeleton",
+        "Union Find",
+        "Skeletons",
+        "Med.",
+        ("path compression", "union by size", "cycle detection"),
+    ),
+    _question(
+        "Topological Sort -- Kahn's Algorithm Skeleton",
+        "Graphs",
+        "Skeletons",
+        "Med.",
+        ("indegree bookkeeping", "zero-indegree queue", "cycle detection"),
+    ),
+    _question(
+        "Dijkstra Skeleton",
+        "Graphs",
+        "Skeletons",
+        "Med.",
+        ("min-heap frontier", "non-negative weights", "finalized distances"),
+    ),
+    _question(
+        "Bellman-Ford Skeleton",
+        "Graphs",
+        "Skeletons",
+        "Med.",
+        ("edge relaxation", "n - 1 passes", "early exit"),
+    ),
+    _question(
+        "Trie Skeleton",
+        "Trie",
+        "Skeletons",
+        "Med.",
+        ("child map", "word insertion", "exact search"),
+    ),
+    _question(
+        "Greedy Skeleton",
+        "Greedy",
+        "Skeletons",
+        "Easy",
+        ("sorting rule", "local choice", "feasibility check"),
+    ),
+    _question(
+        "Divide and Conquer Skeleton",
+        "Divide and Conquer",
+        "Skeletons",
+        "Easy",
+        ("base case", "divide", "combine"),
+    ),
 )
+
+
+SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
+    "BFS Skeleton": {
+        "templateStrength": 10,
+        "applicationAbstraction": 2,
+        "summary": "Queue → visited → neighbors",
+    },
+    "DFS Skeleton": {
+        "templateStrength": 10,
+        "applicationAbstraction": 2,
+        "summary": "Visit → neighbors → recurse/stack",
+    },
+    "Union-Find / Disjoint Set Skeleton": {
+        "templateStrength": 10,
+        "applicationAbstraction": 3,
+        "summary": "find + union implementation barely changes",
+    },
+    "Merge Intervals Skeleton": {
+        "templateStrength": 9,
+        "applicationAbstraction": 3,
+        "summary": "Sort → compare current interval with previous",
+    },
+    "Binary Search Skeleton": {
+        "templateStrength": 9,
+        "applicationAbstraction": 4,
+        "summary": "Loop is stable; defining the search condition can be tricky",
+    },
+    "Topological Sort -- Kahn's Algorithm Skeleton": {
+        "templateStrength": 9,
+        "applicationAbstraction": 4,
+        "summary": "Build indegree → zero-indegree queue → remove edges",
+    },
+    "Bellman-Ford Skeleton": {
+        "templateStrength": 9,
+        "applicationAbstraction": 4,
+        "summary": "Repeatedly relax every edge",
+    },
+    "Trie Skeleton": {
+        "templateStrength": 9,
+        "applicationAbstraction": 4,
+        "summary": "Node + children + character traversal",
+    },
+    "Backtracking Skeleton": {
+        "templateStrength": 9,
+        "applicationAbstraction": 5,
+        "summary": "Choose → explore → undo",
+    },
+    "Dijkstra Skeleton": {
+        "templateStrength": 9,
+        "applicationAbstraction": 5,
+        "summary": "Heap + distances + relax edges",
+    },
+    "Two Pointers Skeleton": {
+        "templateStrength": 8,
+        "applicationAbstraction": 4,
+        "summary": "Usually left/right with clear movement rules",
+    },
+    "Heap / Top-K Skeleton": {
+        "templateStrength": 8,
+        "applicationAbstraction": 4,
+        "summary": "Push/pop heap; deciding what tuple or key to store matters",
+    },
+    "Fixed-Size Sliding Window Skeleton": {
+        "templateStrength": 8,
+        "applicationAbstraction": 5,
+        "summary": "Expand → maintain fixed width → score",
+    },
+    "Variable-Size Sliding Window Skeleton": {
+        "templateStrength": 8,
+        "applicationAbstraction": 5,
+        "summary": "Expand → detect invalid → shrink",
+    },
+    "Prefix Sum Skeleton": {
+        "templateStrength": 8,
+        "applicationAbstraction": 5,
+        "summary": "Construction is easy; recognizing the algebraic transformation is harder",
+    },
+    "Monotonic Stack Skeleton": {
+        "templateStrength": 8,
+        "applicationAbstraction": 6,
+        "summary": "Stack mechanics are stable; recognizing what belongs on it is harder",
+    },
+    "Divide and Conquer Skeleton": {
+        "templateStrength": 6,
+        "applicationAbstraction": 6,
+        "summary": "Divide → solve → combine, but implementation varies",
+    },
+    "Greedy Skeleton": {
+        "templateStrength": 3,
+        "applicationAbstraction": 9,
+        "summary": "No universal template; proving the local choice works is the problem",
+    },
+    "Top-Down DP Skeleton": {
+        "templateStrength": 3,
+        "applicationAbstraction": 10,
+        "summary": "Discover the state, transitions, dependencies, and evaluation order",
+    },
+    "Bottom-Up DP Skeleton": {
+        "templateStrength": 3,
+        "applicationAbstraction": 10,
+        "summary": "Discover the state, transitions, dependencies, and evaluation order",
+    },
+}
 
 
 STATIC_PLAYLISTS: dict[str, dict[str, Any]] = {
@@ -347,24 +549,282 @@ def top_down_dp(problem):
 """,
     "Bottom-Up DP Skeleton": """
 def bottom_up_dp(problem):
-    # Seed every base case before filling dependent states.
-    dp = initialize_base_cases(problem)
+    dp = initialize_dp_storage(problem)
+    set_base_cases(dp, problem)
 
     for state in dependency_order(problem):
         candidates = []
         for previous_state in previous_states(state):
-            # Build a candidate from an already-solved state.
             candidate = transition(
                 state,
                 previous_state,
                 dp[previous_state],
             )
             candidates.append(candidate)
-
-        # Store the best result after considering every transition.
-        dp[state] = optimize(candidates)
-
+        dp[state] = combine(candidates)
     return dp[target_state(problem)]
+""",
+    "Binary Search Skeleton": """
+def binary_search(nums, target):
+    left, right = 0, len(nums) - 1
+
+    while left <= right:
+        mid = (left + right) // 2
+
+        if nums[mid] == target:
+            return mid
+        elif nums[mid] < target:
+            left = mid + 1
+        else:
+            right = mid - 1
+
+    return -1
+""",
+    "Backtracking Skeleton": """
+def backtrack(state, choices, out):
+    if goal_reached(state):
+        out.append(state.copy())
+        return
+
+    for choice in choices:
+        if not valid(choice, state):
+            continue
+
+        state.append(choice)            # choose
+        backtrack(state, choices, out)  # explore
+        state.pop()                     # undo
+""",
+    "Two Pointers Skeleton": """
+def two_pointers(nums):
+    left = 0
+    right = len(nums) - 1
+
+    while left < right:
+        if condition(nums[left], nums[right]):
+            return True
+
+        if move_left(nums[left], nums[right]):
+            left += 1
+        else:
+            right -= 1
+
+    return False
+""",
+    "Monotonic Stack Skeleton": """
+def monotonic_stack(nums):
+    stack = []
+    out = [-1] * len(nums)
+
+    for i, num in enumerate(nums):
+        while stack and nums[stack[-1]] < num:
+            j = stack.pop()
+            out[j] = num
+
+        stack.append(i)
+
+    return out
+""",
+    "Heap / Top-K Skeleton": """
+import heapq
+
+
+def top_k(items, k):
+    heap = []
+
+    for item in items:
+        heapq.heappush(heap, item)
+
+        if len(heap) > k:
+            heapq.heappop(heap)
+
+    return heap
+""",
+    "Merge Intervals Skeleton": """
+def merge_intervals(intervals):
+    intervals.sort(key=lambda x: x[0])
+    merged = []
+
+    for start, end in intervals:
+        if not merged or start > merged[-1][1]:
+            merged.append([start, end])
+        else:
+            merged[-1][1] = max(merged[-1][1], end)
+
+    return merged
+""",
+    "Prefix Sum Skeleton": """
+def build_prefix(nums):
+    prefix = [0] * (len(nums) + 1)
+
+    for i in range(len(nums)):
+        prefix[i + 1] = prefix[i] + nums[i]
+
+    return prefix
+
+
+def range_sum(prefix, left, right):
+    return prefix[right + 1] - prefix[left]
+""",
+    "Union-Find / Disjoint Set Skeleton": """
+class UnionFind:
+    def __init__(self, n):
+        self.parent = list(range(n))
+        self.rank = [1] * n
+
+    def find(self, x):
+        if x != self.parent[x]:
+            self.parent[x] = self.find(self.parent[x])
+
+        return self.parent[x]
+
+    def union(self, a, b):
+        root_a = self.find(a)
+        root_b = self.find(b)
+
+        if root_a == root_b:
+            return False
+
+        if self.rank[root_a] < self.rank[root_b]:
+            root_a, root_b = root_b, root_a
+
+        self.parent[root_b] = root_a
+        self.rank[root_a] += self.rank[root_b]
+
+        return True
+""",
+    "Topological Sort -- Kahn's Algorithm Skeleton": """
+from collections import defaultdict, deque
+
+
+def topological_sort(n, edges):
+    graph = defaultdict(list)
+    indegree = [0] * n
+
+    for a, b in edges:
+        graph[a].append(b)
+        indegree[b] += 1
+
+    q = deque(
+        node for node in range(n)
+        if indegree[node] == 0
+    )
+
+    order = []
+
+    while q:
+        node = q.popleft()
+        order.append(node)
+
+        for ngbr in graph[node]:
+            indegree[ngbr] -= 1
+
+            if indegree[ngbr] == 0:
+                q.append(ngbr)
+
+    return order if len(order) == n else []
+""",
+    "Dijkstra Skeleton": """
+import heapq
+
+
+def dijkstra(start, graph):
+    heap = [(0, start)]
+    distance = {}
+
+    while heap:
+        dist, node = heapq.heappop(heap)
+
+        if node in distance:
+            continue
+
+        distance[node] = dist
+
+        for ngbr, weight in graph.get(node, []):
+            if ngbr not in distance:
+                heapq.heappush(
+                    heap,
+                    (dist + weight, ngbr)
+                )
+
+    return distance
+""",
+    "Bellman-Ford Skeleton": """
+def bellman_ford(n, edges, start):
+    distance = [float("inf")] * n
+    distance[start] = 0
+
+    for _ in range(n - 1):
+        changed = False
+
+        for u, v, weight in edges:
+            if (
+                distance[u] != float("inf")
+                and distance[u] + weight < distance[v]
+            ):
+                distance[v] = distance[u] + weight
+                changed = True
+
+        if not changed:
+            break
+
+    return distance
+""",
+    "Trie Skeleton": """
+class TrieNode:
+    def __init__(self):
+        self.children = {}
+        self.end = False
+
+
+class Trie:
+    def __init__(self):
+        self.root = TrieNode()
+
+    def insert(self, word):
+        node = self.root
+
+        for char in word:
+            if char not in node.children:
+                node.children[char] = TrieNode()
+
+            node = node.children[char]
+
+        node.end = True
+
+    def search(self, word):
+        node = self.root
+
+        for char in word:
+            if char not in node.children:
+                return False
+
+            node = node.children[char]
+
+        return node.end
+""",
+    "Greedy Skeleton": """
+def greedy(items):
+    items.sort(key=some_rule)
+
+    result = initial_result()
+
+    for item in items:
+        if valid_to_take(item, result):
+            result = take(item, result)
+
+    return result
+""",
+    "Divide and Conquer Skeleton": """
+def divide_and_conquer(problem):
+    if small_enough(problem):
+        return solve_directly(problem)
+
+    left, right = divide(problem)
+
+    left_answer = divide_and_conquer(left)
+    right_answer = divide_and_conquer(right)
+
+    return combine(left_answer, right_answer)
 """,
     "1. Two Sum": """
 def solution(nums, target):
@@ -1285,6 +1745,19 @@ def _ordered_questions(playlist_slug: str, questions: tuple[dict[str, Any], ...]
     normalized_order = order if order in STATIC_PLAYLIST_ORDERS else "curated"
     indexed = list(enumerate(questions))
 
+    if (
+        playlist_slug == "google-skeletons"
+        and normalized_order in {"curated", "mastery", "google-15"}
+    ):
+        rank = {title: index for index, title in enumerate(SKELETON_APPLICABILITY)}
+        return [
+            question
+            for _, question in sorted(
+                indexed,
+                key=lambda item: (rank.get(str(item[1]["title"]), len(rank)), item[0]),
+            )
+        ]
+
     if normalized_order == "solution-length":
         return [
             question
@@ -1382,7 +1855,7 @@ def build_static_playlist_drills(playlist_slug: str, order: str = "curated") -> 
         tier = str(question["tier"])
         methods = [str(method) for method in question["methods"]]
         prompt = f"{playlist['title']}: recall the static solution for {title}."
-        drills.append({
+        drill = {
             "id": _card_id(normalized_slug, title),
             "title": title,
             "difficulty": str(question["difficulty"]),
@@ -1410,7 +1883,11 @@ def build_static_playlist_drills(playlist_slug: str, order: str = "curated") -> 
                 "brassTacks": f"Recall the invariant, data structure, and update rule for {title}.",
                 "leetcodeExamples": [title],
             },
-        })
+        }
+        applicability = SKELETON_APPLICABILITY.get(title)
+        if normalized_slug == "google-skeletons" and applicability:
+            drill["skeletonApplicability"] = applicability
+        drills.append(drill)
 
     return {"drills": drills, "llmUsed": False}
 
@@ -1418,7 +1895,7 @@ def build_static_playlist_drills(playlist_slug: str, order: str = "curated") -> 
 def static_playlist_overview_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for playlist_slug, playlist in STATIC_PLAYLISTS.items():
-        for question in playlist["questions"]:
+        for question in _ordered_questions(playlist_slug, playlist["questions"], "curated"):
             rows.append({
                 "id": _card_id(playlist_slug, str(question["title"])),
                 "title": str(question["title"]),
@@ -1432,7 +1909,10 @@ def static_playlist_activity_rows() -> list[dict[str, Any]]:
         {
             "algorithm": str(playlist["title"]),
             "slug": playlist_slug,
-            "skills": [str(question["title"]) for question in playlist["questions"]],
+            "skills": [
+                str(question["title"])
+                for question in _ordered_questions(playlist_slug, playlist["questions"], "curated")
+            ],
         }
         for playlist_slug, playlist in STATIC_PLAYLISTS.items()
     ]

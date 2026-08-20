@@ -5549,6 +5549,49 @@ button.tune-reset {
   margin-top: 0.38rem;
 }
 
+.skeleton-applicability {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.72rem;
+}
+
+.skeleton-applicability-score {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.42rem;
+  padding: 0.34rem 0.5rem;
+  border: 1px solid var(--workbench-edge);
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--hc-bg) 48%, transparent);
+  color: var(--hc-muted);
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.skeleton-applicability-score strong {
+  color: var(--hc-fg);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.skeleton-applicability-score.template-strength strong {
+  color: color-mix(in srgb, var(--hc-accent) 86%, var(--hc-fg));
+}
+
+.skeleton-applicability-score.application-abstraction strong {
+  color: color-mix(in srgb, #f59e0b 76%, var(--hc-fg));
+}
+
+.skeleton-applicability-summary {
+  flex: 1 1 14rem;
+  margin: 0;
+  color: var(--hc-muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
 .card-shell .prompt-feedback-surface .prompt-toggle-button {
   min-height: 1.8rem;
   padding: 0.32rem 0.5rem;

@@ -182,6 +182,12 @@ class PlainEnglishPromptDetail(BaseModel):
     leetcodeExamples: list[str] = []
 
 
+class SkeletonApplicability(BaseModel):
+    templateStrength: int = Field(ge=0, le=10)
+    applicationAbstraction: int = Field(ge=0, le=10)
+    summary: str = Field(min_length=1)
+
+
 class SkillMapDrillCard(BaseModel):
     id: str = Field(min_length=1)
     title: str = Field(min_length=1)
@@ -195,6 +201,7 @@ class SkillMapDrillCard(BaseModel):
     hint: str = ""
     tags: list[str] = []
     plainEnglishPromptDetail: PlainEnglishPromptDetail = Field(default_factory=PlainEnglishPromptDetail)
+    skeletonApplicability: SkeletonApplicability | None = None
 
 
 class SkillMapDrillsRequest(BaseModel):
