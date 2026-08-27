@@ -129,7 +129,9 @@ export const practicePlaylists: PracticePlaylist[] = [
     staticDeck: true,
     questions: [
       { title: 'BFS Skeleton', coreShape: 'Graphs', methods: ['BFS queue', 'visited set', 'neighbor expansion'] },
+      { title: 'Grid BFS Skeleton', coreShape: 'Matrix / Grid', methods: ['BFS queue', 'four directions', 'visited on enqueue', 'level traversal'] },
       { title: 'DFS Skeleton', coreShape: 'Graphs', methods: ['recursive DFS', 'visited set', 'neighbor expansion'] },
+      { title: 'Grid DFS Skeleton', coreShape: 'Matrix / Grid', methods: ['recursive DFS', 'four directions', 'bounds and visited guards'] },
       { title: 'Union-Find / Disjoint Set Skeleton', coreShape: 'Union Find', methods: ['path compression', 'union by size', 'cycle detection'] },
       { title: 'Merge Intervals Skeleton', coreShape: 'Intervals', methods: ['sort by start', 'overlap check', 'merge endpoints'] },
       { title: 'Binary Search Skeleton', coreShape: 'Binary Search', methods: ['left / right bounds', 'midpoint', 'discard half'] },

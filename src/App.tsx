@@ -41,6 +41,9 @@ type Flashcard = {
     templateStrength: number
     applicationAbstraction: number
     summary: string
+    explanation: string
+    invariant: string
+    timeComplexity: string
   } | null
 }
 
@@ -2848,6 +2851,7 @@ function App() {
     () => card.plainEnglishPromptDetail ?? getPlainEnglishPromptDetail(practicePrompt, card.tags, card.title, plainPracticeTarget),
     [card.plainEnglishPromptDetail, card.tags, card.title, plainPracticeTarget, practicePrompt]
   )
+  const skeletonReference = card.tags.includes('google-skeletons') ? card.skeletonApplicability : null
   const isPlainEnglishPromptOpen = plainEnglishPromptOpen
   const plainEnglishPromptDetailId = `plain-english-prompt-${card.id}`
   const submissionFeedbackDetailId = `submission-feedback-detail-${card.id}`
@@ -4505,7 +4509,11 @@ function App() {
         practiceHistoryHref={practiceHistoryHref}
       />
 
-  <div className={relatedLeetCodeSet ? 'card-shell card-shell-has-drawer' : 'card-shell'}>
+  <div className={[
+    'card-shell',
+    relatedLeetCodeSet ? 'card-shell-has-drawer' : '',
+    skeletonReference ? 'skeleton-card-shell' : '',
+  ].filter(Boolean).join(' ')}>
       <section className="card">
         <div className="card-header">
           <div className="card-header-main">
@@ -4788,33 +4796,19 @@ function App() {
               )
             ) : (
               <div className="drill-fade-in">
-                <div className={isPlainEnglishPromptOpen ? 'prompt-toggle-card prompt-feedback-surface expanded' : 'prompt-toggle-card prompt-feedback-surface'}>
+                <div className={skeletonReference
+                  ? 'prompt-toggle-card prompt-feedback-surface skeleton-reference-surface'
+                  : isPlainEnglishPromptOpen
+                    ? 'prompt-toggle-card prompt-feedback-surface expanded'
+                  : 'prompt-toggle-card prompt-feedback-surface'}>
                   <div className="prompt-surface-section">
-                    <div className="prompt-toggle-header">
-                      <div className="prompt-section-content">
-                        <span className="prompt-section-label">Prompt</span>
-                        <p className="prompt prompt-toggle-text">{practicePrompt}</p>
-                        {card.skeletonApplicability && (
-                          <div className="skeleton-applicability" aria-label="Skeleton applicability">
-                            <div
-                              className="skeleton-applicability-score template-strength"
-                              title="Once you recognize the pattern, how much of the code can you write almost automatically?"
-                            >
-                              <span>Template strength</span>
-                              <strong>{card.skeletonApplicability.templateStrength}/10</strong>
-                            </div>
-                            <div
-                              className="skeleton-applicability-score application-abstraction"
-                              title="How much reasoning is still required to map the problem onto this pattern?"
-                            >
-                              <span>Application abstraction</span>
-                              <strong>{card.skeletonApplicability.applicationAbstraction}/10</strong>
-                            </div>
-                            <p className="skeleton-applicability-summary">{card.skeletonApplicability.summary}</p>
-                          </div>
-                        )}
-                      </div>
-                      {fallbackPlainEnglishPromptDetail && (
+                    {!skeletonReference && (
+                      <div className="prompt-toggle-header">
+                        <div className="prompt-section-content">
+                          <span className="prompt-section-label">Prompt</span>
+                          <p className="prompt prompt-toggle-text">{practicePrompt}</p>
+                        </div>
+                        {fallbackPlainEnglishPromptDetail && (
                         <button
                           type="button"
                           className={isPlainEnglishPromptOpen ? 'prompt-toggle-button active' : 'prompt-toggle-button'}
@@ -4843,9 +4837,41 @@ function App() {
                             <path d={isPlainEnglishPromptOpen ? 'm18 15-6-6-6 6' : 'm6 9 6 6 6-6'} />
                           </svg>
                         </button>
-                      )}
-                    </div>
-                    {isPlainEnglishPromptOpen && fallbackPlainEnglishPromptDetail && (
+                        )}
+                      </div>
+                    )}
+                    {skeletonReference ? (
+                      <section className="skeleton-reference" aria-label={`${card.title} reference`}>
+                        <dl className="skeleton-reference-facts">
+                          <div className="skeleton-reference-fact explanation">
+                            <dt>Explanation</dt>
+                            <dd>{skeletonReference.explanation}</dd>
+                            <div className="skeleton-reference-measures" aria-label="Skeleton measurements">
+                              <span
+                                className="skeleton-reference-measure"
+                                title="Once the pattern is recognized, how much of the implementation follows the template?"
+                              >
+                                Template <strong>{skeletonReference.templateStrength}/10</strong>
+                              </span>
+                              <span
+                                className="skeleton-reference-measure"
+                                title="How much reasoning is required to map a problem onto this pattern?"
+                              >
+                                Abstraction <strong>{skeletonReference.applicationAbstraction}/10</strong>
+                              </span>
+                            </div>
+                          </div>
+                          <div className="skeleton-reference-fact">
+                            <dt>Invariant</dt>
+                            <dd>{skeletonReference.invariant}</dd>
+                          </div>
+                          <div className="skeleton-reference-fact complexity">
+                            <dt>Time complexity</dt>
+                            <dd>{skeletonReference.timeComplexity}</dd>
+                          </div>
+                        </dl>
+                      </section>
+                    ) : isPlainEnglishPromptOpen && fallbackPlainEnglishPromptDetail && (
                       <div className="prompt-detail" id={plainEnglishPromptDetailId}>
                       <div className="prompt-detail-section">
                         <h3>Explanation</h3>
@@ -5133,11 +5159,15 @@ function App() {
               </svg>
               <span>Next</span>
             </button>
-            <button className="secondary card-control-button" onClick={restartSession} aria-label="Regenerate session">
+            <button
+              className="secondary card-control-button"
+              onClick={restartSession}
+              aria-label={skeletonReference ? 'Restart static session' : 'Regenerate session'}
+            >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
               </svg>
-              <span>Regenerate</span>
+              <span>{skeletonReference ? 'Restart' : 'Regenerate'}</span>
             </button>
           </div>
 

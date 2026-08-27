@@ -88,22 +88,31 @@ def test_static_playlist_drills_route_serves_google_skeletons(monkeypatch) -> No
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload['llmUsed'] is False
-    assert len(payload['drills']) == 20
+    assert len(payload['drills']) == 22
     assert payload['drills'][0]['id'] == 'playlist-google-skeletons-bfs-skeleton'
     assert payload['drills'][0]['title'] == 'BFS Skeleton'
     assert 'def bfs(start, graph):' in payload['drills'][0]['solution']
-    assert payload['drills'][1]['id'] == 'playlist-google-skeletons-dfs-skeleton'
-    assert payload['drills'][1]['title'] == 'DFS Skeleton'
-    assert 'def dfs(start, graph):' in payload['drills'][1]['solution']
-    assert payload['drills'][2]['title'] == 'Union-Find / Disjoint Set Skeleton'
-    assert 'class UnionFind:' in payload['drills'][2]['solution']
-    assert payload['drills'][4]['id'] == 'playlist-google-skeletons-binary-search-skeleton'
-    assert payload['drills'][4]['title'] == 'Binary Search Skeleton'
-    assert 'def binary_search(nums, target):' in payload['drills'][4]['solution']
+    assert payload['drills'][1]['id'] == 'playlist-google-skeletons-grid-bfs-skeleton'
+    assert payload['drills'][1]['title'] == 'Grid BFS Skeleton'
+    assert 'def bfs(grid, r, c):' in payload['drills'][1]['solution']
+    assert payload['drills'][2]['id'] == 'playlist-google-skeletons-dfs-skeleton'
+    assert payload['drills'][2]['title'] == 'DFS Skeleton'
+    assert 'def dfs(start, graph):' in payload['drills'][2]['solution']
+    assert payload['drills'][3]['id'] == 'playlist-google-skeletons-grid-dfs-skeleton'
+    assert payload['drills'][3]['title'] == 'Grid DFS Skeleton'
+    assert 'def dfs(grid, r, c):' in payload['drills'][3]['solution']
+    assert payload['drills'][4]['title'] == 'Union-Find / Disjoint Set Skeleton'
+    assert 'class UnionFind:' in payload['drills'][4]['solution']
+    assert payload['drills'][6]['id'] == 'playlist-google-skeletons-binary-search-skeleton'
+    assert payload['drills'][6]['title'] == 'Binary Search Skeleton'
+    assert 'def binary_search(nums, target):' in payload['drills'][6]['solution']
     assert payload['drills'][0]['skeletonApplicability'] == {
         'templateStrength': 10,
         'applicationAbstraction': 2,
         'summary': 'Queue → visited → neighbors',
+        'explanation': 'Breadth-first search expands the graph one distance layer at a time. Mark each node when it enters the queue so it is scheduled exactly once.',
+        'invariant': 'Every queued node has been discovered but not yet processed, and every discovered node is already in visited.',
+        'timeComplexity': 'O(V + E)',
     }
     assert payload['drills'][-2]['title'] == 'Top-Down DP Skeleton'
     assert payload['drills'][-2]['skeletonApplicability']['applicationAbstraction'] == 10

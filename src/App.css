@@ -5411,6 +5411,10 @@ button.tune-reset {
     var(--workbench-surface-raised);
 }
 
+.card-shell.skeleton-card-shell .card-header {
+  border-bottom: 0;
+}
+
 .card-shell .card-header::before {
   content: 'Current drill';
   position: absolute;
@@ -5523,6 +5527,10 @@ button.tune-reset {
   box-shadow: 0 0.65rem 1.6rem color-mix(in srgb, var(--hc-bg) 34%, transparent);
 }
 
+.card-shell.skeleton-card-shell .skeleton-reference-surface {
+  border-top: 0;
+}
+
 .prompt-surface-section {
   padding: 1.05rem 1.1rem 1.1rem;
 }
@@ -5549,47 +5557,79 @@ button.tune-reset {
   margin-top: 0.38rem;
 }
 
-.skeleton-applicability {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.45rem;
-  margin-top: 0.72rem;
-}
-
-.skeleton-applicability-score {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.42rem;
-  padding: 0.34rem 0.5rem;
-  border: 1px solid var(--workbench-edge);
-  border-radius: 0.4rem;
-  background: color-mix(in srgb, var(--hc-bg) 48%, transparent);
-  color: var(--hc-muted);
-  font-size: 0.7rem;
-  line-height: 1;
-}
-
-.skeleton-applicability-score strong {
-  color: var(--hc-fg);
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.skeleton-applicability-score.template-strength strong {
-  color: color-mix(in srgb, var(--hc-accent) 86%, var(--hc-fg));
-}
-
-.skeleton-applicability-score.application-abstraction strong {
-  color: color-mix(in srgb, #f59e0b 76%, var(--hc-fg));
-}
-
-.skeleton-applicability-summary {
-  flex: 1 1 14rem;
+.skeleton-reference {
   margin: 0;
+  padding: 0;
+}
+
+.skeleton-reference-measures {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.skeleton-reference-measure {
   color: var(--hc-muted);
+  font-size: 0.62rem;
+  letter-spacing: 0.035em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.skeleton-reference-measure strong {
+  color: color-mix(in srgb, var(--hc-fg) 86%, var(--hc-muted));
+  font-weight: 650;
+}
+
+.skeleton-reference-facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.8rem 1.5rem;
+  margin: 0;
+}
+
+.skeleton-reference-fact {
+  min-width: 0;
+}
+
+.skeleton-reference-fact.explanation {
+  grid-column: 1 / -1;
+  max-width: 78ch;
+  padding-bottom: 0.8rem;
+}
+
+.skeleton-reference-fact dt {
+  color: color-mix(in srgb, var(--hc-muted) 88%, var(--hc-fg));
+  font-size: 0.57rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.skeleton-reference-fact dd {
+  margin: 0.34rem 0 0;
+  color: var(--hc-fg);
   font-size: 0.76rem;
-  line-height: 1.35;
+  line-height: 1.5;
+}
+
+.skeleton-reference-fact.complexity dd {
+  color: color-mix(in srgb, var(--hc-accent) 88%, var(--hc-fg));
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .skeleton-reference-measures {
+    flex-wrap: wrap;
+  }
+
+  .skeleton-reference-facts {
+    grid-template-columns: 1fr;
+  }
 }
 
 .card-shell .prompt-feedback-surface .prompt-toggle-button {

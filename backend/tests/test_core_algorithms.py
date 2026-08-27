@@ -275,8 +275,8 @@ def test_google_static_playlist_contains_requested_questions() -> None:
     assert "heap-priority-queue" not in next(card for card in deck["drills"] if card["title"] == "215. Kth Largest Element")["tags"]
     overview_rows = static_playlist_overview_rows()
     assert len([row for row in overview_rows if "google" in row["tags"]]) == 50
-    assert len([row for row in overview_rows if "google-skeletons" in row["tags"]]) == 20
-    assert len(overview_rows) == 70
+    assert len([row for row in overview_rows if "google-skeletons" in row["tags"]]) == 22
+    assert len(overview_rows) == 72
 
 
 def test_google_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -> None:
@@ -284,10 +284,12 @@ def test_google_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -
 
     assert deck is not None
     assert deck["llmUsed"] is False
-    assert len(deck["drills"]) == 20
+    assert len(deck["drills"]) == 22
     assert [card["title"] for card in deck["drills"]] == [
         "BFS Skeleton",
+        "Grid BFS Skeleton",
         "DFS Skeleton",
+        "Grid DFS Skeleton",
         "Union-Find / Disjoint Set Skeleton",
         "Merge Intervals Skeleton",
         "Binary Search Skeleton",
@@ -317,13 +319,37 @@ def test_google_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -
         "templateStrength": 10,
         "applicationAbstraction": 2,
         "summary": "Queue → visited → neighbors",
+        "explanation": "Breadth-first search expands the graph one distance layer at a time. Mark each node when it enters the queue so it is scheduled exactly once.",
+        "invariant": "Every queued node has been discovered but not yet processed, and every discovered node is already in visited.",
+        "timeComplexity": "O(V + E)",
     }
+    assert cards["Grid BFS Skeleton"]["skeletonApplicability"] == {
+        "templateStrength": 9,
+        "applicationAbstraction": 3,
+        "summary": "Queue → visited → four neighbors",
+        "explanation": "Grid BFS explores cells in increasing distance from the start. Its queue and four-direction traversal are reusable; the problem-specific work is defining valid cells, the goal condition, and whether traversal begins from one or many sources.",
+        "invariant": "At the start of each outer iteration, the queue contains the current distance layer; every queued cell is already in visited and will be processed once.",
+        "timeComplexity": "O(rows · cols)",
+    }
+    assert cards["Grid DFS Skeleton"]["skeletonApplicability"] == {
+        "templateStrength": 9,
+        "applicationAbstraction": 3,
+        "summary": "Bounds → visited → four neighbors",
+        "explanation": "Grid DFS treats each cell as a graph node and explores its four orthogonal neighbors. The reusable traversal stays fixed; the problem-specific work is defining which cells are eligible to visit.",
+        "invariant": "visited contains every cell discovered from the start, and walk recurses only to in-bounds cells not already in that set.",
+        "timeComplexity": "O(rows · cols)",
+    }
+    assert all(card["skeletonApplicability"]["explanation"] for card in cards.values())
+    assert all(card["skeletonApplicability"]["invariant"] for card in cards.values())
+    assert all(card["skeletonApplicability"]["timeComplexity"] for card in cards.values())
     assert cards["Greedy Skeleton"]["skeletonApplicability"]["applicationAbstraction"] == 9
     assert cards["Top-Down DP Skeleton"]["skeletonApplicability"]["templateStrength"] == 3
     assert cards["Bottom-Up DP Skeleton"]["skeletonApplicability"]["applicationAbstraction"] == 10
 
     expected_definitions = {
         "Binary Search Skeleton": "def binary_search(nums, target):",
+        "Grid BFS Skeleton": "def bfs(grid, r, c):",
+        "Grid DFS Skeleton": "def dfs(grid, r, c):",
         "Backtracking Skeleton": "def backtrack(state, choices, out):",
         "Two Pointers Skeleton": "def two_pointers(nums):",
         "Monotonic Stack Skeleton": "def monotonic_stack(nums):",
@@ -342,6 +368,13 @@ def test_google_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -
         card = next(card for card in deck["drills"] if card["title"] == title)
         assert definition in card["solution"]
         compile(card["solution"], f"<{card['id']}>", "exec")
+
+    grid_bfs_solution = cards["Grid BFS Skeleton"]["solution"]
+    assert "start = (r, c)" in grid_bfs_solution
+    assert "q = deque([start])" in grid_bfs_solution
+    assert "visited = {start}" in grid_bfs_solution
+    assert "while q:" in grid_bfs_solution
+    assert "r, c = q.popleft()" in grid_bfs_solution
 
     bfs_card = cards["BFS Skeleton"]
     dfs_card = cards["DFS Skeleton"]
