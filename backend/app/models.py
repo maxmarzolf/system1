@@ -340,8 +340,6 @@ class CoachPracticeHistoryEntry(BaseModel):
     liveCoachUsed: bool = False
     categoryTags: list[str] = []
     generatedCard: dict[str, Any] = {}
-    liveFeedbackCount: int = Field(default=0, ge=0)
-    latestLiveFeedback: dict[str, Any] = {}
     submissionFeedback: dict[str, Any] = {}
     submissionRubric: dict[str, Any] = {}
     createdAt: str = ""

@@ -24,7 +24,7 @@ async def connect() -> asyncpg.Pool:
     await _apply_storage_cleanup(pool)
     await _ensure_recall_history_schema(pool)
     await _ensure_generated_question_schema(pool)
-    await _ensure_practice_history_schema(pool)
+    await _ensure_generated_skill_map_card_schema(pool)
     await _backfill_submission_attempts_from_score_attempts(pool)
     await _apply_core_algorithm_naming_migration(pool)
     await _ensure_taxonomy_schema(pool)
@@ -53,6 +53,9 @@ async def _apply_storage_cleanup(db_pool: asyncpg.Pool) -> None:
             DROP TABLE IF EXISTS question_topics CASCADE;
             DROP TABLE IF EXISTS answers CASCADE;
             DROP TABLE IF EXISTS questions CASCADE;
+            -- Feedback, rubric, timing, and scoring signals now live only on
+            -- the canonical submission ledger.
+            DROP TABLE IF EXISTS coach_feedback_events CASCADE;
             -- Legacy pattern/method taxonomy, superseded by algorithm/skill.
             DROP TABLE IF EXISTS methods CASCADE;
             DROP TABLE IF EXISTS patterns CASCADE;
@@ -379,43 +382,6 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                     );
                 END IF;
 
-                IF to_regclass('public.coach_feedback_events') IS NOT NULL
-                   AND EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                      AND table_name = 'coach_feedback_events'
-                      AND column_name = 'answer_id'
-                )
-                   AND NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                      AND table_name = 'coach_feedback_events'
-                      AND column_name = 'submission_id'
-                ) THEN
-                    ALTER TABLE coach_feedback_events RENAME COLUMN answer_id TO submission_id;
-                END IF;
-
-                IF to_regclass('public.coach_feedback_events') IS NOT NULL
-                   AND EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                      AND table_name = 'coach_feedback_events'
-                      AND column_name = 'answer_id'
-                )
-                   AND EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                      AND table_name = 'coach_feedback_events'
-                      AND column_name = 'submission_id'
-                ) THEN
-                    UPDATE coach_feedback_events
-                    SET submission_id = answer_id
-                    WHERE submission_id IS NULL
-                      AND answer_id IS NOT NULL;
-
-                    ALTER TABLE coach_feedback_events DROP COLUMN answer_id;
-                END IF;
-
                 DROP TABLE IF EXISTS answer_misconception CASCADE;
                 DROP TABLE IF EXISTS submission_misconception CASCADE;
                 DROP TABLE IF EXISTS skill_misconception_catalog CASCADE;
@@ -445,7 +411,6 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                         ('idx_submission_question_id', 'idx_submission_multiple_choice_problem_id'),
                         ('idx_submission_question_id_created_at', 'idx_submission_multiple_choice_problem_id_created_at'),
                         ('idx_answer_session_id_created_at', 'idx_submission_session_id_created_at'),
-                        ('idx_coach_feedback_events_answer_id', 'idx_coach_feedback_events_submission_id'),
                         ('idx_question_fingerprint', 'idx_multiple_choice_problem_fingerprint'),
                         ('idx_question_user_id', 'idx_multiple_choice_problem_user_id'),
                         ('idx_question_created_date', 'idx_multiple_choice_problem_created_date')
@@ -703,132 +668,12 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
         )
 
 
-async def _ensure_practice_history_schema(db_pool: asyncpg.Pool) -> None:
+async def _ensure_generated_skill_map_card_schema(db_pool: asyncpg.Pool) -> None:
     async with db_pool.acquire() as conn:
         await conn.execute(
             """
             ALTER TABLE generated_skill_map_cards
             ADD COLUMN IF NOT EXISTS generation_context JSONB;
-
-            CREATE TABLE IF NOT EXISTS coach_feedback_events (
-                id SERIAL PRIMARY KEY,
-                interaction_id VARCHAR(80),
-                card_id VARCHAR(80) NOT NULL,
-                submission_id BIGINT REFERENCES submission(id) ON DELETE SET NULL,
-                generated_card_id VARCHAR(80),
-                question_type VARCHAR(50) NOT NULL DEFAULT '',
-                feedback_stage VARCHAR(20) NOT NULL CHECK (feedback_stage IN ('live', 'submission')),
-                live_mode BOOLEAN NOT NULL DEFAULT FALSE,
-                prompt TEXT,
-                expected_answer TEXT,
-                user_answer TEXT,
-                accuracy REAL NOT NULL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100),
-                exact BOOLEAN NOT NULL DEFAULT FALSE,
-                elapsed_ms INTEGER NOT NULL DEFAULT 0 CHECK (elapsed_ms >= 0),
-                skill_tags TEXT[] DEFAULT '{}',
-                previous_attempts JSONB,
-                live_milestones JSONB,
-                feedback JSONB NOT NULL DEFAULT '{}'::jsonb,
-                llm_used BOOLEAN NOT NULL DEFAULT FALSE,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            );
-
-            ALTER TABLE coach_feedback_events
-            ADD COLUMN IF NOT EXISTS live_mode BOOLEAN NOT NULL DEFAULT FALSE;
-
-            ALTER TABLE coach_feedback_events
-            ADD COLUMN IF NOT EXISTS live_milestones JSONB;
-
-            ALTER TABLE coach_feedback_events
-            ADD COLUMN IF NOT EXISTS submission_id BIGINT REFERENCES submission(id) ON DELETE SET NULL;
-
-            CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_interaction
-                ON coach_feedback_events(interaction_id);
-
-            CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_card
-                ON coach_feedback_events(card_id);
-
-            CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_generated_card
-                ON coach_feedback_events(generated_card_id);
-
-            CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_submission_id
-                ON coach_feedback_events(submission_id);
-
-            CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_stage_created
-                ON coach_feedback_events(feedback_stage, created_at DESC);
-
-            CREATE INDEX IF NOT EXISTS idx_coach_feedback_events_skill_tags
-                ON coach_feedback_events USING GIN(skill_tags);
-            """
-        )
-        await conn.execute(
-            """
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                      AND table_name = 'coach_feedback_events'
-                      AND column_name = 'created_at'
-                      AND data_type = 'timestamp without time zone'
-                ) THEN
-                    EXECUTE $sql$
-                        ALTER TABLE coach_feedback_events
-                        ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE 'UTC'
-                    $sql$;
-                END IF;
-            END $$;
-            """
-        )
-        await conn.execute(
-            """
-            UPDATE coach_feedback_events fe
-            SET submission_id = a.id
-            FROM submission a
-            WHERE fe.submission_id IS NULL
-              AND fe.interaction_id IS NOT NULL
-              AND fe.interaction_id <> ''
-              AND a.interaction_id = fe.interaction_id;
-            """
-        )
-        await conn.execute(
-            """
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                      AND table_name = 'coach_feedback_events'
-                      AND column_name = 'draft_mode'
-                ) THEN
-                    EXECUTE $sql$
-                        UPDATE coach_feedback_events
-                        SET live_mode = draft_mode
-                    $sql$;
-                END IF;
-
-                IF EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                      AND table_name = 'coach_feedback_events'
-                      AND column_name = 'draft_milestones'
-                ) THEN
-                    EXECUTE $sql$
-                        UPDATE coach_feedback_events
-                        SET live_milestones = draft_milestones
-                        WHERE live_milestones IS NULL
-                    $sql$;
-                END IF;
-            END $$;
-
-            ALTER TABLE coach_feedback_events
-            DROP COLUMN IF EXISTS draft_mode;
-
-            ALTER TABLE coach_feedback_events
-            DROP COLUMN IF EXISTS draft_milestones;
             """
         )
 
@@ -1043,22 +888,6 @@ async def _apply_core_algorithm_naming_migration(db_pool: asyncpg.Pool) -> None:
                       AND generated_card->'tags' ? 'static-function';
                 END IF;
 
-                IF to_regclass('public.coach_feedback_events') IS NOT NULL THEN
-                    UPDATE coach_feedback_events
-                    SET
-                        card_id = regexp_replace(card_id, '^static-function-', 'core-algorithm-'),
-                        generated_card_id = CASE
-                            WHEN generated_card_id LIKE 'static-function-%'
-                                THEN regexp_replace(generated_card_id, '^static-function-', 'core-algorithm-')
-                            ELSE generated_card_id
-                        END,
-                        question_type = replace(question_type, 'skill-map-static', 'skill-map-core-algorithm'),
-                        skill_tags = array_replace(skill_tags, 'static-function', 'core-algorithm')
-                    WHERE card_id LIKE 'static-function-%'
-                       OR generated_card_id LIKE 'static-function-%'
-                       OR question_type LIKE '%skill-map-static%'
-                       OR skill_tags @> ARRAY['static-function']::text[];
-                END IF;
             END $$;
             """
         )
@@ -1305,21 +1134,20 @@ async def _apply_taxonomy_remap_migration(db_pool: asyncpg.Pool) -> None:
         f"                        WHEN '{slug}' THEN '{PATTERN_TO_ALGORITHM[slug]}'" for slug in legacy_slugs
     )
     async with db_pool.acquire() as conn:
-        for table, column in (("submission", "category_tags"), ("coach_feedback_events", "skill_tags")):
-            await conn.execute(
-                f"""
-                UPDATE {table}
-                SET {column} = (
-                    SELECT array_agg(DISTINCT CASE tag
+        await conn.execute(
+            f"""
+            UPDATE submission
+            SET category_tags = (
+                SELECT array_agg(DISTINCT CASE tag
 {slug_cases}
-                        ELSE tag
-                    END)
-                    FROM unnest({column}) AS tags(tag)
-                )
-                WHERE {column} && $1::text[]
-                """,
-                legacy_slugs,
+                    ELSE tag
+                END)
+                FROM unnest(category_tags) AS tags(tag)
             )
+            WHERE category_tags && $1::text[]
+            """,
+            legacy_slugs,
+        )
 
         await conn.execute(
             """

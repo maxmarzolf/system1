@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-from datetime import datetime, timezone
 
 from app.core.assessor import (
     AssessorContext,
@@ -33,7 +31,6 @@ from app.domain.llm_resilience import (
 )
 from app.domain.template_evaluator import merged_submission_tuning as _domain_merged_submission_tuning
 from app.models import CoachAttemptFeedbackRequest, CoachAttemptFeedbackResponse
-from app.repositories.coach_repository import fetch_latest_submission_id_for_feedback, insert_feedback_event_row
 from app.services.contracts import FeedbackPayload, HistoryEntry, HistorySummary
 from app.services import history_service
 
@@ -139,39 +136,6 @@ def _finalize_feedback_payload(
     return CoachAttemptFeedbackResponse.model_validate(feedback)
 
 
-async def persist_feedback_event(body: CoachAttemptFeedbackRequest, feedback: CoachAttemptFeedbackResponse) -> None:
-    now = datetime.now(tz=timezone.utc)
-    submission_id = await fetch_latest_submission_id_for_feedback(
-        interaction_id=body.interactionId or "",
-        card_id=body.cardId,
-        question_type=body.questionType,
-        allow_card_fallback=not body.liveMode,
-    )
-
-    feedback_payload: FeedbackPayload = feedback.model_dump()
-
-    await insert_feedback_event_row(
-        interaction_id=body.interactionId,
-        card_id=body.cardId,
-        generated_card_id=body.cardId,
-        question_type=body.questionType,
-        feedback_stage="live" if body.liveMode else "submission",
-        live_mode=body.liveMode,
-        prompt=body.prompt,
-        expected_answer=body.expectedAnswer,
-        user_answer=body.userAnswer,
-        accuracy=body.accuracy,
-        exact=body.exact,
-        elapsed_ms=body.elapsedMs,
-        skill_tags=body.skillTags,
-        previous_attempts_json=json.dumps(body.previousAttempts),
-        live_milestones_json=json.dumps(body.liveMilestones),
-        feedback_json=json.dumps(feedback_payload),
-        llm_used=bool(feedback.llmUsed),
-        created_at=now,
-        submission_id=submission_id,
-    )
-
 async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest) -> CoachAttemptFeedbackResponse:
     history, history_summary = await history_service.load_feedback_context(body)
     provider = _resolve_feedback_provider(body)
@@ -191,5 +155,4 @@ async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest) -> CoachAtte
         )
 
     feedback = _finalize_feedback_payload(body, assessment, feedback, provider)
-    await persist_feedback_event(body, feedback)
     return feedback

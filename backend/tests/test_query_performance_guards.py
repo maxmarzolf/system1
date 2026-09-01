@@ -96,59 +96,7 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
         ON CONFLICT (id) DO NOTHING
         """
     )
-    await conn.execute(
-        """
-        INSERT INTO coach_feedback_events (
-            id,
-            interaction_id,
-            card_id,
-            submission_id,
-            generated_card_id,
-            question_type,
-            feedback_stage,
-            live_mode,
-            prompt,
-            expected_answer,
-            user_answer,
-            accuracy,
-            exact,
-            elapsed_ms,
-            skill_tags,
-            previous_attempts,
-            live_milestones,
-            feedback,
-            llm_used,
-            created_at
-        )
-        SELECT
-            930000 + s,
-            'fx-perf-interaction-' || (s * 2)::text,
-            CASE WHEN s % 5 = 0 THEN 'fx-perf-card-target' ELSE 'fx-perf-card-' || ((s * 2) % 17)::text END,
-            920000 + (s * 2),
-            CASE WHEN s % 5 = 0 THEN 'fx-perf-card-target' ELSE 'fx-perf-card-' || ((s * 2) % 17)::text END,
-            'skill-map',
-            'live',
-            TRUE,
-            'perf prompt',
-            'perf expected',
-            'perf user',
-            85,
-            FALSE,
-            1500,
-            ARRAY['skill-map', 'binary-search'],
-            '[]'::jsonb,
-            '{}'::jsonb,
-            '{"focus":"perf"}'::jsonb,
-            FALSE,
-            NOW() - ((s % 360)::text || ' minutes')::interval
-        FROM generate_series(1, 300) AS s
-        ON CONFLICT (id) DO NOTHING
-        """
-    )
-
-
 async def _cleanup_performance_fixture(conn: asyncpg.Connection) -> None:
-    await conn.execute("DELETE FROM coach_feedback_events WHERE id BETWEEN 930001 AND 930300")
     await conn.execute("DELETE FROM submission WHERE id BETWEEN 920001 AND 920800")
     await conn.execute("DELETE FROM multiple_choice_problem WHERE id = 'mcq-fx-perf-q'")
 
@@ -207,39 +155,31 @@ def _collect_index_names(node: dict) -> list[str]:
 
 @pytest.mark.integration
 def test_performance_guard_required_indexes_exist() -> None:
+    async def _run() -> None:
+        conn = await _connect_db()
+        try:
+            submission_indexes = await _fetch_index_names(conn, "submission")
+            assert "idx_submission_question_type_created_at" in submission_indexes
+            assert "idx_submission_generated_card_id" in submission_indexes
+            assert "idx_submission_category_tags" in submission_indexes
+            assert "idx_submission_created_at" in submission_indexes
+        finally:
+            await conn.close()
+
     try:
-        conn = asyncio.run(_connect_db())
-    except Exception as exc:
+        asyncio.run(_run())
+    except (OSError, asyncpg.PostgresError) as exc:
         pytest.skip(f"Postgres not available for integration test: {exc}")
-        return
-
-    try:
-        submission_indexes = asyncio.run(_fetch_index_names(conn, "submission"))
-        feedback_indexes = asyncio.run(_fetch_index_names(conn, "coach_feedback_events"))
-
-        assert "idx_submission_question_type_created_at" in submission_indexes
-        assert "idx_submission_generated_card_id" in submission_indexes
-        assert "idx_submission_category_tags" in submission_indexes
-        assert "idx_submission_created_at" in submission_indexes
-        assert "idx_coach_feedback_events_submission_id" in feedback_indexes
-        assert "idx_coach_feedback_events_stage_created" in feedback_indexes
-    finally:
-        asyncio.run(conn.close())
 
 
 @pytest.mark.integration
 def test_performance_guard_history_and_overview_queries_avoid_seq_scan() -> None:
-    try:
-        conn = asyncio.run(_connect_db())
-    except Exception as exc:
-        pytest.skip(f"Postgres not available for integration test: {exc}")
-        return
+    async def _run() -> None:
+        conn = await _connect_db()
+        try:
+            await _seed_performance_fixture(conn)
 
-    try:
-        asyncio.run(_seed_performance_fixture(conn))
-
-        history_explain = asyncio.run(
-            _explain_json(
+            history_explain = await _explain_json(
                 conn,
                 """
                 SELECT a.id
@@ -254,16 +194,14 @@ def test_performance_guard_history_and_overview_queries_avoid_seq_scan() -> None
                 ["binary-search"],
                 25,
             )
-        )
-        history_plan = history_explain["Plan"]
-        history_nodes = _collect_node_types(history_plan)
-        history_index_names = _collect_index_names(history_plan)
+            history_plan = history_explain["Plan"]
+            history_nodes = _collect_node_types(history_plan)
+            history_index_names = _collect_index_names(history_plan)
 
-        assert "Seq Scan" not in history_nodes
-        assert any("Index" in name or "idx_submission_" in name for name in history_index_names)
+            assert "Seq Scan" not in history_nodes
+            assert any("Index" in name or "idx_submission_" in name for name in history_index_names)
 
-        overview_explain = asyncio.run(
-            _explain_json(
+            overview_explain = await _explain_json(
                 conn,
                 """
                 SELECT a.created_at
@@ -273,57 +211,20 @@ def test_performance_guard_history_and_overview_queries_avoid_seq_scan() -> None
                 LIMIT 100
                 """,
             )
-        )
-        overview_plan = overview_explain["Plan"]
-        overview_nodes = _collect_node_types(overview_plan)
-        overview_index_names = _collect_index_names(overview_plan)
+            overview_plan = overview_explain["Plan"]
+            overview_nodes = _collect_node_types(overview_plan)
+            overview_index_names = _collect_index_names(overview_plan)
 
-        assert "Limit" in overview_nodes
-        assert "Seq Scan" not in overview_nodes
-        assert any(name in {"idx_submission_question_type_created_at", "idx_submission_created_at"} for name in overview_index_names)
-    finally:
-        try:
-            asyncio.run(_cleanup_performance_fixture(conn))
+            assert "Limit" in overview_nodes
+            assert "Seq Scan" not in overview_nodes
+            assert any(name in {"idx_submission_question_type_created_at", "idx_submission_created_at"} for name in overview_index_names)
         finally:
-            asyncio.run(conn.close())
+            try:
+                await _cleanup_performance_fixture(conn)
+            finally:
+                await conn.close()
 
-
-@pytest.mark.integration
-def test_performance_guard_latest_feedback_query_uses_index_path() -> None:
     try:
-        conn = asyncio.run(_connect_db())
-    except Exception as exc:
+        asyncio.run(_run())
+    except (OSError, asyncpg.PostgresError) as exc:
         pytest.skip(f"Postgres not available for integration test: {exc}")
-        return
-
-    try:
-        asyncio.run(_seed_performance_fixture(conn))
-
-        explain = asyncio.run(
-            _explain_json(
-                conn,
-                """
-                SELECT fe.feedback
-                FROM coach_feedback_events fe
-                WHERE fe.feedback_stage = 'live'
-                  AND fe.submission_id = $1
-                ORDER BY fe.created_at DESC
-                LIMIT 1
-                """,
-                920100,
-            )
-        )
-        plan = explain["Plan"]
-        node_types = _collect_node_types(plan)
-        index_names = _collect_index_names(plan)
-
-        assert "Seq Scan" not in node_types
-        assert any(
-            name in {"idx_coach_feedback_events_submission_id", "idx_coach_feedback_events_stage_created"}
-            for name in index_names
-        )
-    finally:
-        try:
-            asyncio.run(_cleanup_performance_fixture(conn))
-        finally:
-            asyncio.run(conn.close())

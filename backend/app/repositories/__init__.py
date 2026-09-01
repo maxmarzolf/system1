@@ -1,7 +1,6 @@
 from app.repositories.coach_repository import (
 	fetch_practice_history_entries,
 	fetch_practice_history_rows,
-	insert_feedback_event_row,
 	insert_generated_multiple_choice_question_rows,
 	insert_generated_skill_map_card_row,
 )
@@ -24,7 +23,6 @@ from app.repositories.admin_repository import (
 __all__ = [
 	"fetch_practice_history_entries",
 	"fetch_practice_history_rows",
-	"insert_feedback_event_row",
 	"insert_generated_multiple_choice_question_rows",
 	"insert_generated_skill_map_card_row",
 	"insert_submission_attempt_row",

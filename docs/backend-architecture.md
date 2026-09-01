@@ -27,7 +27,7 @@ Hard rules:
 4. `app/services/history_service.py::load_feedback_context`
 5. `app/core/assessor.py::run_signal_assessor`
 6. `app/core/narrator.py::attempt_feedback_with_narrator` (submission mode)
-7. `app/repositories/coach_repository.py::insert_feedback_event_row`
+7. The frontend includes the returned feedback and rubric when it persists the canonical `submission` row.
 
 ### 1b) Coach Variations
 1. `POST /api/coach/adaptive-variation` or `POST /api/coach/sequential-variation`
@@ -70,7 +70,7 @@ Rules enforced in tests:
 Practical implications:
 - Streaming transport wrappers (for example `StreamingResponse`) are endpoint-owned.
 - Core generator stream APIs return framework-agnostic async iterators.
-- Repository writes are always delegated by services, including generator persistence and feedback events.
+- Repository writes are always delegated by services; attempt signals are persisted through the canonical submission repository.
 
 Anti-pattern examples:
 - Endpoint calling repository directly.

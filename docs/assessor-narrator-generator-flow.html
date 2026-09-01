@@ -187,8 +187,7 @@ flowchart TD
   end
 
   subgraph MEMORY["Stored training memory"]
-    P1["coach_feedback_events"]
-    P2["score_attempts"]
+    P1["submission"]
     P3["practice history"]
     P4["readiness summary"]
     P5["repeated errorTags"]
@@ -271,9 +270,8 @@ flowchart TD
 
   L1 --> P1
   N1 --> P1
-  R5 --> P2
+  R5 --> P1
   P1 --> P3
-  P2 --> P3
   P3 --> P4
   P3 --> P5
   P3 --> P6

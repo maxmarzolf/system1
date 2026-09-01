@@ -60,8 +60,7 @@ Core algorithm naming is canonical throughout the app (`core_algorithm_*`, `core
 
 Primary tables:
 - `multiple_choice_problem`: canonical generated MCQ problem records (ids prefixed `mcq-`) plus fingerprint.
-- `submission`: canonical attempt ledger (replaces `score_attempts`).
-- `coach_feedback_events`: live/submission feedback events, linked by `submission_id` when available.
+- `submission`: canonical attempt ledger and signal store (replaces `score_attempts`); owns timing, scoring, feedback, and rubric data.
 - `generated_skill_map_cards`: generated drill artifacts and context.
 - `core_algorithm_patterns`, `core_algorithm_methods`, `core_algorithms`, `core_algorithm_skill_map`: core algorithm bank and taxonomy.
 
@@ -195,7 +194,6 @@ Equivalent API call:
 - `POST /api/admin/reset-practice-history`
 
 Current reset scope:
-- `coach_feedback_events`
 - `submission`
 - `generated_skill_map_cards`
 

@@ -65,8 +65,6 @@ def test_coach_history_endpoint_contract(monkeypatch) -> None:
                     "liveCoachUsed": False,
                     "categoryTags": ["skill-map"],
                     "generatedCard": {},
-                    "liveFeedbackCount": 0,
-                    "latestLiveFeedback": {},
                     "submissionFeedback": {},
                     "submissionRubric": {},
                     "createdAt": "2026-05-24T00:00:00Z",

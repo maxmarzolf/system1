@@ -24,8 +24,6 @@ class PracticeHistoryRow(TypedDict):
     submissionFeedback: dict[str, Any] | str | None
     submissionRubric: dict[str, Any] | str | None
     created_at: datetime | None
-    liveFeedbackCount: int
-    latestLiveFeedback: dict[str, Any] | str | None
 
 
 class PracticeHistoryEntry(TypedDict):
@@ -45,8 +43,6 @@ class PracticeHistoryEntry(TypedDict):
     liveCoachUsed: bool
     categoryTags: list[str]
     generatedCard: dict[str, Any]
-    liveFeedbackCount: int
-    latestLiveFeedback: dict[str, Any]
     submissionFeedback: dict[str, Any]
     submissionRubric: dict[str, Any]
     createdAt: str

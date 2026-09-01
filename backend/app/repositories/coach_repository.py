@@ -30,43 +30,9 @@ _PRACTICE_HISTORY_SELECT = """
         a.generated_card AS "generatedCard",
         a.coach_feedback AS "submissionFeedback",
         a.submission_rubric AS "submissionRubric",
-        a.created_at,
-        COALESCE(live.live_feedback_count, 0) AS "liveFeedbackCount",
-        latest.feedback AS "latestLiveFeedback"
+        a.created_at
     FROM submission a
     LEFT JOIN multiple_choice_problem q ON q.id = a.multiple_choice_problem_id
-    LEFT JOIN LATERAL (
-        SELECT COUNT(*)::int AS live_feedback_count
-        FROM coach_feedback_events fe
-        WHERE fe.feedback_stage = 'live'
-          AND (
-            (fe.submission_id IS NOT NULL AND fe.submission_id = a.id)
-            OR (a.interaction_id IS NOT NULL AND fe.interaction_id = a.interaction_id)
-            OR (
-                a.interaction_id IS NULL
-                AND fe.card_id = COALESCE(a.generated_card_id, a.multiple_choice_problem_id)
-                AND fe.question_type = a.question_type
-                AND fe.created_at <= a.created_at
-            )
-          )
-    ) live ON TRUE
-    LEFT JOIN LATERAL (
-        SELECT fe.feedback
-        FROM coach_feedback_events fe
-        WHERE fe.feedback_stage = 'live'
-          AND (
-                        (fe.submission_id IS NOT NULL AND fe.submission_id = a.id)
-                        OR (a.interaction_id IS NOT NULL AND fe.interaction_id = a.interaction_id)
-            OR (
-                                a.interaction_id IS NULL
-                                AND fe.card_id = COALESCE(a.generated_card_id, a.multiple_choice_problem_id)
-                                AND fe.question_type = a.question_type
-                                AND fe.created_at <= a.created_at
-            )
-          )
-        ORDER BY fe.created_at DESC
-        LIMIT 1
-    ) latest ON TRUE
         WHERE a.question_type <> ''
 """
 
@@ -194,113 +160,11 @@ async def fetch_practice_history_entries(
             "liveCoachUsed": bool(row["liveCoachUsed"]),
             "categoryTags": list(row["categoryTags"] or []),
             "generatedCard": _parse_json_field(row["generatedCard"], {}),
-            "liveFeedbackCount": int(row["liveFeedbackCount"] or 0),
-            "latestLiveFeedback": _parse_json_field(row["latestLiveFeedback"], {}),
             "submissionFeedback": _parse_json_field(row["submissionFeedback"], {}),
             "submissionRubric": compact_submission_rubric(row["submissionRubric"]),
             "createdAt": row["created_at"].isoformat() if row["created_at"] else "",
         })
     return history
-
-
-async def fetch_latest_submission_id_for_feedback(
-    *,
-    interaction_id: str,
-    card_id: str,
-    question_type: str,
-    allow_card_fallback: bool = True,
-) -> int | None:
-    normalized_interaction_id = str(interaction_id or "").strip()
-    normalized_card_id = str(card_id or "").strip()
-    normalized_question_type = str(question_type or "").strip()
-
-    async with acquire_connection() as conn:
-        if normalized_interaction_id:
-            row = await conn.fetchrow(
-                """
-                SELECT id
-                FROM submission
-                WHERE interaction_id = $1
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
-                normalized_interaction_id,
-            )
-            if row:
-                return int(row["id"])
-
-        if not allow_card_fallback:
-            return None
-
-        row = await conn.fetchrow(
-            """
-            SELECT id
-            FROM submission
-            WHERE question_type = $2
-              AND (generated_card_id = $1 OR multiple_choice_problem_id = $1)
-            ORDER BY created_at DESC
-            LIMIT 1
-            """,
-            normalized_card_id,
-            normalized_question_type,
-        )
-        if row:
-            return int(row["id"])
-
-    return None
-
-
-async def insert_feedback_event_row(
-    *,
-    interaction_id: str,
-    card_id: str,
-    generated_card_id: str,
-    question_type: str,
-    feedback_stage: str,
-    live_mode: bool,
-    prompt: str,
-    expected_answer: str,
-    user_answer: str,
-    accuracy: float,
-    exact: bool,
-    elapsed_ms: int,
-    skill_tags: list[str],
-    previous_attempts_json: str,
-    live_milestones_json: str,
-    feedback_json: str,
-    llm_used: bool,
-    created_at: datetime,
-    submission_id: int | None = None,
-) -> None:
-    async with acquire_connection() as conn:
-        await conn.execute(
-            """
-            INSERT INTO coach_feedback_events
-                (interaction_id, card_id, submission_id, generated_card_id, question_type, feedback_stage, live_mode,
-                 prompt, expected_answer, user_answer, accuracy, exact, elapsed_ms, skill_tags,
-                 previous_attempts, live_milestones, feedback, llm_used, created_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
-            """,
-            interaction_id,
-            card_id,
-            submission_id,
-            generated_card_id,
-            question_type,
-            feedback_stage,
-            live_mode,
-            prompt,
-            expected_answer,
-            user_answer,
-            accuracy,
-            exact,
-            elapsed_ms,
-            skill_tags,
-            previous_attempts_json,
-            live_milestones_json,
-            feedback_json,
-            llm_used,
-            created_at,
-        )
 
 
 async def insert_generated_skill_map_card_row(

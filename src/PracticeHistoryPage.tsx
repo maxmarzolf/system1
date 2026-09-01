@@ -35,11 +35,6 @@ type PracticeHistoryEntry = {
     choices?: Array<{ id?: string; text?: string }>
     explanation?: string
   }
-  liveFeedbackCount: number
-  latestLiveFeedback: {
-    primaryFocus?: string
-    immediateCorrection?: string
-  }
   submissionFeedback: {
     fullFeedback?: string
     diagnosis?: string
@@ -133,12 +128,7 @@ const summarizeHistoryText = (entry: PracticeHistoryEntry) => {
     entry.submissionFeedback.primaryFocus ||
     ''
   if (submissionSummary.trim()) return submissionSummary.trim()
-
-  const liveSummary =
-    entry.latestLiveFeedback.primaryFocus ||
-    entry.latestLiveFeedback.immediateCorrection ||
-    ''
-  return liveSummary.trim() || 'No stored feedback yet for this submission.'
+  return 'No stored feedback yet for this submission.'
 }
 
 const dimensionLabel = (dimension?: { key?: string; label?: string }) =>

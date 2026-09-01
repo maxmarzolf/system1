@@ -27,7 +27,6 @@ async def _execute_sql_file(database_url: str, file_path: Path) -> None:
 async def _cleanup_fixture_rows(database_url: str) -> None:
     conn = await asyncpg.connect(database_url)
     try:
-        await conn.execute("DELETE FROM coach_feedback_events WHERE id = 910001 OR interaction_id = 'fx-parity-interaction-1'")
         await conn.execute(
             "DELETE FROM submission WHERE id = 910001 OR migration_key = 'fx-parity-migration-1' OR multiple_choice_problem_id = 'mcq-fx-parity-q1'"
         )
@@ -48,7 +47,6 @@ async def _count_submission_rows(database_url: str, migration_key: str) -> int:
 async def _cleanup_roundtrip_rows(database_url: str, generated_card_id: str) -> None:
     conn = await asyncpg.connect(database_url)
     try:
-        await conn.execute("DELETE FROM coach_feedback_events WHERE card_id = $1 OR generated_card_id = $1", generated_card_id)
         await conn.execute("DELETE FROM submission WHERE generated_card_id = $1", generated_card_id)
     finally:
         await conn.close()
@@ -172,7 +170,6 @@ def test_coach_history_parity_with_real_migrated_fixture() -> None:
         assert entry["correctAnswer"] == "Use binary search with left-bound checks."
         assert entry["userAnswer"] == "while left <= right: ..."
         assert entry["accuracy"] == 100
-        assert entry["liveFeedbackCount"] >= 1
     finally:
         asyncio.run(_cleanup_fixture_rows(settings.database_url))
 
