@@ -1920,7 +1920,7 @@ def fallback_skill_map_drills(context: GeneratorContext) -> SkillMapDrillsEnvelo
         base = _fallback_template_for_pattern(pattern, method_hint, context.output_tuning.prompt_max_chars)
         slug = _pattern_slug(pattern)
         progress = progress_by_pattern.get(slug, {}) if slug else {}
-        difficulty = "Easy" if float(progress.get("avgAccuracy", 100) or 100) < 80 else base["difficulty"]
+        difficulty = "Easy" if float(progress.get("successRate", 100) or 100) < 80 else base["difficulty"]
 
         template_targets = _template_targets_for_drill(
             context.body,

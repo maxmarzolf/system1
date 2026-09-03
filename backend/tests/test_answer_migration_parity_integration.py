@@ -65,7 +65,6 @@ async def _prepare_legacy_score_attempts_table(database_url: str, migration_key:
                 correct_answer TEXT,
                 user_answer TEXT,
                 correct BOOLEAN NOT NULL DEFAULT FALSE,
-                accuracy REAL NOT NULL DEFAULT 0,
                 exact BOOLEAN NOT NULL DEFAULT FALSE,
                 elapsed_ms INTEGER NOT NULL DEFAULT 0,
                 interaction_id VARCHAR(80),
@@ -91,7 +90,6 @@ async def _prepare_legacy_score_attempts_table(database_url: str, migration_key:
                 correct_answer,
                 user_answer,
                 correct,
-                accuracy,
                 exact,
                 elapsed_ms,
                 interaction_id,
@@ -113,7 +111,6 @@ async def _prepare_legacy_score_attempts_table(database_url: str, migration_key:
                 'legacy-correct',
                 'legacy-user',
                 TRUE,
-                95,
                 TRUE,
                 1800,
                 'fx-idempotency-interaction',
@@ -169,7 +166,7 @@ def test_coach_history_parity_with_real_migrated_fixture() -> None:
         assert entry["questionType"] == "skill-map"
         assert entry["correctAnswer"] == "Use binary search with left-bound checks."
         assert entry["userAnswer"] == "while left <= right: ..."
-        assert entry["accuracy"] == 100
+        assert entry["successful"] is True
         assert entry["signals"] == {
             "elapsedMs": 3200,
             "coachFeedback": {"diagnosis": "Great work"},
@@ -217,7 +214,7 @@ def test_attempt_post_and_history_round_trip_real_db() -> None:
                     "correctAnswer": "roundtrip-correct",
                     "userAnswer": "roundtrip-user",
                     "mode": "main-recall",
-                    "accuracy": 100,
+                    "successful": True,
                     "signals": {"elapsedMs": 1500},
                     "interactionId": interaction_id,
                     "generatedCardId": generated_card_id,
@@ -315,7 +312,7 @@ def test_skill_map_overview_updates_after_real_attempt_write() -> None:
                     "correctAnswer": "overview-correct",
                     "userAnswer": "overview-user",
                     "mode": "main-recall",
-                    "accuracy": 100,
+                    "successful": True,
                     "signals": {"elapsedMs": 1200},
                     "interactionId": interaction_id,
                     "generatedCardId": generated_card_id,

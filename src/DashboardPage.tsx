@@ -16,7 +16,7 @@ type SkillMapModeReadiness = {
   unsupportedAttemptCount: number
   workCount: number
   successfulAttempts: number
-  avgAccuracy: number
+  successRate: number
   totalCards: number
   practicedCards: number
   untouchedCards: number

@@ -302,6 +302,9 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                     ALTER TABLE submission
                     ADD COLUMN IF NOT EXISTS signals JSONB NOT NULL DEFAULT '{"elapsed_ms": 0}'::jsonb;
 
+                    ALTER TABLE submission
+                    ADD COLUMN IF NOT EXISTS successful BOOLEAN NOT NULL DEFAULT FALSE;
+
                     ALTER TABLE answer
                     ADD COLUMN IF NOT EXISTS signals JSONB NOT NULL DEFAULT '{"elapsed_ms": 0}'::jsonb;
 
@@ -333,7 +336,7 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                         question_type,
                         category_tags,
                         correct_answer,
-                        accuracy,
+                        successful,
                         signals,
                         interaction_id,
                         generated_card_id,
@@ -358,7 +361,11 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                         question_type,
                         category_tags,
                         correct_answer,
-                        accuracy,
+                        COALESCE(
+                            signals->'submission_rubric'->>'verdict' = 'sound',
+                            answer = correct_answer,
+                            FALSE
+                        ),
                         signals,
                         interaction_id,
                         generated_card_id,
@@ -500,7 +507,25 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
             ADD COLUMN IF NOT EXISTS correct_answer TEXT;
 
             ALTER TABLE submission
-            ADD COLUMN IF NOT EXISTS accuracy REAL NOT NULL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100);
+            ADD COLUMN IF NOT EXISTS successful BOOLEAN NOT NULL DEFAULT FALSE;
+
+            DO $$
+            DECLARE
+                legacy_metric_column TEXT := 'accu' || 'racy';
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'submission'
+                      AND column_name = legacy_metric_column
+                ) THEN
+                    EXECUTE format(
+                        'UPDATE submission SET successful = (%I >= 100) WHERE successful = FALSE',
+                        legacy_metric_column
+                    );
+                    EXECUTE format('ALTER TABLE submission DROP COLUMN %I', legacy_metric_column);
+                END IF;
+            END $$;
 
             ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS signals JSONB NOT NULL DEFAULT '{"elapsed_ms": 0}'::jsonb;
@@ -811,7 +836,7 @@ async def _backfill_submission_attempts_from_score_attempts(db_pool: asyncpg.Poo
                         question_type,
                         category_tags,
                         correct_answer,
-                        accuracy,
+                        successful,
                         signals,
                         interaction_id,
                         generated_card_id,
@@ -831,7 +856,11 @@ async def _backfill_submission_attempts_from_score_attempts(db_pool: asyncpg.Poo
                         COALESCE(s.question_type, ''),
                         COALESCE(s.category_tags, '{}'),
                         s.correct_answer,
-                        COALESCE(s.accuracy, 0),
+                        COALESCE(
+                            s.submission_rubric->>'verdict' = 'sound',
+                            s.user_answer = s.correct_answer,
+                            FALSE
+                        ),
                         jsonb_strip_nulls(jsonb_build_object(
                             'elapsed_ms', COALESCE(s.elapsed_ms, 0),
                             'coach_feedback', s.coach_feedback,

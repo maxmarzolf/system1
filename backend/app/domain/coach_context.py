@@ -14,12 +14,12 @@ class AttemptHistoryEntry(TypedDict, total=False):
     categoryTags: list[str]
     signals: dict[str, Any]
     question: str
-    accuracy: float
+    successful: bool
 
 
 class AttemptHistorySummary(TypedDict, total=False):
     attemptCount: int
-    recentAvgAccuracy: float
+    successRate: float
     weakestTag: str
     repeatedErrorTags: list[str]
     recentPrimaryFocuses: list[str]
@@ -34,9 +34,8 @@ class AttemptHistorySummary(TypedDict, total=False):
 class PatternProgressSummary(TypedDict, total=False):
     pattern: str
     attemptCount: int
-    avgAccuracy: float
+    successRate: float
     readiness: float
-    perfectRate: float
     repeatedErrorTags: list[str]
     latestPrimaryFocus: str
     latestQuestion: str
@@ -72,7 +71,7 @@ def summarize_attempt_history(history: list[AttemptHistoryEntry]) -> AttemptHist
     if not history:
         return {
             "attemptCount": 0,
-            "recentAvgAccuracy": 0,
+            "successRate": 0,
             "weakestTag": "",
             "repeatedErrorTags": [],
             "recentPrimaryFocuses": [],
@@ -84,14 +83,14 @@ def summarize_attempt_history(history: list[AttemptHistoryEntry]) -> AttemptHist
             "templateModes": template_mode_summaries,
         }
 
-    accuracies = [float(item.get("accuracy", 0)) for item in history]
-    tag_scores: dict[str, list[float]] = {}
+    successes = [bool(item.get("successful")) for item in history]
+    tag_outcomes: dict[str, list[bool]] = {}
     error_counts: Counter[str] = Counter()
     primary_focuses: list[str] = []
     recent_questions: list[str] = []
     for item in history:
         for tag in item.get("categoryTags", []):
-            tag_scores.setdefault(tag, []).append(float(item.get("accuracy", 0)))
+            tag_outcomes.setdefault(tag, []).append(bool(item.get("successful")))
         signals = item.get("signals", {})
         feedback = signals.get("coachFeedback", {}) if isinstance(signals, dict) else {}
         for tag in feedback.get("errorTags", []) if isinstance(feedback, dict) else []:
@@ -102,18 +101,18 @@ def summarize_attempt_history(history: list[AttemptHistoryEntry]) -> AttemptHist
             recent_questions.append(str(item["question"]))
 
     weakest_tag = ""
-    weakest_avg = 101.0
-    for tag, values in tag_scores.items():
+    weakest_rate = 101.0
+    for tag, values in tag_outcomes.items():
         if not values:
             continue
-        avg = sum(values) / len(values)
-        if avg < weakest_avg:
-            weakest_avg = avg
+        rate = (sum(values) / len(values)) * 100
+        if rate < weakest_rate:
+            weakest_rate = rate
             weakest_tag = tag
 
     return {
         "attemptCount": len(history),
-        "recentAvgAccuracy": round(sum(accuracies) / len(accuracies), 1),
+        "successRate": round((sum(successes) / len(successes)) * 100, 1),
         "weakestTag": weakest_tag,
         "repeatedErrorTags": [tag for tag, count in error_counts.most_common(3) if count >= 2],
         "recentPrimaryFocuses": primary_focuses[:3],
@@ -138,9 +137,8 @@ def summarize_skill_map_progress(
         progress_by_pattern[slug] = {
             "pattern": getattr(node, "algorithm", slug),
             "attemptCount": 0,
-            "avgAccuracy": 0.0,
+            "successRate": 0.0,
             "readiness": 0.0,
-            "perfectRate": 0.0,
             "repeatedErrorTags": [],
             "latestPrimaryFocus": "",
             "latestQuestion": "",
@@ -148,8 +146,7 @@ def summarize_skill_map_progress(
             "dimensionSummary": {},
         }
 
-    accuracy_buckets: dict[str, list[float]] = {slug: [] for slug in progress_by_pattern}
-    perfect_counts: Counter[str] = Counter()
+    outcome_buckets: dict[str, list[bool]] = {slug: [] for slug in progress_by_pattern}
     error_counts: dict[str, Counter[str]] = {slug: Counter() for slug in progress_by_pattern}
 
     for item in history:
@@ -160,9 +157,7 @@ def summarize_skill_map_progress(
             if slug not in item_tags:
                 continue
             summary["attemptCount"] += 1
-            accuracy_buckets[slug].append(float(item.get("accuracy", 0)))
-            if float(item.get("accuracy", 0)) >= 100:
-                perfect_counts[slug] += 1
+            outcome_buckets[slug].append(bool(item.get("successful")))
             for tag in feedback.get("errorTags", []) if isinstance(feedback, dict) else []:
                 error_counts[slug][str(tag)] += 1
             if not summary["latestPrimaryFocus"] and isinstance(feedback, dict):
@@ -172,29 +167,28 @@ def summarize_skill_map_progress(
 
     weak_patterns: list[str] = []
     for slug, summary in progress_by_pattern.items():
-        accuracies = accuracy_buckets[slug]
+        outcomes = outcome_buckets[slug]
         attempts = int(summary["attemptCount"])
         pattern_history = [item for item in history if slug in {str(tag) for tag in item.get("categoryTags", [])}]
         readiness_summary = summarize_readiness(pattern_history)
-        if accuracies:
-            summary["avgAccuracy"] = round(sum(accuracies) / len(accuracies), 1)
-            summary["perfectRate"] = round((perfect_counts[slug] / len(accuracies)) * 100, 1)
+        if outcomes:
+            summary["successRate"] = round((sum(outcomes) / len(outcomes)) * 100, 1)
         summary["repeatedErrorTags"] = [tag for tag, count in error_counts[slug].most_common(3) if count >= 2]
         summary["readiness"] = readiness_summary["readiness"]
         summary["stale"] = readiness_summary["stale"]
         summary["dimensionSummary"] = summarize_submission_rubrics(pattern_history)
-        if attempts > 0 and float(summary["avgAccuracy"]) < 90:
+        if attempts > 0 and float(summary["successRate"]) < 100:
             weak_patterns.append(slug)
 
     overall_attempts = len(history)
-    overall_avg_accuracy = round(
-        sum(float(item.get("accuracy", 0)) for item in history) / overall_attempts, 1
+    overall_success_rate = round(
+        (sum(bool(item.get("successful")) for item in history) / overall_attempts) * 100, 1
     ) if overall_attempts else 0.0
 
     return {
         "overall": {
             "attemptCount": overall_attempts,
-            "avgAccuracy": overall_avg_accuracy,
+            "successRate": overall_success_rate,
             "weakPatterns": weak_patterns[:5],
             "readiness": summarize_readiness(history)["readiness"],
             "dimensionSummary": summarize_submission_rubrics(history),

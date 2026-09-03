@@ -44,7 +44,7 @@ async def test_semantic_evaluation_awards_full_credit_to_equivalent_bfs(monkeypa
 
     def fake_call(_system_prompt, payload, provider, *_args):
         captured.update({"payload": payload, "provider": provider})
-        return {"accuracy": 100, "sound": True, "syntaxValid": True}
+        return {"sound": True, "syntaxValid": True}
 
     monkeypatch.setattr(evaluation_service, "_resolve_available_llm_provider", lambda _requested: "openai")
     monkeypatch.setattr(evaluation_service, "_llm_provider_available", lambda _provider: True)
@@ -52,7 +52,7 @@ async def test_semantic_evaluation_awards_full_credit_to_equivalent_bfs(monkeypa
 
     result = await evaluation_service.coach_attempt_evaluation(_request())
 
-    assert result == {"accuracy": 100.0, "sound": True, "syntaxValid": True, "llmUsed": True}
+    assert result == {"sound": True, "syntaxValid": True, "llmUsed": True}
     assert captured["provider"] == "openai"
     assert "graph.get(node, [])" in captured["payload"]["userAnswer"]
 
@@ -64,12 +64,11 @@ async def test_semantically_sound_response_is_normalized_to_full_credit(monkeypa
     monkeypatch.setattr(
         evaluation_service,
         "_call_llm_json",
-        lambda *_args: {"accuracy": 97, "sound": True, "syntaxValid": True},
+        lambda *_args: {"sound": True, "syntaxValid": True},
     )
 
     result = await evaluation_service.coach_attempt_evaluation(_request())
 
-    assert result["accuracy"] == 100.0
     assert result["sound"] is True
     assert result["llmUsed"] is True
 
@@ -81,12 +80,11 @@ async def test_unsound_response_cannot_round_up_to_full_credit(monkeypatch) -> N
     monkeypatch.setattr(
         evaluation_service,
         "_call_llm_json",
-        lambda *_args: {"accuracy": 99.9, "sound": False, "syntaxValid": True},
+        lambda *_args: {"sound": False, "syntaxValid": True},
     )
 
     result = await evaluation_service.coach_attempt_evaluation(_request())
 
-    assert result["accuracy"] == 99.0
     assert result["sound"] is False
 
 
@@ -97,6 +95,5 @@ async def test_semantic_evaluation_falls_back_when_provider_is_unavailable(monke
 
     result = await evaluation_service.coach_attempt_evaluation(_request())
 
-    assert result["accuracy"] < 100
     assert result["sound"] is False
     assert result["llmUsed"] is False

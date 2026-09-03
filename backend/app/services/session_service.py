@@ -34,7 +34,6 @@ async def coach_session_plan(body: CoachSessionPlanRequest) -> CoachSessionPlanR
             "orderType": body.orderType,
             "attempts": body.attempts,
             "correctCount": body.correctCount,
-            "avgAccuracy": body.avgAccuracy,
             "avgElapsedMs": body.avgElapsedMs,
         },
         "weakestCards": [c.model_dump() for c in body.weakestCards[:5]],

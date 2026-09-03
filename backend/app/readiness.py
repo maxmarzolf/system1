@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-READINESS_SUCCESS_THRESHOLD = 90.0
 READINESS_STALE_DAYS = 7
 READINESS_MODE_ORDER = ("algorithm",)
 
@@ -40,17 +39,16 @@ def support_cap(live_coach_used: bool, support_layer: str = "none") -> float:
 
 
 def attempt_mastery_score(attempt: dict[str, Any]) -> float:
-    accuracy = _clamp(float(attempt.get("accuracy", 0) or 0) / 100.0, 0.0, 1.0)
-    capped_accuracy = min(
-        accuracy,
+    if not bool(attempt.get("successful")):
+        return 0.0
+    capped_score = min(
+        1.0,
         support_cap(
             bool(attempt.get("liveCoachUsed")),
             str(attempt.get("supportLayer") or attempt.get("support_layer") or "none"),
         ),
     )
-    if float(attempt.get("accuracy", 0) or 0) < READINESS_SUCCESS_THRESHOLD:
-        capped_accuracy *= 0.55
-    return _clamp(capped_accuracy, 0.0, 1.0)
+    return _clamp(capped_score, 0.0, 1.0)
 
 
 def freshness_multiplier(days_since_last_submit: int | None) -> float:
@@ -84,7 +82,7 @@ def summarize_readiness(attempts: list[dict[str, Any]], now: datetime | None = N
             "readiness": 0.0,
             "attemptCount": 0,
             "successfulAttempts": 0,
-            "avgAccuracy": 0.0,
+            "successRate": 0.0,
             "lastSubmittedAt": "",
             "daysSinceLastSubmit": None,
             "stale": False,
@@ -94,18 +92,18 @@ def summarize_readiness(attempts: list[dict[str, Any]], now: datetime | None = N
     weighted_sum = 0.0
     total_weight = 0.0
     successful_attempts = 0
+    successful_outcomes = 0
     live_coach_used_count = 0
-    accuracies: list[float] = []
 
     for index, attempt in enumerate(sorted_attempts):
         mastery_score = attempt_mastery_score(attempt)
         weight = 0.65 ** index
         weighted_sum += mastery_score * weight
         total_weight += weight
-        accuracy = float(attempt.get("accuracy", 0) or 0)
-        accuracies.append(accuracy)
-        if accuracy >= READINESS_SUCCESS_THRESHOLD and str(attempt.get("supportLayer") or attempt.get("support_layer") or "none") == "none":
-            successful_attempts += 1
+        if bool(attempt.get("successful")):
+            successful_outcomes += 1
+            if str(attempt.get("supportLayer") or attempt.get("support_layer") or "none") == "none":
+                successful_attempts += 1
         if bool(attempt.get("liveCoachUsed")):
             live_coach_used_count += 1
 
@@ -121,7 +119,7 @@ def summarize_readiness(attempts: list[dict[str, Any]], now: datetime | None = N
         "readiness": round(readiness, 1),
         "attemptCount": len(sorted_attempts),
         "successfulAttempts": successful_attempts,
-        "avgAccuracy": round(sum(accuracies) / len(accuracies), 1) if accuracies else 0.0,
+        "successRate": round((successful_outcomes / len(sorted_attempts)) * 100, 1),
         "lastSubmittedAt": last_submitted_at.isoformat() if last_submitted_at else "",
         "daysSinceLastSubmit": days_since_last_submit,
         "stale": days_since_last_submit is not None and days_since_last_submit >= READINESS_STALE_DAYS,

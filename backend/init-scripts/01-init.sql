@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS submission (
     question_type VARCHAR(50) NOT NULL DEFAULT '',
     category_tags TEXT[] NOT NULL DEFAULT '{}',
     correct_answer TEXT,
-    accuracy REAL NOT NULL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100),
+    successful BOOLEAN NOT NULL DEFAULT FALSE,
     signals JSONB NOT NULL DEFAULT '{"elapsed_ms": 0}'::jsonb CONSTRAINT submission_signals_object_check CHECK (jsonb_typeof(signals) = 'object'),
     interaction_id VARCHAR(80),
     generated_card_id VARCHAR(80),

@@ -40,7 +40,7 @@ from app.services.contracts import (
 
 
 class AttemptOverviewItem(TypedDict):
-    accuracy: float
+    successful: bool
     created_at: datetime
     supportLayer: str
     liveCoachUsed: bool
@@ -226,7 +226,7 @@ def _build_ghost_rep_activity(
         is_perfect_total_recall = (
             str(row.get("activity_format") or "") == "recall"
             and not is_ghost_rep
-            and float(row.get("accuracy") or 0) >= 100
+            and bool(row.get("successful"))
         )
         if not is_ghost_rep and not is_mcq and not is_perfect_total_recall:
             continue
@@ -689,7 +689,7 @@ def build_skill_map_overview(
 
         stored_signals = coerce_json_object(row.get("signals"))
         attempt: AttemptOverviewItem = {
-            "accuracy": float(row["accuracy"] or 0),
+            "successful": bool(row["successful"]),
             "created_at": row["created_at"],
             "supportLayer": support_layer,
             "liveCoachUsed": bool(row["live_coach_used"]),
@@ -878,7 +878,7 @@ async def create_attempt(body: AttemptCreate) -> AttemptSaveResult:
         correct_answer=body.correctAnswer,
         user_answer=body.userAnswer,
         mode=body.mode.value,
-        accuracy=body.accuracy,
+        successful=body.successful,
         signals_json=_json.dumps({key: value for key, value in signals.items() if value is not None}),
         interaction_id=body.interactionId,
         generated_card_id=body.generatedCardId,

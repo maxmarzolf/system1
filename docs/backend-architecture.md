@@ -78,7 +78,7 @@ The canonical `submission.signals` JSONB object contains the feedback and timing
 - `submission_rubric`
 - `elapsed_ms`
 
-The API maps these to `signals.coachFeedback`, `signals.submissionRubric`, and `signals.elapsedMs`. Correctness is represented by `accuracy`; the ledger does not store separate `is_correct` or `exact` columns.
+The API maps these to `signals.coachFeedback`, `signals.submissionRubric`, and `signals.elapsedMs`. The ledger stores the binary submission outcome in `successful`; diagnostic detail lives in the rubric.
 
 Anti-pattern examples:
 - Endpoint calling repository directly.

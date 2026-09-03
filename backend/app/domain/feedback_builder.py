@@ -108,7 +108,7 @@ def submission_rubric_from_assessment(
         for item in [*dimensions.values(), *modifiers.values()]
         if item.get("status") != "not_applicable"
     ]
-    overall = round(sum(dimension_scores) / len(dimension_scores), 1) if dimension_scores else round(float(body.accuracy or 0), 1)
+    overall = round(sum(dimension_scores) / len(dimension_scores), 1) if dimension_scores else (100.0 if body.exact else 0.0)
 
     return {
         "verdict": verdict,

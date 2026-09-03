@@ -116,14 +116,14 @@ def _evaluate_attempt_soundness(expected_answer: str, user_answer: str) -> dict[
     user_ast = _canonicalize_identifier_names(normalized_user) if syntax_valid else None
 
     if not normalized_user:
-        return {"accuracy": 0.0, "sound": False, "syntaxValid": False}
+        return {"score": 0.0, "sound": False, "syntaxValid": False}
 
     if expected_ast and user_ast and expected_ast == user_ast:
-        return {"accuracy": 100.0, "sound": True, "syntaxValid": True}
+        return {"score": 100.0, "sound": True, "syntaxValid": True}
 
     similarity = difflib.SequenceMatcher(a=expected_ast or normalized_expected, b=user_ast or normalized_user).ratio()
     return {
-        "accuracy": round(similarity * 100, 1),
+        "score": round(similarity * 100, 1),
         "sound": False,
         "syntaxValid": syntax_valid,
     }
@@ -533,10 +533,10 @@ def _analyze_template_attempt(
     )
     contract = _template_contract_drift(expected_answer, user_answer, tuning)
     if tuning.get("rewardEquivalentPhrasing", True):
-        raw_accuracy = (dimension_average * 0.8) + (order_score * 0.1) + (step_coverage * 0.1)
+        raw_score = (dimension_average * 0.8) + (order_score * 0.1) + (step_coverage * 0.1)
     else:
-        raw_accuracy = (step_coverage * 0.65) + (critical_coverage * 0.25) + (order_score * 0.1)
-    accuracy = max(0.0, round(raw_accuracy - contract["penalty"], 1))
+        raw_score = (step_coverage * 0.65) + (critical_coverage * 0.25) + (order_score * 0.1)
+    overall_score = max(0.0, round(raw_score - contract["penalty"], 1))
 
     dimension_by_key = {item["key"]: float(item["score"]) for item in dimension_scores}
     core_logic_score = round(
@@ -562,7 +562,7 @@ def _analyze_template_attempt(
         syntax_valid = not _has_syntax_error(user_answer)
 
     return {
-        "accuracy": accuracy,
+        "score": overall_score,
         "sound": sound,
         "syntaxValid": syntax_valid,
         "matchedLabels": matched_labels,

@@ -81,7 +81,7 @@ async def run_signal_assessor(
         "userAnswer": (body.userAnswer or "")[:800],
         "expectedAnswer": (body.expectedAnswer or "")[:800],
         "elapsedMs": body.elapsedMs,
-        "precomputedAccuracy": body.accuracy,
+        "precomputedSound": body.exact,
         "liveMilestones": body.liveMilestones if body.liveMode else {},
         "liveCoachTuning": body.liveCoachTuning if body.liveMode else {},
     }

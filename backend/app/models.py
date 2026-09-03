@@ -40,7 +40,7 @@ class AttemptCreate(BaseModel):
     correctAnswer: str | None = None
     userAnswer: str | None = None
     mode: GameMode
-    accuracy: float = Field(default=0, ge=0, le=100)
+    successful: bool = False
     signals: SubmissionSignals = Field(default_factory=SubmissionSignals)
     interactionId: str | None = None
     generatedCardId: str | None = None
@@ -64,7 +64,6 @@ class CoachAttemptFeedbackRequest(BaseModel):
     expectedAnswer: str = ""
     userAnswer: str = ""
     elapsedMs: int = Field(default=0, ge=0)
-    accuracy: float = Field(default=0, ge=0, le=100)
     exact: bool = False
     interactionId: str | None = None
     questionType: str = ""
@@ -111,7 +110,6 @@ class CoachAttemptEvaluationRequest(BaseModel):
 
 
 class CoachAttemptEvaluationResponse(BaseModel):
-    accuracy: float = Field(default=0, ge=0, le=100)
     sound: bool = False
     syntaxValid: bool = False
     llmUsed: bool = False
@@ -120,7 +118,6 @@ class CoachAttemptEvaluationResponse(BaseModel):
 class SessionWeakCard(BaseModel):
     cardId: str = Field(min_length=1)
     cardTitle: str = ""
-    accuracy: float = Field(default=0, ge=0, le=100)
     elapsedMs: int = Field(default=0, ge=0)
 
 
@@ -130,7 +127,6 @@ class CoachSessionPlanRequest(BaseModel):
     orderType: str = "original"
     attempts: int = Field(default=0, ge=0)
     correctCount: int = Field(default=0, ge=0)
-    avgAccuracy: float = Field(default=0, ge=0, le=100)
     avgElapsedMs: int = Field(default=0, ge=0)
     weakestCards: list[SessionWeakCard] = []
     llmProvider: str = "openai"
@@ -334,7 +330,7 @@ class CoachPracticeHistoryEntry(BaseModel):
     questionType: str = ""
     correctAnswer: str = ""
     userAnswer: str = ""
-    accuracy: float = Field(default=0, ge=0, le=100)
+    successful: bool = False
     signals: SubmissionSignals = Field(default_factory=SubmissionSignals)
     templateMode: str = TemplateMode.algorithm.value
     supportLayer: str = SupportLayer.none.value
@@ -458,7 +454,7 @@ class SkillMapModeReadiness(BaseModel):
     unsupportedAttemptCount: int = Field(default=0, ge=0)
     workCount: int = Field(default=0, ge=0)
     successfulAttempts: int = Field(default=0, ge=0)
-    avgAccuracy: float = Field(default=0, ge=0, le=100)
+    successRate: float = Field(default=0, ge=0, le=100)
     totalCards: int = Field(default=0, ge=0)
     practicedCards: int = Field(default=0, ge=0)
     untouchedCards: int = Field(default=0, ge=0)

@@ -122,7 +122,7 @@ type AttemptPayload = {
   mode: 'main-recall'
   correctAnswer: string
   userAnswer: string
-  accuracy: number
+  successful: boolean
   signals: {
     elapsedMs: number
     coachFeedback?: CoachAttemptFeedback | null
@@ -255,7 +255,6 @@ type PromptToggleExplanationResponse = {
 }
 
 type AttemptEvaluationResponse = {
-  accuracy: number
   sound: boolean
   syntaxValid: boolean
   llmUsed: boolean
@@ -341,7 +340,6 @@ const firstChangedLineIndex = (previousText: string, nextText: string) => {
 
 type RecallAttemptSnapshot = {
   attemptNumber: number
-  accuracy: number
   exact: boolean
   elapsedMs: number
   supportLayer: SupportLayer
@@ -366,7 +364,6 @@ type LiveStructure = {
 type LiveCoachSnapshot = {
   text: string
   progressKey: string
-  accuracy: number
   nonEmptyLines: number
   changedLine: number
   sameLineEditCount: number
@@ -1178,15 +1175,6 @@ const normalizeTyping = (value: string) =>
     .join('\n')
     .trim()
 
-const estimateTemplateAccuracy = (expectedAnswer: string, userAnswer: string) => {
-  const compareLength = Math.max(userAnswer.length, expectedAnswer.length, 1)
-  let exactMatches = 0
-  for (let i = 0; i < compareLength; i += 1) {
-    if (userAnswer[i] === expectedAnswer[i]) exactMatches += 1
-  }
-  return Math.round((exactMatches / compareLength) * 100)
-}
-
 const INLINE_NOTE_COLUMN = 48
 const LIVE_NOTE_STOP_WORDS = new Set([
   'a',
@@ -1803,14 +1791,12 @@ const createInteractionId = () =>
 
 const summarizeRecallAttempt = (
   actualLines: string[],
-  accuracy: number,
   exact: boolean,
   elapsedMs: number,
   attemptNumber: number,
   supportLayer: SupportLayer
 ): RecallAttemptSnapshot => ({
   attemptNumber,
-  accuracy,
   exact,
   elapsedMs,
   supportLayer,
@@ -2341,7 +2327,6 @@ function App() {
   const [sessionPosition, setSessionPosition] = useState(0)
   const [sessionFinished, setSessionFinished] = useState(false)
   const [sessionResults, setSessionResults] = useState<Record<string, boolean>>({})
-  const [sessionAccuracyByCard, setSessionAccuracyByCard] = useState<Record<string, number>>({})
   const [sessionElapsedByCard, setSessionElapsedByCard] = useState<Record<string, number>>({})
   const [sessionPlanRequested, setSessionPlanRequested] = useState(false)
   const llmProvider: LlmProviderSelection = 'auto'
@@ -2711,7 +2696,6 @@ function App() {
     setSessionPosition(0)
     setSessionFinished(false)
     setSessionResults({})
-    setSessionAccuracyByCard({})
     setSessionElapsedByCard({})
     setSessionPlanRequested(false)
 
@@ -3050,7 +3034,7 @@ function App() {
     setRelatedDrawerOpen(false)
   }, [card.id, currentTemplateMode, relatedLeetCodeSet?.heading])
 
-  const completeCardInSession = (isCorrect: boolean, accuracy: number, elapsedMs?: number) => {
+  const completeCardInSession = (isCorrect: boolean, elapsedMs?: number) => {
     if (!activeCardId) return
     setSessionResults((prevResults) => {
       const next = { ...prevResults, [activeCardId]: isCorrect }
@@ -3059,7 +3043,6 @@ function App() {
       }
       return next
     })
-    setSessionAccuracyByCard((prev) => ({ ...prev, [activeCardId]: accuracy }))
     if (elapsedMs !== undefined) {
       setSessionElapsedByCard((prev) => ({ ...prev, [activeCardId]: elapsedMs }))
     }
@@ -3079,7 +3062,7 @@ function App() {
           correctAnswer: payload.correctAnswer,
           userAnswer: payload.userAnswer,
           mode: payload.mode,
-          accuracy: payload.accuracy,
+          successful: payload.successful,
           signals: payload.signals,
           interactionId: payload.interactionId,
           generatedCardId: card.id,
@@ -3120,7 +3103,7 @@ function App() {
           correctAnswer: `${payload.correctChoice.id}. ${payload.correctChoice.text}`,
           userAnswer: `${payload.selectedChoice.id}. ${payload.selectedChoice.text}`,
           mode: 'main-recall',
-          accuracy: payload.correct ? 100 : 0,
+          successful: payload.correct,
           signals: {
             elapsedMs: payload.elapsedMs,
             coachFeedback: null,
@@ -3171,7 +3154,6 @@ function App() {
       return (await response.json()) as AttemptEvaluationResponse
     } catch {
       return {
-        accuracy: estimateTemplateAccuracy(expectedAnswer, userAnswer),
         sound: userAnswer === expectedAnswer,
         syntaxValid: userAnswer.trim().length > 0,
         llmUsed: false,
@@ -3386,7 +3368,6 @@ function App() {
     expectedAnswer: string
     userAnswer: string
     elapsedMs: number
-    accuracy: number
     exact: boolean
     previousAttempts: RecallAttemptSnapshot[]
     liveStructure: LiveStructure
@@ -3415,13 +3396,11 @@ function App() {
           expectedAnswer: payload.expectedAnswer,
           userAnswer: payload.userAnswer,
           elapsedMs: payload.elapsedMs,
-          accuracy: payload.accuracy,
           exact: payload.exact,
           interactionId: payload.interactionId,
           skillTags: currentSkillTags,
           previousAttempts: payload.previousAttempts.map((attempt) => ({
             attemptNumber: attempt.attemptNumber,
-            accuracy: attempt.accuracy,
             exact: attempt.exact,
             elapsedMs: attempt.elapsedMs,
           })),
@@ -3478,7 +3457,6 @@ function App() {
       expectedAnswer: string
       userAnswer: string
       elapsedMs: number
-      accuracy: number
       exact: boolean
       previousAttempts: RecallAttemptSnapshot[]
     }
@@ -3503,13 +3481,11 @@ function App() {
           expectedAnswer: payload.expectedAnswer,
           userAnswer: payload.userAnswer,
           elapsedMs: payload.elapsedMs,
-          accuracy: payload.accuracy,
           exact: payload.exact,
           interactionId: payload.interactionId,
           skillTags: currentSkillTags,
           previousAttempts: payload.previousAttempts.map((attempt) => ({
             attemptNumber: attempt.attemptNumber,
-            accuracy: attempt.accuracy,
             exact: attempt.exact,
             elapsedMs: attempt.elapsedMs,
           })),
@@ -3588,17 +3564,16 @@ function App() {
     setSessionPlanError('')
 
     try {
-      const weakCards = Object.entries(sessionAccuracyByCard)
-        .map(([cardId, accuracy]) => {
+      const weakCards = Object.entries(sessionResults)
+        .filter(([, successful]) => !successful)
+        .map(([cardId]) => {
           const found = filteredDeck.find((item) => item.id === cardId)
           return {
             cardId,
             cardTitle: found?.title ?? '',
-            accuracy,
             elapsedMs: sessionElapsedByCard[cardId] ?? 0,
           }
         })
-        .sort((a, b) => a.accuracy - b.accuracy)
         .slice(0, 5)
 
       const response = await fetch(apiUrl('/api/coach/session-plan'), {
@@ -3609,7 +3584,6 @@ function App() {
           questionType: requestedQuestionType,
           attempts,
           correctCount,
-          avgAccuracy,
           avgElapsedMs:
             attempts > 0
               ? Math.round(
@@ -3654,7 +3628,6 @@ function App() {
       .finally(() => {
         recallEvaluationPendingRef.current = false
       })
-    const accuracy = Math.round(evaluation.accuracy)
     const sound = evaluation.sound
     const isGhostRep = effectiveSupportLayer === 'ghost-reps'
     const closeEnough = !isGhostRep && sound
@@ -3662,7 +3635,6 @@ function App() {
     const currentHistory = mainRecallHistoryByCard[historyKey] ?? []
     const attemptSnapshot = summarizeRecallAttempt(
       normalizedInputLines,
-      accuracy,
       sound,
       elapsedMs,
       currentHistory.length + 1,
@@ -3682,7 +3654,6 @@ function App() {
           expectedAnswer: normalizedTarget,
           userAnswer: normalizedInput,
           elapsedMs,
-          accuracy,
           exact: sound,
           previousAttempts: currentHistory,
         })
@@ -3691,7 +3662,7 @@ function App() {
       mode: 'main-recall',
       correctAnswer: normalizedTarget,
       userAnswer: normalizedInput,
-      accuracy,
+      successful: sound,
       signals: {
         elapsedMs,
         coachFeedback: feedback,
@@ -3767,7 +3738,7 @@ function App() {
     }
 
     if (!isGhostRep && closeEnough) {
-      completeCardInSession(sound, accuracy, elapsedMs)
+      completeCardInSession(sound, elapsedMs)
     }
   }
 
@@ -3811,7 +3782,7 @@ function App() {
         ...prev,
         [activeMultipleChoiceCard.id]: selectedChoice.id,
       }))
-      completeCardInSession(correct, correct ? 100 : 0, elapsedMs)
+      completeCardInSession(correct, elapsedMs)
     }
 
     await submitMultipleChoiceAttemptToServer({
@@ -3884,13 +3855,6 @@ function App() {
 
   const attempts = Object.keys(sessionResults).length
   const correctCount = Object.values(sessionResults).filter(Boolean).length
-  const avgAccuracy =
-    attempts > 0
-      ? Math.round(
-          (Object.values(sessionAccuracyByCard).reduce((sum, value) => sum + value, 0) / attempts) * 10
-        ) / 10
-      : 0
-
   const canGoNext = !isFlowActive && sessionPosition < sessionOrder.length - 1
   const canGoPrev = !isFlowActive && sessionPosition > 0
 
@@ -4062,14 +4026,11 @@ function App() {
     const focusedInput = practiceFlow?.stage === 'ghost'
       ? extractFlowGhostFocusedInput(trimmedInput, practiceFlow.focus.missedLines)
       : trimmedInput
-    const accuracy = estimateTemplateAccuracy(target, focusedInput)
-
     void requestLiveCoachFeedback({
       interactionId,
       expectedAnswer: target,
       userAnswer: focusedInput,
       elapsedMs: Math.max((mainStartedAt ? Date.now() - mainStartedAt : 0), 0),
-      accuracy,
       exact: focusedInput === target,
       previousAttempts: currentCardRecallHistory,
       liveStructure: liveStructure,
@@ -4096,7 +4057,6 @@ function App() {
     liveCoachSnapshotRef.current = {
       text: trimmedInput,
       progressKey: liveProgressKey(liveStructure),
-      accuracy: estimateTemplateAccuracy(activeRecallTarget, trimmedInput),
       nonEmptyLines: liveStructure.nonEmptyLines,
       changedLine: cursorLineNumber - 1,
       sameLineEditCount: 0,
@@ -4727,7 +4687,7 @@ function App() {
 
         {sessionFinished && (
           <p className="status success" style={{ marginTop: 0, marginBottom: '1.5rem' }}>
-            Session complete. {correctCount} of {attempts} {currentPracticeMode === 'multiple-choice' ? 'questions were correct' : 'cards were sound'}. Avg score: {avgAccuracy}%.
+            Session complete. {correctCount} of {attempts} {currentPracticeMode === 'multiple-choice' ? 'questions were correct' : 'cards were sound'}.
           </p>
         )}
         {sessionFinished && currentPracticeMode === 'recall' && (
@@ -5096,8 +5056,8 @@ function App() {
                         {mainPhase === 'submitted' && latestSubmittedAttempt && (
                           <div className="recall-submit-summary">
                             <span className="recall-submit-metric">
-                              <span className="recall-submit-metric-name">Accuracy</span>
-                              <span className="recall-submit-metric-value">{latestSubmittedAttempt.accuracy}%</span>
+                              <span className="recall-submit-metric-name">Outcome</span>
+                              <span className="recall-submit-metric-value">{latestSubmittedAttempt.exact ? 'Sound' : 'Needs work'}</span>
                             </span>
                             <span className="recall-submit-metric">
                               <span className="recall-submit-metric-name">Time</span>

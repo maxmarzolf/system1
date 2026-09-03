@@ -142,7 +142,7 @@ async def insert_submission_attempt_row(
     correct_answer: str,
     user_answer: str,
     mode: str,
-    accuracy: float,
+    successful: bool,
     signals_json: str,
     interaction_id: str,
     generated_card_id: str | None,
@@ -179,7 +179,7 @@ async def insert_submission_attempt_row(
             """
             INSERT INTO submission
                 (session_id, user_id, multiple_choice_problem_id, answer, question_type, category_tags,
-                 correct_answer, accuracy, signals, interaction_id,
+                 correct_answer, successful, signals, interaction_id,
                  generated_card_id, generated_card, template_mode, support_layer,
                  live_coach_used, activity_format,
                  target_source, target_control, format_control, created_at, updated_at)
@@ -193,7 +193,7 @@ async def insert_submission_attempt_row(
             question_type,
             category_tags,
             normalized_correct_answer,
-            accuracy,
+            successful,
             signals_json,
             interaction_id,
             generated_card_id,
@@ -288,7 +288,7 @@ async def fetch_skill_map_overview_attempt_rows() -> list[SkillMapOverviewAttemp
                 COALESCE(NULLIF(a.generated_card->>'title', ''), q.question_text, a.multiple_choice_problem_id) AS card_title,
                 a.category_tags AS category_tags,
                 a.question_type AS question_type,
-                a.accuracy,
+                a.successful,
                 a.created_at,
                 a.template_mode,
                 a.support_layer,

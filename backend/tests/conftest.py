@@ -23,10 +23,10 @@ def skill_map_request() -> SkillMapDrillsRequest:
 @pytest.fixture
 def progress_summary() -> dict:
     return {
-        "overall": {"attemptCount": 4, "avgAccuracy": 77.5},
+        "overall": {"attemptCount": 4, "successRate": 75.0},
         "patterns": {
-            "sliding-window": {"attemptCount": 3, "readiness": 62, "avgAccuracy": 70},
-            "two-pointers": {"attemptCount": 1, "readiness": 95, "avgAccuracy": 88},
+            "sliding-window": {"attemptCount": 3, "readiness": 62, "successRate": 66.7},
+            "two-pointers": {"attemptCount": 1, "readiness": 95, "successRate": 100},
         },
     }
 

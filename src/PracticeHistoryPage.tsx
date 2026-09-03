@@ -18,7 +18,7 @@ type PracticeHistoryEntry = {
   questionType: string
   correctAnswer: string
   userAnswer: string
-  accuracy: number
+  successful: boolean
   signals: {
     elapsedMs: number
     coachFeedback: {
@@ -91,7 +91,7 @@ type DimensionSummary = {
 
 type PracticeHistorySummary = {
   attemptCount: number
-  recentAvgAccuracy: number
+  successRate: number
   readiness: number
   daysSinceLastSubmit: number | null
   stale: boolean
@@ -112,8 +112,6 @@ type SkillMapOverviewForGhostReps = {
   ghostRepActivity: GhostRepActivity
   spacedRepetition: GhostRepSpacedRepetition
 }
-
-const MAIN_RECALL_CLOSE_ENOUGH_ACCURACY = 90
 
 const isMultipleChoiceEntry = (entry: PracticeHistoryEntry) =>
   entry.questionType.startsWith('skill-map-mcq') || entry.generatedCard.cardMode === 'multiple-choice'
@@ -238,7 +236,7 @@ export default function PracticeHistoryPage() {
               <>
                 <span className="coach-metric-chip">{practiceHistorySummary.attemptCount} attempts</span>
                 <span className="coach-metric-chip">Readiness {practiceHistorySummary.readiness}%</span>
-                <span className="coach-metric-chip">Avg {practiceHistorySummary.recentAvgAccuracy}%</span>
+                <span className="coach-metric-chip">Success {practiceHistorySummary.successRate}%</span>
                 {repeatedWeakDimensions.length > 0 && (
                   <span className="coach-metric-chip">Weak: {dimensionLabel(repeatedWeakDimensions[0])} {repeatedWeakDimensions[0].avgScore ?? 0}%</span>
                 )}
@@ -256,11 +254,7 @@ export default function PracticeHistoryPage() {
             <div className="practice-history-list">
               {practiceHistory.map((entry) => {
                 const multipleChoice = isMultipleChoiceEntry(entry)
-                const entryTone = entry.accuracy >= 100
-                  ? 'success'
-                  : entry.accuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY
-                    ? 'warning'
-                    : 'error'
+                const entryTone = entry.successful ? 'success' : 'error'
                 const entryDate = new Date(entry.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 
                 return (
@@ -268,7 +262,7 @@ export default function PracticeHistoryPage() {
                     <div className="practice-history-entry-top">
                       <p className="practice-history-title">{entry.cardTitle || entry.cardId}</p>
                       <span className={`coach-status-value coach-status-value-${entryTone}`}>
-                        {multipleChoice ? (entry.accuracy >= 100 ? 'Correct' : 'Missed') : `${entry.accuracy}%`}
+                        {multipleChoice ? (entry.successful ? 'Correct' : 'Missed') : (entry.successful ? 'Sound' : 'Needs work')}
                       </span>
                     </div>
                     <p className="practice-history-meta">

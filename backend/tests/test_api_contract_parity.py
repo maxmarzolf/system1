@@ -34,7 +34,7 @@ def test_attempts_endpoint_contract(monkeypatch) -> None:
                 "mode": "main-recall",
                 "correctAnswer": "A",
                 "userAnswer": "A",
-                "accuracy": 100,
+                "successful": True,
                 "signals": {
                     "elapsedMs": 2500,
                     "coachFeedback": {"diagnosis": "Sound"},
@@ -58,7 +58,7 @@ def test_coach_history_endpoint_contract(monkeypatch) -> None:
         return {
             "summary": {
                 "attemptCount": 1,
-                "recentAvgAccuracy": 100.0,
+                "successRate": 100.0,
             },
             "entries": [
                 {
@@ -70,7 +70,7 @@ def test_coach_history_endpoint_contract(monkeypatch) -> None:
                     "questionType": "skill-map",
                     "correctAnswer": "A",
                     "userAnswer": "A",
-                    "accuracy": 100,
+                    "successful": True,
                     "signals": {
                         "elapsedMs": 2500,
                         "coachFeedback": {},

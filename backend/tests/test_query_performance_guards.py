@@ -52,7 +52,7 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
             question_type,
             category_tags,
             correct_answer,
-            accuracy,
+            successful,
             signals,
             interaction_id,
             generated_card_id,
@@ -73,7 +73,7 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
             CASE WHEN s % 10 = 0 THEN 'skill-map-lite' ELSE 'skill-map' END,
             ARRAY['skill-map', CASE WHEN s % 2 = 0 THEN 'two-pointers' ELSE 'binary-search' END],
             'correct',
-            (s % 100)::float,
+            s % 5 = 0,
             jsonb_build_object(
                 'elapsed_ms', 1000 + s,
                 'coach_feedback', '{}'::jsonb,

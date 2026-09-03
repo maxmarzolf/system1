@@ -13,7 +13,7 @@ class PracticeHistoryRow(TypedDict):
     questionType: str
     correctAnswer: str
     userAnswer: str
-    accuracy: float
+    successful: bool
     signals: dict[str, Any] | str | None
     templateMode: str
     supportLayer: str
@@ -32,7 +32,7 @@ class PracticeHistoryEntry(TypedDict):
     questionType: str
     correctAnswer: str
     userAnswer: str
-    accuracy: float
+    successful: bool
     signals: dict[str, Any]
     templateMode: str
     supportLayer: str
@@ -88,7 +88,7 @@ class SkillMapOverviewAttemptRow(TypedDict):
     card_title: str
     category_tags: list[str] | None
     question_type: str | None
-    accuracy: float
+    successful: bool
     created_at: datetime
     template_mode: str
     support_layer: str

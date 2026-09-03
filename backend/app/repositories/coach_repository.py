@@ -20,7 +20,7 @@ _PRACTICE_HISTORY_SELECT = """
         a.question_type AS "questionType",
         a.correct_answer AS "correctAnswer",
         a.answer AS "userAnswer",
-        a.accuracy,
+        a.successful,
         a.signals,
         a.template_mode AS "templateMode",
         a.support_layer AS "supportLayer",
@@ -151,7 +151,7 @@ async def fetch_practice_history_entries(
             "questionType": row["questionType"] or "",
             "correctAnswer": row["correctAnswer"] or "",
             "userAnswer": row["userAnswer"] or "",
-            "accuracy": float(row["accuracy"] or 0),
+            "successful": bool(row["successful"]),
             "signals": {
                 "elapsedMs": int(stored_signals.get("elapsed_ms") or 0),
                 "coachFeedback": coach_feedback,

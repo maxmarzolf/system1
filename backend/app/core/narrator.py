@@ -71,7 +71,6 @@ def build_narrator_payload(
     return {
         "card": {"id": body.cardId, "title": body.cardTitle},
         "attempt": {
-            "accuracy": body.accuracy,
             "exact": body.exact,
             "elapsedMs": body.elapsedMs,
             "expectedAnswer": (body.expectedAnswer or "")[:1200] if reveal_expected_answer else "",
@@ -89,7 +88,7 @@ def build_narrator_payload(
         "skillTags": body.skillTags,
         "historicalAttempts": [
             {
-                "accuracy": item.get("accuracy", 0),
+                "successful": bool(item.get("successful")),
                 "templateMode": item.get("templateMode", TemplateMode.algorithm.value),
                 "errorTags": item.get("signals", {}).get("coachFeedback", {}).get("errorTags", [])
                 if isinstance(item.get("signals", {}).get("coachFeedback"), dict)
