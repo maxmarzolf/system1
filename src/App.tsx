@@ -120,18 +120,18 @@ type InlineLens = 'pattern' | 'plainEnglish' | 'why' | 'transfer' | 'debug'
 
 type AttemptPayload = {
   mode: 'main-recall'
-  correct: boolean
   correctAnswer: string
   userAnswer: string
   accuracy: number
-  exact: boolean
-  elapsedMs: number
+  signals: {
+    elapsedMs: number
+    coachFeedback?: CoachAttemptFeedback | null
+    submissionRubric?: Record<string, unknown> | null
+  }
   interactionId: string
   templateMode: TemplateMode
   supportLayer: SupportLayer
   liveCoachUsed: boolean
-  coachFeedback?: CoachAttemptFeedback | null
-  submissionRubric?: Record<string, unknown> | null
 }
 
 type CoachAttemptFeedback = {
@@ -3079,18 +3079,14 @@ function App() {
           correctAnswer: payload.correctAnswer,
           userAnswer: payload.userAnswer,
           mode: payload.mode,
-          correct: payload.correct,
           accuracy: payload.accuracy,
-          exact: payload.exact,
-          elapsedMs: payload.elapsedMs,
+          signals: payload.signals,
           interactionId: payload.interactionId,
           generatedCardId: card.id,
           generatedCard: { ...card, prompt: practicePrompt },
           templateMode: payload.templateMode,
           supportLayer: payload.supportLayer,
           liveCoachUsed: payload.liveCoachUsed,
-          coachFeedback: payload.coachFeedback ?? null,
-          submissionRubric: payload.submissionRubric ?? null,
           activityFormat: 'recall',
           targetSource: isFlowActive ? 'recall-miss' : 'skill-map',
           targetControl: isFlowActive ? 'system' : 'user',
@@ -3124,10 +3120,12 @@ function App() {
           correctAnswer: `${payload.correctChoice.id}. ${payload.correctChoice.text}`,
           userAnswer: `${payload.selectedChoice.id}. ${payload.selectedChoice.text}`,
           mode: 'main-recall',
-          correct: payload.correct,
           accuracy: payload.correct ? 100 : 0,
-          exact: payload.correct,
-          elapsedMs: payload.elapsedMs,
+          signals: {
+            elapsedMs: payload.elapsedMs,
+            coachFeedback: null,
+            submissionRubric: null,
+          },
           interactionId: payload.interactionId,
           generatedCardId: activeMultipleChoiceCard.id,
           generatedCard: {
@@ -3138,8 +3136,6 @@ function App() {
           templateMode: 'algorithm',
           supportLayer: 'none',
           liveCoachUsed: false,
-          coachFeedback: null,
-          submissionRubric: null,
           activityFormat: 'multiple-choice',
           targetSource: isFlowActive || mcqTuning.sourceMode === 'card'
             ? 'recall-miss'
@@ -3693,18 +3689,18 @@ function App() {
 
     await submitAttemptToServer({
       mode: 'main-recall',
-      correct: sound,
       correctAnswer: normalizedTarget,
       userAnswer: normalizedInput,
       accuracy,
-      exact: sound,
-      elapsedMs,
+      signals: {
+        elapsedMs,
+        coachFeedback: feedback,
+        submissionRubric: feedback?.submissionRubric ?? null,
+      },
       interactionId,
       templateMode: currentTemplateMode,
       supportLayer: effectiveSupportLayer,
       liveCoachUsed: liveCoachUsedThisAttempt,
-      coachFeedback: feedback,
-      submissionRubric: feedback?.submissionRubric ?? null,
     })
 
     if (practiceFlow?.stage === 'recall') {

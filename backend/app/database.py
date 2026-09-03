@@ -299,6 +299,31 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
 
                 IF to_regclass('public.submission') IS NOT NULL
                    AND to_regclass('public.answer') IS NOT NULL THEN
+                    ALTER TABLE submission
+                    ADD COLUMN IF NOT EXISTS signals JSONB NOT NULL DEFAULT '{"elapsed_ms": 0}'::jsonb;
+
+                    ALTER TABLE answer
+                    ADD COLUMN IF NOT EXISTS signals JSONB NOT NULL DEFAULT '{"elapsed_ms": 0}'::jsonb;
+
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = 'answer' AND column_name = 'elapsed_ms'
+                    ) THEN
+                        EXECUTE 'UPDATE answer SET signals = jsonb_strip_nulls(jsonb_build_object(''elapsed_ms'', elapsed_ms)) || signals';
+                    END IF;
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = 'answer' AND column_name = 'coach_feedback'
+                    ) THEN
+                        EXECUTE 'UPDATE answer SET signals = jsonb_strip_nulls(jsonb_build_object(''coach_feedback'', coach_feedback)) || signals';
+                    END IF;
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = 'answer' AND column_name = 'submission_rubric'
+                    ) THEN
+                        EXECUTE 'UPDATE answer SET signals = jsonb_strip_nulls(jsonb_build_object(''submission_rubric'', submission_rubric)) || signals';
+                    END IF;
+
                     INSERT INTO submission (
                         id,
                         session_id,
@@ -308,18 +333,14 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                         question_type,
                         category_tags,
                         correct_answer,
-                        is_correct,
                         accuracy,
-                        exact,
-                        elapsed_ms,
+                        signals,
                         interaction_id,
                         generated_card_id,
                         generated_card,
                         template_mode,
                         support_layer,
                         live_coach_used,
-                        coach_feedback,
-                        submission_rubric,
                         activity_format,
                         target_source,
                         target_control,
@@ -337,18 +358,14 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                         question_type,
                         category_tags,
                         correct_answer,
-                        is_correct,
                         accuracy,
-                        exact,
-                        elapsed_ms,
+                        signals,
                         interaction_id,
                         generated_card_id,
                         generated_card,
                         template_mode,
                         support_layer,
                         live_coach_used,
-                        coach_feedback,
-                        submission_rubric,
                         activity_format,
                         target_source,
                         target_control,
@@ -483,16 +500,10 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
             ADD COLUMN IF NOT EXISTS correct_answer TEXT;
 
             ALTER TABLE submission
-            ADD COLUMN IF NOT EXISTS is_correct BOOLEAN NOT NULL DEFAULT FALSE;
-
-            ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS accuracy REAL NOT NULL DEFAULT 0 CHECK (accuracy >= 0 AND accuracy <= 100);
 
             ALTER TABLE submission
-            ADD COLUMN IF NOT EXISTS exact BOOLEAN NOT NULL DEFAULT FALSE;
-
-            ALTER TABLE submission
-            ADD COLUMN IF NOT EXISTS elapsed_ms INTEGER NOT NULL DEFAULT 0 CHECK (elapsed_ms >= 0);
+            ADD COLUMN IF NOT EXISTS signals JSONB NOT NULL DEFAULT '{"elapsed_ms": 0}'::jsonb;
 
             ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS interaction_id VARCHAR(80);
@@ -511,12 +522,6 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
 
             ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS live_coach_used BOOLEAN NOT NULL DEFAULT FALSE;
-
-            ALTER TABLE submission
-            ADD COLUMN IF NOT EXISTS coach_feedback JSONB;
-
-            ALTER TABLE submission
-            ADD COLUMN IF NOT EXISTS submission_rubric JSONB;
 
             ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS activity_format VARCHAR(30);
@@ -538,6 +543,48 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
 
             ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'submission' AND column_name = 'elapsed_ms'
+                ) THEN
+                    EXECUTE 'UPDATE submission SET signals = jsonb_strip_nulls(jsonb_build_object(''elapsed_ms'', elapsed_ms)) || signals';
+                END IF;
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'submission' AND column_name = 'coach_feedback'
+                ) THEN
+                    EXECUTE 'UPDATE submission SET signals = jsonb_strip_nulls(jsonb_build_object(''coach_feedback'', coach_feedback)) || signals';
+                END IF;
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'submission' AND column_name = 'submission_rubric'
+                ) THEN
+                    EXECUTE 'UPDATE submission SET signals = jsonb_strip_nulls(jsonb_build_object(''submission_rubric'', submission_rubric)) || signals';
+                END IF;
+            END $$;
+
+            UPDATE submission
+            SET signals = '{"elapsed_ms": 0}'::jsonb || signals;
+
+            ALTER TABLE submission
+            ALTER COLUMN signals SET DEFAULT '{"elapsed_ms": 0}'::jsonb;
+
+            ALTER TABLE submission
+            DROP COLUMN IF EXISTS is_correct,
+            DROP COLUMN IF EXISTS exact,
+            DROP COLUMN IF EXISTS elapsed_ms,
+            DROP COLUMN IF EXISTS coach_feedback,
+            DROP COLUMN IF EXISTS submission_rubric;
+
+            ALTER TABLE submission
+            DROP CONSTRAINT IF EXISTS submission_signals_object_check;
+
+            ALTER TABLE submission
+            ADD CONSTRAINT submission_signals_object_check
+            CHECK (jsonb_typeof(signals) = 'object');
 
             ALTER TABLE submission
             DROP CONSTRAINT IF EXISTS answer_template_mode_check;
@@ -764,18 +811,14 @@ async def _backfill_submission_attempts_from_score_attempts(db_pool: asyncpg.Poo
                         question_type,
                         category_tags,
                         correct_answer,
-                        is_correct,
                         accuracy,
-                        exact,
-                        elapsed_ms,
+                        signals,
                         interaction_id,
                         generated_card_id,
                         generated_card,
                         template_mode,
                         support_layer,
                         live_coach_used,
-                        coach_feedback,
-                        submission_rubric,
                         migration_key,
                         created_at,
                         updated_at
@@ -788,18 +831,18 @@ async def _backfill_submission_attempts_from_score_attempts(db_pool: asyncpg.Poo
                         COALESCE(s.question_type, ''),
                         COALESCE(s.category_tags, '{}'),
                         s.correct_answer,
-                        COALESCE(s.correct, FALSE),
                         COALESCE(s.accuracy, 0),
-                        COALESCE(s.exact, FALSE),
-                        COALESCE(s.elapsed_ms, 0),
+                        jsonb_strip_nulls(jsonb_build_object(
+                            'elapsed_ms', COALESCE(s.elapsed_ms, 0),
+                            'coach_feedback', s.coach_feedback,
+                            'submission_rubric', s.submission_rubric
+                        )),
                         s.interaction_id,
                         s.generated_card_id,
                         s.generated_card,
                         COALESCE(s.template_mode, 'algorithm'),
                         COALESCE(s.support_layer, 'none'),
                         COALESCE(s.live_coach_used, FALSE),
-                        s.coach_feedback,
-                        s.submission_rubric,
                         'score_attempts:' || s.legacy_attempt_id::text,
                         s.created_at_norm,
                         s.updated_at_norm

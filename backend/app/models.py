@@ -25,6 +25,12 @@ class SupportLayer(str, Enum):
 # ─── Request schemas ───
 
 
+class SubmissionSignals(BaseModel):
+    coachFeedback: dict[str, Any] | None = None
+    submissionRubric: dict[str, Any] | None = None
+    elapsedMs: int = Field(default=0, ge=0)
+
+
 class AttemptCreate(BaseModel):
     cardId: str = Field(min_length=1)
     cardTitle: str | None = None
@@ -34,18 +40,14 @@ class AttemptCreate(BaseModel):
     correctAnswer: str | None = None
     userAnswer: str | None = None
     mode: GameMode
-    correct: bool
     accuracy: float = Field(default=0, ge=0, le=100)
-    exact: bool = False
-    elapsedMs: int = Field(default=0, ge=0)
+    signals: SubmissionSignals = Field(default_factory=SubmissionSignals)
     interactionId: str | None = None
     generatedCardId: str | None = None
     generatedCard: dict[str, Any] | None = None
     templateMode: TemplateMode = TemplateMode.algorithm
     supportLayer: SupportLayer = SupportLayer.none
     liveCoachUsed: bool = False
-    coachFeedback: dict[str, Any] | None = None
-    submissionRubric: dict[str, Any] | None = None
     activityFormat: Literal["recall", "multiple-choice", "code-completion"] | None = None
     targetSource: Literal["recall-miss", "algorithm", "skill-map"] | None = None
     targetControl: Literal["user", "system"] | None = None
@@ -333,15 +335,12 @@ class CoachPracticeHistoryEntry(BaseModel):
     correctAnswer: str = ""
     userAnswer: str = ""
     accuracy: float = Field(default=0, ge=0, le=100)
-    exact: bool = False
-    elapsedMs: int = Field(default=0, ge=0)
+    signals: SubmissionSignals = Field(default_factory=SubmissionSignals)
     templateMode: str = TemplateMode.algorithm.value
     supportLayer: str = SupportLayer.none.value
     liveCoachUsed: bool = False
     categoryTags: list[str] = []
     generatedCard: dict[str, Any] = {}
-    submissionFeedback: dict[str, Any] = {}
-    submissionRubric: dict[str, Any] = {}
     createdAt: str = ""
 
 

@@ -14,15 +14,12 @@ class PracticeHistoryRow(TypedDict):
     correctAnswer: str
     userAnswer: str
     accuracy: float
-    exact: bool
-    elapsedMs: int
+    signals: dict[str, Any] | str | None
     templateMode: str
     supportLayer: str
     liveCoachUsed: bool
     categoryTags: list[str]
     generatedCard: dict[str, Any] | str | None
-    submissionFeedback: dict[str, Any] | str | None
-    submissionRubric: dict[str, Any] | str | None
     created_at: datetime | None
 
 
@@ -36,15 +33,12 @@ class PracticeHistoryEntry(TypedDict):
     correctAnswer: str
     userAnswer: str
     accuracy: float
-    exact: bool
-    elapsedMs: int
+    signals: dict[str, Any]
     templateMode: str
     supportLayer: str
     liveCoachUsed: bool
     categoryTags: list[str]
     generatedCard: dict[str, Any]
-    submissionFeedback: dict[str, Any]
-    submissionRubric: dict[str, Any]
     createdAt: str
 
 
@@ -95,10 +89,9 @@ class SkillMapOverviewAttemptRow(TypedDict):
     category_tags: list[str] | None
     question_type: str | None
     accuracy: float
-    exact: bool
     created_at: datetime
     template_mode: str
     support_layer: str
     activity_format: str | None
     live_coach_used: bool
-    submission_rubric: dict[str, Any] | str | None
+    signals: dict[str, Any] | str | None

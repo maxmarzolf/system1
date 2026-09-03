@@ -72,6 +72,14 @@ Practical implications:
 - Core generator stream APIs return framework-agnostic async iterators.
 - Repository writes are always delegated by services; attempt signals are persisted through the canonical submission repository.
 
+The canonical `submission.signals` JSONB object contains the feedback and timing data for an attempt:
+
+- `coach_feedback`
+- `submission_rubric`
+- `elapsed_ms`
+
+The API maps these to `signals.coachFeedback`, `signals.submissionRubric`, and `signals.elapsedMs`. Correctness is represented by `accuracy`; the ledger does not store separate `is_correct` or `exact` columns.
+
 Anti-pattern examples:
 - Endpoint calling repository directly.
 - Domain function raising transport exceptions.

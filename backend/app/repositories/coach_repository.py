@@ -21,15 +21,12 @@ _PRACTICE_HISTORY_SELECT = """
         a.correct_answer AS "correctAnswer",
         a.answer AS "userAnswer",
         a.accuracy,
-        a.exact,
-        a.elapsed_ms AS "elapsedMs",
+        a.signals,
         a.template_mode AS "templateMode",
         a.support_layer AS "supportLayer",
         a.live_coach_used AS "liveCoachUsed",
         a.category_tags AS "categoryTags",
         a.generated_card AS "generatedCard",
-        a.coach_feedback AS "submissionFeedback",
-        a.submission_rubric AS "submissionRubric",
         a.created_at
     FROM submission a
     LEFT JOIN multiple_choice_problem q ON q.id = a.multiple_choice_problem_id
@@ -143,6 +140,8 @@ async def fetch_practice_history_entries(
     rows = await fetch_practice_history_rows(card_id, question_type, skill_tags, limit)
     history: list[PracticeHistoryEntry] = []
     for row in rows:
+        stored_signals = _parse_json_field(row["signals"], {})
+        coach_feedback = _parse_json_field(stored_signals.get("coach_feedback"), {})
         history.append({
             "attemptId": int(row["attemptId"]),
             "interactionId": str(row["interactionId"] or ""),
@@ -153,15 +152,19 @@ async def fetch_practice_history_entries(
             "correctAnswer": row["correctAnswer"] or "",
             "userAnswer": row["userAnswer"] or "",
             "accuracy": float(row["accuracy"] or 0),
-            "exact": bool(row["exact"]),
-            "elapsedMs": int(row["elapsedMs"] or 0),
+            "signals": {
+                "elapsedMs": int(stored_signals.get("elapsed_ms") or 0),
+                "coachFeedback": coach_feedback,
+                "submissionRubric": compact_submission_rubric(
+                    stored_signals.get("submission_rubric")
+                    or coach_feedback.get("submissionRubric")
+                ),
+            },
             "templateMode": str(row["templateMode"] or "algorithm"),
             "supportLayer": str(row["supportLayer"] or "none"),
             "liveCoachUsed": bool(row["liveCoachUsed"]),
             "categoryTags": list(row["categoryTags"] or []),
             "generatedCard": _parse_json_field(row["generatedCard"], {}),
-            "submissionFeedback": _parse_json_field(row["submissionFeedback"], {}),
-            "submissionRubric": compact_submission_rubric(row["submissionRubric"]),
             "createdAt": row["created_at"].isoformat() if row["created_at"] else "",
         })
     return history

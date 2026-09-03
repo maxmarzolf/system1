@@ -15,7 +15,23 @@ async def _read_and_cleanup(attempt_id: int, question_id: str) -> asyncpg.Record
     conn = await asyncpg.connect(settings.database_url)
     try:
         submission = await conn.fetchrow(
-            "SELECT multiple_choice_problem_id, activity_format FROM submission WHERE id = $1",
+            """
+            SELECT
+                multiple_choice_problem_id,
+                activity_format,
+                (signals->>'elapsed_ms')::int AS elapsed_ms,
+                EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'submission' AND column_name = 'signals'
+                ) AS has_signals,
+                EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'submission'
+                      AND column_name = ANY(ARRAY['is_correct', 'exact', 'elapsed_ms', 'coach_feedback', 'submission_rubric'])
+                ) AS has_legacy_columns
+            FROM submission
+            WHERE id = $1
+            """,
             attempt_id,
         )
         await conn.execute("DELETE FROM submission WHERE id = $1", attempt_id)
@@ -43,7 +59,7 @@ def test_mcq_attempt_persists_multiple_choice_problem_link() -> None:
                     "correctAnswer": "C. Best prefix result",
                     "userAnswer": "B. Current value",
                     "mode": "main-recall",
-                    "correct": False,
+                    "signals": {"elapsedMs": 725},
                     "activityFormat": "multiple-choice",
                     "targetSource": "skill-map",
                     "targetControl": "user",
@@ -59,3 +75,6 @@ def test_mcq_attempt_persists_multiple_choice_problem_link() -> None:
 
     assert submission["multiple_choice_problem_id"] == question_id
     assert submission["activity_format"] == "multiple-choice"
+    assert submission["elapsed_ms"] == 725
+    assert submission["has_signals"] is True
+    assert submission["has_legacy_columns"] is False

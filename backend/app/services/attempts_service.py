@@ -22,7 +22,7 @@ from app.repositories.types import (
     SkillMapOverviewAttemptRow,
     SkillMapOverviewGeneratedRow,
 )
-from app.submission_rubric import compact_submission_rubric, summarize_submission_rubrics
+from app.submission_rubric import coerce_json_object, compact_submission_rubric, summarize_submission_rubrics
 from app.services.contracts import (
     AttemptSaveResult,
     SkillMapGhostRepActivity,
@@ -44,7 +44,7 @@ class AttemptOverviewItem(TypedDict):
     created_at: datetime
     supportLayer: str
     liveCoachUsed: bool
-    submissionRubric: dict[str, Any]
+    signals: dict[str, Any]
 
 
 SPACED_REPETITION_REQUIRED_GHOST_REPS = 1
@@ -687,12 +687,17 @@ def build_skill_map_overview(
                 "algorithmSlugs": matched_algorithm_slugs,
             }
 
+        stored_signals = coerce_json_object(row.get("signals"))
         attempt: AttemptOverviewItem = {
             "accuracy": float(row["accuracy"] or 0),
             "created_at": row["created_at"],
             "supportLayer": support_layer,
             "liveCoachUsed": bool(row["live_coach_used"]),
-            "submissionRubric": compact_submission_rubric(row["submission_rubric"]),
+            "signals": {
+                "submissionRubric": compact_submission_rubric(
+                    stored_signals.get("submission_rubric")
+                ),
+            },
         }
         attempts_by_card_mode.setdefault((card_id, template_mode), []).append(attempt)
         for slug in matched_algorithm_slugs:
@@ -856,9 +861,14 @@ def build_skill_map_nodes(algorithm_rows: list[AlgorithmSkillRow]) -> list[Skill
 async def create_attempt(body: AttemptCreate) -> AttemptSaveResult:
     now = datetime.now(tz=timezone.utc)
     submission_rubric = compact_submission_rubric(
-        body.submissionRubric
-        or (body.coachFeedback or {}).get("submissionRubric")
+        body.signals.submissionRubric
+        or (body.signals.coachFeedback or {}).get("submissionRubric")
     )
+    signals = {
+        "elapsed_ms": body.signals.elapsedMs,
+        "coach_feedback": body.signals.coachFeedback,
+        "submission_rubric": submission_rubric or None,
+    }
     row = await insert_submission_attempt_row(
         card_id=body.cardId,
         card_title=body.cardTitle,
@@ -868,18 +878,14 @@ async def create_attempt(body: AttemptCreate) -> AttemptSaveResult:
         correct_answer=body.correctAnswer,
         user_answer=body.userAnswer,
         mode=body.mode.value,
-        correct=body.correct,
         accuracy=body.accuracy,
-        exact=body.exact,
-        elapsed_ms=body.elapsedMs,
+        signals_json=_json.dumps({key: value for key, value in signals.items() if value is not None}),
         interaction_id=body.interactionId,
         generated_card_id=body.generatedCardId,
         generated_card_json=_json.dumps(body.generatedCard) if body.generatedCard else None,
         template_mode=body.templateMode.value,
         support_layer=body.supportLayer.value,
         live_coach_used=body.liveCoachUsed,
-        coach_feedback_json=_json.dumps(body.coachFeedback) if body.coachFeedback else None,
-        submission_rubric_json=_json.dumps(submission_rubric) if submission_rubric else None,
         activity_format=body.activityFormat,
         target_source=body.targetSource,
         target_control=body.targetControl,

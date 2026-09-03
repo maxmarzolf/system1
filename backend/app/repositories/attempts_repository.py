@@ -142,18 +142,14 @@ async def insert_submission_attempt_row(
     correct_answer: str,
     user_answer: str,
     mode: str,
-    correct: bool,
     accuracy: float,
-    exact: bool,
-    elapsed_ms: int,
+    signals_json: str,
     interaction_id: str,
     generated_card_id: str | None,
     generated_card_json: str | None,
     template_mode: str,
     support_layer: str,
     live_coach_used: bool,
-    coach_feedback_json: str | None,
-    submission_rubric_json: str | None,
     activity_format: str | None,
     target_source: str | None,
     target_control: str | None,
@@ -183,11 +179,11 @@ async def insert_submission_attempt_row(
             """
             INSERT INTO submission
                 (session_id, user_id, multiple_choice_problem_id, answer, question_type, category_tags,
-                 correct_answer, is_correct, accuracy, exact, elapsed_ms, interaction_id,
+                 correct_answer, accuracy, signals, interaction_id,
                  generated_card_id, generated_card, template_mode, support_layer,
-                 live_coach_used, coach_feedback, submission_rubric, activity_format,
+                 live_coach_used, activity_format,
                  target_source, target_control, format_control, created_at, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
             RETURNING id
             """,
             interaction_id or generated_card_id or multiple_choice_problem_id or "0000",
@@ -197,18 +193,14 @@ async def insert_submission_attempt_row(
             question_type,
             category_tags,
             normalized_correct_answer,
-            correct,
             accuracy,
-            exact,
-            elapsed_ms,
+            signals_json,
             interaction_id,
             generated_card_id,
             generated_card_json,
             template_mode,
             support_layer,
             live_coach_used,
-            coach_feedback_json,
-            submission_rubric_json,
             activity_format,
             target_source,
             target_control,
@@ -297,13 +289,12 @@ async def fetch_skill_map_overview_attempt_rows() -> list[SkillMapOverviewAttemp
                 a.category_tags AS category_tags,
                 a.question_type AS question_type,
                 a.accuracy,
-                a.exact,
                 a.created_at,
                 a.template_mode,
                 a.support_layer,
                 a.activity_format,
                 a.live_coach_used,
-                a.submission_rubric
+                a.signals
             FROM submission a
             LEFT JOIN multiple_choice_problem q ON q.id = a.multiple_choice_problem_id
             WHERE a.question_type LIKE 'skill-map%'

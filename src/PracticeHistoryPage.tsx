@@ -19,8 +19,15 @@ type PracticeHistoryEntry = {
   correctAnswer: string
   userAnswer: string
   accuracy: number
-  exact: boolean
-  elapsedMs: number
+  signals: {
+    elapsedMs: number
+    coachFeedback: {
+      fullFeedback?: string
+      diagnosis?: string
+      primaryFocus?: string
+    }
+    submissionRubric: SubmissionRubric
+  }
   templateMode: string
   supportLayer: 'none' | 'ghost-reps'
   liveCoachUsed: boolean
@@ -35,12 +42,6 @@ type PracticeHistoryEntry = {
     choices?: Array<{ id?: string; text?: string }>
     explanation?: string
   }
-  submissionFeedback: {
-    fullFeedback?: string
-    diagnosis?: string
-    primaryFocus?: string
-  }
-  submissionRubric: SubmissionRubric
   createdAt: string
 }
 
@@ -123,9 +124,9 @@ const summarizeHistoryText = (entry: PracticeHistoryEntry) => {
   }
 
   const submissionSummary =
-    entry.submissionFeedback.fullFeedback ||
-    entry.submissionFeedback.diagnosis ||
-    entry.submissionFeedback.primaryFocus ||
+    entry.signals.coachFeedback.fullFeedback ||
+    entry.signals.coachFeedback.diagnosis ||
+    entry.signals.coachFeedback.primaryFocus ||
     ''
   if (submissionSummary.trim()) return submissionSummary.trim()
   return 'No stored feedback yet for this submission.'
@@ -255,7 +256,7 @@ export default function PracticeHistoryPage() {
             <div className="practice-history-list">
               {practiceHistory.map((entry) => {
                 const multipleChoice = isMultipleChoiceEntry(entry)
-                const entryTone = entry.exact
+                const entryTone = entry.accuracy >= 100
                   ? 'success'
                   : entry.accuracy >= MAIN_RECALL_CLOSE_ENOUGH_ACCURACY
                     ? 'warning'
@@ -267,11 +268,11 @@ export default function PracticeHistoryPage() {
                     <div className="practice-history-entry-top">
                       <p className="practice-history-title">{entry.cardTitle || entry.cardId}</p>
                       <span className={`coach-status-value coach-status-value-${entryTone}`}>
-                        {multipleChoice ? (entry.exact ? 'Correct' : 'Missed') : `${entry.accuracy}%`}
+                        {multipleChoice ? (entry.accuracy >= 100 ? 'Correct' : 'Missed') : `${entry.accuracy}%`}
                       </span>
                     </div>
                     <p className="practice-history-meta">
-                      {entryDate} · {multipleChoice ? 'MCQ' : 'Ghost Rep'} · {(entry.elapsedMs / 1000).toFixed(1)}s
+                      {entryDate} · {multipleChoice ? 'MCQ' : 'Ghost Rep'} · {(entry.signals.elapsedMs / 1000).toFixed(1)}s
                     </p>
                     <p className="practice-history-feedback">{summarizeHistoryText(entry)}</p>
                   </article>

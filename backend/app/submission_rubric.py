@@ -125,10 +125,10 @@ def summarize_submission_rubrics(attempts: list[dict[str, Any]]) -> dict[str, An
     rubric_count = 0
 
     for attempt in attempts:
-        feedback = attempt.get("submissionFeedback") if isinstance(attempt.get("submissionFeedback"), dict) else {}
+        signals = attempt.get("signals") if isinstance(attempt.get("signals"), dict) else {}
+        feedback = signals.get("coachFeedback") if isinstance(signals.get("coachFeedback"), dict) else {}
         rubric = compact_submission_rubric(
-            attempt.get("submissionRubric")
-            or attempt.get("submission_rubric")
+            signals.get("submissionRubric")
             or feedback.get("submissionRubric")
         )
         if not rubric:

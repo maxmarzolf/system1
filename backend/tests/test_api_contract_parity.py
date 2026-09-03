@@ -9,7 +9,10 @@ from app.services import coach_service
 
 
 def test_attempts_endpoint_contract(monkeypatch) -> None:
-    async def _mock_create_attempt(_body):
+    captured: dict[str, object] = {}
+
+    async def _mock_create_attempt(body):
+        captured["body"] = body
         return {"saved": True, "attemptId": 123}
 
     async def _noop_connect():
@@ -29,15 +32,25 @@ def test_attempts_endpoint_contract(monkeypatch) -> None:
             json={
                 "cardId": "card-1",
                 "mode": "main-recall",
-                "correct": True,
                 "correctAnswer": "A",
                 "userAnswer": "A",
+                "accuracy": 100,
+                "signals": {
+                    "elapsedMs": 2500,
+                    "coachFeedback": {"diagnosis": "Sound"},
+                    "submissionRubric": {"verdict": "sound"},
+                },
             },
         )
 
     assert response.status_code == 201, response.text
     payload = response.json()
     assert payload == {"saved": True, "attemptId": 123}
+    body = captured["body"]
+    assert body.signals.elapsedMs == 2500
+    assert body.signals.coachFeedback == {"diagnosis": "Sound"}
+    assert "exact" not in body.model_dump()
+    assert "correct" not in body.model_dump()
 
 
 def test_coach_history_endpoint_contract(monkeypatch) -> None:
@@ -58,15 +71,16 @@ def test_coach_history_endpoint_contract(monkeypatch) -> None:
                     "correctAnswer": "A",
                     "userAnswer": "A",
                     "accuracy": 100,
-                    "exact": True,
-                    "elapsedMs": 2500,
+                    "signals": {
+                        "elapsedMs": 2500,
+                        "coachFeedback": {},
+                        "submissionRubric": {},
+                    },
                     "templateMode": "algorithm",
                     "supportLayer": "none",
                     "liveCoachUsed": False,
                     "categoryTags": ["skill-map"],
                     "generatedCard": {},
-                    "submissionFeedback": {},
-                    "submissionRubric": {},
                     "createdAt": "2026-05-24T00:00:00Z",
                 }
             ],

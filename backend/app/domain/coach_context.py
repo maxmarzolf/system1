@@ -12,10 +12,9 @@ from app.submission_rubric import summarize_submission_rubrics
 class AttemptHistoryEntry(TypedDict, total=False):
     templateMode: str
     categoryTags: list[str]
-    submissionFeedback: dict[str, Any]
+    signals: dict[str, Any]
     question: str
     accuracy: float
-    exact: bool
 
 
 class AttemptHistorySummary(TypedDict, total=False):
@@ -37,7 +36,7 @@ class PatternProgressSummary(TypedDict, total=False):
     attemptCount: int
     avgAccuracy: float
     readiness: float
-    exactRate: float
+    perfectRate: float
     repeatedErrorTags: list[str]
     latestPrimaryFocus: str
     latestQuestion: str
@@ -93,7 +92,8 @@ def summarize_attempt_history(history: list[AttemptHistoryEntry]) -> AttemptHist
     for item in history:
         for tag in item.get("categoryTags", []):
             tag_scores.setdefault(tag, []).append(float(item.get("accuracy", 0)))
-        feedback = item.get("submissionFeedback", {})
+        signals = item.get("signals", {})
+        feedback = signals.get("coachFeedback", {}) if isinstance(signals, dict) else {}
         for tag in feedback.get("errorTags", []) if isinstance(feedback, dict) else []:
             error_counts[str(tag)] += 1
         if isinstance(feedback, dict) and feedback.get("primaryFocus"):
@@ -140,7 +140,7 @@ def summarize_skill_map_progress(
             "attemptCount": 0,
             "avgAccuracy": 0.0,
             "readiness": 0.0,
-            "exactRate": 0.0,
+            "perfectRate": 0.0,
             "repeatedErrorTags": [],
             "latestPrimaryFocus": "",
             "latestQuestion": "",
@@ -149,19 +149,20 @@ def summarize_skill_map_progress(
         }
 
     accuracy_buckets: dict[str, list[float]] = {slug: [] for slug in progress_by_pattern}
-    exact_counts: Counter[str] = Counter()
+    perfect_counts: Counter[str] = Counter()
     error_counts: dict[str, Counter[str]] = {slug: Counter() for slug in progress_by_pattern}
 
     for item in history:
         item_tags = {str(tag) for tag in item.get("categoryTags", [])}
-        feedback = item.get("submissionFeedback", {})
+        signals = item.get("signals", {})
+        feedback = signals.get("coachFeedback", {}) if isinstance(signals, dict) else {}
         for slug, summary in progress_by_pattern.items():
             if slug not in item_tags:
                 continue
             summary["attemptCount"] += 1
             accuracy_buckets[slug].append(float(item.get("accuracy", 0)))
-            if item.get("exact"):
-                exact_counts[slug] += 1
+            if float(item.get("accuracy", 0)) >= 100:
+                perfect_counts[slug] += 1
             for tag in feedback.get("errorTags", []) if isinstance(feedback, dict) else []:
                 error_counts[slug][str(tag)] += 1
             if not summary["latestPrimaryFocus"] and isinstance(feedback, dict):
@@ -177,7 +178,7 @@ def summarize_skill_map_progress(
         readiness_summary = summarize_readiness(pattern_history)
         if accuracies:
             summary["avgAccuracy"] = round(sum(accuracies) / len(accuracies), 1)
-            summary["exactRate"] = round((exact_counts[slug] / len(accuracies)) * 100, 1)
+            summary["perfectRate"] = round((perfect_counts[slug] / len(accuracies)) * 100, 1)
         summary["repeatedErrorTags"] = [tag for tag, count in error_counts[slug].most_common(3) if count >= 2]
         summary["readiness"] = readiness_summary["readiness"]
         summary["stale"] = readiness_summary["stale"]

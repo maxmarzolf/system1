@@ -90,13 +90,12 @@ def build_narrator_payload(
         "historicalAttempts": [
             {
                 "accuracy": item.get("accuracy", 0),
-                "exact": item.get("exact", False),
                 "templateMode": item.get("templateMode", TemplateMode.algorithm.value),
-                "errorTags": item.get("submissionFeedback", {}).get("errorTags", [])
-                if isinstance(item.get("submissionFeedback"), dict)
+                "errorTags": item.get("signals", {}).get("coachFeedback", {}).get("errorTags", [])
+                if isinstance(item.get("signals", {}).get("coachFeedback"), dict)
                 else [],
-                "primaryFocus": item.get("submissionFeedback", {}).get("primaryFocus", "")
-                if isinstance(item.get("submissionFeedback"), dict)
+                "primaryFocus": item.get("signals", {}).get("coachFeedback", {}).get("primaryFocus", "")
+                if isinstance(item.get("signals", {}).get("coachFeedback"), dict)
                 else "",
                 "createdAt": item.get("createdAt", ""),
             }
