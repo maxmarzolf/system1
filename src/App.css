@@ -1244,31 +1244,6 @@
   gap: 0.28rem 0.42rem;
   overflow-x: auto;
   padding-bottom: 0.55rem;
-  scrollbar-color: color-mix(in srgb, var(--hc-accent) 72%, var(--hc-border-dim)) color-mix(in srgb, var(--hc-bg) 82%, var(--hc-border-dim));
-  scrollbar-width: thin;
-}
-
-.daily-work-history-swimlane::-webkit-scrollbar {
-  height: 0.55rem;
-}
-
-.daily-work-history-swimlane::-webkit-scrollbar-track {
-  border: 1px solid var(--hc-border-dim);
-  background: color-mix(in srgb, var(--hc-bg) 82%, var(--hc-border-dim));
-}
-
-.daily-work-history-swimlane::-webkit-scrollbar-thumb {
-  border: 2px solid color-mix(in srgb, var(--hc-bg) 82%, var(--hc-border-dim));
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--hc-accent) 48%, var(--hc-border-dim)),
-    var(--hc-accent),
-    color-mix(in srgb, var(--hc-accent) 48%, var(--hc-border-dim))
-  );
-}
-
-.daily-work-history-swimlane::-webkit-scrollbar-thumb:hover {
-  background: var(--hc-accent);
 }
 
 .daily-work-history-axis-corner {
