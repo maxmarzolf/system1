@@ -5,7 +5,7 @@ flowchart TD
     A2["userAnswer"]
     A3["templateMode"]
     A4["skillTags"]
-    A5["elapsedMs + exact"]
+    A5["elapsedMs"]
     A6["liveMode"]
   end
 
@@ -54,11 +54,11 @@ flowchart TD
     R2["pass / partial / fail statuses"]
     R3["primaryFailure"]
     R4["recommendedAction"]
-    R5["submissionRubric"]
+    R5["canonical evaluation"]
   end
 
   subgraph MEMORY["Stored training memory"]
-    P1["submission"]
+    P1["submission.signals.evaluation"]
     P3["practice history"]
     P4["readiness summary"]
     P5["repeated errorTags"]
@@ -139,7 +139,6 @@ flowchart TD
   R4 --> R5
   M2 --> R4
 
-  L1 --> P1
   N1 --> P1
   R5 --> P1
   P1 --> P3

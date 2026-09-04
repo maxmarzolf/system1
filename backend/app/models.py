@@ -26,9 +26,8 @@ class SupportLayer(str, Enum):
 
 
 class SubmissionSignals(BaseModel):
-    coachFeedback: dict[str, Any] | None = None
-    submissionRubric: dict[str, Any] | None = None
     elapsedMs: int = Field(default=0, ge=0)
+    evaluation: dict[str, Any] | None = None
 
 
 class AttemptCreate(BaseModel):
@@ -40,8 +39,7 @@ class AttemptCreate(BaseModel):
     correctAnswer: str | None = None
     userAnswer: str | None = None
     mode: GameMode
-    successful: bool = False
-    signals: SubmissionSignals = Field(default_factory=SubmissionSignals)
+    elapsedMs: int = Field(default=0, ge=0)
     interactionId: str | None = None
     generatedCardId: str | None = None
     generatedCard: dict[str, Any] | None = None
@@ -52,6 +50,8 @@ class AttemptCreate(BaseModel):
     targetSource: Literal["recall-miss", "algorithm", "skill-map"] | None = None
     targetControl: Literal["user", "system"] | None = None
     formatControl: Literal["user", "system"] | None = None
+    submissionTuning: dict[str, Any] = Field(default_factory=dict)
+    llmProvider: str = "openai"
 
 
 # ─── Response schemas ───
@@ -88,12 +88,13 @@ class CoachAttemptFeedbackResponse(BaseModel):
     nextMove: str = ""
     why: str = ""
     microDrill: str
+    microDrillExplanation: str = ""
+    microDrillInvariant: str = ""
     nextRepTarget: str
     strengths: list[str] = []
     errorTags: list[str] = []
     fullFeedback: str = ""
     correctedVersion: str = ""
-    submissionRubric: dict[str, Any] = {}
     llmUsed: bool = False
     llmProvider: str = ""
 
@@ -285,7 +286,7 @@ class AdaptiveVariationRequest(BaseModel):
     userAnswer: str = ""
     templateMode: TemplateMode = TemplateMode.algorithm
     skillTags: list[str] = []
-    submissionRubric: dict[str, Any] = Field(default_factory=dict)
+    evaluation: dict[str, Any] = Field(default_factory=dict)
     specimenTuning: dict[str, Any] = Field(default_factory=dict)
     llmProvider: str = "openai"
 

@@ -19,19 +19,20 @@ def test_create_attempt_forwards_multiple_choice_metadata(monkeypatch) -> None:
     body = AttemptCreate.model_validate({
         "cardId": "mcq-1",
         "mode": "main-recall",
-        "signals": {"elapsedMs": 875},
+        "elapsedMs": 875,
         "activityFormat": "multiple-choice",
         "targetSource": "skill-map",
         "targetControl": "user",
         "formatControl": "user",
     })
 
-    result = asyncio.run(attempts_service.create_attempt(body))
+    evaluation = {"version": 1, "verdict": "needs-work"}
+    result = asyncio.run(attempts_service.create_attempt(body, successful=False, evaluation=evaluation))
 
     assert result == {"saved": True, "attemptId": 91}
     assert captured["activity_format"] == "multiple-choice"
     assert captured["target_source"] == "skill-map"
-    assert captured["signals_json"] == '{"elapsed_ms": 875}'
+    assert captured["signals_json"] == '{"elapsed_ms": 875, "evaluation": {"version": 1, "verdict": "needs-work"}}'
 
 
 def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:

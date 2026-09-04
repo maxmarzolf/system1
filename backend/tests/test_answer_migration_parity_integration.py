@@ -169,25 +169,15 @@ def test_coach_history_parity_with_real_migrated_fixture() -> None:
         assert entry["successful"] is True
         assert entry["signals"] == {
             "elapsedMs": 3200,
-            "coachFeedback": {"diagnosis": "Great work"},
-            "submissionRubric": {
+            "evaluation": {
+                "version": 1,
                 "verdict": "sound",
-                "score": {
-                    "overall": 0.0,
-                    "conceptual": 0.0,
-                    "fidelity": 0.0,
-                    "executable": 0.0,
-                    "fluency": 0.0,
+                "feedback": {"diagnosis": "Great work"},
+                "provenance": {
+                    "llmUsed": True,
+                    "provider": "openai",
+                    "source": "fixture",
                 },
-                "primaryFailure": {
-                    "key": "",
-                    "label": "",
-                    "severity": "",
-                    "evidence": [],
-                },
-                "dimensions": {},
-                "modifiers": {},
-                "recommendedAction": "",
             },
         }
     finally:
@@ -214,8 +204,7 @@ def test_attempt_post_and_history_round_trip_real_db() -> None:
                     "correctAnswer": "roundtrip-correct",
                     "userAnswer": "roundtrip-user",
                     "mode": "main-recall",
-                    "successful": True,
-                    "signals": {"elapsedMs": 1500},
+                    "elapsedMs": 1500,
                     "interactionId": interaction_id,
                     "generatedCardId": generated_card_id,
                     "generatedCard": {
@@ -312,8 +301,7 @@ def test_skill_map_overview_updates_after_real_attempt_write() -> None:
                     "correctAnswer": "overview-correct",
                     "userAnswer": "overview-user",
                     "mode": "main-recall",
-                    "successful": True,
-                    "signals": {"elapsedMs": 1200},
+                    "elapsedMs": 1200,
                     "interactionId": interaction_id,
                     "generatedCardId": generated_card_id,
                     "generatedCard": {

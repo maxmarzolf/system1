@@ -4,8 +4,7 @@ from fastapi.testclient import TestClient
 
 from app import main as app_main
 from app.main import create_app
-from app.services import attempts_service
-from app.services import coach_service
+from app.services import attempts_service, coach_service, submission_service
 
 
 def test_attempts_endpoint_contract(monkeypatch) -> None:
@@ -13,7 +12,13 @@ def test_attempts_endpoint_contract(monkeypatch) -> None:
 
     async def _mock_create_attempt(body):
         captured["body"] = body
-        return {"saved": True, "attemptId": 123}
+        return {
+            "saved": True,
+            "attemptId": 123,
+            "successful": True,
+            "evaluation": {"version": 1, "verdict": "sound"},
+            "feedbackUnavailable": None,
+        }
 
     async def _noop_connect():
         return None
@@ -21,7 +26,7 @@ def test_attempts_endpoint_contract(monkeypatch) -> None:
     async def _noop_disconnect():
         return None
 
-    monkeypatch.setattr(attempts_service, "create_attempt", _mock_create_attempt)
+    monkeypatch.setattr(submission_service, "create_submission", _mock_create_attempt)
     monkeypatch.setattr(app_main, "connect", _noop_connect)
     monkeypatch.setattr(app_main, "disconnect", _noop_disconnect)
 
@@ -34,21 +39,17 @@ def test_attempts_endpoint_contract(monkeypatch) -> None:
                 "mode": "main-recall",
                 "correctAnswer": "A",
                 "userAnswer": "A",
-                "successful": True,
-                "signals": {
-                    "elapsedMs": 2500,
-                    "coachFeedback": {"diagnosis": "Sound"},
-                    "submissionRubric": {"verdict": "sound"},
-                },
+                "elapsedMs": 2500,
             },
         )
 
     assert response.status_code == 201, response.text
     payload = response.json()
-    assert payload == {"saved": True, "attemptId": 123}
+    assert payload["saved"] is True
+    assert payload["attemptId"] == 123
+    assert payload["evaluation"] == {"version": 1, "verdict": "sound"}
     body = captured["body"]
-    assert body.signals.elapsedMs == 2500
-    assert body.signals.coachFeedback == {"diagnosis": "Sound"}
+    assert body.elapsedMs == 2500
     assert "exact" not in body.model_dump()
     assert "correct" not in body.model_dump()
 
@@ -73,8 +74,7 @@ def test_coach_history_endpoint_contract(monkeypatch) -> None:
                     "successful": True,
                     "signals": {
                         "elapsedMs": 2500,
-                        "coachFeedback": {},
-                        "submissionRubric": {},
+                        "evaluation": {},
                     },
                     "templateMode": "algorithm",
                     "supportLayer": "none",

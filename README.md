@@ -77,8 +77,8 @@ Core endpoints:
 - `POST /api/attempts`
 - `GET /api/skill-map`
 - `GET /api/skill-map-overview`
-- `POST /api/coach/evaluate-attempt`
-- `POST /api/coach/attempt-feedback`
+- `POST /api/attempts` (evaluates, narrates, canonicalizes, and persists a final submission)
+- `POST /api/coach/live-feedback` (non-persisted, in-progress coaching)
 - `POST /api/coach/history`
 - `POST /api/coach/session-plan`
 - `POST /api/coach/skill-map-drills`

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.domain.llm_resilience import SUBMISSION_LLM_MAX_RETRIES, SUBMISSION_LLM_RETRY_DELAYS_SECONDS
+from app.domain.submission_evaluation import evaluation_feedback
 from app.models import CoachAttemptFeedbackRequest, TemplateMode
 
 
@@ -47,6 +48,22 @@ def narrator_submission_system_prompt(
         "lenient": "Focus on intent and overall correctness; minor gaps are acceptable.",
     }.get(grading_mode, "Focus on whether the core algorithmic logic is sound.")
 
+    if bool(submission_tuning.get("microDrillEnabled", False)):
+        micro_drill_instruction = (
+            "Create microDrill as a self-contained reinforcement question, not a correction or answer key. "
+            "Change the scenario, names, or surface details slightly while testing the same primary mistake. "
+            "Preserve the structures the learner already got right and blank only the decisions tied to the mistake. "
+            "Use 60-150 words with a short setup, a 2-4 item goal list, and a fenced code fill-in template when the attempt is code. "
+            "Mark every editable code blank with three or more underscores. Use valid Markdown only inside microDrill. "
+            "Set microDrillExplanation to a concise explanation of what this variation is practicing without filling the blanks. "
+            "Set microDrillInvariant to one sentence stating the reusable mental model the learner should preserve. "
+            "Do not reveal the filled answers. If the submission is sound, make it a small transfer question targeting the least fluent step. "
+        )
+    else:
+        micro_drill_instruction = (
+            "Return microDrill, microDrillExplanation, and microDrillInvariant as empty strings because reinforcement drills are disabled. "
+        )
+
     return (
         f"You are a senior interview coach reviewing a {template_label} solution. "
         "Grade the submission in exactly one sentence in fullFeedback - lead with 'sound', 'close', or 'needs work'. "
@@ -54,10 +71,12 @@ def narrator_submission_system_prompt(
         "Base your diagnosis on the provided assessment signals. "
         "Use correctedVersion only for meaningful structural corrections, never line-by-line rewrites. "
         "Return strict JSON: diagnosis, primaryFocus, immediateCorrection, fullFeedback, correctedVersion, "
-        "affirmation, keepInMind, nextMove, why, microDrill, nextRepTarget, strengths (max 3), errorTags. "
+        "affirmation, keepInMind, nextMove, why, microDrill, microDrillExplanation, microDrillInvariant, "
+        "nextRepTarget, strengths (max 3), errorTags. "
         "Use affirmation and strengths for what was correct and how it generalizes. "
         "Use diagnosis, primaryFocus, immediateCorrection, and why for what was wrong and why it matters in plain English. "
-        "No markdown fences, no bullet prefixes."
+        f"{micro_drill_instruction}"
+        "Outside microDrill, use no markdown fences or bullet prefixes."
     )
 
 
@@ -90,12 +109,8 @@ def build_narrator_payload(
             {
                 "successful": bool(item.get("successful")),
                 "templateMode": item.get("templateMode", TemplateMode.algorithm.value),
-                "errorTags": item.get("signals", {}).get("coachFeedback", {}).get("errorTags", [])
-                if isinstance(item.get("signals", {}).get("coachFeedback"), dict)
-                else [],
-                "primaryFocus": item.get("signals", {}).get("coachFeedback", {}).get("primaryFocus", "")
-                if isinstance(item.get("signals", {}).get("coachFeedback"), dict)
-                else "",
+                "errorTags": evaluation_feedback(item.get("signals", {}).get("evaluation")).get("errorTags", []),
+                "primaryFocus": evaluation_feedback(item.get("signals", {}).get("evaluation")).get("primaryFocus", ""),
                 "createdAt": item.get("createdAt", ""),
             }
             for item in history[:8]
@@ -188,6 +203,8 @@ async def attempt_feedback_with_narrator(
         "nextMove": str(llm_response.get("nextMove", "")),
         "why": str(llm_response.get("why", "")),
         "microDrill": str(llm_response.get("microDrill", "")),
+        "microDrillExplanation": str(llm_response.get("microDrillExplanation", "")),
+        "microDrillInvariant": str(llm_response.get("microDrillInvariant", "")),
         "nextRepTarget": str(llm_response.get("nextRepTarget", "")),
         "strengths": [str(x) for x in llm_response.get("strengths", assessment.get("strengths", []))][:3],
         "errorTags": [str(x) for x in llm_response.get("errorTags", assessment.get("errorTags", []))][:6],

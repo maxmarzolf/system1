@@ -21,12 +21,7 @@ type PracticeHistoryEntry = {
   successful: boolean
   signals: {
     elapsedMs: number
-    coachFeedback: {
-      fullFeedback?: string
-      diagnosis?: string
-      primaryFocus?: string
-    }
-    submissionRubric: SubmissionRubric
+    evaluation: SubmissionEvaluation
   }
   templateMode: string
   supportLayer: 'none' | 'ghost-reps'
@@ -72,6 +67,20 @@ type SubmissionRubric = {
   dimensions?: Record<string, RubricDimension>
   modifiers?: Record<string, RubricDimension>
   recommendedAction?: string
+}
+
+type SubmissionEvaluation = SubmissionRubric & {
+  version?: number
+  feedback?: {
+    fullFeedback?: string
+    diagnosis?: string
+    primaryFocus?: string
+  }
+  provenance?: {
+    llmUsed?: boolean
+    provider?: string
+    source?: string
+  }
 }
 
 type DimensionItem = {
@@ -122,9 +131,9 @@ const summarizeHistoryText = (entry: PracticeHistoryEntry) => {
   }
 
   const submissionSummary =
-    entry.signals.coachFeedback.fullFeedback ||
-    entry.signals.coachFeedback.diagnosis ||
-    entry.signals.coachFeedback.primaryFocus ||
+    entry.signals.evaluation.feedback?.fullFeedback ||
+    entry.signals.evaluation.feedback?.diagnosis ||
+    entry.signals.evaluation.feedback?.primaryFocus ||
     ''
   if (submissionSummary.trim()) return submissionSummary.trim()
   return 'No stored feedback yet for this submission.'

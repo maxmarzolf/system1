@@ -622,6 +622,11 @@ export default function TunePage() {
                     onChange={(value) => updateSubmissionTuning('allowExtraParameters', value)}
                     label="Treat added parameters as a minor deviation"
                   />
+                  <ToggleControl
+                    checked={submissionTuning.microDrillEnabled}
+                    onChange={(value) => updateSubmissionTuning('microDrillEnabled', value)}
+                    label="Generate a reinforcement question after submission"
+                  />
                 </div>
               </div>
             </TuneSection>

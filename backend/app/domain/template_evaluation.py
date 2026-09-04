@@ -18,6 +18,7 @@ SUBMISSION_TUNING_DEFAULTS: dict[str, Any] = {
     "rewardEquivalentPhrasing": True,
     "requireAnswerStep": True,
     "allowExtraParameters": True,
+    "microDrillEnabled": False,
 }
 
 
@@ -156,6 +157,7 @@ def merged_submission_tuning(raw_tuning: dict[str, Any] | None) -> dict[str, Any
     tuning["rewardEquivalentPhrasing"] = bool(raw.get("rewardEquivalentPhrasing", tuning["rewardEquivalentPhrasing"]))
     tuning["requireAnswerStep"] = bool(raw.get("requireAnswerStep", tuning["requireAnswerStep"]))
     tuning["allowExtraParameters"] = bool(raw.get("allowExtraParameters", tuning["allowExtraParameters"]))
+    tuning["microDrillEnabled"] = bool(raw.get("microDrillEnabled", tuning["microDrillEnabled"]))
     return tuning
 
 

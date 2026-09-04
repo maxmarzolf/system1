@@ -53,7 +53,7 @@ VALUES (
     ARRAY['skill-map', 'binary-search', 'fx-parity-tag'],
     'Use binary search with left-bound checks.',
     TRUE,
-    '{"elapsed_ms":3200,"coach_feedback":{"diagnosis":"Great work"},"submission_rubric":{"verdict":"sound"}}'::jsonb,
+    '{"elapsed_ms":3200,"evaluation":{"version":1,"verdict":"sound","feedback":{"diagnosis":"Great work"},"provenance":{"llmUsed":true,"provider":"openai","source":"fixture"}}}'::jsonb,
     'fx-parity-interaction-1',
     'fx-parity-card-1',
     '{"id":"fx-parity-card-1","title":"Binary Search Boundary","cardMode":"recall"}'::jsonb,

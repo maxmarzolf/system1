@@ -59,7 +59,7 @@ def test_mcq_attempt_persists_multiple_choice_problem_link() -> None:
                     "correctAnswer": "C. Best prefix result",
                     "userAnswer": "B. Current value",
                     "mode": "main-recall",
-                    "signals": {"elapsedMs": 725},
+                    "elapsedMs": 725,
                     "activityFormat": "multiple-choice",
                     "targetSource": "skill-map",
                     "targetControl": "user",

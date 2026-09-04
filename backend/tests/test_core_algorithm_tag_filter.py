@@ -88,7 +88,7 @@ def test_static_playlist_drills_route_serves_google_skeletons(monkeypatch) -> No
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload['llmUsed'] is False
-    assert len(payload['drills']) == 22
+    assert len(payload['drills']) == 24
     assert payload['drills'][0]['id'] == 'playlist-google-skeletons-bfs-skeleton'
     assert payload['drills'][0]['title'] == 'BFS Skeleton'
     assert 'def bfs(start, graph):' in payload['drills'][0]['solution']
@@ -101,11 +101,17 @@ def test_static_playlist_drills_route_serves_google_skeletons(monkeypatch) -> No
     assert payload['drills'][3]['id'] == 'playlist-google-skeletons-grid-dfs-skeleton'
     assert payload['drills'][3]['title'] == 'Grid DFS Skeleton'
     assert 'def dfs(grid, r, c):' in payload['drills'][3]['solution']
-    assert payload['drills'][4]['title'] == 'Union-Find / Disjoint Set Skeleton'
-    assert 'class UnionFind:' in payload['drills'][4]['solution']
-    assert payload['drills'][6]['id'] == 'playlist-google-skeletons-binary-search-skeleton'
-    assert payload['drills'][6]['title'] == 'Binary Search Skeleton'
-    assert 'def binary_search(nums, target):' in payload['drills'][6]['solution']
+    assert payload['drills'][4]['title'] == 'Binary Tree DFS -- Return & Combine Skeleton'
+    assert 'def tree_dfs(root):' in payload['drills'][4]['solution']
+    assert payload['drills'][5]['title'] == 'Binary Tree DFS -- Carry State Skeleton'
+    assert 'def tree_dfs_with_state(root):' in payload['drills'][5]['solution']
+    assert payload['drills'][6]['title'] == 'Binary Tree BFS -- Level Order Skeleton'
+    assert 'def tree_level_order(root):' in payload['drills'][6]['solution']
+    assert payload['drills'][7]['title'] == 'Union-Find / Disjoint Set Skeleton'
+    assert 'class UnionFind:' in payload['drills'][7]['solution']
+    assert payload['drills'][9]['id'] == 'playlist-google-skeletons-binary-search-skeleton'
+    assert payload['drills'][9]['title'] == 'Binary Search Skeleton'
+    assert 'def binary_search(nums, target):' in payload['drills'][9]['solution']
     assert payload['drills'][0]['skeletonApplicability'] == {
         'templateStrength': 10,
         'applicationAbstraction': 2,

@@ -7,6 +7,7 @@ export type SubmissionTuning = {
   rewardEquivalentPhrasing: boolean
   requireAnswerStep: boolean
   allowExtraParameters: boolean
+  microDrillEnabled: boolean
 }
 
 export const SUBMISSION_TUNING_STORAGE_KEY = 'system1-submission-tuning-v1'
@@ -17,6 +18,7 @@ export const defaultSubmissionTuning: SubmissionTuning = {
   rewardEquivalentPhrasing: true,
   requireAnswerStep: true,
   allowExtraParameters: true,
+  microDrillEnabled: false,
 }
 
 const SUBMISSION_GRADING_MODES: readonly SubmissionGradingMode[] = ['core-logic', 'balanced', 'strict']

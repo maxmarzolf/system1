@@ -4,8 +4,6 @@ from fastapi.responses import StreamingResponse
 from app.models import (
     AdaptiveVariationRequest,
     AdaptiveVariationResponse,
-    CoachAttemptEvaluationRequest,
-    CoachAttemptEvaluationResponse,
     CoachAttemptFeedbackRequest,
     CoachAttemptFeedbackResponse,
     CoachPracticeHistoryRequest,
@@ -33,12 +31,7 @@ async def coach_provider_default():
     return await coach_service.coach_provider_default()
 
 
-@router.post("/evaluate-attempt", response_model=CoachAttemptEvaluationResponse)
-async def coach_attempt_evaluation(body: CoachAttemptEvaluationRequest):
-    return await coach_service.coach_attempt_evaluation(body)
-
-
-@router.post("/attempt-feedback", response_model=CoachAttemptFeedbackResponse)
+@router.post("/live-feedback", response_model=CoachAttemptFeedbackResponse)
 async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
     return await coach_service.coach_attempt_feedback(body)
 

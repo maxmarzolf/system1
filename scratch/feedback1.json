@@ -1,0 +1,193 @@
+{
+  "elapsed_ms": 450262,
+  "coach_feedback": {
+    "why": "If bounds/visited/enqueue are wrong, BFS either won’t run or will revisit nodes / enqueue malformed states, so you lose correctness and the level-order distance meaning.",
+    "llmUsed": true,
+    "nextMove": "Rewrite the inner neighbor block from memory (compute `nr,nc`, bounds check, visited check, then add+enqueue) and run it on a 2x2 grid to confirm it visits 4 cells.",
+    "diagnosis": "needs work",
+    "errorTags": [
+      "syntax-error",
+      "bounds-check-bug",
+      "len-on-int",
+      "set-misuse",
+      "enqueue-not-tuple",
+      "distance-update-wrong-scope"
+    ],
+    "strengths": [
+      "Correct overall BFS scaffold (while q + per-layer loop)",
+      "Uses deque appropriately for BFS",
+      "Uses 4-direction neighbor iteration, which generalizes to most grid problems"
+    ],
+    "keepInMind": "In grid BFS, three invariants must stay consistent: bounds use `rows/cols` (ints), visited is a set updated with `.add`, and the queue always stores `(r,c)` tuples.",
+    "microDrill": "Fill in the blanks without looking: `nr, nc = ___; if 0 <= nr < ___ and 0 <= nc < ___ and (nr,nc) not in visited: visited.___((nr,nc)); q.append(___)`.",
+    "affirmation": "You correctly reached for the standard grid BFS template: deque queue, a visited set seeded with the start, and 4-direction neighbor expansion inside a level-order loop.",
+    "llmProvider": "openai",
+    "fullFeedback": "needs work: the high-level BFS shape is there (queue, 4-neighbors, visited-on-enqueue, level loop), but the core algorithm cannot execute due to invalid bounds syntax, using `len(rows)`/`len(cols)` on ints, treating a set like a list (`append`), and not enqueueing coordinate tuples, which breaks the fundamental BFS invariants and prevents correct traversal/distance layering.",
+    "primaryFocus": "Make the BFS skeleton runnable by fixing the core operations: bounds checks, visited set updates, and enqueueing (nr,nc) tuples.",
+    "nextRepTarget": "2 consecutive perfect reps where you (1) enqueue tuples, (2) use `.add` on visited, and (3) increment distance once per layer (after the `for _ in range(len(q))`).",
+    "correctedVersion": "from collections import deque\n\ndef grid_bfs(grid, r, c):\n    rows, cols = len(grid), len(grid[0])\n    start = (r, c)\n    q = deque([start])\n    visited = {start}\n    distance = 0\n\n    while q:\n        for _ in range(len(q)):\n            r, c = q.popleft()\n            for dr, dc in [(1, 0), (-1, 0), (0, 1), (0, -1)]:\n                nr, nc = r + dr, c + dc\n                if 0 <= nr < rows and 0 <= nc < cols and (nr, nc) not in visited:\n                    visited.add((nr, nc))\n                    q.append((nr, nc))\n        distance += 1\n\n    return visited",
+    "submissionRubric": {
+      "score": {
+        "fluency": 45,
+        "overall": 37.2,
+        "fidelity": 55,
+        "conceptual": 37.2,
+        "executable": 0
+      },
+      "verdict": "needs-work",
+      "modifiers": {
+        "syntax": {
+          "key": "syntax",
+          "label": "Syntax and executability",
+          "score": 0,
+          "status": "fail",
+          "missing": [],
+          "evidence": []
+        },
+        "completionTime": {
+          "key": "completionTime",
+          "label": "Speed and fluency",
+          "score": 45,
+          "status": "partial",
+          "missing": [],
+          "evidence": [
+            "Elapsed time relatively high; result still contains fundamental syntax/logic issues."
+          ]
+        }
+      },
+      "dimensions": {
+        "structure": {
+          "key": "structure",
+          "label": "Solution structure",
+          "score": 78,
+          "status": "partial",
+          "missing": [],
+          "evidence": [
+            "Has BFS function, queue, visited set, while-loop with per-level for-loop, 4-direction neighbor iteration, and distance variable. Minor structural deviations: function name differs; distance increment placed inside inner loop instead of after level loop."
+          ]
+        },
+        "correctness": {
+          "key": "correctness",
+          "label": "Correctness",
+          "score": 10,
+          "status": "fail",
+          "missing": [],
+          "evidence": [
+            "Multiple correctness-breaking issues: uses len(rows)/len(cols) where rows/cols are ints; boundary checks use commas and incorrect syntax; visited is a set but uses append; q.append called with two args instead of tuple; neighbor computation uses dr+r, dc+c (ok) but other errors prevent execution."
+          ]
+        },
+        "completeness": {
+          "key": "completeness",
+          "label": "Completeness",
+          "score": 35,
+          "status": "fail",
+          "missing": [],
+          "evidence": [
+            "Intended components present (queue, visited, bounds, neighbor expansion, level traversal), but implementation errors prevent a working BFS and correct level-distance handling."
+          ]
+        },
+        "patternFidelity": {
+          "key": "patternFidelity",
+          "label": "Pattern fidelity",
+          "score": 55,
+          "status": "partial",
+          "missing": [],
+          "evidence": [
+            "Matches the BFS skeleton pattern (visited-on-enqueue, 4-neighbors, level traversal), but deviates in key fidelity points: incorrect bounds checks, wrong visited update method, wrong enqueue tuple, and distance update placement."
+          ]
+        }
+      },
+      "primaryFailure": {
+        "key": "syntax-and-core-ops",
+        "label": "Syntax-And-Core-Ops",
+        "evidence": [
+          "Code is not syntactically valid and misuses rows/cols and set/queue operations, preventing execution."
+        ],
+        "severity": "blocking"
+      },
+      "recommendedAction": "Code is not syntactically valid and misuses rows/cols and set/queue operations, preventing execution."
+    },
+    "immediateCorrection": "Replace the invalid if-condition and data-structure operations with: `if 0 <= nr < rows and 0 <= nc < cols and (nr,nc) not in visited: visited.add((nr,nc)); q.append((nr,nc))`, and move `distance += 1` to after the per-level loop."
+  },
+  "submission_rubric": {
+    "score": {
+      "fluency": 45,
+      "overall": 37.2,
+      "fidelity": 55,
+      "conceptual": 37.2,
+      "executable": 0
+    },
+    "verdict": "needs-work",
+    "modifiers": {
+      "syntax": {
+        "key": "syntax",
+        "label": "Syntax and executability",
+        "score": 0,
+        "status": "fail",
+        "missing": [],
+        "evidence": []
+      },
+      "completionTime": {
+        "key": "completionTime",
+        "label": "Speed and fluency",
+        "score": 45,
+        "status": "partial",
+        "missing": [],
+        "evidence": [
+          "Elapsed time relatively high; result still contains fundamental syntax/logic issues."
+        ]
+      }
+    },
+    "dimensions": {
+      "structure": {
+        "key": "structure",
+        "label": "Solution structure",
+        "score": 78,
+        "status": "partial",
+        "missing": [],
+        "evidence": [
+          "Has BFS function, queue, visited set, while-loop with per-level for-loop, 4-direction neighbor iteration, and distance variable. Minor structural deviations: function name differs; distance increment placed inside inner loop instead of after level loop."
+        ]
+      },
+      "correctness": {
+        "key": "correctness",
+        "label": "Correctness",
+        "score": 10,
+        "status": "fail",
+        "missing": [],
+        "evidence": [
+          "Multiple correctness-breaking issues: uses len(rows)/len(cols) where rows/cols are ints; boundary checks use commas and incorrect syntax; visited is a set but uses append; q.append called with two args instead of tuple; neighbor computation uses dr+r, dc+c (ok) but other errors prevent execution."
+        ]
+      },
+      "completeness": {
+        "key": "completeness",
+        "label": "Completeness",
+        "score": 35,
+        "status": "fail",
+        "missing": [],
+        "evidence": [
+          "Intended components present (queue, visited, bounds, neighbor expansion, level traversal), but implementation errors prevent a working BFS and correct level-distance handling."
+        ]
+      },
+      "patternFidelity": {
+        "key": "patternFidelity",
+        "label": "Pattern fidelity",
+        "score": 55,
+        "status": "partial",
+        "missing": [],
+        "evidence": [
+          "Matches the BFS skeleton pattern (visited-on-enqueue, 4-neighbors, level traversal), but deviates in key fidelity points: incorrect bounds checks, wrong visited update method, wrong enqueue tuple, and distance update placement."
+        ]
+      }
+    },
+    "primaryFailure": {
+      "key": "syntax-and-core-ops",
+      "label": "Syntax-And-Core-Ops",
+      "evidence": [
+        "Code is not syntactically valid and misuses rows/cols and set/queue operations, preventing execution."
+      ],
+      "severity": "blocking"
+    },
+    "recommendedAction": "Code is not syntactically valid and misuses rows/cols and set/queue operations, preventing execution."
+  }
+}

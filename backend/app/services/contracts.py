@@ -243,12 +243,13 @@ class FeedbackPayload(TypedDict, total=False):
 	nextMove: str
 	why: str
 	microDrill: str
+	microDrillExplanation: str
+	microDrillInvariant: str
 	nextRepTarget: str
 	strengths: list[str]
 	errorTags: list[str]
 	fullFeedback: str
 	correctedVersion: str
-	submissionRubric: dict[str, Any]
 	llmUsed: bool
 	llmProvider: str
 	signals: dict[str, Any]

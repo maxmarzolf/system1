@@ -275,8 +275,8 @@ def test_google_static_playlist_contains_requested_questions() -> None:
     assert "heap-priority-queue" not in next(card for card in deck["drills"] if card["title"] == "215. Kth Largest Element")["tags"]
     overview_rows = static_playlist_overview_rows()
     assert len([row for row in overview_rows if "google" in row["tags"]]) == 50
-    assert len([row for row in overview_rows if "google-skeletons" in row["tags"]]) == 22
-    assert len(overview_rows) == 72
+    assert len([row for row in overview_rows if "google-skeletons" in row["tags"]]) == 24
+    assert len(overview_rows) == 74
 
 
 def test_google_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -> None:
@@ -284,17 +284,19 @@ def test_google_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -
 
     assert deck is not None
     assert deck["llmUsed"] is False
-    assert len(deck["drills"]) == 22
+    assert len(deck["drills"]) == 24
     assert [card["title"] for card in deck["drills"]] == [
         "BFS Skeleton",
         "Grid BFS Skeleton",
         "DFS Skeleton",
         "Grid DFS Skeleton",
+        "Binary Tree DFS -- Return & Combine Skeleton",
+        "Binary Tree DFS -- Carry State Skeleton",
+        "Binary Tree BFS -- Level Order Skeleton",
         "Union-Find / Disjoint Set Skeleton",
         "Merge Intervals Skeleton",
         "Binary Search Skeleton",
         "Topological Sort -- Kahn's Algorithm Skeleton",
-        "Bellman-Ford Skeleton",
         "Trie Skeleton",
         "Backtracking Skeleton",
         "Dijkstra Skeleton",
@@ -350,6 +352,9 @@ def test_google_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -
         "Binary Search Skeleton": "def binary_search(nums, target):",
         "Grid BFS Skeleton": "def bfs(grid, r, c):",
         "Grid DFS Skeleton": "def dfs(grid, r, c):",
+        "Binary Tree DFS -- Return & Combine Skeleton": "def tree_dfs(root):",
+        "Binary Tree DFS -- Carry State Skeleton": "def tree_dfs_with_state(root):",
+        "Binary Tree BFS -- Level Order Skeleton": "def tree_level_order(root):",
         "Backtracking Skeleton": "def backtrack(state, choices, out):",
         "Two Pointers Skeleton": "def two_pointers(nums):",
         "Monotonic Stack Skeleton": "def monotonic_stack(nums):",
@@ -359,7 +364,6 @@ def test_google_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -
         "Union-Find / Disjoint Set Skeleton": "class UnionFind:",
         "Topological Sort -- Kahn's Algorithm Skeleton": "def topological_sort(n, edges):",
         "Dijkstra Skeleton": "def dijkstra(start, graph):",
-        "Bellman-Ford Skeleton": "def bellman_ford(n, edges, start):",
         "Trie Skeleton": "class Trie:",
         "Greedy Skeleton": "def greedy(items):",
         "Divide and Conquer Skeleton": "def divide_and_conquer(problem):",

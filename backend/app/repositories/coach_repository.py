@@ -8,7 +8,6 @@ from typing import Any, cast
 
 from app.repositories.base import acquire_connection
 from app.repositories.types import MultipleChoiceProblemInsertResult, PracticeHistoryEntry, PracticeHistoryRow
-from app.submission_rubric import compact_submission_rubric
 
 _PRACTICE_HISTORY_SELECT = """
     SELECT
@@ -141,7 +140,7 @@ async def fetch_practice_history_entries(
     history: list[PracticeHistoryEntry] = []
     for row in rows:
         stored_signals = _parse_json_field(row["signals"], {})
-        coach_feedback = _parse_json_field(stored_signals.get("coach_feedback"), {})
+        evaluation = _parse_json_field(stored_signals.get("evaluation"), {})
         history.append({
             "attemptId": int(row["attemptId"]),
             "interactionId": str(row["interactionId"] or ""),
@@ -154,11 +153,7 @@ async def fetch_practice_history_entries(
             "successful": bool(row["successful"]),
             "signals": {
                 "elapsedMs": int(stored_signals.get("elapsed_ms") or 0),
-                "coachFeedback": coach_feedback,
-                "submissionRubric": compact_submission_rubric(
-                    stored_signals.get("submission_rubric")
-                    or coach_feedback.get("submissionRubric")
-                ),
+                "evaluation": evaluation,
             },
             "templateMode": str(row["templateMode"] or "algorithm"),
             "supportLayer": str(row["supportLayer"] or "none"),

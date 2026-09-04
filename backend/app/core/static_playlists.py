@@ -120,6 +120,27 @@ GOOGLE_SKELETON_QUESTIONS: tuple[dict[str, Any], ...] = (
         ("recursive DFS", "four directions", "bounds and visited guards"),
     ),
     _question(
+        "Binary Tree DFS -- Return & Combine Skeleton",
+        "Trees",
+        "Skeletons",
+        "Easy",
+        ("null base case", "left / right recursion", "postorder return", "combine child results"),
+    ),
+    _question(
+        "Binary Tree DFS -- Carry State Skeleton",
+        "Trees",
+        "Skeletons",
+        "Easy",
+        ("root-to-node state", "preorder processing", "branch-local state", "left / right recursion"),
+    ),
+    _question(
+        "Binary Tree BFS -- Level Order Skeleton",
+        "Trees",
+        "Skeletons",
+        "Easy",
+        ("queue frontier", "level-size snapshot", "left / right child expansion", "per-level aggregation"),
+    ),
+    _question(
         "Fixed-Size Sliding Window Skeleton",
         "Sliding Window",
         "Skeletons",
@@ -218,13 +239,6 @@ GOOGLE_SKELETON_QUESTIONS: tuple[dict[str, Any], ...] = (
         ("min-heap frontier", "non-negative weights", "finalized distances"),
     ),
     _question(
-        "Bellman-Ford Skeleton",
-        "Graphs",
-        "Skeletons",
-        "Med.",
-        ("edge relaxation", "n - 1 passes", "early exit"),
-    ),
-    _question(
         "Trie Skeleton",
         "Trie",
         "Skeletons",
@@ -281,6 +295,30 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "invariant": "visited contains every cell discovered from the start, and walk recurses only to in-bounds cells not already in that set.",
         "timeComplexity": "O(rows · cols)",
     },
+    "Binary Tree DFS -- Return & Combine Skeleton": {
+        "templateStrength": 9,
+        "applicationAbstraction": 5,
+        "summary": "Base case → solve children → combine upward",
+        "explanation": "Postorder tree DFS solves both child subtrees before combining their summaries into the value returned for the current subtree.",
+        "invariant": "dfs(node) returns the complete answer or summary required for the subtree rooted at node.",
+        "timeComplexity": "O(n) time; O(h) recursion space",
+    },
+    "Binary Tree DFS -- Carry State Skeleton": {
+        "templateStrength": 8,
+        "applicationAbstraction": 5,
+        "summary": "Advance root-to-node state → process → recurse",
+        "explanation": "Top-down tree DFS derives branch-local state for the current node, records any contribution, and passes that state into both child branches.",
+        "invariant": "On entry to dfs(node, state), state describes exactly the path from the root through the parent of node.",
+        "timeComplexity": "O(n) time; O(h) recursion space",
+    },
+    "Binary Tree BFS -- Level Order Skeleton": {
+        "templateStrength": 9,
+        "applicationAbstraction": 4,
+        "summary": "Queue → snapshot level width → expand children",
+        "explanation": "Level-order tree BFS snapshots the queue length so every outer iteration processes exactly one depth and can aggregate that level independently.",
+        "invariant": "At the start of each outer iteration, the queue contains exactly the nodes in the next unprocessed level.",
+        "timeComplexity": "O(n) time; O(w) queue space",
+    },
     "Union-Find / Disjoint Set Skeleton": {
         "templateStrength": 10,
         "applicationAbstraction": 3,
@@ -312,14 +350,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "explanation": "Kahn's algorithm repeatedly emits nodes with no remaining prerequisites. If every node is emitted, the graph is acyclic.",
         "invariant": "indegree[v] equals the number of incoming edges to v from nodes not yet emitted.",
         "timeComplexity": "O(V + E)",
-    },
-    "Bellman-Ford Skeleton": {
-        "templateStrength": 9,
-        "applicationAbstraction": 4,
-        "summary": "Repeatedly relax every edge",
-        "explanation": "Repeated full-edge relaxation propagates shortest-path estimates one edge farther on each pass and supports negative edge weights.",
-        "invariant": "After pass i, each distance is optimal among paths that use at most i edges.",
-        "timeComplexity": "O(VE)",
     },
     "Trie Skeleton": {
         "templateStrength": 9,
@@ -606,14 +636,7 @@ def dfs(grid, r, c):
     def walk(r, c):
         visited.add((r, c))
 
-        directions = [
-            (1, 0),
-            (-1, 0),
-            (0, 1),
-            (0, -1)
-        ]
-
-        for dr, dc in directions:
+        for dr, dc in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
             nr, nc = r + dr, c + dc
 
             if (
@@ -625,6 +648,63 @@ def dfs(grid, r, c):
 
     walk(r, c)
     return visited
+""",
+    "Binary Tree DFS -- Return & Combine Skeleton": """
+def tree_dfs(root):
+    def dfs(node):
+        if node is None:
+            return base_value()
+
+        left = dfs(node.left)
+        right = dfs(node.right)
+
+        return combine(node, left, right)
+
+    return dfs(root)
+""",
+    "Binary Tree DFS -- Carry State Skeleton": """
+def tree_dfs_with_state(root):
+    result = initialize_result()
+
+    def dfs(node, state):
+        if node is None:
+            return
+
+        next_state = advance_state(state, node)
+        record(result, node, next_state)
+
+        dfs(node.left, next_state)
+        dfs(node.right, next_state)
+
+    dfs(root, initial_state())
+    return result
+""",
+    "Binary Tree BFS -- Level Order Skeleton": """
+from collections import deque
+
+
+def tree_level_order(root):
+    if root is None:
+        return []
+
+    q = deque([root])
+    result = []
+
+    while q:
+        level = []
+
+        for _ in range(len(q)):
+            node = q.popleft()
+            level.append(node.val)
+
+            if node.left is not None:
+                q.append(node.left)
+            if node.right is not None:
+                q.append(node.right)
+
+        result.append(level)
+
+    return result
 """,
     "Fixed-Size Sliding Window Skeleton": """
 def fixed_size_window(items, k):
@@ -893,27 +973,6 @@ def dijkstra(start, graph):
                     heap,
                     (dist + weight, ngbr)
                 )
-
-    return distance
-""",
-    "Bellman-Ford Skeleton": """
-def bellman_ford(n, edges, start):
-    distance = [float("inf")] * n
-    distance[start] = 0
-
-    for _ in range(n - 1):
-        changed = False
-
-        for u, v, weight in edges:
-            if (
-                distance[u] != float("inf")
-                and distance[u] + weight < distance[v]
-            ):
-                distance[v] = distance[u] + weight
-                changed = True
-
-        if not changed:
-            break
 
     return distance
 """,

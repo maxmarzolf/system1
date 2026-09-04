@@ -98,7 +98,7 @@ async def coach_adaptive_variation(body: AdaptiveVariationRequest) -> AdaptiveVa
 
     template_mode = _template_mode_value(body.templateMode)
     primary_failure = _domain_adaptive_primary_failure(
-        body.submissionRubric if isinstance(body.submissionRubric, dict) else {}
+        body.evaluation if isinstance(body.evaluation, dict) else {}
     )
     failure_key = str(primary_failure.get("key", "pattern"))
     failure_label = str(primary_failure.get("label", SUBMISSION_DIMENSION_LABELS.get(failure_key, "Core pattern")))
@@ -121,7 +121,7 @@ async def coach_adaptive_variation(body: AdaptiveVariationRequest) -> AdaptiveVa
         "previousPrompt": body.prompt,
         "previousTarget": body.expectedAnswer,
         "userAnswer": body.userAnswer,
-        "submissionRubric": body.submissionRubric,
+        "evaluation": body.evaluation,
         "specimenTuning": body.specimenTuning,
     }
     llm_response = await asyncio.to_thread(_call_llm_json, system_prompt, llm_payload, provider)

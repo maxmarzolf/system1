@@ -7,6 +7,7 @@ from typing import Any, TypedDict
 from app.models import SkillMapNode, TemplateMode
 from app.readiness import READINESS_MODE_ORDER, summarize_readiness
 from app.submission_rubric import summarize_submission_rubrics
+from app.domain.submission_evaluation import evaluation_feedback
 
 
 class AttemptHistoryEntry(TypedDict, total=False):
@@ -92,7 +93,7 @@ def summarize_attempt_history(history: list[AttemptHistoryEntry]) -> AttemptHist
         for tag in item.get("categoryTags", []):
             tag_outcomes.setdefault(tag, []).append(bool(item.get("successful")))
         signals = item.get("signals", {})
-        feedback = signals.get("coachFeedback", {}) if isinstance(signals, dict) else {}
+        feedback = evaluation_feedback(signals.get("evaluation")) if isinstance(signals, dict) else {}
         for tag in feedback.get("errorTags", []) if isinstance(feedback, dict) else []:
             error_counts[str(tag)] += 1
         if isinstance(feedback, dict) and feedback.get("primaryFocus"):
@@ -152,7 +153,7 @@ def summarize_skill_map_progress(
     for item in history:
         item_tags = {str(tag) for tag in item.get("categoryTags", [])}
         signals = item.get("signals", {})
-        feedback = signals.get("coachFeedback", {}) if isinstance(signals, dict) else {}
+        feedback = evaluation_feedback(signals.get("evaluation")) if isinstance(signals, dict) else {}
         for slug, summary in progress_by_pattern.items():
             if slug not in item_tags:
                 continue

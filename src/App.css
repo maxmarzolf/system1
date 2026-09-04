@@ -5562,31 +5562,11 @@ button.tune-reset {
   padding: 0;
 }
 
-.skeleton-reference-measures {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-top: 0.5rem;
-}
-
-.skeleton-reference-measure {
-  color: var(--hc-muted);
-  font-size: 0.62rem;
-  letter-spacing: 0.035em;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.skeleton-reference-measure strong {
-  color: color-mix(in srgb, var(--hc-fg) 86%, var(--hc-muted));
-  font-weight: 650;
-}
-
-.skeleton-reference-facts {
+.skeleton-reference-overview {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.8rem 1.5rem;
-  margin: 0;
+  gap: 1rem 1.5rem;
+  align-items: start;
 }
 
 .skeleton-reference-fact {
@@ -5594,12 +5574,11 @@ button.tune-reset {
 }
 
 .skeleton-reference-fact.explanation {
-  grid-column: 1 / -1;
   max-width: 78ch;
-  padding-bottom: 0.8rem;
 }
 
-.skeleton-reference-fact dt {
+.skeleton-reference-term,
+.skeleton-reference-spec-item dt {
   color: color-mix(in srgb, var(--hc-muted) 88%, var(--hc-fg));
   font-size: 0.57rem;
   font-weight: 800;
@@ -5608,27 +5587,106 @@ button.tune-reset {
   text-transform: uppercase;
 }
 
-.skeleton-reference-fact dd {
+.skeleton-reference-fact p {
   margin: 0.34rem 0 0;
   color: var(--hc-fg);
   font-size: 0.76rem;
   line-height: 1.5;
 }
 
-.skeleton-reference-fact.complexity dd {
-  color: color-mix(in srgb, var(--hc-accent) 88%, var(--hc-fg));
-  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-  font-size: 0.82rem;
-  font-weight: 700;
+.skeleton-reference-fact.invariant {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid color-mix(in srgb, var(--workbench-edge) 76%, transparent);
 }
 
-@media (max-width: 720px) {
-  .skeleton-reference-measures {
-    flex-wrap: wrap;
+.skeleton-reference-spec {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.skeleton-reference-spec-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.3rem;
+  margin: 0;
+}
+
+.skeleton-reference-spec-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.28rem;
+  min-width: 0;
+  padding: 0.28rem 0.44rem 0.3rem;
+  border: 1px solid color-mix(in srgb, var(--workbench-edge) 54%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--workbench-surface-raised) 42%, transparent);
+  white-space: nowrap;
+}
+
+.skeleton-reference-spec-item:first-child {
+  padding-left: 0.44rem;
+  border-left: 1px solid color-mix(in srgb, var(--workbench-edge) 54%, transparent);
+}
+
+.skeleton-reference-spec-item:last-child {
+  padding-right: 0.44rem;
+}
+
+.skeleton-reference-spec-item dd {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.08rem;
+  margin: 0;
+  color: color-mix(in srgb, var(--hc-fg-dim) 74%, transparent);
+  font-size: 0.52rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.skeleton-reference-spec-item dd strong {
+  color: color-mix(in srgb, var(--hc-fg) 76%, var(--hc-muted));
+  font-size: 0.65rem;
+  font-weight: 650;
+}
+
+.skeleton-reference-spec-item dt {
+  color: color-mix(in srgb, var(--hc-muted) 76%, transparent);
+  font-size: 0.5rem;
+  letter-spacing: 0.075em;
+}
+
+.skeleton-reference-spec-item.complexity dd {
+  display: inline-block;
+  color: color-mix(in srgb, var(--hc-fg-dim) 82%, var(--hc-muted));
+  font-family: 'STIX Two Math', 'Cambria Math', 'Times New Roman', serif;
+  font-size: 0.65rem;
+  font-style: italic;
+  font-weight: 540;
+  letter-spacing: 0.012em;
+}
+
+@media (max-width: 860px) {
+  .skeleton-reference-overview {
+    grid-template-columns: 1fr;
   }
 
-  .skeleton-reference-facts {
-    grid-template-columns: 1fr;
+  .skeleton-reference-spec {
+    min-width: 0;
+    width: auto;
+  }
+
+  .skeleton-reference-spec-grid {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .skeleton-reference-spec-item {
+    padding-inline: 0.4rem;
   }
 }
 
@@ -5870,6 +5928,195 @@ button.tune-reset {
   animation: submissionFeedbackDetailReveal 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+.micro-drill-card-grid {
+  min-height: 23rem;
+}
+
+.card-shell .micro-drill-loading-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: center;
+  align-items: center;
+  gap: 0.85rem 1rem;
+  min-height: 23rem;
+  padding: clamp(2rem, 7vw, 4.5rem);
+  background:
+    radial-gradient(circle at 15% 20%, color-mix(in srgb, var(--hc-accent) 9%, transparent), transparent 36%),
+    var(--workbench-surface-soft);
+}
+
+.micro-drill-loading-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 1px solid color-mix(in srgb, var(--hc-accent) 48%, var(--workbench-edge));
+  border-radius: 0.5rem;
+  color: var(--hc-accent);
+  animation: microDrillBreathe 1.8s ease-in-out infinite;
+}
+
+.micro-drill-loading-icon svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.micro-drill-loading-copy h3,
+.card-shell .micro-drill-title {
+  margin: 0.35rem 0 0;
+  padding: 0;
+  border: 0;
+  color: var(--hc-fg);
+}
+
+.micro-drill-loading-copy p {
+  margin: 0.55rem 0 0;
+  color: var(--hc-fg-dim);
+  font-size: 0.78rem;
+}
+
+.micro-drill-loading-line {
+  grid-column: 1 / -1;
+  height: 1px;
+  margin-top: 0.5rem;
+  overflow: hidden;
+  background: var(--workbench-edge);
+}
+
+.micro-drill-loading-line span {
+  display: block;
+  width: 28%;
+  height: 100%;
+  background: var(--hc-accent);
+  animation: microDrillLine 1.5s ease-in-out infinite;
+}
+
+.card-shell .micro-drill-question-card,
+.card-shell .micro-drill-answer-card {
+  padding: 1.35rem 1.5rem;
+  background: var(--workbench-surface-soft);
+}
+
+.micro-drill-prompt {
+  margin-top: 1rem;
+}
+
+.micro-drill-prompt .multiple-choice-text-block {
+  color: var(--hc-fg);
+  font-size: 0.88rem;
+  line-height: 1.65;
+}
+
+.micro-drill-explanation {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--workbench-edge);
+  animation: submissionFeedbackDetailReveal 0.24s ease both;
+}
+
+.micro-drill-explanation span {
+  color: color-mix(in srgb, var(--hc-accent) 82%, var(--hc-fg));
+  font-size: 0.57rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.micro-drill-explanation p {
+  margin: 0.3rem 0 0;
+  color: var(--hc-fg);
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.micro-drill-code {
+  min-width: 0;
+  overflow-x: auto;
+  padding: 0.9rem 0;
+  border: 1px solid var(--workbench-edge-strong);
+  border-radius: var(--workbench-radius-sm);
+  background: var(--hc-editor-bg);
+  color: var(--hc-code-fg);
+  font: 0.76rem/1.65 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+}
+
+.micro-drill-code-line {
+  display: grid;
+  grid-template-columns: 2.6rem minmax(max-content, 1fr);
+  min-height: 1.65em;
+}
+
+.micro-drill-line-number {
+  padding-right: 0.75rem;
+  color: color-mix(in srgb, var(--hc-fg-dim) 46%, transparent);
+  text-align: right;
+  user-select: none;
+}
+
+.micro-drill-code-line code {
+  padding-right: 1rem;
+  font: inherit;
+  white-space: pre;
+}
+
+.micro-drill-blank {
+  box-sizing: content-box;
+  min-width: 2.5ch;
+  height: 1.35em;
+  margin: 0 0.12rem;
+  padding: 0 0.18rem;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--hc-accent) 42%, var(--hc-fg-dim));
+  border-radius: 0;
+  outline: 0;
+  background: color-mix(in srgb, var(--hc-accent) 3%, transparent);
+  color: var(--hc-code-fg);
+  font: inherit;
+  line-height: 1.2;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.micro-drill-blank:hover,
+.micro-drill-blank:focus {
+  border-bottom-color: var(--hc-accent);
+  background: color-mix(in srgb, var(--hc-accent) 7%, transparent);
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--hc-accent) 18%, transparent);
+}
+
+.micro-drill-fallback-editor {
+  width: 100%;
+  min-height: 10rem;
+  resize: vertical;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--workbench-edge-strong);
+  border-radius: var(--workbench-radius-sm);
+  outline: 0;
+  background: var(--hc-editor-bg);
+  color: var(--hc-code-fg);
+  font: 0.76rem/1.65 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+}
+
+.micro-drill-fallback-editor:focus {
+  border-color: var(--hc-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--hc-accent) 13%, transparent);
+}
+
+@keyframes microDrillBreathe {
+  0%, 100% { opacity: 0.58; transform: scale(0.96); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes microDrillLine {
+  0% { transform: translateX(-120%); opacity: 0; }
+  25% { opacity: 1; }
+  75% { opacity: 1; }
+  100% { transform: translateX(460%); opacity: 0; }
+}
+
 .submission-feedback-block-ready .submission-feedback-dot {
   animation: submissionFeedbackReady 0.9s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -5911,7 +6158,10 @@ button.tune-reset {
 @media (prefers-reduced-motion: reduce) {
   .submission-feedback-block,
   .submission-feedback-block-ready .submission-feedback-dot,
-  .card-shell .submission-feedback-detail {
+  .card-shell .submission-feedback-detail,
+  .micro-drill-loading-icon,
+  .micro-drill-loading-line span,
+  .micro-drill-explanation {
     animation: none;
   }
 }
@@ -6138,4 +6388,441 @@ button.tune-reset {
     display: inline-flex;
   }
 
+}
+
+/* Compact, persistent card toolbar */
+.card-shell .card-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 0;
+  padding: 0.65rem 1rem 0.75rem;
+}
+
+.card-shell .card-header::before {
+  content: none;
+}
+
+.card-shell .card-header-aside {
+  display: flex;
+  order: 0;
+  justify-content: flex-end;
+  width: auto;
+  margin-left: auto;
+}
+
+.card-shell .card-header-controls-panel {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  width: auto;
+  max-width: min(100%, 34rem);
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  scrollbar-width: none;
+  transition: none;
+}
+
+.card-shell .card-header-controls-panel::-webkit-scrollbar {
+  display: none;
+}
+
+.card-shell .card-header-controls-panel .card-header-side {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.24rem;
+  min-width: max-content;
+  padding: 0;
+  border: 0;
+}
+
+.card-shell .card-header-controls-panel .practice-mode-control,
+.card-shell .card-header-controls-panel .support-layer-control,
+.card-shell .card-header-controls-panel .card-side-drawer-actions {
+  display: contents;
+}
+
+.card-shell .card-header-controls-panel .practice-mode-button,
+.card-shell .card-header-controls-panel .navbar-toggle,
+.card-shell .card-header-controls-panel .card-side-drawer-toggle {
+  flex: 0 0 auto;
+  width: 1.65rem;
+  min-width: 1.65rem;
+  height: 1.65rem;
+  min-height: 1.65rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0.32rem;
+  background: transparent;
+  color: color-mix(in srgb, var(--hc-fg-dim) 82%, transparent);
+  box-shadow: none;
+}
+
+.card-shell .card-header-controls-panel .practice-mode-button {
+  display: inline-grid;
+  place-items: center;
+  width: auto;
+  min-width: 2.85rem;
+  padding: 0 0.44rem;
+  font-size: 0.52rem;
+  letter-spacing: 0.055em;
+  line-height: 1;
+  text-align: center;
+}
+
+.card-shell .card-header-controls-panel .navbar-toggle svg,
+.card-shell .card-header-controls-panel .card-side-drawer-toggle svg,
+.card-shell .card-header-controls-panel .card-tags-drawer-toggle svg {
+  width: 0.78rem;
+  height: 0.78rem;
+}
+
+.card-shell .card-header-controls-panel button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--workbench-edge-strong) 76%, transparent);
+  background: color-mix(in srgb, var(--hc-option-hover-bg) 62%, transparent);
+  color: var(--hc-fg);
+}
+
+.card-shell .card-header-controls-panel button.active {
+  border-color: color-mix(in srgb, var(--hc-accent) 42%, transparent);
+  background: color-mix(in srgb, var(--hc-accent) 10%, transparent);
+  color: var(--hc-accent);
+  box-shadow: none;
+}
+
+.card-shell .card-header-controls-panel button:focus-visible {
+  border-color: var(--hc-accent);
+  outline: 2px solid color-mix(in srgb, var(--hc-accent) 24%, transparent);
+  outline-offset: 1px;
+}
+
+.card-shell .card-header-main {
+  flex: 0 0 auto;
+  min-width: 0;
+  justify-content: flex-start;
+  gap: 0.12rem;
+  padding: 0;
+}
+
+.card-shell .card-header-main h3 {
+  max-width: none;
+  margin: 0;
+  color: color-mix(in srgb, var(--hc-fg) 92%, var(--hc-fg-dim));
+  font-size: clamp(1.05rem, 2vw, 1.3rem);
+  font-weight: 610;
+  letter-spacing: -0.018em;
+  line-height: 1.1;
+}
+
+.card-shell .card-badges {
+  gap: 0.32rem;
+  margin: 0.16rem 0 0;
+  opacity: 0.72;
+}
+
+.card-shell .card-badges span {
+  font-size: 0.52rem;
+}
+
+.card-shell .card-header-metric-row {
+  margin-top: 0.22rem;
+}
+
+@media (max-width: 720px) {
+  .card-shell .card-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.42rem;
+    padding: 0.55rem 0.75rem 0.65rem;
+  }
+
+  .card-shell .card-header-aside {
+    justify-content: flex-end;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .card-shell .card-header-controls-panel {
+    justify-content: flex-end;
+    width: auto;
+    max-width: 100%;
+    align-self: flex-end;
+  }
+
+  .card-shell .card-header-controls-panel {
+    order: 0;
+    flex-direction: row;
+    align-items: center;
+    max-height: none;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+  }
+
+  .card-shell .card-header-controls-panel .card-header-side {
+    min-width: max-content;
+    padding: 0;
+    border: 0;
+  }
+}
+
+/* Compact card action bar */
+.card-shell .card-control-bar {
+  min-height: 3.25rem;
+  flex-wrap: nowrap;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0.42rem 1rem;
+}
+
+.card-shell .card-control-group {
+  flex-wrap: nowrap;
+  gap: 0.2rem;
+}
+
+.card-shell .card-control-button {
+  gap: 0.3rem;
+  min-height: 1.9rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.34rem;
+  font-size: 0.68rem;
+}
+
+.card-shell .card-control-button svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.card-shell .card-control-group-primary .card-control-button {
+  min-width: 6.5rem;
+  min-height: 2rem;
+  padding-inline: 0.72rem;
+}
+
+@media (max-width: 720px) {
+  .card-shell .card-control-bar {
+    flex-direction: row;
+    align-items: center;
+    padding: 0.42rem 0.75rem;
+  }
+
+  .card-shell .card-control-group,
+  .card-shell .card-control-group-primary {
+    width: auto;
+  }
+
+  .card-shell .card-control-group-primary {
+    margin-left: auto;
+  }
+
+  .card-shell .card-control-button {
+    flex: 0 0 auto;
+    width: 1.9rem;
+    padding-inline: 0;
+  }
+
+  .card-shell .card-control-group-primary .card-control-button {
+    width: auto;
+    min-width: 6.5rem;
+    padding-inline: 0.72rem;
+  }
+}
+
+/* Integrate the prompt as the first card-grid surface */
+.card-shell .card-grid > .prompt-surface-panel {
+  padding: 0;
+  background: var(--workbench-surface-raised);
+}
+
+.card-shell .prompt-surface-panel > .drill-fade-in {
+  min-width: 0;
+}
+
+.card-shell .prompt-surface-panel .prompt-feedback-surface {
+  border: 0;
+  border-radius: 0;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--hc-accent) 4%, transparent), transparent 34%),
+    transparent;
+  box-shadow: none;
+}
+
+.card-shell .prompt-surface-panel .prompt-surface-section {
+  padding: 1rem 1.5rem 1.05rem;
+}
+
+.card-shell .prompt-surface-panel .prompt-toggle-text {
+  max-width: 68ch;
+  margin-bottom: 0;
+}
+
+.card-shell .prompt-surface-panel .submission-feedback-block {
+  padding-right: 1.5rem;
+  padding-left: 1.5rem;
+}
+
+.card-shell .prompt-surface-panel .submission-feedback-block::before {
+  right: 1.5rem;
+  left: 1.5rem;
+}
+
+.card-shell.skeleton-card-shell .prompt-surface-panel {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--hc-accent) 3%, transparent), transparent 42%),
+    var(--workbench-surface-raised);
+}
+
+@media (max-width: 720px) {
+  .card-shell .prompt-surface-panel .prompt-surface-section {
+    padding: 0.9rem 1rem 1rem;
+  }
+
+  .card-shell .prompt-surface-panel .submission-feedback-block {
+    padding-right: 1rem;
+    padding-left: 1rem;
+  }
+
+  .card-shell .prompt-surface-panel .submission-feedback-block::before {
+    right: 1rem;
+    left: 1rem;
+  }
+}
+
+/* Optically center the compact practice-support icons */
+.card-shell .card-header-controls-panel .support-layer-control .navbar-toggle {
+  display: inline-grid;
+  place-items: center;
+  line-height: 0;
+}
+
+.card-shell .card-header-controls-panel .support-layer-control .navbar-toggle svg {
+  display: block;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+/* Zen mode: keep the exercise, let the surrounding interface recede */
+.app.app-zen-mode {
+  max-width: 1120px;
+  min-height: 100vh;
+  padding-top: clamp(1.25rem, 4vh, 3rem);
+  transition: max-width 0.35s ease, padding-top 0.35s ease;
+}
+
+.app-zen-mode .navbar {
+  display: none;
+}
+
+.app-zen-mode .card-shell {
+  width: min(100%, 960px);
+  margin: 0 auto;
+  box-shadow: 0 1.75rem 5rem color-mix(in srgb, var(--hc-bg) 52%, transparent);
+  animation: zenModeSettle 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.app-zen-mode .card-shell > .card {
+  border-color: color-mix(in srgb, var(--workbench-edge-strong) 74%, transparent);
+}
+
+.app-zen-mode .card-header {
+  min-height: 0;
+  padding: 0.48rem 0.72rem;
+  border-bottom-color: color-mix(in srgb, var(--workbench-edge) 62%, transparent);
+  background: color-mix(in srgb, var(--workbench-surface-raised) 72%, transparent);
+}
+
+.app-zen-mode .card-header-main h3 {
+  color: var(--hc-fg-dim);
+  font-size: 0.72rem;
+  font-weight: 560;
+  letter-spacing: 0.025em;
+  opacity: 0.72;
+}
+
+.app-zen-mode .card-badges,
+.app-zen-mode .card-header-main .tags,
+.app-zen-mode .card-header-metric-row,
+.app.app-zen-mode .card-header-controls-panel .practice-mode-button,
+.app.app-zen-mode .card-header-controls-panel .support-layer-control .navbar-toggle,
+.app-zen-mode .card-side-drawer-actions > :not(.zen-mode-toggle) {
+  display: none;
+}
+
+.app-zen-mode .card-header-controls-panel {
+  overflow: visible;
+}
+
+.app-zen-mode .zen-mode-toggle {
+  border-color: color-mix(in srgb, var(--hc-accent) 26%, transparent);
+  color: color-mix(in srgb, var(--hc-accent) 78%, var(--hc-fg-dim));
+  background: transparent;
+}
+
+.app-zen-mode .zen-mode-toggle:hover {
+  border-color: color-mix(in srgb, var(--hc-accent) 52%, transparent);
+  background: color-mix(in srgb, var(--hc-accent) 7%, transparent);
+}
+
+.app-zen-mode .prompt-surface-panel .prompt-feedback-surface {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--hc-accent) 3%, transparent), transparent 30%),
+    transparent;
+}
+
+.app-zen-mode .card-control-bar {
+  border-top-color: color-mix(in srgb, var(--workbench-edge) 62%, transparent);
+  background: color-mix(in srgb, var(--workbench-surface-raised) 68%, transparent);
+}
+
+.app-zen-mode .card-control-bar > .card-control-group:not(.card-control-group-primary) {
+  opacity: 0.38;
+  transition: opacity 0.18s ease;
+}
+
+.app-zen-mode .card-control-bar > .card-control-group:not(.card-control-group-primary):hover,
+.app-zen-mode .card-control-bar > .card-control-group:not(.card-control-group-primary):focus-within {
+  opacity: 1;
+}
+
+@keyframes zenModeSettle {
+  from {
+    opacity: 0.72;
+    transform: translateY(0.6rem) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 720px) {
+  .app.app-zen-mode {
+    padding: 0.65rem;
+  }
+
+  .app-zen-mode .card-header {
+    flex-direction: row;
+    align-items: center;
+    padding: 0.45rem 0.6rem;
+  }
+
+  .app-zen-mode .card-header-aside {
+    width: auto;
+    margin-left: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-zen-mode .card-shell {
+    animation: none;
+  }
 }

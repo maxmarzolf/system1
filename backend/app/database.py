@@ -594,6 +594,33 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
             UPDATE submission
             SET signals = '{"elapsed_ms": 0}'::jsonb || signals;
 
+            UPDATE submission
+            SET signals = jsonb_build_object(
+                'elapsed_ms', COALESCE(signals->'elapsed_ms', '0'::jsonb)
+            ) || CASE
+                WHEN signals ? 'evaluation' THEN
+                    jsonb_build_object('evaluation', signals->'evaluation')
+                WHEN signals ? 'submission_rubric' OR signals ? 'coach_feedback' THEN
+                    jsonb_build_object(
+                        'evaluation',
+                        COALESCE(
+                            signals->'submission_rubric',
+                            signals#>'{coach_feedback,submissionRubric}',
+                            '{}'::jsonb
+                        ) || jsonb_build_object(
+                            'version', 1,
+                            'feedback', COALESCE(signals->'coach_feedback', '{}'::jsonb)
+                                - 'submissionRubric' - 'llmUsed' - 'llmProvider',
+                            'provenance', jsonb_build_object(
+                                'llmUsed', COALESCE((signals#>>'{coach_feedback,llmUsed}')::boolean, FALSE),
+                                'provider', COALESCE(signals#>>'{coach_feedback,llmProvider}', ''),
+                                'source', 'legacy-assessor-narrator'
+                            )
+                        )
+                    )
+                ELSE '{}'::jsonb
+            END;
+
             ALTER TABLE submission
             ALTER COLUMN signals SET DEFAULT '{"elapsed_ms": 0}'::jsonb;
 
@@ -609,7 +636,16 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
 
             ALTER TABLE submission
             ADD CONSTRAINT submission_signals_object_check
-            CHECK (jsonb_typeof(signals) = 'object');
+            CHECK (
+                jsonb_typeof(signals) = 'object'
+                AND signals ? 'elapsed_ms'
+                AND jsonb_typeof(signals->'elapsed_ms') = 'number'
+                AND (signals - 'elapsed_ms' - 'evaluation') = '{}'::jsonb
+                AND (
+                    NOT (signals ? 'evaluation')
+                    OR jsonb_typeof(signals->'evaluation') = 'object'
+                )
+            );
 
             ALTER TABLE submission
             DROP CONSTRAINT IF EXISTS answer_template_mode_check;
@@ -863,8 +899,16 @@ async def _backfill_submission_attempts_from_score_attempts(db_pool: asyncpg.Poo
                         ),
                         jsonb_strip_nulls(jsonb_build_object(
                             'elapsed_ms', COALESCE(s.elapsed_ms, 0),
-                            'coach_feedback', s.coach_feedback,
-                            'submission_rubric', s.submission_rubric
+                            'evaluation', COALESCE(s.submission_rubric, '{}'::jsonb) || jsonb_build_object(
+                                'version', 1,
+                                'feedback', COALESCE(s.coach_feedback, '{}'::jsonb)
+                                    - 'submissionRubric' - 'llmUsed' - 'llmProvider',
+                                'provenance', jsonb_build_object(
+                                    'llmUsed', COALESCE((s.coach_feedback->>'llmUsed')::boolean, FALSE),
+                                    'provider', COALESCE(s.coach_feedback->>'llmProvider', ''),
+                                    'source', 'score-attempts-migration'
+                                )
+                            )
                         )),
                         s.interaction_id,
                         s.generated_card_id,

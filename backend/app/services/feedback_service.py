@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
 from app.core.assessor import (
     AssessorContext,
@@ -26,6 +27,7 @@ from app.core.narrator import (
 from app.core.submission_llm_client import call_llm_json_for_submission
 from app.domain.coach_context import algorithmic_template_label as _domain_algorithmic_template_label
 from app.domain.feedback_builder import submission_rubric_from_assessment as _domain_submission_rubric_from_assessment
+from app.domain.submission_evaluation import canonical_submission_evaluation
 from app.domain.llm_resilience import (
     SubmissionFeedbackUnavailableError,
 )
@@ -123,36 +125,42 @@ async def _run_submission_narrator_phase(
     return feedback
 
 
-def _finalize_feedback_payload(
-    body: CoachAttemptFeedbackRequest,
-    assessment: FeedbackPayload,
+def _finalize_live_feedback_payload(
     feedback: FeedbackPayload,
     provider: str,
 ) -> CoachAttemptFeedbackResponse:
-    if not body.liveMode:
-        feedback["submissionRubric"] = _domain_submission_rubric_from_assessment(body, assessment)
     feedback["llmProvider"] = provider if bool(feedback.get("llmUsed")) else ""
     feedback.pop("signals", None)
     return CoachAttemptFeedbackResponse.model_validate(feedback)
 
 
 async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest) -> CoachAttemptFeedbackResponse:
+    provider = _resolve_feedback_provider(body)
+    template_mode = _template_mode_value(body.templateMode)
+    assessment = await _run_assessor_phase(body, provider, template_mode)
+    feedback = assessment_to_live_response(assessment)
+    return _finalize_live_feedback_payload(feedback, provider)
+
+
+async def coach_submission_evaluation(body: CoachAttemptFeedbackRequest) -> dict[str, Any]:
     history, history_summary = await history_service.load_feedback_context(body)
     provider = _resolve_feedback_provider(body)
     template_mode = _template_mode_value(body.templateMode)
     assessment = await _run_assessor_phase(body, provider, template_mode)
-
-    if body.liveMode:
-        feedback = assessment_to_live_response(assessment)
-    else:
-        feedback = await _run_submission_narrator_phase(
-            body,
-            assessment,
-            history,
-            history_summary,
-            provider,
-            template_mode,
-        )
-
-    feedback = _finalize_feedback_payload(body, assessment, feedback, provider)
-    return feedback
+    sound = str(assessment.get("verdict") or "").strip() == "sound"
+    evaluated_body = body.model_copy(update={"exact": sound, "liveMode": False})
+    feedback = await _run_submission_narrator_phase(
+        evaluated_body,
+        assessment,
+        history,
+        history_summary,
+        provider,
+        template_mode,
+    )
+    rubric = _domain_submission_rubric_from_assessment(evaluated_body, assessment)
+    return canonical_submission_evaluation(
+        rubric,
+        feedback,
+        provider=provider,
+        llm_used=bool(feedback.get("llmUsed")),
+    )

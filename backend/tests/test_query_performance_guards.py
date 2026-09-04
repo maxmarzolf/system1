@@ -76,8 +76,11 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
             s % 5 = 0,
             jsonb_build_object(
                 'elapsed_ms', 1000 + s,
-                'coach_feedback', '{}'::jsonb,
-                'submission_rubric', '{}'::jsonb
+                'evaluation', jsonb_build_object(
+                    'version', 1,
+                    'verdict', CASE WHEN s % 5 = 0 THEN 'sound' ELSE 'needs-work' END,
+                    'feedback', '{}'::jsonb
+                )
             ),
             'fx-perf-interaction-' || s::text,
             CASE WHEN s % 5 = 0 THEN 'fx-perf-card-target' ELSE 'fx-perf-card-' || (s % 17)::text END,

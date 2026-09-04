@@ -7,14 +7,14 @@ import { skillMap, type SkillMapNode } from './data/skill-map'
 import { playlistQuestionsToSkillMap, practicePlaylists } from './data/playlists'
 import { resolveRelatedLeetCodeSet } from './data/related-leetcode'
 import { loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoachTuning'
-import { loadStoredSubmissionTuning } from './submissionTuning'
+import { loadStoredSubmissionTuning, saveStoredSubmissionTuning } from './submissionTuning'
 import { loadStoredSpecimenTuning } from './specimenTuning'
 import type { SpecimenTuning } from './specimenTuning'
 import { loadStoredCodeEditorTuning } from './codeEditorTuning'
 import { loadStoredMcqTuning, type McqFlowMode, type McqSourceMode } from './mcqTuning'
 import { loadStoredGooglePlaylistTuning, type GooglePlaylistOrder } from './googlePlaylistTuning'
 import { apiUrl } from './api'
-import { providerDisplayLabel, useConfiguredProviderLabel } from './llmProviderDefault'
+import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 import { useTheme, type AppTheme } from './theme'
 import RecallCodeEditor, { type RecallCodeEditorHandle, type RecallEditorLineMeta } from './RecallCodeEditor'
@@ -122,12 +122,7 @@ type AttemptPayload = {
   mode: 'main-recall'
   correctAnswer: string
   userAnswer: string
-  successful: boolean
-  signals: {
-    elapsedMs: number
-    coachFeedback?: CoachAttemptFeedback | null
-    submissionRubric?: Record<string, unknown> | null
-  }
+  elapsedMs: number
   interactionId: string
   templateMode: TemplateMode
   supportLayer: SupportLayer
@@ -143,14 +138,43 @@ type CoachAttemptFeedback = {
   why?: string
   keepInMind?: string
   microDrill: string
+  microDrillExplanation?: string
+  microDrillInvariant?: string
   nextRepTarget: string
   strengths: string[]
   errorTags: string[]
   fullFeedback?: string
   correctedVersion?: string
-  submissionRubric?: Record<string, unknown>
-  llmUsed: boolean
+  llmUsed?: boolean
   llmProvider?: string
+}
+
+type SubmissionEvaluation = {
+  version: number
+  verdict: string
+  score: Record<string, number>
+  primaryFailure: Record<string, unknown>
+  dimensions: Record<string, unknown>
+  modifiers: Record<string, unknown>
+  recommendedAction: string
+  feedback: CoachAttemptFeedback | Record<string, never>
+  provenance: {
+    llmUsed: boolean
+    provider: string
+    source: string
+  }
+}
+
+type SubmissionSaveResponse = {
+  saved: boolean
+  attemptId: number | null
+  successful: boolean
+  evaluation: SubmissionEvaluation
+  feedbackUnavailable?: {
+    code: string
+    message: string
+    provider: string
+  } | null
 }
 
 type FeedbackRailModel = {
@@ -251,12 +275,6 @@ type PromptToggleExplanationResponse = {
   plainEnglish: string
   inputExample: string
   outputExample: string
-  llmUsed: boolean
-}
-
-type AttemptEvaluationResponse = {
-  sound: boolean
-  syntaxValid: boolean
   llmUsed: boolean
 }
 
@@ -2160,6 +2178,86 @@ const parseMarkdownCodeSegments = (text: string): MarkdownCodeSegment[] => {
   return segments.length > 0 ? segments : [{ type: 'text', text }]
 }
 
+type MicroDrillContent = {
+  prompt: string
+  code: string
+  language: string
+}
+
+const parseMicroDrillContent = (text: string): MicroDrillContent => {
+  const segments = parseMarkdownCodeSegments(text)
+  const codeSegments = segments.filter((segment): segment is Extract<MarkdownCodeSegment, { type: 'code' }> => segment.type === 'code')
+  return {
+    prompt: segments
+      .filter((segment): segment is Extract<MarkdownCodeSegment, { type: 'text' }> => segment.type === 'text')
+      .map((segment) => segment.text)
+      .join('\n\n')
+      .trim(),
+    code: codeSegments.map((segment) => segment.code).join('\n\n').trim(),
+    language: codeSegments[0]?.language ?? 'python',
+  }
+}
+
+function MicroDrillBlankEditor({ template, language }: { template: string, language: string }) {
+  const [answers, setAnswers] = useState<Record<number, string>>({})
+  const [fallbackValue, setFallbackValue] = useState(template)
+  const lines = useMemo(() => template.split('\n'), [template])
+  const blankCount = useMemo(() => (template.match(/_{3,}/g) ?? []).length, [template])
+
+  if (blankCount === 0) {
+    return (
+      <textarea
+        className="micro-drill-fallback-editor"
+        value={fallbackValue}
+        onChange={(event) => setFallbackValue(event.target.value)}
+        aria-label="Reinforcement answer editor"
+        spellCheck={false}
+        rows={Math.max(lines.length, 5)}
+      />
+    )
+  }
+
+  return (
+    <div className="micro-drill-code" role="group" aria-label={`Editable ${language} fill-in-the-blank code`}>
+      {lines.map((line, lineIndex) => {
+        const parts = line.split(/(_{3,})/g)
+        const priorLineBlankCount = lines
+          .slice(0, lineIndex)
+          .reduce((count, priorLine) => count + (priorLine.match(/_{3,}/g) ?? []).length, 0)
+        return (
+          <div className="micro-drill-code-line" key={`${lineIndex}-${line}`}>
+            <span className="micro-drill-line-number" aria-hidden="true">{lineIndex + 1}</span>
+            <code>
+              {parts.map((part, partIndex) => {
+                if (!/^_{3,}$/.test(part)) return <span key={partIndex}>{part}</span>
+                const currentBlank = priorLineBlankCount + parts
+                  .slice(0, partIndex)
+                  .filter((priorPart) => /^_{3,}$/.test(priorPart))
+                  .length
+                const value = answers[currentBlank] ?? ''
+                return (
+                  <input
+                    key={partIndex}
+                    className="micro-drill-blank"
+                    value={value}
+                    onChange={(event) => setAnswers((current) => ({ ...current, [currentBlank]: event.target.value }))}
+                    aria-label={`Blank ${currentBlank + 1}, line ${lineIndex + 1}`}
+                    autoCapitalize="off"
+                    autoComplete="off"
+                    autoFocus={currentBlank === 0}
+                    spellCheck={false}
+                    style={{ width: `${Math.min(Math.max(value.length + 1, Math.ceil(part.length * 0.72)), 22)}ch` }}
+                  />
+                )
+              })}
+            </code>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 const normalizePythonCodeForDisplay = (code: string, language: string) => {
   if (normalizeCodeLanguage(language) !== 'python') return code.trim()
 
@@ -2307,12 +2405,13 @@ function App() {
   const [inlineTaskProgress, setInlineTaskProgress] = useState(0)
   const [plainEnglishPromptOpen, setPlainEnglishPromptOpen] = useState(false)
   const [submissionFeedbackOpen, setSubmissionFeedbackOpen] = useState(false)
+  const [microDrillExplanationOpen, setMicroDrillExplanationOpen] = useState(false)
   const [promptToggleDetail, setPromptToggleDetail] = useState<PromptToggleExplanationResponse | null>(null)
   const [plainEnglishPromptLoading, setPlainEnglishPromptLoading] = useState(false)
-  const [headerControlsOpen, setHeaderControlsOpen] = useState(false)
   const [tagsExpanded, setTagsExpanded] = useState(false)
   const [relatedDrawerOpen, setRelatedDrawerOpen] = useState(false)
   const [flowDrawerOpen, setFlowDrawerOpen] = useState(false)
+  const [zenMode, setZenMode] = useState(false)
   const [practiceFlow, setPracticeFlow] = useState<PracticeFlowState | null>(null)
   const [flowMultipleChoiceDeck, setFlowMultipleChoiceDeck] = useState<MultipleChoiceCard[]>([])
   const [flowMultipleChoiceLoading, setFlowMultipleChoiceLoading] = useState(false)
@@ -2350,7 +2449,7 @@ function App() {
   const [, setLiveCoachLoading] = useState(false)
   const [liveCoachError, setLiveCoachError] = useState('')
   const [liveCoachTuning, setLiveCoachTuning] = useState(() => loadStoredLiveCoachTuning())
-  const [submissionTuning] = useState(() => loadStoredSubmissionTuning())
+  const [submissionTuning, setSubmissionTuning] = useState(() => loadStoredSubmissionTuning())
   const [codeEditorTuning] = useState(() => loadStoredCodeEditorTuning())
   const syntaxTheme = theme === 'light-high-contrast' ? vs : vscDarkPlus
   const liveFeedbackEnabled = LIVE_FEEDBACK_ENABLED && liveCoachTuning.enabled
@@ -2379,7 +2478,6 @@ function App() {
   const lastStuckHintInputRef = useRef('')
   const lastMainInputEditAtRef = useRef(0)
   const promptToggleExplanationRequestVersionRef = useRef(0)
-  const coachRequestVersionRef = useRef(0)
   const skillMapDeckRequestVersionRef = useRef(0)
   const multipleChoiceDeckRequestVersionRef = useRef(0)
   const flowMultipleChoiceDeckRequestVersionRef = useRef(0)
@@ -2754,6 +2852,10 @@ function App() {
   }, [liveCoachTuning])
 
   useEffect(() => {
+    saveStoredSubmissionTuning(submissionTuning)
+  }, [submissionTuning])
+
+  useEffect(() => {
     if (practiceMode !== 'recall') return
     if (skillMapLoading) return
     startSession(filteredDeck.length)
@@ -3050,7 +3152,7 @@ function App() {
 
   const submitAttemptToServer = async (payload: AttemptPayload) => {
     try {
-      await fetch(apiUrl('/api/attempts'), {
+      const response = await fetch(apiUrl('/api/attempts'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3062,8 +3164,7 @@ function App() {
           correctAnswer: payload.correctAnswer,
           userAnswer: payload.userAnswer,
           mode: payload.mode,
-          successful: payload.successful,
-          signals: payload.signals,
+          elapsedMs: payload.elapsedMs,
           interactionId: payload.interactionId,
           generatedCardId: card.id,
           generatedCard: { ...card, prompt: practicePrompt },
@@ -3074,10 +3175,14 @@ function App() {
           targetSource: isFlowActive ? 'recall-miss' : 'skill-map',
           targetControl: isFlowActive ? 'system' : 'user',
           formatControl: isFlowActive ? 'system' : 'user',
+          submissionTuning,
+          llmProvider: requestLlmProvider,
         }),
       })
+      if (!response.ok) throw new Error('Unable to submit attempt')
+      return (await response.json()) as SubmissionSaveResponse
     } catch {
-      // silently fail
+      return null
     }
   }
 
@@ -3103,12 +3208,7 @@ function App() {
           correctAnswer: `${payload.correctChoice.id}. ${payload.correctChoice.text}`,
           userAnswer: `${payload.selectedChoice.id}. ${payload.selectedChoice.text}`,
           mode: 'main-recall',
-          successful: payload.correct,
-          signals: {
-            elapsedMs: payload.elapsedMs,
-            coachFeedback: null,
-            submissionRubric: null,
-          },
+          elapsedMs: payload.elapsedMs,
           interactionId: payload.interactionId,
           generatedCardId: activeMultipleChoiceCard.id,
           generatedCard: {
@@ -3127,37 +3227,12 @@ function App() {
               : 'algorithm',
           targetControl: isFlowActive ? 'system' : 'user',
           formatControl: isFlowActive ? 'system' : 'user',
-        }),
-      })
-    } catch {
-      // silently fail
-    }
-  }
-
-  const evaluateSubmittedRecall = async (expectedAnswer: string, userAnswer: string) => {
-    try {
-      const response = await fetch(apiUrl('/api/coach/evaluate-attempt'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cardTitle: card.title,
-          prompt: practicePrompt,
-          expectedAnswer,
-          userAnswer,
-          skillTags: currentSkillTags,
-          templateMode: currentTemplateMode,
           submissionTuning,
           llmProvider: requestLlmProvider,
         }),
       })
-      if (!response.ok) throw new Error('Unable to evaluate attempt')
-      return (await response.json()) as AttemptEvaluationResponse
     } catch {
-      return {
-        sound: userAnswer === expectedAnswer,
-        syntaxValid: userAnswer.trim().length > 0,
-        llmUsed: false,
-      }
+      // silently fail
     }
   }
 
@@ -3186,6 +3261,7 @@ function App() {
     setSubmissionFailureModal(null)
     setPlainEnglishPromptOpen(false)
     setSubmissionFeedbackOpen(false)
+    setMicroDrillExplanationOpen(false)
     setPromptToggleDetail(null)
     setPlainEnglishPromptLoading(false)
     setTagsExpanded(false)
@@ -3386,7 +3462,7 @@ function App() {
     setLiveCoachLoading(true)
     setLiveCoachError('')
     try {
-      const response = await fetch(apiUrl('/api/coach/attempt-feedback'), {
+      const response = await fetch(apiUrl('/api/coach/live-feedback'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3451,110 +3527,11 @@ function App() {
     setLiveCoachTuning((prev) => ({ ...prev, enabled: !prev.enabled }))
   }
 
-  const fetchCoachAttemptFeedback = async (
-    payload: {
-      interactionId: string
-      expectedAnswer: string
-      userAnswer: string
-      elapsedMs: number
-      exact: boolean
-      previousAttempts: RecallAttemptSnapshot[]
-    }
-  ): Promise<CoachAttemptFeedback | null> => {
-    if (!SUBMISSION_FEEDBACK_ENABLED) return null
-
-    const requestCardId = card.id
-    coachRequestVersionRef.current += 1
-    const requestVersion = coachRequestVersionRef.current
-    setCoachFeedback(null)
-    setCoachLoading(true)
-    setCoachError('')
-    setSubmissionFailureModal(null)
-    try {
-      const response = await fetch(apiUrl('/api/coach/attempt-feedback'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cardId: card.id,
-          cardTitle: card.title,
-          prompt: practicePrompt,
-          expectedAnswer: payload.expectedAnswer,
-          userAnswer: payload.userAnswer,
-          elapsedMs: payload.elapsedMs,
-          exact: payload.exact,
-          interactionId: payload.interactionId,
-          skillTags: currentSkillTags,
-          previousAttempts: payload.previousAttempts.map((attempt) => ({
-            attemptNumber: attempt.attemptNumber,
-            exact: attempt.exact,
-            elapsedMs: attempt.elapsedMs,
-          })),
-          questionType: currentQuestionType,
-          mode: 'main-recall',
-          llmProvider: requestLlmProvider,
-          templateMode: currentTemplateMode,
-          enabledTemplateModes: activeTemplateModes,
-          submissionTuning,
-        }),
-      })
-      if (!response.ok) {
-        let parsedError: unknown = null
-        try {
-          parsedError = await response.json()
-        } catch {
-          parsedError = null
-        }
-
-        const defaultProviderLabel =
-          llmProvider === 'auto'
-            ? configuredProviderLabel
-            : providerDisplayLabel(llmProvider)
-        const detail =
-          parsedError &&
-          typeof parsedError === 'object' &&
-          parsedError !== null &&
-          'detail' in parsedError &&
-          typeof (parsedError as { detail?: unknown }).detail === 'object' &&
-          (parsedError as { detail?: unknown }).detail !== null
-            ? ((parsedError as { detail: Record<string, unknown> }).detail)
-            : null
-
-        const code = typeof detail?.code === 'string' ? detail.code : ''
-        if (
-          code === 'submission_feedback_missing_api_key' ||
-          code === 'submission_feedback_no_response' ||
-          code.startsWith('coach_llm_') ||
-          code.startsWith('signal_assessor_')
-        ) {
-          const providerLabel =
-            typeof detail?.providerLabel === 'string' && detail.providerLabel.trim().length > 0
-              ? detail.providerLabel
-              : defaultProviderLabel
-          const message =
-            typeof detail?.message === 'string' && detail.message.trim().length > 0
-              ? detail.message
-              : `Feedback cannot be generated at this time. No response from ${providerLabel}.`
-          setSubmissionFailureModal({
-            providerLabel,
-            message,
-          })
-        }
-        throw new Error('Unable to load coach feedback')
-      }
-      const feedback = (await response.json()) as CoachAttemptFeedback
-      if (currentCardIdRef.current !== requestCardId || coachRequestVersionRef.current !== requestVersion) return null
-      setCoachFeedback(feedback)
-      return feedback
-    } catch {
-      if (currentCardIdRef.current !== requestCardId || coachRequestVersionRef.current !== requestVersion) return null
-      setCoachError('Coach feedback unavailable for this attempt.')
-      setCoachFeedback(null)
-      return null
-    } finally {
-      if (currentCardIdRef.current === requestCardId && coachRequestVersionRef.current === requestVersion) {
-        setCoachLoading(false)
-      }
-    }
+  const toggleMicroDrill = () => {
+    setSubmissionTuning((prev) => ({
+      ...prev,
+      microDrillEnabled: !prev.microDrillEnabled,
+    }))
   }
 
   const fetchSessionPlan = async () => {
@@ -3623,13 +3600,45 @@ function App() {
     const normalizedInput = currentRecallSubmissionInput
     const normalizedInputLines = normalizedInput.split('\n')
     const normalizedTarget = activeRecallTarget
+    const isGhostRep = effectiveSupportLayer === 'ghost-reps'
     recallEvaluationPendingRef.current = true
-    const evaluation = await evaluateSubmittedRecall(normalizedTarget, normalizedInput)
+    if (!isGhostRep) {
+      setCoachFeedback(null)
+      setCoachLoading(true)
+      setCoachError('')
+      setSubmissionFailureModal(null)
+    }
+    const submission = await submitAttemptToServer({
+      mode: 'main-recall',
+      correctAnswer: normalizedTarget,
+      userAnswer: normalizedInput,
+      elapsedMs,
+      interactionId,
+      templateMode: currentTemplateMode,
+      supportLayer: effectiveSupportLayer,
+      liveCoachUsed: liveCoachUsedThisAttempt,
+    })
       .finally(() => {
         recallEvaluationPendingRef.current = false
+        setCoachLoading(false)
       })
-    const sound = evaluation.sound
-    const isGhostRep = effectiveSupportLayer === 'ghost-reps'
+    const sound = submission?.successful ?? normalizedInput === normalizedTarget
+    const storedFeedback = submission?.evaluation?.feedback ?? {}
+    const feedback = Object.keys(storedFeedback).length > 0
+      ? storedFeedback as CoachAttemptFeedback
+      : null
+    if (!isGhostRep) {
+      setCoachFeedback(feedback)
+      if (!submission) {
+        setCoachError('Submission evaluation unavailable for this attempt.')
+      }
+      if (submission?.feedbackUnavailable) {
+        setSubmissionFailureModal({
+          providerLabel: configuredProviderLabel,
+          message: submission.feedbackUnavailable.message,
+        })
+      }
+    }
     const closeEnough = !isGhostRep && sound
     const historyKey = currentRecallHistoryKey
     const currentHistory = mainRecallHistoryByCard[historyKey] ?? []
@@ -3646,33 +3655,6 @@ function App() {
       ...prev,
       [historyKey]: [...(prev[historyKey] ?? []), attemptSnapshot],
     }))
-
-    const feedback = isGhostRep
-      ? null
-      : await fetchCoachAttemptFeedback({
-          interactionId,
-          expectedAnswer: normalizedTarget,
-          userAnswer: normalizedInput,
-          elapsedMs,
-          exact: sound,
-          previousAttempts: currentHistory,
-        })
-
-    await submitAttemptToServer({
-      mode: 'main-recall',
-      correctAnswer: normalizedTarget,
-      userAnswer: normalizedInput,
-      successful: sound,
-      signals: {
-        elapsedMs,
-        coachFeedback: feedback,
-        submissionRubric: feedback?.submissionRubric ?? null,
-      },
-      interactionId,
-      templateMode: currentTemplateMode,
-      supportLayer: effectiveSupportLayer,
-      liveCoachUsed: liveCoachUsedThisAttempt,
-    })
 
     if (practiceFlow?.stage === 'recall') {
       const missedLines = toMultipleChoiceFocusLines(computeLineReview(practiceTarget, normalizedInput).reviews)
@@ -4116,6 +4098,19 @@ function App() {
       }
     }
 
+    if (submissionTuning.microDrillEnabled && coachLoading && effectiveSupportLayer !== 'ghost-reps') {
+      return {
+        label: 'Building next rep',
+        onClick: () => undefined,
+        disabled: true,
+        icon: (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" />
+          </svg>
+        ),
+      }
+    }
+
     if (practiceFlow?.stage === 'ghost' && mainPhase === 'submitted' && !latestSubmittedWasGhostRep) {
       return {
         label: 'Start targeted ghost reps',
@@ -4273,6 +4268,17 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainPhase, practiceFlow])
 
+  useEffect(() => {
+    if (!zenMode) return
+    const handler = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setZenMode(false)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [zenMode])
+
   const flowStatusText = !practiceFlow
     ? 'Anchor the current card, run a full recall, then sequence targeted ghost reps and MCQs from the lines you missed.'
     : practiceFlow.stage === 'recall'
@@ -4363,6 +4369,26 @@ function App() {
     latestSubmittedWasGhostRep,
     mainPhase,
   ])
+  const activeMicroDrill = submissionTuning.microDrillEnabled
+    ? coachFeedback?.microDrill.trim() ?? ''
+    : ''
+  const microDrillContent = useMemo(
+    () => parseMicroDrillContent(activeMicroDrill),
+    [activeMicroDrill]
+  )
+  const microDrillLoading = Boolean(
+    submissionTuning.microDrillEnabled
+    && currentPracticeMode === 'recall'
+    && coachLoading
+    && effectiveSupportLayer !== 'ghost-reps'
+  )
+  const microDrillExplanation = coachFeedback?.microDrillExplanation?.trim()
+    || coachFeedback?.why?.trim()
+    || 'This rep keeps the structure that worked and isolates the decision that broke the original solution.'
+  const microDrillInvariant = coachFeedback?.microDrillInvariant?.trim()
+    || coachFeedback?.nextRepTarget?.trim()
+    || coachFeedback?.primaryFocus?.trim()
+    || 'Validate the new state before recording or expanding it.'
   const submissionFeedbackBlock = feedbackRailModel ? (
     <div
       className={[
@@ -4433,8 +4459,80 @@ function App() {
     </div>
   ) : null
 
+  const microDrillCardGrid = microDrillLoading ? (
+    <div className="card-grid micro-drill-card-grid" aria-live="polite" aria-busy="true">
+      <div className="panel micro-drill-loading-card">
+        <span className="micro-drill-loading-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" />
+          </svg>
+        </span>
+        <div className="micro-drill-loading-copy">
+          <span className="related-problems-eyebrow">Next rep</span>
+          <h3>Shaping your reinforcement question</h3>
+          <p>Keeping what worked. Isolating one decision worth another pass.</p>
+        </div>
+        <div className="micro-drill-loading-line" aria-hidden="true"><span /></div>
+      </div>
+    </div>
+  ) : activeMicroDrill ? (
+    <div className="card-grid micro-drill-card-grid drill-fade-in">
+      <div className="panel micro-drill-question-card">
+        <div className="prompt-toggle-header">
+          <div className="prompt-section-content">
+            <span className="prompt-section-label">Next rep</span>
+            <h3 className="micro-drill-title">Reinforcement question</h3>
+          </div>
+          <button
+            type="button"
+            className={microDrillExplanationOpen ? 'prompt-toggle-button active' : 'prompt-toggle-button'}
+            onClick={() => setMicroDrillExplanationOpen((current) => !current)}
+            aria-expanded={microDrillExplanationOpen}
+            aria-controls={`micro-drill-explanation-${card.id}`}
+          >
+            <span>{microDrillExplanationOpen ? 'Hide' : 'Explain'}</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d={microDrillExplanationOpen ? 'm18 15-6-6-6 6' : 'm6 9 6 6 6-6'} />
+            </svg>
+          </button>
+        </div>
+        <div className="micro-drill-prompt">
+          <MarkdownCodeContent
+            text={microDrillContent.prompt || 'Fill the focused blanks without looking back at the original solution.'}
+            syntaxTheme={syntaxTheme}
+          />
+        </div>
+        {microDrillExplanationOpen && (
+          <div className="micro-drill-explanation" id={`micro-drill-explanation-${card.id}`}>
+            <div>
+              <span>Explanation</span>
+              <p>{microDrillExplanation}</p>
+            </div>
+            <div>
+              <span>Invariant</span>
+              <p>{microDrillInvariant}</p>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="panel micro-drill-answer-card">
+        <label className="answer-label">Fill only the blanks</label>
+        <MicroDrillBlankEditor
+          key={activeMicroDrill}
+          template={microDrillContent.code || activeMicroDrill}
+          language={microDrillContent.language}
+        />
+        <p className="typing-help">Type directly into each quiet underline · Tab moves to the next blank.</p>
+      </div>
+    </div>
+  ) : null
+
   return (
-    <div className={(flowDrawerOpen || (relatedDrawerOpen && relatedLeetCodeSet)) ? 'app app-side-drawer-open' : 'app'}>
+    <div className={[
+      'app',
+      (flowDrawerOpen || (relatedDrawerOpen && relatedLeetCodeSet)) ? 'app-side-drawer-open' : '',
+      zenMode ? 'app-zen-mode' : '',
+    ].filter(Boolean).join(' ')}>
       {SUBMISSION_FEEDBACK_ENABLED && submissionFailureModal && (
         <div className="submission-feedback-modal" onClick={() => setSubmissionFailureModal(null)}>
           <div
@@ -4474,12 +4572,14 @@ function App() {
         <div className="card-header">
           <div className="card-header-main">
             <h3>{headerCardTitle}</h3>
-            <p className="card-badges">
-              <span>{headerCardDifficultyLabel}</span>
-              {(isCoreAlgorithmCard || isMetaCard) && <span aria-hidden="true">•</span>}
-              {isCoreAlgorithmCard && <span className="card-badge-core">core</span>}
-              {isMetaCard && <span className="card-badge-meta">meta</span>}
-            </p>
+            {(!skeletonReference || isCoreAlgorithmCard || isMetaCard) && (
+              <p className="card-badges">
+                {!skeletonReference && <span>{headerCardDifficultyLabel}</span>}
+                {!skeletonReference && (isCoreAlgorithmCard || isMetaCard) && <span aria-hidden="true">•</span>}
+                {isCoreAlgorithmCard && <span className="card-badge-core">core</span>}
+                {isMetaCard && <span className="card-badge-meta">meta</span>}
+              </p>
+            )}
             {visibleCardTags.length > 0 && (
               <div className={tagsExpanded ? 'tags expanded' : 'tags'}>
                 <div className={tagsExpanded ? 'tags-list expanded' : 'tags-list'} id={tagsListId} aria-hidden={!tagsExpanded}>
@@ -4521,11 +4621,10 @@ function App() {
               </div>
             ) : null}
           </div>
-          <div className={headerControlsOpen ? 'card-header-aside card-header-aside-open' : 'card-header-aside'}>
+          <div className="card-header-aside">
             <div
               className="card-header-controls-panel"
               id="card-header-controls-panel"
-              aria-hidden={!headerControlsOpen}
             >
               <div className="card-header-side">
               <div className="practice-mode-control" role="group" aria-label="Practice mode">
@@ -4604,6 +4703,44 @@ function App() {
               <div className="card-side-drawer-actions" aria-label="Card side controls">
                 <button
                   type="button"
+                  className={zenMode ? 'card-side-drawer-toggle zen-mode-toggle active' : 'card-side-drawer-toggle zen-mode-toggle'}
+                  aria-pressed={zenMode}
+                  aria-label={zenMode ? 'Exit Zen mode' : 'Enter Zen mode'}
+                  aria-keyshortcuts={zenMode ? 'Escape' : undefined}
+                  title={zenMode ? 'Exit Zen mode (Esc)' : 'Enter Zen mode'}
+                  onClick={() => {
+                    if (!zenMode) {
+                      setFlowDrawerOpen(false)
+                      setRelatedDrawerOpen(false)
+                      setTagsExpanded(false)
+                    }
+                    setZenMode((current) => !current)
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M8.25 4.5H5.625A1.125 1.125 0 0 0 4.5 5.625V8.25m11.25-3.75h2.625A1.125 1.125 0 0 1 19.5 5.625V8.25m0 7.5v2.625a1.125 1.125 0 0 1-1.125 1.125H15.75m-7.5 0H5.625A1.125 1.125 0 0 1 4.5 18.375V15.75" />
+                    <circle cx="12" cy="12" r="1.5" />
+                  </svg>
+                  <span className="sr-only">Zen mode</span>
+                </button>
+                {currentPracticeMode === 'recall' && (
+                  <button
+                    type="button"
+                    className={submissionTuning.microDrillEnabled ? 'card-side-drawer-toggle active' : 'card-side-drawer-toggle'}
+                    aria-pressed={submissionTuning.microDrillEnabled}
+                    aria-label={submissionTuning.microDrillEnabled ? 'Turn reinforcement drill off' : 'Turn reinforcement drill on'}
+                    title={submissionTuning.microDrillEnabled ? 'Reinforcement drill on' : 'Reinforcement drill off'}
+                    onClick={toggleMicroDrill}
+                    disabled={isFlowActive}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" />
+                    </svg>
+                    <span className="sr-only">Reinforcement drill</span>
+                  </button>
+                )}
+                <button
+                  type="button"
                   className={flowDrawerOpen ? 'card-side-drawer-toggle active' : 'card-side-drawer-toggle'}
                   aria-expanded={flowDrawerOpen}
                   aria-controls="card-flow-panel"
@@ -4656,32 +4793,7 @@ function App() {
                 )}
               </div>
             </div>
-              <button
-                type="button"
-                className="card-header-settings-close"
-                aria-label="Hide card settings"
-                title="Collapse settings"
-                onClick={() => setHeaderControlsOpen(false)}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="m9 18 6-6-6-6" />
-                </svg>
-              </button>
             </div>
-            <button
-              type="button"
-              className={headerControlsOpen ? 'card-header-settings-toggle active' : 'card-header-settings-toggle'}
-              aria-expanded={headerControlsOpen}
-              aria-controls="card-header-controls-panel"
-              aria-label={headerControlsOpen ? 'Hide card settings' : 'Show card settings'}
-              title={headerControlsOpen ? 'Hide card settings' : 'Show card settings'}
-              onClick={() => setHeaderControlsOpen((open) => !open)}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 0 1 1.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.559.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.894.149c-.424.07-.764.383-.929.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 0 1-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.398.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 0 1-.12-1.45l.527-.737c.25-.35.272-.806.108-1.204-.165-.397-.506-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.108-1.204l-.526-.738a1.125 1.125 0 0 1 .12-1.45l.773-.773a1.125 1.125 0 0 1 1.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894Z" />
-                <path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-              </svg>
-            </button>
           </div>
         </div>
 
@@ -4709,8 +4821,9 @@ function App() {
           </div>
         )}
 
+        {microDrillCardGrid ?? (
         <div className="card-grid">
-          <div className="panel">
+          <div className="panel prompt-surface-panel">
             {currentPracticeMode === 'multiple-choice' ? (
               !hasDeck ? (
                 activeLoading ? (
@@ -4798,34 +4911,38 @@ function App() {
                     )}
                     {skeletonReference ? (
                       <section className="skeleton-reference" aria-label={`${card.title} reference`}>
-                        <dl className="skeleton-reference-facts">
+                        <div className="skeleton-reference-overview">
                           <div className="skeleton-reference-fact explanation">
-                            <dt>Explanation</dt>
-                            <dd>{skeletonReference.explanation}</dd>
-                            <div className="skeleton-reference-measures" aria-label="Skeleton measurements">
-                              <span
-                                className="skeleton-reference-measure"
+                            <span className="skeleton-reference-term">Explanation</span>
+                            <p>{skeletonReference.explanation}</p>
+                          </div>
+                          <div className="skeleton-reference-spec" aria-label="Pattern specification">
+                            <dl className="skeleton-reference-spec-grid">
+                              <div
+                                className="skeleton-reference-spec-item"
                                 title="Once the pattern is recognized, how much of the implementation follows the template?"
                               >
-                                Template <strong>{skeletonReference.templateStrength}/10</strong>
-                              </span>
-                              <span
-                                className="skeleton-reference-measure"
+                                <dt>Template</dt>
+                                <dd><strong>{skeletonReference.templateStrength}</strong><span>/10</span></dd>
+                              </div>
+                              <div
+                                className="skeleton-reference-spec-item"
                                 title="How much reasoning is required to map a problem onto this pattern?"
                               >
-                                Abstraction <strong>{skeletonReference.applicationAbstraction}/10</strong>
-                              </span>
-                            </div>
+                                <dt>Abstraction</dt>
+                                <dd><strong>{skeletonReference.applicationAbstraction}</strong><span>/10</span></dd>
+                              </div>
+                              <div className="skeleton-reference-spec-item complexity">
+                                <dt>Time</dt>
+                                <dd>{skeletonReference.timeComplexity}</dd>
+                              </div>
+                            </dl>
                           </div>
-                          <div className="skeleton-reference-fact">
-                            <dt>Invariant</dt>
-                            <dd>{skeletonReference.invariant}</dd>
-                          </div>
-                          <div className="skeleton-reference-fact complexity">
-                            <dt>Time complexity</dt>
-                            <dd>{skeletonReference.timeComplexity}</dd>
-                          </div>
-                        </dl>
+                        </div>
+                        <div className="skeleton-reference-fact invariant">
+                          <span className="skeleton-reference-term">Invariant</span>
+                          <p>{skeletonReference.invariant}</p>
+                        </div>
                       </section>
                     ) : isPlainEnglishPromptOpen && fallbackPlainEnglishPromptDetail && (
                       <div className="prompt-detail" id={plainEnglishPromptDetailId}>
@@ -5100,6 +5217,7 @@ function App() {
           </div>
 
         </div>
+        )}
 
         <div className="card-control-bar">
           <div className="card-control-group">

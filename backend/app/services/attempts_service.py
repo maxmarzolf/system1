@@ -694,9 +694,7 @@ def build_skill_map_overview(
             "supportLayer": support_layer,
             "liveCoachUsed": bool(row["live_coach_used"]),
             "signals": {
-                "submissionRubric": compact_submission_rubric(
-                    stored_signals.get("submission_rubric")
-                ),
+                "evaluation": compact_submission_rubric(stored_signals.get("evaluation")),
             },
         }
         attempts_by_card_mode.setdefault((card_id, template_mode), []).append(attempt)
@@ -858,16 +856,16 @@ def build_skill_map_nodes(algorithm_rows: list[AlgorithmSkillRow]) -> list[Skill
     return list(grouped.values())
 
 
-async def create_attempt(body: AttemptCreate) -> AttemptSaveResult:
+async def create_attempt(
+    body: AttemptCreate,
+    *,
+    successful: bool,
+    evaluation: dict[str, Any],
+) -> AttemptSaveResult:
     now = datetime.now(tz=timezone.utc)
-    submission_rubric = compact_submission_rubric(
-        body.signals.submissionRubric
-        or (body.signals.coachFeedback or {}).get("submissionRubric")
-    )
     signals = {
-        "elapsed_ms": body.signals.elapsedMs,
-        "coach_feedback": body.signals.coachFeedback,
-        "submission_rubric": submission_rubric or None,
+        "elapsed_ms": body.elapsedMs,
+        "evaluation": evaluation,
     }
     row = await insert_submission_attempt_row(
         card_id=body.cardId,
@@ -878,7 +876,7 @@ async def create_attempt(body: AttemptCreate) -> AttemptSaveResult:
         correct_answer=body.correctAnswer,
         user_answer=body.userAnswer,
         mode=body.mode.value,
-        successful=body.successful,
+        successful=successful,
         signals_json=_json.dumps({key: value for key, value in signals.items() if value is not None}),
         interaction_id=body.interactionId,
         generated_card_id=body.generatedCardId,

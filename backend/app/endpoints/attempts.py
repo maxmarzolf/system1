@@ -1,14 +1,14 @@
 from fastapi import APIRouter
 
 from app.models import AttemptCreate, SkillMapNode, SkillMapOverviewResponse
-from app.services import attempts_service
+from app.services import attempts_service, submission_service
 
 router = APIRouter(prefix="/api", tags=["attempts"])
 
 
 @router.post("/attempts", status_code=201)
 async def create_attempt(body: AttemptCreate):
-    return await attempts_service.create_attempt(body)
+    return await submission_service.create_submission(body)
 
 
 @router.get("/skill-map", response_model=list[SkillMapNode])

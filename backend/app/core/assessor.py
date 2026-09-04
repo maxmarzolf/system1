@@ -137,6 +137,8 @@ def assessment_to_live_response(assessment: dict[str, Any]) -> dict[str, Any]:
         "why": str(assessment.get("why", "")),
         "keepInMind": str(assessment.get("keepInMind", "")),
         "microDrill": str(assessment.get("microDrill", "")),
+        "microDrillExplanation": "",
+        "microDrillInvariant": "",
         "nextRepTarget": str(assessment.get("nextRepTarget", "")),
         "strengths": strengths,
         "errorTags": [str(t) for t in assessment.get("errorTags", [])[:6]],
