@@ -394,42 +394,6 @@ type LlmProviderSelection = 'auto' | LlmProvider
 const skillMapDeckRequestCache = new Map<string, Promise<SkillMapDrillsResponse>>()
 const multipleChoiceDeckRequestCache = new Map<string, Promise<MultipleChoiceDrillsResponse>>()
 const promptToggleExplanationRequestCache = new Map<string, Promise<PromptToggleExplanationResponse>>()
-const MCQ_CORE_ALGORITHM_ANCHORS: SkillMapNode[] = [
-  { algorithm: 'Sliding Window', skills: ['fixed vs variable window', 'expand / shrink rhythm', 'frequency maps'] },
-  { algorithm: 'Two Pointers', skills: ['same-direction scan', 'opposing pointers', 'sorted-array leverage'] },
-  { algorithm: 'Binary Search', skills: ['bounds invariant', 'search on answer', 'first / last occurrence'] },
-  { algorithm: 'Trees', skills: ['recursive traversal', 'path state', 'subtree return values'] },
-  { algorithm: 'Graphs', skills: ['visited tracking', 'BFS frontier', 'DFS recursion'] },
-  {
-    algorithm: 'Dynamic Programming',
-    skills: [
-      'overlapping subproblem recognition',
-      'optimal substructure recognition',
-      'state definition',
-      'transition equation',
-      'base cases',
-      'top-down memoization',
-      'bottom-up tabulation',
-      'iteration order',
-      'state dimensions and boundaries',
-      'solution reconstruction',
-      'time and space optimization',
-      'correctness reasoning',
-      'complexity analysis',
-    ],
-  },
-  { algorithm: 'Backtracking', skills: ['choice / explore / undo', 'path state', 'pruning'] },
-  { algorithm: 'Trie', skills: ['prefix tree nodes', 'word markers', 'character transitions'] },
-  { algorithm: 'Heap / Priority Queue', skills: ['top-k maintenance', 'min vs max heap', 'stream processing'] },
-  { algorithm: 'Union Find', skills: ['find with compression', 'union by size', 'component counting'] },
-  { algorithm: 'Intervals', skills: ['sort by boundary', 'merge overlaps', 'sweep decisions'] },
-  { algorithm: 'Prefix Sums', skills: ['running total', 'difference trick', 'remainder buckets'] },
-  { algorithm: 'Monotonic Stack', skills: ['pop trigger invariant', 'next greater / smaller', 'index storage'] },
-  { algorithm: 'Stacks / Queues', skills: ['LIFO/FIFO state', 'simulation', 'monotonic queues'] },
-  { algorithm: 'Linked Lists', skills: ['fast / slow pointers', 'pointer rewiring', 'dummy node'] },
-  { algorithm: 'Matrix / Grid', skills: ['direction vectors', 'bounds checks', 'multi-source BFS'] },
-  { algorithm: 'Sorting', skills: ['local choice rule', 'exchange argument', 'sorted decisions'] },
-]
 
 const requestSkillMapDrills = (body: SkillMapDrillsRequest) => {
   const requestKey = JSON.stringify(body)
@@ -2073,7 +2037,6 @@ const stripInlineAnnotationNotes = (code: string) =>
     .split('\n')
     .map((line) => splitInlineAnnotationLine(line).code)
     .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
     .trimEnd()
 
 const stripHashAnnotationComments = (code: string) =>
@@ -2386,6 +2349,7 @@ function App() {
   const [searchParams, setSearchParams] = useSearchParams()
   const questionType = 'skill-map' as const
   const [practiceMode, setPracticeMode] = useState<PracticeMode>('recall')
+  const [mcqSourceSpecimen, setMcqSourceSpecimen] = useState<MultipleChoiceSpecimenContext | null>(null)
   const [multipleChoiceDifficulty] = useState<MultipleChoiceDifficulty>('Med.')
   const [enabledTemplateModes, setEnabledTemplateModes] = useState<TemplateMode[]>(() => [...DEFAULT_TEMPLATE_MODES])
   const [supportLayer, setSupportLayer] = useState<SupportLayer>('none')
@@ -2418,7 +2382,6 @@ function App() {
   const [flowMultipleChoiceError, setFlowMultipleChoiceError] = useState('')
   const [flowMultipleChoicePosition, setFlowMultipleChoicePosition] = useState(0)
   const [flowMultipleChoiceSelectedChoiceId, setFlowMultipleChoiceSelectedChoiceId] = useState('')
-  const [flowMultipleChoiceReasoning, setFlowMultipleChoiceReasoning] = useState('')
   const [flowMultipleChoiceStartedAt, setFlowMultipleChoiceStartedAt] = useState<number | null>(null)
   const [flowMultipleChoiceSubmittedByCard, setFlowMultipleChoiceSubmittedByCard] = useState<Record<string, string>>({})
 
@@ -2439,7 +2402,6 @@ function App() {
   const [mainStartedAt, setMainStartedAt] = useState<number | null>(null)
   const [mainCloseEnough, setMainCloseEnough] = useState(false)
   const [multipleChoiceSelectedChoiceId, setMultipleChoiceSelectedChoiceId] = useState('')
-  const [multipleChoiceReasoning, setMultipleChoiceReasoning] = useState('')
   const [multipleChoiceStartedAt, setMultipleChoiceStartedAt] = useState<number | null>(null)
   const [multipleChoiceSubmittedByCard, setMultipleChoiceSubmittedByCard] = useState<Record<string, string>>({})
   const [currentInteractionId, setCurrentInteractionId] = useState('')
@@ -2516,36 +2478,6 @@ function App() {
   const requestedSkillMapSignature = useMemo(
     () => JSON.stringify(requestedSkillMap),
     [requestedSkillMap]
-  )
-  const multipleChoiceSkillMap = useMemo<SkillMapNode[]>(() => {
-    if (mcqTuning.sourceMode === 'skill-map') {
-      const selectedNode = skillMap.find((node) => node.algorithm === mcqTuning.skillMapAlgorithm)
-      if (selectedNode) {
-        const selectedMethods = selectedNode.skills.filter((method) => mcqTuning.skillMapSkills.includes(method))
-        return [{
-          algorithm: selectedNode.algorithm,
-          skills: selectedMethods.length > 0 ? selectedMethods : selectedNode.skills,
-        }]
-      }
-      return requestedSkillMap
-    }
-    if (requestedPlaylist) {
-      return playlistQuestionsToSkillMap(requestedPlaylist)
-    }
-    if (focusedPatternNode) {
-      // Anchored launch from dashboard — respect selected methods
-      const focusedMethodSet = new Set(focusedMethodParams)
-      const filteredMethods = focusedMethodSet.size > 0
-        ? focusedPatternNode.skills.filter((method) => focusedMethodSet.has(method))
-        : focusedPatternNode.skills
-      const methods = filteredMethods.length > 0 ? filteredMethods : focusedPatternNode.skills
-      return [{ algorithm: focusedPatternNode.algorithm, skills: methods }]
-    }
-    return MCQ_CORE_ALGORITHM_ANCHORS
-  }, [focusedMethodParams, focusedPatternNode, mcqTuning.skillMapSkills, mcqTuning.skillMapAlgorithm, mcqTuning.sourceMode, requestedPlaylist, requestedSkillMap])
-  const multipleChoiceSkillMapSignature = useMemo(
-    () => JSON.stringify(multipleChoiceSkillMap),
-    [multipleChoiceSkillMap]
   )
   const requestedTemplateMode = focusedTemplateMode ?? DEFAULT_TEMPLATE_MODES[0]
   const requestedTemplateTargets = useMemo(() => {
@@ -2675,31 +2607,26 @@ function App() {
     setMultipleChoiceError('')
     setMultipleChoiceDeck([])
 
-    const cardPatternSlug = getPrimaryPatternTag(card.tags)
-    const specimenPattern = cardPatternSlug ? patternLabelFromSlug(cardPatternSlug) : card.title
-    const cardBasedSkillMap: SkillMapNode[] = [{
-      algorithm: specimenPattern || 'Algorithm',
-      skills: [card.title, ...card.tags.filter((tag) => tag !== 'skill-map').slice(0, 4)],
-    }]
-    const specimenContext: MultipleChoiceSpecimenContext = {
-      cardId: card.id,
-      cardTitle: card.title,
-      algorithm: specimenPattern || 'Algorithm',
-      prompt: practicePrompt,
-      target: practiceTarget,
-      tags: card.tags,
+    if (!mcqSourceSpecimen) {
+      setMultipleChoiceLoading(false)
+      return
     }
-    const sourceMode = mcqTuning.sourceMode
+    const specimenContext = mcqSourceSpecimen
+    const cardBasedSkillMap: SkillMapNode[] = [{
+      algorithm: specimenContext.algorithm,
+      skills: [specimenContext.cardTitle, ...specimenContext.tags.filter((tag) => tag !== 'skill-map').slice(0, 4)],
+    }]
+    const sourceMode = 'card'
     const flowMode = mcqTuning.flowMode
 
     const requestBody: MultipleChoiceDrillsRequest = {
       questionType: `skill-map-mcq:${sourceMode}:${flowMode}`,
       count: multipleChoiceQuestionCount,
-      skillMap: sourceMode === 'card' ? cardBasedSkillMap : multipleChoiceSkillMap,
+      skillMap: cardBasedSkillMap,
       difficulty: multipleChoiceDifficulty,
       sourceMode,
       flowMode,
-      ...(sourceMode === 'card' ? { specimen: specimenContext } : {}),
+      specimen: specimenContext,
       llmProvider: requestLlmProvider,
     }
 
@@ -2734,7 +2661,6 @@ function App() {
     setFlowMultipleChoiceDeck([])
     setFlowMultipleChoicePosition(0)
     setFlowMultipleChoiceSelectedChoiceId('')
-    setFlowMultipleChoiceReasoning('')
     setFlowMultipleChoiceStartedAt(null)
     setFlowMultipleChoiceSubmittedByCard({})
 
@@ -2804,7 +2730,6 @@ function App() {
     setMainStartedAt(null)
     setMainCloseEnough(false)
     setMultipleChoiceSelectedChoiceId('')
-    setMultipleChoiceReasoning('')
     setMultipleChoiceStartedAt(Date.now())
     setMultipleChoiceSubmittedByCard({})
     setCurrentInteractionId('')
@@ -2835,10 +2760,10 @@ function App() {
 
   useEffect(() => {
     if (practiceMode !== 'multiple-choice') return
-    if (mcqTuning.sourceMode === 'card' && skillMapLoading) return
+    if (!mcqSourceSpecimen) return
     void fetchMultipleChoiceDeck()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [practiceMode, llmProvider, requestedQuestionType, multipleChoiceSkillMapSignature, multipleChoiceDifficulty, multipleChoiceQuestionCount, multipleChoiceRefreshToken, mcqTuning.sourceMode, mcqTuning.flowMode, skillMapLoading, skillMapSessionVersion])
+  }, [practiceMode, llmProvider, requestedQuestionType, multipleChoiceDifficulty, multipleChoiceQuestionCount, multipleChoiceRefreshToken, mcqTuning.flowMode, mcqSourceSpecimen])
 
   useEffect(() => {
     if (!practiceFlow || practiceFlow.stage !== 'multiple-choice') return
@@ -3000,7 +2925,7 @@ function App() {
   const currentQuestionType = `${requestedQuestionType}:${recallTargetMode}${inlineEnabled ? `:${inlineLens}` : ''}`
   const currentMultipleChoiceQuestionType = isFlowActive
     ? `skill-map-mcq:card:progressive:flow-cycle-${practiceFlow?.cycle ?? 1}`
-    : `skill-map-mcq:${mcqTuning.sourceMode}:${mcqTuning.flowMode}`
+    : `skill-map-mcq:card:${mcqTuning.flowMode}`
   const currentSkillTags = useMemo(
     () => [
       ...card.tags,
@@ -3018,12 +2943,12 @@ function App() {
     () => [
       ...(activeMultipleChoiceCard?.tags ?? []),
       'mode-multiple-choice',
-      `source-${isFlowActive ? 'card' : mcqTuning.sourceMode}`,
+      'source-card',
       `flow-${isFlowActive ? 'progressive' : mcqTuning.flowMode}`,
       `difficulty-${multipleChoiceDifficulty === 'Hard' ? 'hard' : 'med'}`,
       ...(isFlowActive && practiceFlow ? ['mode-flow', `flow-cycle-${practiceFlow.cycle}`] : []),
     ],
-    [activeMultipleChoiceCard?.tags, isFlowActive, mcqTuning.flowMode, mcqTuning.sourceMode, multipleChoiceDifficulty, practiceFlow]
+    [activeMultipleChoiceCard?.tags, isFlowActive, mcqTuning.flowMode, multipleChoiceDifficulty, practiceFlow]
   )
   const visibleCardTags = useMemo(
     () => headerCardTags.filter((tag) => tag !== 'skill-map' && tag !== 'skill-map-mcq'),
@@ -3192,7 +3117,6 @@ function App() {
     correctChoice: MultipleChoiceChoice
     correct: boolean
     elapsedMs: number
-    reasoning: string
   }) => {
     if (!activeMultipleChoiceCard) return
     try {
@@ -3220,11 +3144,7 @@ function App() {
           supportLayer: 'none',
           liveCoachUsed: false,
           activityFormat: 'multiple-choice',
-          targetSource: isFlowActive || mcqTuning.sourceMode === 'card'
-            ? 'recall-miss'
-            : mcqTuning.sourceMode === 'skill-map'
-              ? 'skill-map'
-              : 'algorithm',
+          targetSource: 'recall-miss',
           targetControl: isFlowActive ? 'system' : 'user',
           formatControl: isFlowActive ? 'system' : 'user',
           submissionTuning,
@@ -3244,10 +3164,8 @@ function App() {
     setMainStartedAt(null)
     setMainCloseEnough(false)
     setMultipleChoiceSelectedChoiceId('')
-    setMultipleChoiceReasoning('')
     setMultipleChoiceStartedAt(Date.now())
     setFlowMultipleChoiceSelectedChoiceId('')
-    setFlowMultipleChoiceReasoning('')
     setFlowMultipleChoiceStartedAt(Date.now())
     setCurrentInteractionId('')
     setLiveCoachFeedback(null)
@@ -3281,7 +3199,6 @@ function App() {
     setFlowMultipleChoiceError('')
     setFlowMultipleChoicePosition(0)
     setFlowMultipleChoiceSelectedChoiceId('')
-    setFlowMultipleChoiceReasoning('')
     setFlowMultipleChoiceStartedAt(null)
     setFlowMultipleChoiceSubmittedByCard({})
     flowMultipleChoiceDeckRequestVersionRef.current += 1
@@ -3746,7 +3663,6 @@ function App() {
     if (!currentInteractionId) setCurrentInteractionId(interactionId)
     const elapsedMs = Math.max(Date.now() - (activeStartedAt ?? Date.now()), 1)
     const correct = selectedChoice.id === correctChoice.id
-    const reasoning = isFlowActive ? flowMultipleChoiceReasoning : multipleChoiceReasoning
 
     if (isFlowActive && practiceFlow) {
       setFlowMultipleChoiceSubmittedByCard((prev) => ({
@@ -3773,7 +3689,6 @@ function App() {
       correctChoice,
       correct,
       elapsedMs,
-      reasoning,
     })
   }
 
@@ -4601,13 +4516,7 @@ function App() {
             {currentPracticeMode === 'multiple-choice' ? (
               <div className="coach-metric-row card-header-metric-row">
                 <span className="coach-metric-chip">
-                  {isFlowActive
-                    ? 'Targeted card flow'
-                    : mcqTuning.sourceMode === 'card'
-                      ? 'Card specimen'
-                      : mcqTuning.sourceMode === 'skill-map'
-                        ? 'Algorithm skill map'
-                        : 'Algorithm anchors'}
+                  {isFlowActive ? 'Targeted card flow' : 'Current card'}
                 </span>
                 <span className="coach-metric-chip">
                   {isFlowActive ? 'Missed-line remediation' : mcqTuning.flowMode === 'progressive' ? 'Socratic chain' : 'Balanced random'}
@@ -4641,10 +4550,21 @@ function App() {
                 <button
                   type="button"
                   className={currentPracticeMode === 'multiple-choice' ? 'practice-mode-button active' : 'practice-mode-button'}
-                  onClick={() => setPracticeMode('multiple-choice')}
+                  onClick={() => {
+                    if (practiceMode === 'multiple-choice') return
+                    setMcqSourceSpecimen({
+                      cardId: card.id,
+                      cardTitle: card.title,
+                      algorithm: primaryPatternTag ? patternLabelFromSlug(primaryPatternTag) : card.title,
+                      prompt: practicePrompt,
+                      target: practiceTarget,
+                      tags: card.tags,
+                    })
+                    setPracticeMode('multiple-choice')
+                  }}
                   aria-pressed={currentPracticeMode === 'multiple-choice'}
                   title="Multiple Choice"
-                  disabled={isFlowActive}
+                  disabled={isFlowActive || skillMapLoading || filteredDeck.length === 0}
                 >
                   MCQ
                 </button>
@@ -4827,7 +4747,7 @@ function App() {
             {currentPracticeMode === 'multiple-choice' ? (
               !hasDeck ? (
                 activeLoading ? (
-                  <div className="skeleton-group">
+                  <div className="skeleton-group multiple-choice-question-loading" role="status" aria-label="Generating multiple-choice question">
                     <div className="skeleton-line w95 tall" />
                     <div className="skeleton-line w80" />
                     <div className="skeleton-line w60" />
@@ -5014,13 +4934,16 @@ function App() {
             {currentPracticeMode === 'multiple-choice' ? (
               !hasDeck ? (
                 activeLoading ? (
-                  <div className="skeleton-group">
-                    <div className="skeleton-line w60" />
-                    <div className="skeleton-line w95 tall" />
-                    <div className="skeleton-line w95 tall" />
-                    <div className="skeleton-line w80 tall" />
-                    <div className="skeleton-line w95 tall" />
-                    <div className="skeleton-line w45" />
+                  <div className="multiple-choice-options" role="status" aria-label="Generating answer choices">
+                    {['A', 'B', 'C', 'D'].map((choice) => (
+                      <div className="multiple-choice-option multiple-choice-option-loading" key={choice} aria-hidden="true">
+                        <span className="multiple-choice-option-id">{choice}</span>
+                        <div className="skeleton-group">
+                          <div className="skeleton-line w95" />
+                          <div className="skeleton-line w60" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ) : (
                   <div className="hint" style={{ marginTop: 0 }}>
@@ -5089,23 +5012,6 @@ function App() {
                       )
                     })}
                   </div>
-                  <label className="multiple-choice-reasoning">
-                    <span>Why? <span className="multiple-choice-reasoning-optional">Optional</span></span>
-                    <textarea
-                      value={isFlowActive ? flowMultipleChoiceReasoning : multipleChoiceReasoning}
-                      onChange={(event) => {
-                        if (isFlowActive) {
-                          setFlowMultipleChoiceReasoning(event.target.value)
-                          return
-                        }
-                        setMultipleChoiceReasoning(event.target.value)
-                      }}
-                      placeholder="Briefly explain why your choice is correct."
-                      rows={3}
-                      maxLength={1200}
-                      disabled={multipleChoiceSubmitted || hasAnsweredCurrent || sessionFinished}
-                    />
-                  </label>
                 </div>
               ) : null
             ) : !hasDeck ? (

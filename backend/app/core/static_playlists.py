@@ -4,7 +4,6 @@ import re
 from textwrap import dedent
 from typing import Any
 
-
 def _slug(value: str) -> str:
     return re.sub(
         r"-+",

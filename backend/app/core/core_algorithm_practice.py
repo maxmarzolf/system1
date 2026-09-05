@@ -4,7 +4,6 @@ import json
 import re
 from typing import Any
 
-
 def _examples(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value]

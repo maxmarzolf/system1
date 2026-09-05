@@ -268,7 +268,8 @@
   display: inline-flex;
   align-items: center;
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
   color: var(--hc-fg-dim);
   white-space: pre;
 }
@@ -276,12 +277,26 @@
 .navbar-counter-loading {
   color: var(--hc-accent);
   text-shadow: 0 0 0.55rem rgba(31, 130, 192, 0.2);
-  letter-spacing: 0.02em;
 }
 
 .navbar-counter-text {
-  display: inline-block;
-  min-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.navbar-counter-glyph {
+  display: inline-flex;
+  justify-content: center;
+  width: 0.65em;
+}
+
+.navbar-counter-separator {
+  width: 0.85em;
+  text-align: center;
+  opacity: 0.5;
 }
 
 .sr-only {
@@ -437,38 +452,6 @@
 .multiple-choice-options {
   display: grid;
   gap: 0.5rem;
-}
-
-.multiple-choice-reasoning {
-  display: grid;
-  gap: 0.45rem;
-  color: var(--hc-fg);
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.multiple-choice-reasoning-optional {
-  color: var(--hc-fg-dim);
-  font-size: 0.68rem;
-  font-weight: 400;
-}
-
-.multiple-choice-reasoning textarea {
-  width: 100%;
-  resize: vertical;
-  border: 1px solid var(--hc-border-dim);
-  border-radius: 0.45rem;
-  background: var(--hc-field-gradient);
-  color: var(--hc-fg);
-  padding: 0.7rem 0.8rem;
-  font: inherit;
-  font-weight: 400;
-  line-height: 1.45;
-}
-
-.multiple-choice-reasoning textarea:focus {
-  border-color: var(--hc-accent);
-  outline: 1px solid var(--hc-accent);
 }
 
 .multiple-choice-option {
@@ -5740,22 +5723,6 @@ button.tune-reset {
   background: color-mix(in srgb, var(--hc-status-chip-error-bg) 76%, var(--workbench-surface-raised));
 }
 
-.card-shell .multiple-choice-reasoning {
-  padding-top: 0.15rem;
-}
-
-.card-shell .multiple-choice-reasoning textarea {
-  border-color: var(--workbench-edge);
-  border-radius: var(--workbench-radius-sm);
-  background: color-mix(in srgb, var(--hc-editor-bg) 76%, var(--workbench-surface-raised));
-}
-
-.card-shell .multiple-choice-reasoning textarea:focus {
-  border-color: var(--hc-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--hc-accent) 14%, transparent);
-  outline: none;
-}
-
 .card-shell .prompt-toggle-button {
   border-radius: var(--workbench-radius-sm);
 }
@@ -6618,6 +6585,22 @@ button.tune-reset {
   background: var(--workbench-surface-raised);
 }
 
+.card-shell .prompt-surface-panel > .multiple-choice-question-loading,
+.card-shell .prompt-surface-panel > .multiple-choice-question-panel {
+  padding: 1.35rem 1.5rem;
+  border: 0;
+  border-radius: 0;
+}
+
+.multiple-choice-option-loading {
+  align-items: center;
+  pointer-events: none;
+}
+
+.multiple-choice-option-loading .skeleton-group {
+  min-width: 0;
+}
+
 .card-shell .prompt-surface-panel > .drill-fade-in {
   min-width: 0;
 }
@@ -6657,6 +6640,11 @@ button.tune-reset {
 }
 
 @media (max-width: 720px) {
+  .card-shell .prompt-surface-panel > .multiple-choice-question-loading,
+  .card-shell .prompt-surface-panel > .multiple-choice-question-panel {
+    padding: 1rem;
+  }
+
   .card-shell .prompt-surface-panel .prompt-surface-section {
     padding: 0.9rem 1rem 1rem;
   }

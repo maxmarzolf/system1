@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { type ReactNode, type RefObject, useEffect, useState } from 'react'
 import { useTheme } from './theme'
 
-const NAVBAR_COUNTER_SCRAMBLE_GLYPHS = ['ア', 'イ', 'ウ', 'エ', 'オ', 'カ', 'キ', 'ク', 'ケ', 'コ', 'サ', 'シ', 'ス', 'セ', 'ソ']
+const NAVBAR_COUNTER_SCRAMBLE_GLYPHS = ['ｱ', 'ｲ', 'ｳ', 'ｴ', 'ｵ', 'ｶ', 'ｷ', 'ｸ', 'ｹ', 'ｺ', 'ｻ', 'ｼ', 'ｽ', 'ｾ', 'ｿ']
 
 const scrambleCounterText = (text: string, frame: number) =>
   text
@@ -39,12 +39,13 @@ function NavbarCounter({
 
     const intervalId = window.setInterval(() => {
       setFrame((current) => current + 1)
-    }, 90)
+    }, 150)
 
     return () => window.clearInterval(intervalId)
   }, [loading])
 
-  const displayText = loading ? scrambleCounterText(text, frame) : text
+  const compactText = text.replace(/\s*\/\s*/g, '/')
+  const displayText = loading ? scrambleCounterText(compactText, frame) : compactText
 
   return (
     <span
@@ -52,8 +53,14 @@ function NavbarCounter({
       aria-live="polite"
       aria-busy={loading}
     >
-      <span className="navbar-counter-text" aria-hidden={loading}>{displayText}</span>
-      {loading && <span className="sr-only">Loading session counter</span>}
+      <span className="navbar-counter-text" aria-hidden="true">
+        {displayText.split('').map((character, index) => (
+          <span className={character === '/' ? 'navbar-counter-separator' : 'navbar-counter-glyph'} key={index}>
+            {character}
+          </span>
+        ))}
+      </span>
+      <span className="sr-only">{loading ? 'Loading session counter' : text}</span>
     </span>
   )
 }

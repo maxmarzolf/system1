@@ -165,17 +165,19 @@ async def test_generate_multiple_choice_drills_response_calls_persist_callback()
 
 
 @pytest.mark.asyncio
-async def test_generate_multiple_choice_drills_response_sends_card_progressive_context() -> None:
+@pytest.mark.parametrize("flow_mode", ["random", "progressive"])
+@pytest.mark.parametrize("with_focus", [False, True])
+async def test_generate_multiple_choice_drills_response_sends_card_context(flow_mode, with_focus) -> None:
     request = MultipleChoiceDrillsRequest(
         count=1,
         skillMap=[SkillMapNode(algorithm="Sliding Window", skills=["current specimen"])],
         difficulty="Med.",
         sourceMode="card",
-        flowMode="progressive",
+        flowMode=flow_mode,
         specimen={
             "cardId": "card-1",
             "cardTitle": "Longest Window",
-            "pattern": "Sliding Window",
+            "algorithm": "Sliding Window",
             "prompt": "Return the longest valid window.",
             "target": "def solve(nums):\n    left = 0\n    return left",
             "tags": ["skill-map", "sliding-window"],
@@ -193,6 +195,8 @@ async def test_generate_multiple_choice_drills_response_sends_card_progressive_c
             },
         },
     )
+    if not with_focus:
+        request.specimen.focus = None
     captured: dict[str, object] = {}
 
     def call_llm_json(system_prompt, payload, *_args, **_kwargs):
@@ -229,13 +233,17 @@ async def test_generate_multiple_choice_drills_response_sends_card_progressive_c
     payload = captured["payload"]
     assert isinstance(payload, dict)
     assert payload["sourceMode"] == "card"
-    assert payload["flowMode"] == "progressive"
+    assert payload["flowMode"] == flow_mode
+    assert payload["specimenContext"] == request.specimen.model_dump()
     assert payload["specimenContext"]["target"].startswith("def solve")
-    assert payload["specimenContext"]["focus"]["missedLines"][0]["lineNumber"] == 2
+    if with_focus:
+        assert payload["specimenContext"]["focus"]["missedLines"][0]["lineNumber"] == 2
     assert "provided specimenContext" in captured["system_prompt"]
-    assert "immediately previous drill" in captured["system_prompt"]
-    assert "missed lines" in captured["system_prompt"]
-    assert response.drills[0].tags[-2:] == ["source-card", "flow-progressive"]
+    if flow_mode == "progressive":
+        assert "immediately previous drill" in captured["system_prompt"]
+    if with_focus:
+        assert "missed lines" in captured["system_prompt"]
+    assert response.drills[0].tags[-2:] == ["source-card", f"flow-{flow_mode}"]
 
 
 @pytest.mark.asyncio

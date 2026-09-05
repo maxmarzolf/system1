@@ -37,7 +37,6 @@ import type { GooglePlaylistTuning } from './googlePlaylistTuning'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 import { getHotkeyReferenceGroups } from './hotkeys'
-import { skillMap } from './data/skill-map'
 
 const trackedDimensions = [
   {
@@ -175,7 +174,6 @@ export default function TunePage() {
   const [codeEditorTuning, setCodeEditorTuning] = useState<CodeEditorTuning>(() => loadStoredCodeEditorTuning())
   const [mcqTuning, setMcqTuning] = useState<McqTuning>(() => loadStoredMcqTuning())
   const [googlePlaylistTuning, setGooglePlaylistTuning] = useState<GooglePlaylistTuning>(() => loadStoredGooglePlaylistTuning())
-  const selectedMcqSkillNode = skillMap.find((node) => node.algorithm === mcqTuning.skillMapAlgorithm) ?? skillMap[0]
 
   useEffect(() => {
     saveStoredLiveCoachTuning(liveCoachTuning)
@@ -223,29 +221,6 @@ export default function TunePage() {
 
   const updateGooglePlaylistTuning = <K extends keyof GooglePlaylistTuning>(key: K, value: GooglePlaylistTuning[K]) => {
     setGooglePlaylistTuning((prev) => ({ ...prev, [key]: value }))
-  }
-
-  const selectMcqSkillPattern = (pattern: string) => {
-    const node = skillMap.find((item) => item.algorithm === pattern)
-    if (!node) return
-    setMcqTuning((prev) => ({
-      ...prev,
-      skillMapAlgorithm: node.algorithm,
-      skillMapSkills: [...node.skills],
-    }))
-  }
-
-  const toggleMcqSkillMethod = (method: string, checked: boolean) => {
-    if (!selectedMcqSkillNode) return
-    setMcqTuning((prev) => {
-      const selected = new Set(prev.skillMapSkills)
-      if (checked) selected.add(method)
-      if (!checked && selected.size > 1) selected.delete(method)
-      return {
-        ...prev,
-        skillMapSkills: selectedMcqSkillNode.skills.filter((item) => selected.has(item)),
-      }
-    })
   }
 
   return (
@@ -415,7 +390,7 @@ export default function TunePage() {
             <TuneSection
               eyebrow="04"
               title="MCQ"
-              copy="Choose where multiple-choice questions come from and how the set should move from one question to the next."
+              copy="Questions are generated from the current card. Choose the set size and how questions progress."
               action={(
                 <button className="secondary tune-reset" type="button" onClick={() => setMcqTuning(defaultMcqTuning)}>
                   Reset
@@ -423,17 +398,6 @@ export default function TunePage() {
               )}
             >
               <div className="tune-control-grid" id="mcq">
-                <SelectControl
-                  label="Question source"
-                  value={mcqTuning.sourceMode}
-                  onChange={(value) => updateMcqTuning('sourceMode', value)}
-                  description="Choose a broad algorithm, a specific mapped skill, or the exact current recall specimen."
-                  options={[
-                    { value: 'algorithm', label: 'Algorithm based' },
-                    { value: 'skill-map', label: 'Algorithm skill map' },
-                    { value: 'card', label: 'Card based' },
-                  ]}
-                />
                 <SelectControl
                   label="Question flow"
                   value={mcqTuning.flowMode}
@@ -453,42 +417,6 @@ export default function TunePage() {
                   description="How many MCQ questions to generate for each new set."
                 />
               </div>
-              {mcqTuning.sourceMode === 'skill-map' && selectedMcqSkillNode ? (
-                <div className="tune-skill-map-target" aria-label="MCQ skill-map target">
-                  <SelectControl
-                    label="Algorithm"
-                    value={selectedMcqSkillNode.algorithm}
-                    onChange={selectMcqSkillPattern}
-                    description="Questions will be generated only from the checked skills below."
-                    options={skillMap.map((node) => ({ value: node.algorithm, label: node.algorithm }))}
-                  />
-                  <fieldset className="tune-skill-checklist">
-                    <legend>Skills</legend>
-                    <div className="tune-skill-checklist-actions">
-                      <button
-                        type="button"
-                        className="secondary"
-                        onClick={() => updateMcqTuning('skillMapSkills', [...selectedMcqSkillNode.skills])}
-                      >
-                        Check all
-                      </button>
-                    </div>
-                    <div className="tune-skill-checklist-grid">
-                      {selectedMcqSkillNode.skills.map((method) => (
-                        <ToggleControl
-                          key={method}
-                          checked={mcqTuning.skillMapSkills.includes(method)}
-                          onChange={(checked) => toggleMcqSkillMethod(method, checked)}
-                          label={method}
-                        />
-                      ))}
-                    </div>
-                    <p className="tune-control-description">
-                      At least one skill stays selected so generated sets always have a target.
-                    </p>
-                  </fieldset>
-                </div>
-              ) : null}
             </TuneSection>
 
             <TuneSection
