@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiUrl } from './api'
-import { practicePlaylists } from './data/playlists'
+import { practicePlaylists, type PracticePlaylist } from './data/playlists'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 
@@ -47,6 +47,10 @@ type SkillMapAlgorithmReadiness = {
 type SkillMapOverviewResponse = {
   algorithms: SkillMapAlgorithmReadiness[]
   spacedRepetition?: SkillMapSpacedRepetition
+}
+
+type PlaylistCatalogResponse = {
+  playlists?: PracticePlaylist[]
 }
 
 type TemplateMode = 'algorithm'
@@ -652,6 +656,7 @@ function SkillAlgorithmIllustration({ slug, pattern }: { slug: string; pattern: 
 export default function DashboardPage() {
   const navigate = useNavigate()
   const [overview, setOverview] = useState<SkillMapOverviewResponse | null>(null)
+  const [catalogPlaylists, setCatalogPlaylists] = useState<PracticePlaylist[] | null>(null)
   const configuredProviderLabel = useConfiguredProviderLabel()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -679,7 +684,28 @@ export default function DashboardPage() {
     void loadOverview()
   }, [])
 
-  const skillMapPlaylists = practicePlaylists
+  useEffect(() => {
+    let cancelled = false
+    const loadCatalogPlaylists = async () => {
+      try {
+        const response = await fetch(apiUrl('/api/catalog/playlists'))
+        if (!response.ok) return
+        const payload = (await response.json()) as PlaylistCatalogResponse
+        if (!cancelled && Array.isArray(payload.playlists) && payload.playlists.length > 0) {
+          setCatalogPlaylists(payload.playlists)
+        }
+      } catch {
+        // Keep the local catalog fallback available when the API is unavailable.
+      }
+    }
+
+    void loadCatalogPlaylists()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const skillMapPlaylists = (catalogPlaylists ?? practicePlaylists)
     .filter((playlist) => playlist.showOnSkillMap)
     .filter((playlist, index, playlists) =>
       playlists.findIndex((candidate) => candidate.slug === playlist.slug) === index

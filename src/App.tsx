@@ -4,7 +4,7 @@ import { vs, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useSearchParams } from 'react-router-dom'
 import RelatedLeetCodeDrawer from './RelatedLeetCodeDrawer'
 import { skillMap, type SkillMapNode } from './data/skill-map'
-import { playlistQuestionsToSkillMap, practicePlaylists } from './data/playlists'
+import { playlistQuestionsToSkillMap, practicePlaylists, type PracticePlaylist } from './data/playlists'
 import { resolveRelatedLeetCodeSet } from './data/related-leetcode'
 import { loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoachTuning'
 import { loadStoredSubmissionTuning, saveStoredSubmissionTuning } from './submissionTuning'
@@ -2354,6 +2354,8 @@ function App() {
   const [enabledTemplateModes, setEnabledTemplateModes] = useState<TemplateMode[]>(() => [...DEFAULT_TEMPLATE_MODES])
   const [supportLayer, setSupportLayer] = useState<SupportLayer>('none')
   const [skillMapDeck, setSkillMapDeck] = useState<Flashcard[]>([])
+  const [catalogPlaylists, setCatalogPlaylists] = useState<PracticePlaylist[] | null>(null)
+  const [catalogSkillMap, setCatalogSkillMap] = useState<SkillMapNode[] | null>(null)
   const [skillMapLoading, setSkillMapLoading] = useState(false)
   const [skillMapError, setSkillMapError] = useState('')
   const [skillMapRefreshToken, setSkillMapRefreshToken] = useState(0)
@@ -2448,13 +2450,57 @@ function App() {
   const focusedModeParam = searchParams.get('focusMode')?.trim() || ''
   const requestedPlaylistSlug = searchParams.get('playlist')?.trim() || ''
   const focusedMethodParams = searchParams.getAll('focusMethod').map((method) => method.trim()).filter(Boolean)
+  useEffect(() => {
+    let cancelled = false
+    const loadCatalogPlaylists = async () => {
+      try {
+        const response = await fetch(apiUrl('/api/catalog/playlists'))
+        if (!response.ok) return
+        const payload = await response.json() as { playlists?: PracticePlaylist[] }
+        if (!cancelled && Array.isArray(payload.playlists) && payload.playlists.length > 0) {
+          setCatalogPlaylists(payload.playlists)
+        }
+      } catch {
+        // Keep the local catalog fallback available when the API is unavailable.
+      }
+    }
+
+    void loadCatalogPlaylists()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadSkillMap = async () => {
+      try {
+        const response = await fetch(apiUrl('/api/skill-map'))
+        if (!response.ok) return
+        const payload = await response.json() as SkillMapNode[]
+        if (!cancelled && Array.isArray(payload) && payload.length > 0) {
+          setCatalogSkillMap(payload)
+        }
+      } catch {
+        // Keep the local taxonomy fallback available when the API is unavailable.
+      }
+    }
+
+    void loadSkillMap()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const availablePlaylists = catalogPlaylists ?? practicePlaylists
+  const availableSkillMap = catalogSkillMap ?? skillMap
   const requestedPlaylist = useMemo(
-    () => practicePlaylists.find((playlist) => playlist.slug === requestedPlaylistSlug) ?? null,
-    [requestedPlaylistSlug]
+    () => availablePlaylists.find((playlist) => playlist.slug === requestedPlaylistSlug) ?? null,
+    [availablePlaylists, requestedPlaylistSlug]
   )
   const focusedPatternNode = useMemo(
-    () => skillMap.find((node) => patternToSlug(node.algorithm) === focusedPatternSlug) ?? null,
-    [focusedPatternSlug]
+    () => availableSkillMap.find((node) => patternToSlug(node.algorithm) === focusedPatternSlug) ?? null,
+    [availableSkillMap, focusedPatternSlug]
   )
   const focusedTemplateMode = useMemo<TemplateMode | null>(() => {
     if (TEMPLATE_MODE_ORDER.includes(focusedModeParam as TemplateMode)) {
@@ -2464,7 +2510,7 @@ function App() {
   }, [focusedModeParam])
   const requestedSkillMap = useMemo<SkillMapNode[]>(() => {
     if (requestedPlaylist) return playlistQuestionsToSkillMap(requestedPlaylist)
-    if (!focusedPatternNode) return skillMap
+    if (!focusedPatternNode) return availableSkillMap
     const focusedMethodSet = new Set(focusedMethodParams)
     const focusedMethods = focusedMethodSet.size > 0
       ? focusedPatternNode.skills.filter((method) => focusedMethodSet.has(method))
@@ -2474,7 +2520,7 @@ function App() {
       algorithm: focusedPatternNode.algorithm,
       skills: [method],
     }))
-  }, [focusedMethodParams, focusedPatternNode, requestedPlaylist])
+  }, [availableSkillMap, focusedMethodParams, focusedPatternNode, requestedPlaylist])
   const requestedSkillMapSignature = useMemo(
     () => JSON.stringify(requestedSkillMap),
     [requestedSkillMap]

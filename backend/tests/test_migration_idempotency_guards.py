@@ -43,7 +43,7 @@ def test_taxonomy_remap_drops_legacy_tables_after_remap() -> None:
 
 def test_seed_taxonomy_prunes_stale_problems_and_retired_skills() -> None:
     source = inspect.getsource(database._seed_taxonomy)
-    assert "DELETE FROM problem WHERE slug <> ALL($1::text[])" in source
+    assert "DELETE FROM problem WHERE source_type IN ('core-catalog', 'core-meta')" in source
     assert "DELETE FROM skill WHERE slug = ANY($1::text[])" in source
 
 
@@ -51,3 +51,36 @@ def test_storage_cleanup_drops_legacy_pattern_method_tables() -> None:
     source = inspect.getsource(database._apply_storage_cleanup)
     assert "DROP TABLE IF EXISTS methods CASCADE;" in source
     assert "DROP TABLE IF EXISTS patterns CASCADE;" in source
+
+
+def test_canonical_problem_schema_is_initialized_before_seeding() -> None:
+    connect_source = inspect.getsource(database.connect)
+    schema_source = inspect.getsource(database._ensure_canonical_problem_schema)
+
+    assert "await _ensure_canonical_problem_schema(pool)" in connect_source
+    assert "ALTER TABLE problem" in schema_source
+    assert "CREATE TABLE IF NOT EXISTS playlist_problem_order" in schema_source
+    assert "submission_problem_slug_fkey" in schema_source
+
+
+def test_canonical_problem_schema_drops_practice_tables() -> None:
+    source = inspect.getsource(database._ensure_canonical_problem_schema)
+
+    for table in (
+        "practice_item_generation_event",
+        "practice_item_focus_profile",
+        "practice_item_related_problem",
+        "playlist_ordering",
+        "playlist_item",
+        "practice_item",
+    ):
+        assert f"DROP TABLE IF EXISTS {table}" in source
+
+
+def test_admin_reset_preserves_static_practice_items() -> None:
+    from app.repositories import admin_repository
+
+    source = inspect.getsource(admin_repository.truncate_practice_history_tables)
+
+    assert "problem WHERE source_type = 'generated-llm'" in source
+    assert "TRUNCATE TABLE" in source

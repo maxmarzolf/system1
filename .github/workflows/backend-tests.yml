@@ -1,0 +1,56 @@
+name: Backend tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: flashcard_user
+          POSTGRES_PASSWORD: flashcard_password
+          POSTGRES_DB: flashcard_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U flashcard_user -d flashcard_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.txt
+      - name: Run backend coverage gate
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://flashcard_user:flashcard_password@localhost:5432/flashcard_db
+        run: |
+          coverage run -m pytest -q
+          coverage report
+      - name: Require integration tests to execute
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://flashcard_user:flashcard_password@localhost:5432/flashcard_db
+        run: |
+          pytest -q -m integration | tee /tmp/integration-tests.txt
+          ! grep -q " skipped" /tmp/integration-tests.txt
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build

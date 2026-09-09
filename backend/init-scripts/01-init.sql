@@ -4,30 +4,6 @@
 -- score_attempts has been replaced by submission as the canonical attempt ledger.
 
 -- ============================================================================
--- Generated Skill Map Cards
--- ============================================================================
-CREATE TABLE IF NOT EXISTS generated_skill_map_cards (
-    id VARCHAR(80) PRIMARY KEY,
-    question_type VARCHAR(50) NOT NULL DEFAULT 'skill-map',
-    title VARCHAR(255) NOT NULL,
-    difficulty VARCHAR(20) NOT NULL CHECK (difficulty IN ('Easy', 'Med.', 'Hard')),
-    prompt TEXT NOT NULL,
-    solution TEXT NOT NULL,
-    missing TEXT NOT NULL,
-    hint TEXT NOT NULL DEFAULT '',
-    tags TEXT[] DEFAULT '{}',
-    llm_used BOOLEAN NOT NULL DEFAULT FALSE,
-    generation_context JSONB,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_generated_skill_map_cards_created
-    ON generated_skill_map_cards(created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_generated_skill_map_cards_tags
-    ON generated_skill_map_cards USING GIN(tags);
-
--- ============================================================================
 -- Multiple Choice Problem Table
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS multiple_choice_problem (
@@ -76,6 +52,7 @@ CREATE TABLE IF NOT EXISTS submission (
     signals JSONB NOT NULL DEFAULT '{"elapsed_ms": 0}'::jsonb CONSTRAINT submission_signals_object_check CHECK (jsonb_typeof(signals) = 'object'),
     interaction_id VARCHAR(80),
     generated_card_id VARCHAR(80),
+    problem_slug VARCHAR(120),
     generated_card JSONB,
     template_mode VARCHAR(20) NOT NULL DEFAULT 'algorithm' CHECK (template_mode IN ('algorithm')),
     support_layer VARCHAR(30) NOT NULL DEFAULT 'none' CHECK (support_layer IN ('none', 'ghost-reps')),
@@ -107,6 +84,9 @@ CREATE INDEX IF NOT EXISTS idx_submission_question_type_created_at
 
 CREATE INDEX IF NOT EXISTS idx_submission_generated_card_id
     ON submission(generated_card_id);
+
+CREATE INDEX IF NOT EXISTS idx_submission_problem_slug_created_at
+    ON submission(problem_slug, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_submission_interaction_id
     ON submission(interaction_id);
@@ -157,6 +137,13 @@ CREATE TABLE IF NOT EXISTS problem (
     difficulty VARCHAR(20) NOT NULL CHECK (difficulty IN ('Easy', 'Med.', 'Hard')),
     description TEXT NOT NULL DEFAULT '',
     code TEXT NOT NULL,
+    source_type VARCHAR(40) NOT NULL DEFAULT 'core-catalog',
+    question_type VARCHAR(50) NOT NULL DEFAULT 'skill-map',
+    prompt TEXT NOT NULL DEFAULT '',
+    missing TEXT NOT NULL DEFAULT '',
+    hint TEXT NOT NULL DEFAULT '',
+    llm_used BOOLEAN NOT NULL DEFAULT FALSE,
+    generation_context JSONB NOT NULL DEFAULT '{}'::jsonb,
     tags TEXT[] DEFAULT '{}',
     leetcode_examples JSONB NOT NULL DEFAULT '[]'::jsonb,
     display_order INTEGER NOT NULL DEFAULT 0,
@@ -169,6 +156,31 @@ CREATE INDEX IF NOT EXISTS idx_problem_algorithm
 
 CREATE INDEX IF NOT EXISTS idx_problem_tags
     ON problem USING GIN(tags);
+
+CREATE TABLE IF NOT EXISTS playlist (
+    slug VARCHAR(120) PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    show_on_skill_map BOOLEAN NOT NULL DEFAULT FALSE,
+    static_deck BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS playlist_problem_order (
+    playlist_slug VARCHAR(120) NOT NULL REFERENCES playlist(slug) ON DELETE CASCADE,
+    order_slug VARCHAR(40) NOT NULL,
+    problem_slug VARCHAR(120) NOT NULL REFERENCES problem(slug) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    tier VARCHAR(120),
+    family VARCHAR(120),
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    PRIMARY KEY (playlist_slug, order_slug, problem_slug),
+    UNIQUE (playlist_slug, order_slug, position)
+);
+
+CREATE INDEX IF NOT EXISTS idx_playlist_problem_order_position
+    ON playlist_problem_order(playlist_slug, order_slug, position);
 
 CREATE TABLE IF NOT EXISTS problem_skill (
     problem_slug VARCHAR(120) NOT NULL REFERENCES problem(slug) ON DELETE CASCADE,
@@ -189,3 +201,16 @@ CREATE TABLE IF NOT EXISTS problem_technique (
 
 CREATE INDEX IF NOT EXISTS idx_problem_technique_technique
     ON problem_technique(technique_slug);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'submission_problem_slug_fkey'
+    ) THEN
+        ALTER TABLE submission
+            ADD CONSTRAINT submission_problem_slug_fkey
+            FOREIGN KEY (problem_slug) REFERENCES problem(slug) ON DELETE RESTRICT;
+    END IF;
+END $$;

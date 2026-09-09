@@ -13,10 +13,8 @@ from app.models import (
     SequentialVariationRequest,
     SkillMapDrillsRequest,
 )
-from app.repositories.coach_repository import (
-    insert_generated_multiple_choice_question_rows,
-    insert_generated_skill_map_card_row,
-)
+from app.repositories.coach_repository import insert_generated_multiple_choice_question_rows
+from app.repositories.unified_catalog_repository import upsert_generated_problem
 from app.services import history_service
 from app.services import drill_generation_service
 from app.services import prompt_explanation_service
@@ -52,8 +50,6 @@ async def coach_prompt_toggle_explanation(body: CoachPromptToggleExplanationRequ
 async def _persist_skill_map_drills(
     drills: list[SkillMapDrillPayload], llm_used: bool, progress_summary: SkillMapProgressSummary
 ) -> None:
-    now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
-
     for drill in drills:
         tags = [str(tag) for tag in drill.get("tags", []) if str(tag).strip()]
         pattern_slug = next((tag for tag in tags if tag != "skill-map"), "")
@@ -63,7 +59,7 @@ async def _persist_skill_map_drills(
             "patternProgress": progress_summary.get("patterns", {}).get(pattern_slug, {}),
             "explanation": str(drill.get("explanation", "") or ""),
         }
-        await insert_generated_skill_map_card_row(
+        await upsert_generated_problem(
             card_id=drill["id"],
             question_type=str(drill.get("questionType") or "skill-map"),
             title=drill["title"],
@@ -75,7 +71,6 @@ async def _persist_skill_map_drills(
             tags=drill["tags"],
             llm_used=llm_used,
             generation_context_json=json.dumps(generation_context),
-            created_at=now,
         )
 
 

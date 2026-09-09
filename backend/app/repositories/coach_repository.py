@@ -165,45 +165,6 @@ async def fetch_practice_history_entries(
     return history
 
 
-async def insert_generated_skill_map_card_row(
-    *,
-    card_id: str,
-    question_type: str,
-    title: str,
-    difficulty: str,
-    prompt: str,
-    solution: str,
-    missing: str,
-    hint: str,
-    tags: list[str],
-    llm_used: bool,
-    generation_context_json: str,
-    created_at: datetime,
-) -> None:
-    async with acquire_connection() as conn:
-        await conn.execute(
-            """
-            INSERT INTO generated_skill_map_cards
-                (id, question_type, title, difficulty, prompt, solution, missing, hint, tags,
-                 llm_used, generation_context, created_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-            ON CONFLICT (id) DO NOTHING
-            """,
-            card_id,
-            question_type,
-            title,
-            difficulty,
-            prompt,
-            solution,
-            missing,
-            hint,
-            tags,
-            llm_used,
-            generation_context_json,
-            created_at,
-        )
-
-
 async def insert_generated_multiple_choice_question_rows(
     *,
     questions: list[dict[str, Any]],

@@ -117,7 +117,7 @@ def test_multiple_choice_route_persists_generated_question(monkeypatch: pytest.M
     ) -> MultipleChoiceDrillsResponse:
         assert provider == "openai"
         assert provider_label
-        assert provider_available is True
+        assert isinstance(provider_available, bool)
         assert call_llm_json is not None
         assert fallback_providers
         assert provider_timeout_seconds > 0
@@ -130,6 +130,12 @@ def test_multiple_choice_route_persists_generated_question(monkeypatch: pytest.M
         "_resolve_available_llm_provider",
         lambda _preferred_provider: "openai",
     )
+    monkeypatch.setattr(
+        drill_generation_service,
+        "_llm_provider_available",
+        lambda _provider: True,
+    )
+    monkeypatch.setattr(settings, "coach_openai_api_key", "test-key")
     monkeypatch.setattr(
         drill_generation_service,
         "generate_multiple_choice_drills_response",

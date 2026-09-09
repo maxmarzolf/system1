@@ -175,15 +175,26 @@ async def insert_submission_attempt_row(
     )
 
     async with acquire_connection() as conn, conn.transaction():
+        problem_slug = None
+        if generated_card_id and not _is_multiple_choice_attempt(
+            generated_card_id=generated_card_id,
+            question_type=question_type,
+            category_tags=category_tags,
+            activity_format=activity_format,
+        ):
+            problem_slug = await conn.fetchval(
+                "SELECT slug FROM problem WHERE slug = $1",
+                generated_card_id,
+            )
         row = await conn.fetchrow(
             """
             INSERT INTO submission
                 (session_id, user_id, multiple_choice_problem_id, answer, question_type, category_tags,
                  correct_answer, successful, signals, interaction_id,
-                 generated_card_id, generated_card, template_mode, support_layer,
+                 generated_card_id, problem_slug, generated_card, template_mode, support_layer,
                  live_coach_used, activity_format,
                  target_source, target_control, format_control, created_at, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
             RETURNING id
             """,
             interaction_id or generated_card_id or multiple_choice_problem_id or "0000",
@@ -197,6 +208,7 @@ async def insert_submission_attempt_row(
             signals_json,
             interaction_id,
             generated_card_id,
+            problem_slug,
             generated_card_json,
             template_mode,
             support_layer,

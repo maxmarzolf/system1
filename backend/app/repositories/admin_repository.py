@@ -4,7 +4,7 @@ from app.repositories.base import acquire_connection
 
 PRACTICE_HISTORY_TABLES = [
     "submission",
-    "generated_skill_map_cards",
+    "generated problem rows",
 ]
 
 
@@ -14,7 +14,7 @@ async def count_practice_history_rows() -> dict[str, int]:
             """
             SELECT
                 (SELECT COUNT(*)::int FROM submission) AS submission,
-                (SELECT COUNT(*)::int FROM generated_skill_map_cards) AS generated_skill_map_cards
+                (SELECT COUNT(*)::int FROM problem WHERE source_type = 'generated-llm') AS generated_problems
             """
         )
 
@@ -23,12 +23,12 @@ async def count_practice_history_rows() -> dict[str, int]:
 
     return {
         "submission": int(row["submission"] or 0),
-        "generated_skill_map_cards": int(row["generated_skill_map_cards"] or 0),
+        "generated_problems": int(row["generated_problems"] or 0),
     }
 
 
 async def truncate_practice_history_tables() -> None:
     async with acquire_connection() as conn:
-        await conn.execute(
-            "TRUNCATE TABLE submission, generated_skill_map_cards RESTART IDENTITY"
-        )
+        async with conn.transaction():
+            await conn.execute("TRUNCATE TABLE submission RESTART IDENTITY")
+            await conn.execute("DELETE FROM problem WHERE source_type = 'generated-llm'")

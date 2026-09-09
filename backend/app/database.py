@@ -24,11 +24,14 @@ async def connect() -> asyncpg.Pool:
     await _apply_storage_cleanup(pool)
     await _ensure_recall_history_schema(pool)
     await _ensure_generated_question_schema(pool)
-    await _ensure_generated_skill_map_card_schema(pool)
     await _backfill_submission_attempts_from_score_attempts(pool)
     await _apply_core_algorithm_naming_migration(pool)
     await _ensure_taxonomy_schema(pool)
     await _seed_taxonomy(pool)
+    await _ensure_canonical_problem_schema(pool)
+    from app.services.unified_catalog_service import seed_canonical_catalog
+
+    await seed_canonical_catalog()
     await _apply_taxonomy_remap_migration(pool)
     return pool
 
@@ -66,29 +69,7 @@ async def _apply_storage_cleanup(db_pool: asyncpg.Pool) -> None:
 
 async def _ensure_recall_history_schema(db_pool: asyncpg.Pool) -> None:
     async with db_pool.acquire() as conn:
-        await conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS generated_skill_map_cards (
-                id VARCHAR(80) PRIMARY KEY,
-                question_type VARCHAR(50) NOT NULL DEFAULT 'skill-map',
-                title VARCHAR(255) NOT NULL,
-                difficulty VARCHAR(20) NOT NULL CHECK (difficulty IN ('Easy', 'Med.', 'Hard')),
-                prompt TEXT NOT NULL,
-                solution TEXT NOT NULL,
-                missing TEXT NOT NULL,
-                hint TEXT NOT NULL DEFAULT '',
-                tags TEXT[] DEFAULT '{}',
-                llm_used BOOLEAN NOT NULL DEFAULT FALSE,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_generated_skill_map_cards_created
-                ON generated_skill_map_cards(created_at DESC);
-
-            CREATE INDEX IF NOT EXISTS idx_generated_skill_map_cards_tags
-                ON generated_skill_map_cards USING GIN(tags);
-            """
-        )
+        await conn.execute("SELECT 1")
 
 
 async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
@@ -776,14 +757,97 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
         )
 
 
-async def _ensure_generated_skill_map_card_schema(db_pool: asyncpg.Pool) -> None:
+async def _ensure_canonical_problem_schema(db_pool: asyncpg.Pool) -> None:
     async with db_pool.acquire() as conn:
         await conn.execute(
             """
-            ALTER TABLE generated_skill_map_cards
-            ADD COLUMN IF NOT EXISTS generation_context JSONB;
+            ALTER TABLE problem
+                ADD COLUMN IF NOT EXISTS source_type VARCHAR(40) NOT NULL DEFAULT 'core-catalog',
+                ADD COLUMN IF NOT EXISTS question_type VARCHAR(50) NOT NULL DEFAULT 'skill-map',
+                ADD COLUMN IF NOT EXISTS prompt TEXT NOT NULL DEFAULT '',
+                ADD COLUMN IF NOT EXISTS missing TEXT NOT NULL DEFAULT '',
+                ADD COLUMN IF NOT EXISTS hint TEXT NOT NULL DEFAULT '',
+                ADD COLUMN IF NOT EXISTS llm_used BOOLEAN NOT NULL DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS generation_context JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+            ALTER TABLE submission
+                ADD COLUMN IF NOT EXISTS problem_slug VARCHAR(120);
+
+            CREATE INDEX IF NOT EXISTS idx_submission_problem_slug_created_at
+                ON submission(problem_slug, created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS playlist (
+                slug VARCHAR(120) PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                show_on_skill_map BOOLEAN NOT NULL DEFAULT FALSE,
+                static_deck BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS playlist_problem_order (
+                playlist_slug VARCHAR(120) NOT NULL REFERENCES playlist(slug) ON DELETE CASCADE,
+                order_slug VARCHAR(40) NOT NULL,
+                problem_slug VARCHAR(120) NOT NULL REFERENCES problem(slug) ON DELETE CASCADE,
+                position INTEGER NOT NULL,
+                tier VARCHAR(120),
+                family VARCHAR(120),
+                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                PRIMARY KEY (playlist_slug, order_slug, problem_slug),
+                UNIQUE (playlist_slug, order_slug, position)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_playlist_problem_order_position
+                ON playlist_problem_order(playlist_slug, order_slug, position);
+
+            DO $$
+            BEGIN
+                IF to_regclass('public.generated_skill_map_cards') IS NOT NULL THEN
+                    INSERT INTO problem (
+                        slug, algorithm_slug, title, difficulty, description, code, tags,
+                        leetcode_examples, source_type, question_type, prompt, missing,
+                        hint, llm_used, generation_context, updated_at
+                    )
+                    SELECT
+                        g.id,
+                        COALESCE((SELECT a.slug FROM algorithm a WHERE a.slug = ANY(g.tags) LIMIT 1), 'meta'),
+                        g.title, g.difficulty, g.prompt, g.solution, COALESCE(g.tags, '{}'),
+                        '[]'::jsonb, 'generated-llm', g.question_type, g.prompt, g.missing,
+                        g.hint, g.llm_used, COALESCE(g.generation_context, '{}'::jsonb), NOW()
+                    FROM generated_skill_map_cards g
+                    ON CONFLICT (slug) DO NOTHING;
+                END IF;
+            END $$;
+
+            UPDATE submission
+            SET problem_slug = generated_card_id
+            WHERE problem_slug IS NULL
+              AND generated_card_id IS NOT NULL
+              AND EXISTS (SELECT 1 FROM problem p WHERE p.slug = submission.generated_card_id);
+
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'submission_problem_slug_fkey'
+                ) THEN
+                    ALTER TABLE submission
+                        ADD CONSTRAINT submission_problem_slug_fkey
+                        FOREIGN KEY (problem_slug) REFERENCES problem(slug) ON DELETE RESTRICT;
+                END IF;
+            END $$;
+
+            DROP TABLE IF EXISTS practice_item_generation_event;
+            DROP TABLE IF EXISTS practice_item_focus_profile;
+            DROP TABLE IF EXISTS practice_item_related_problem;
+            DROP TABLE IF EXISTS playlist_ordering;
+            DROP TABLE IF EXISTS playlist_item;
+            DROP TABLE IF EXISTS practice_item;
             """
         )
+
+        await conn.execute("DROP TABLE IF EXISTS generated_skill_map_cards")
 
 
 async def _backfill_submission_attempts_from_score_attempts(db_pool: asyncpg.Pool) -> None:
@@ -1064,6 +1128,13 @@ async def _ensure_taxonomy_schema(db_pool: asyncpg.Pool) -> None:
                 difficulty VARCHAR(20) NOT NULL CHECK (difficulty IN ('Easy', 'Med.', 'Hard')),
                 description TEXT NOT NULL DEFAULT '',
                 code TEXT NOT NULL,
+                source_type VARCHAR(40) NOT NULL DEFAULT 'core-catalog',
+                question_type VARCHAR(50) NOT NULL DEFAULT 'skill-map',
+                prompt TEXT NOT NULL DEFAULT '',
+                missing TEXT NOT NULL DEFAULT '',
+                hint TEXT NOT NULL DEFAULT '',
+                llm_used BOOLEAN NOT NULL DEFAULT FALSE,
+                generation_context JSONB NOT NULL DEFAULT '{}'::jsonb,
                 tags TEXT[] DEFAULT '{}',
                 leetcode_examples JSONB NOT NULL DEFAULT '[]'::jsonb,
                 display_order INTEGER NOT NULL DEFAULT 0,
@@ -1175,8 +1246,12 @@ async def _seed_taxonomy(db_pool: asyncpg.Pool) -> None:
                     """
                     INSERT INTO problem
                         (slug, algorithm_slug, title, difficulty, description, code,
-                         tags, leetcode_examples, display_order, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, NOW())
+                         tags, leetcode_examples, source_type, question_type, prompt,
+                         missing, hint, display_order, updated_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb,
+                            $10, 'skill-map', $5,
+                            CASE WHEN $10::varchar = 'core-meta' THEN '# core meta complete' ELSE '# core algorithm complete' END,
+                            COALESCE(NULLIF($5, ''), 'Recall the reusable algorithm shape.'), $9, NOW())
                     ON CONFLICT (slug) DO UPDATE SET
                         algorithm_slug = EXCLUDED.algorithm_slug,
                         title = EXCLUDED.title,
@@ -1185,6 +1260,11 @@ async def _seed_taxonomy(db_pool: asyncpg.Pool) -> None:
                         code = EXCLUDED.code,
                         tags = EXCLUDED.tags,
                         leetcode_examples = EXCLUDED.leetcode_examples,
+                        source_type = EXCLUDED.source_type,
+                        question_type = EXCLUDED.question_type,
+                        prompt = EXCLUDED.prompt,
+                        missing = EXCLUDED.missing,
+                        hint = EXCLUDED.hint,
                         display_order = EXCLUDED.display_order,
                         updated_at = NOW()
                     """,
@@ -1197,10 +1277,11 @@ async def _seed_taxonomy(db_pool: asyncpg.Pool) -> None:
                     list(meta["tags"]),
                     json.dumps(list(meta["leetcodeExamples"])),
                     display_order,
+                    "core-meta" if "core-meta" in meta["tags"] else "core-catalog",
                 )
 
             await conn.execute(
-                "DELETE FROM problem WHERE slug <> ALL($1::text[])",
+                "DELETE FROM problem WHERE source_type IN ('core-catalog', 'core-meta') AND slug <> ALL($1::text[])",
                 [slug for slug, _, _, _ in problem_rows],
             )
 
