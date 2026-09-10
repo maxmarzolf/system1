@@ -1,9 +1,10 @@
-export type PracticeFlowStage = 'recall' | 'ghost' | 'multiple-choice'
+export type PracticeFlowStage = 'recall' | 'ghost' | 'multiple-choice' | 'microdrill'
 
 export type HotkeyId =
   | 'flow-full-recall'
   | 'flow-targeted-ghost'
   | 'flow-targeted-mcq'
+  | 'flow-targeted-microdrill'
   | 'primary-recall-action'
   | 'next-targeted-line'
   | 'toggle-ghost-reps'
@@ -65,6 +66,15 @@ const hotkeyDefinitions: HotkeyDefinition[] = [
     description: 'Jump to targeted questions while preserving flow progress.',
     bindings: [{ key: 'm', modifier: 'mod', shift: true }],
     flowStage: 'multiple-choice',
+  },
+  {
+    id: 'flow-targeted-microdrill',
+    group: 'Flow overrides',
+    displayKeys: ['Mod', 'Shift', 'D'],
+    label: 'Microdrill',
+    description: 'Switch the current flow rep to a focused fill-in-the-blank drill.',
+    bindings: [{ key: 'd', modifier: 'mod', shift: true }],
+    flowStage: 'microdrill',
   },
   {
     id: 'primary-recall-action',

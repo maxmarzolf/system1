@@ -10,7 +10,7 @@ def test_micro_drill_is_opt_in_by_default() -> None:
 
     assert tuning["microDrillEnabled"] is False
     prompt = narrator_submission_system_prompt("algorithm", tuning)
-    assert "Return microDrill, microDrillExplanation, and microDrillInvariant as empty strings" in prompt
+    assert "Return microDrill as an empty string" in prompt
 
 
 def test_enabled_micro_drill_preserves_correct_work_and_targets_the_mistake() -> None:
@@ -22,21 +22,17 @@ def test_enabled_micro_drill_preserves_correct_work_and_targets_the_mistake() ->
     assert "Preserve the structures the learner already got right" in prompt
     assert "blank only the decisions tied to the mistake" in prompt
     assert "three or more underscores" in prompt
-    assert "microDrillExplanation" in prompt
-    assert "microDrillInvariant" in prompt
+    assert "microDrillExplanation" not in prompt
+    assert "microDrillInvariant" not in prompt
     assert "Do not reveal the filled answers" in prompt
 
 
-def test_micro_drill_guidance_is_preserved_in_submission_feedback() -> None:
+def test_micro_drill_is_preserved_in_submission_feedback() -> None:
     evaluation = canonical_submission_evaluation(
         {"verdict": "needs-work"},
         {
             "microDrill": "Fill the focused blanks.",
-            "microDrillExplanation": "This variation practices neighbor bookkeeping.",
-            "microDrillInvariant": "Validate and record the neighbor, never the current cell.",
         },
     )
 
     assert evaluation["feedback"]["microDrill"] == "Fill the focused blanks."
-    assert evaluation["feedback"]["microDrillExplanation"] == "This variation practices neighbor bookkeeping."
-    assert evaluation["feedback"]["microDrillInvariant"] == "Validate and record the neighbor, never the current cell."

@@ -1142,6 +1142,20 @@ async def _ensure_taxonomy_schema(db_pool: asyncpg.Pool) -> None:
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
+            ALTER TABLE problem
+                ADD COLUMN IF NOT EXISTS source_type VARCHAR(40) NOT NULL DEFAULT 'core-catalog',
+                ADD COLUMN IF NOT EXISTS question_type VARCHAR(50) NOT NULL DEFAULT 'skill-map',
+                ADD COLUMN IF NOT EXISTS prompt TEXT NOT NULL DEFAULT '',
+                ADD COLUMN IF NOT EXISTS missing TEXT NOT NULL DEFAULT '',
+                ADD COLUMN IF NOT EXISTS hint TEXT NOT NULL DEFAULT '',
+                ADD COLUMN IF NOT EXISTS llm_used BOOLEAN NOT NULL DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS generation_context JSONB NOT NULL DEFAULT '{}'::jsonb,
+                ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}',
+                ADD COLUMN IF NOT EXISTS leetcode_examples JSONB NOT NULL DEFAULT '[]'::jsonb,
+                ADD COLUMN IF NOT EXISTS display_order INTEGER NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
             CREATE INDEX IF NOT EXISTS idx_problem_algorithm
                 ON problem(algorithm_slug, display_order);
 

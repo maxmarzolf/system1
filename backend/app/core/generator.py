@@ -388,6 +388,19 @@ def _rename_block_identifier(lines: list[str], start_index: int, old_name: str, 
         lines[index] = pattern.sub(new_name, lines[index])
 
 
+def _rename_identifier_until_dedent(lines: list[str], start_index: int, old_name: str, new_name: str) -> None:
+    if old_name == new_name:
+        return
+    block_indent = len(lines[start_index]) - len(lines[start_index].lstrip())
+    pattern = re.compile(rf"\b{re.escape(old_name)}\b")
+    for index in range(start_index, len(lines)):
+        stripped = lines[index].strip()
+        indent = len(lines[index]) - len(lines[index].lstrip())
+        if index > start_index and stripped and indent < block_indent:
+            break
+        lines[index] = pattern.sub(new_name, lines[index])
+
+
 def _apply_variable_name_style(code: str, variable_names: str) -> str:
     if variable_names == "concise":
         return str(code or "").strip()
@@ -412,6 +425,21 @@ def _apply_variable_name_style(code: str, variable_names: str) -> str:
         if numeric_loop_match:
             lines[index] = f"{numeric_loop_match.group(1)}{numeric_name}{numeric_loop_match.group(2)}"
             _rename_block_identifier(lines, index, "n", numeric_name)
+            continue
+        queue_match = re.match(r"^(\s*)q(\s*=\s*deque\(.+\)\s*)$", line)
+        if queue_match:
+            lines[index] = f"{queue_match.group(1)}queue{queue_match.group(2)}"
+            _rename_identifier_until_dedent(lines, index, "q", "queue")
+            continue
+        output_match = re.match(r"^(\s*)out(\s*=\s*\[\]\s*)$", line)
+        if output_match:
+            lines[index] = f"{output_match.group(1)}output{output_match.group(2)}"
+            _rename_identifier_until_dedent(lines, index, "out", "output")
+            continue
+        neighbor_loop_match = re.match(r"^(\s*for\s+)ngbr(\s+in\s+.+:\s*)$", line)
+        if neighbor_loop_match:
+            lines[index] = f"{neighbor_loop_match.group(1)}neighbor{neighbor_loop_match.group(2)}"
+            _rename_block_identifier(lines, index, "ngbr", "neighbor")
     return "\n".join(lines).strip()
 
 
@@ -759,6 +787,8 @@ def apply_specimen_tuning_to_target(target: str, raw_tuning: Any) -> str:
     if tuning["comments"] == "omit":
         styled = _strip_python_comments(styled)
     styled = _apply_variable_name_style(styled, tuning["variableNames"])
+    if tuning["comments"] == "omit":
+        styled = _normalize_python_snippet_display(styled)
     return styled.strip()
 
 
@@ -1777,6 +1807,7 @@ def build_generator_context(
         "Inline tasks must be one concise sentence of 16 words or fewer and include the function signature, routine temporaries, guards, assignments, returns, and loop headers. "
         "Never use generic notes like 'update state for next decision', 'move through core step', or 'return final answer'. "
         "Decision notes must avoid legacy mode labels. "
+        "All generated Python targets must follow PEP 8: 4-space indentation, snake_case names, spaces around operators, spaces after commas, and readable names like queue, output, and neighbor instead of q, out, and ngbr. "
         f"{specimen_style_prompt(body.specimenTuning)} "
         "When you return templateTargets, make algorithm the full specimen, coreShape the memorized skeleton, and inline the annotated full specimen. "
         "templatePrompts must be an object keyed by algorithm, coreShape, and inline when those targets are provided. "

@@ -92,8 +92,9 @@ type SkillMapSpacedRepetition = {
   windowEnd: string
   intervals: number[]
   requiredGhostReps: number
-  packets: SpacedRepetitionPacket[]
-  queue: SpacedRepetitionPacket[]
+  tracks?: SpacedRepetitionPacket[]
+  packets?: SpacedRepetitionPacket[]
+  queue?: SpacedRepetitionPacket[]
 }
 
 const readinessTone = (readiness: number) => {
@@ -147,10 +148,11 @@ export function SpacedRepetitionPanel({
     )
   }
 
-  const activeReviews = spacedRepetition.queue
+  const scheduleItems = spacedRepetition.tracks ?? spacedRepetition.packets ?? []
+  const activeReviews = spacedRepetition.queue ?? []
   const reviewPacket = activeReviews[0]
-    ?? nextScheduledPacket(spacedRepetition.packets)
-    ?? spacedRepetition.packets.find(packet => packet.status === 'not_started')
+    ?? nextScheduledPacket(scheduleItems)
+    ?? scheduleItems.find(packet => packet.status === 'not_started')
   const hiddenActiveReviewCount = Math.max(activeReviews.length - 1, 0)
   const activeReviewCopy = activeReviews.length === 0
     ? 'No reviews due'

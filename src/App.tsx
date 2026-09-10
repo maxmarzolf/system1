@@ -1,7 +1,9 @@
-import { type CSSProperties, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vs, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useSearchParams } from 'react-router-dom'
+import FlowBuilder from './FlowBuilder'
+import { FLOW_LABELS, loadFlowConfig, saveFlowConfig, nextFlowStep, expandFlow, type FlowConfig, type FlowStage } from './practiceFlow'
 import RelatedLeetCodeDrawer from './RelatedLeetCodeDrawer'
 import { skillMap, type SkillMapNode } from './data/skill-map'
 import { playlistQuestionsToSkillMap, practicePlaylists, type PracticePlaylist } from './data/playlists'
@@ -85,16 +87,13 @@ type PracticeFlowState = {
   anchorCardId: string
   anchorTitle: string
   cycle: number
-  stage: PracticeFlowStage
+  stage: FlowStage
+  config: FlowConfig
+  step: number
+  runId: string
   focus: MultipleChoiceSpecimenFocus
-  ghostCompleted: number
-  ghostTarget: number
-  mcqCompleted: number
-  mcqTarget: number
 }
 
-const FLOW_GHOST_REP_TARGET = 5
-const FLOW_MCQ_TARGET = 5
 const CARD_MOVE_DOUBLE_TAP_WINDOW_MS = 350
 const SUBMISSION_FEEDBACK_ENABLED = true
 const INLINE_FEEDBACK_ENABLED = true
@@ -119,6 +118,8 @@ type SupportLayer = 'none' | 'ghost-reps'
 type InlineLens = 'pattern' | 'plainEnglish' | 'why' | 'transfer' | 'debug'
 
 type AttemptPayload = {
+  question?: string
+  microdrill?: boolean
   mode: 'main-recall'
   correctAnswer: string
   userAnswer: string
@@ -138,8 +139,6 @@ type CoachAttemptFeedback = {
   why?: string
   keepInMind?: string
   microDrill: string
-  microDrillExplanation?: string
-  microDrillInvariant?: string
   nextRepTarget: string
   strengths: string[]
   errorTags: string[]
@@ -262,22 +261,6 @@ type MultipleChoiceSpecimenContext = {
   focus?: MultipleChoiceSpecimenFocus
 }
 
-type PromptToggleExplanationRequest = {
-  cardId: string
-  cardTitle: string
-  prompt: string
-  target: string
-  tags: string[]
-  llmProvider: string
-}
-
-type PromptToggleExplanationResponse = {
-  plainEnglish: string
-  inputExample: string
-  outputExample: string
-  llmUsed: boolean
-}
-
 type PlainEnglishPromptDetail = {
   plainEnglish: string
   interviewQuestion: string
@@ -393,7 +376,6 @@ type LlmProviderSelection = 'auto' | LlmProvider
 
 const skillMapDeckRequestCache = new Map<string, Promise<SkillMapDrillsResponse>>()
 const multipleChoiceDeckRequestCache = new Map<string, Promise<MultipleChoiceDrillsResponse>>()
-const promptToggleExplanationRequestCache = new Map<string, Promise<PromptToggleExplanationResponse>>()
 
 const requestSkillMapDrills = (body: SkillMapDrillsRequest) => {
   const requestKey = JSON.stringify(body)
@@ -529,31 +511,6 @@ const requestStaticPlaylistDrills = (playlistSlug: string, order: GooglePlaylist
   return request
 }
 
-const requestPromptToggleExplanation = (body: PromptToggleExplanationRequest) => {
-  const requestKey = JSON.stringify(body)
-  const existingRequest = promptToggleExplanationRequestCache.get(requestKey)
-  if (existingRequest) return existingRequest
-
-  const request = fetch(apiUrl('/api/coach/prompt-toggle-explanation'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: requestKey,
-  })
-    .then(async (response) => {
-      if (!response.ok) {
-        throw new Error('Unable to generate plain English explanation')
-      }
-      return (await response.json()) as PromptToggleExplanationResponse
-    })
-    .finally(() => {
-      if (promptToggleExplanationRequestCache.get(requestKey) === request) {
-        promptToggleExplanationRequestCache.delete(requestKey)
-      }
-    })
-
-  promptToggleExplanationRequestCache.set(requestKey, request)
-  return request
-}
 
 const requestMultipleChoiceDrills = (body: MultipleChoiceDrillsRequest) => {
   const requestKey = JSON.stringify(body)
@@ -719,434 +676,6 @@ const getPrimaryPatternTag = (tags: string[]) => {
   }
   if (tags.includes('graph') || tags.includes('graph-bfs')) return 'graphs'
   return 'generic'
-}
-
-const normalizePromptLookup = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ')
-
-const fallbackPlainEnglishPromptDetails: Record<string, PlainEnglishPromptDetail> = {
-  'sliding-window': {
-    plainEnglish: 'What can I learn from a small moving slice of the input?',
-    interviewQuestion:
-      'Given an array and a window size, compute the best value you can get from any contiguous window.',
-    inputExample: 'nums = [1, 4, 2, 10, 3]\nk = 3\n\nmax_window_sum(nums, k)',
-    outputExample: '16',
-    explanation: 'The best window is [4, 2, 10], whose sum is 16.',
-    brassTacks:
-      'Sliding window answers: "What changes when I move the left or right edge one step?"',
-    leetcodeExamples: [
-      'Maximum Average Subarray: keep the best fixed-size window score.',
-      'Longest Substring Without Repeating Characters: expand and shrink until valid.',
-      'Minimum Window Substring: keep the smallest window that satisfies counts.',
-    ],
-  },
-  'two-pointers': {
-    plainEnglish: 'Which side should move so the search space gets smaller?',
-    interviewQuestion:
-      'Given a sorted array and a target, decide whether two values add up to the target.',
-    inputExample: 'nums = [1, 2, 4, 7, 11]\ntarget = 9\n\ntwo_sum_sorted(nums, target)',
-    outputExample: 'true',
-    explanation: 'The values 2 and 7 add up to 9.',
-    brassTacks:
-      'Two pointers answers: "What can I rule out by moving one pointer inward?"',
-    leetcodeExamples: [
-      'Two Sum II: move inward based on the current sum.',
-      'Container With Most Water: move the shorter wall.',
-      'Valid Palindrome: compare mirrored characters.',
-    ],
-  },
-  'binary-search': {
-    plainEnglish: 'Can I discard half of the remaining choices?',
-    interviewQuestion:
-      'Given a sorted array and a target, return the index of the target or -1 if it is missing.',
-    inputExample: 'nums = [1, 3, 5, 7, 9]\ntarget = 7\n\nbinary_search(nums, target)',
-    outputExample: '3',
-    explanation: 'The value 7 is at index 3.',
-    brassTacks:
-      'Binary search answers: "Which half can no longer contain the answer?"',
-    leetcodeExamples: [
-      'Search Insert Position: find the first valid slot.',
-      'Find First and Last Position: search for boundaries.',
-      'Koko Eating Bananas: binary search the answer.',
-    ],
-  },
-  graphs: {
-    plainEnglish: 'What nodes are reachable from this starting node?',
-    interviewQuestion:
-      'Given a graph represented as an adjacency list and a starting node, return all nodes that can be reached from the starting node.',
-    inputExample: `graph = {
-    "A": ["B", "C"],
-    "B": ["D"],
-    "C": ["E"],
-    "D": [],
-    "E": [],
-    "F": ["G"]
-}
-
-bfs("A", graph)`,
-    outputExample: '{"A", "B", "C", "D", "E"}',
-    explanation:
-      'Because starting at "A", you can reach B, C, D, and E, but not F or G.',
-    brassTacks:
-      'BFS answers: "Starting here, what can I get to if I move one edge at a time?"',
-    leetcodeExamples: [
-      'Number of Islands: starting from one land cell, what connected land cells can I reach?',
-      'Clone Graph: starting from one graph node, what whole connected component can I visit/copy?',
-      'Course / prerequisite graphs: from this course, what downstream courses are reachable?',
-      'Rotting Oranges: from rotten oranges, what fresh oranges can be reached over time?',
-    ],
-  },
-  'graph-traversal': {
-    plainEnglish: 'What order or reachability fact does this graph structure force?',
-    interviewQuestion:
-      'Given a directed graph, process nodes in an order that respects the edges.',
-    inputExample: 'courses = 4\nprereqs = [[1, 0], [2, 0], [3, 1], [3, 2]]\n\ncourse_order(courses, prereqs)',
-    outputExample: '[0, 1, 2, 3]',
-    explanation: 'Course 0 unlocks 1 and 2, and both must come before 3.',
-    brassTacks:
-      'Graph traversal answers: "What can I visit next, and what must wait?"',
-    leetcodeExamples: [
-      'Course Schedule: track prerequisites with indegrees.',
-      'Pacific Atlantic Water Flow: traverse reachable cells from borders.',
-      'Network Delay Time: expand shortest known paths.',
-    ],
-  },
-  backtracking: {
-    plainEnglish: 'What choices can I try, and how do I undo one cleanly?',
-    interviewQuestion:
-      'Given a set of numbers, return every subset that can be formed.',
-    inputExample: 'nums = [1, 2]\n\nsubsets(nums)',
-    outputExample: '[[], [1], [1, 2], [2]]',
-    explanation: 'Each number can be included or skipped, producing every possible subset.',
-    brassTacks:
-      'Backtracking answers: "Choose, explore, undo, then try the next choice."',
-    leetcodeExamples: [
-      'Subsets: include or skip each item.',
-      'Combination Sum: explore choices while the target remains possible.',
-      'Permutations: choose from remaining unused values.',
-    ],
-  },
-  heap: {
-    plainEnglish: 'Which item should come out next if I only care about priority?',
-    interviewQuestion:
-      'Given a stream of numbers, keep track of the k largest values seen so far.',
-    inputExample: 'nums = [5, 1, 3, 9, 2]\nk = 2\n\ntop_k(nums, k)',
-    outputExample: '[9, 5]',
-    explanation: 'The two largest values are 9 and 5.',
-    brassTacks:
-      'Heap answers: "What should be easiest to remove: smallest, largest, or next best?"',
-    leetcodeExamples: [
-      'Kth Largest Element: maintain the best k candidates.',
-      'Merge K Sorted Lists: repeatedly take the smallest head.',
-      'Task Scheduler: prioritize the most constrained tasks.',
-    ],
-  },
-  'union-find': {
-    plainEnglish: 'Are these things in the same connected group?',
-    interviewQuestion:
-      'Given connections between nodes, count how many connected components remain.',
-    inputExample: 'n = 5\nedges = [[0, 1], [1, 2], [3, 4]]\n\ncount_components(n, edges)',
-    outputExample: '2',
-    explanation: 'Nodes 0, 1, and 2 form one group; nodes 3 and 4 form another.',
-    brassTacks:
-      'Union Find answers: "Who is your group leader after these connections?"',
-    leetcodeExamples: [
-      'Number of Connected Components: merge endpoints of each edge.',
-      'Redundant Connection: detect the edge that closes a cycle.',
-      'Accounts Merge: union emails that belong together.',
-    ],
-  },
-  'dynamic-programming': {
-    plainEnglish: 'What smaller answers do I need before I can answer this one?',
-    interviewQuestion:
-      'Given n steps, count how many ways you can climb if you take 1 or 2 steps at a time.',
-    inputExample: 'n = 5\n\nclimb_stairs(n)',
-    outputExample: '8',
-    explanation: 'The answer builds from the number of ways to reach the previous two steps.',
-    brassTacks:
-      'Dynamic programming answers: "What state summarizes everything I need so far?"',
-    leetcodeExamples: [
-      'Climbing Stairs: combine the previous two states.',
-      'House Robber: choose take or skip for each house.',
-      'Coin Change: build best answers from smaller amounts.',
-    ],
-  },
-  dp: {
-    plainEnglish: 'What smaller answers do I need before I can answer this one?',
-    interviewQuestion:
-      'Given n steps, count how many ways you can climb if you take 1 or 2 steps at a time.',
-    inputExample: 'n = 5\n\nclimb_stairs(n)',
-    outputExample: '8',
-    explanation: 'The answer builds from the number of ways to reach the previous two steps.',
-    brassTacks:
-      'Dynamic programming answers: "What state summarizes everything I need so far?"',
-    leetcodeExamples: [
-      'Climbing Stairs: combine the previous two states.',
-      'House Robber: choose take or skip for each house.',
-      'Coin Change: build best answers from smaller amounts.',
-    ],
-  },
-  intervals: {
-    plainEnglish: 'Do these ranges overlap, touch, or need to stay separate?',
-    interviewQuestion:
-      'Given a list of intervals, merge all overlapping intervals.',
-    inputExample: 'intervals = [[1, 3], [2, 6], [8, 10]]\n\nmerge(intervals)',
-    outputExample: '[[1, 6], [8, 10]]',
-    explanation: '[1, 3] and [2, 6] overlap, so they combine into [1, 6].',
-    brassTacks:
-      'Intervals answers: "After sorting, does the next range extend the current one?"',
-    leetcodeExamples: [
-      'Merge Intervals: combine overlapping ranges.',
-      'Meeting Rooms II: count simultaneous active intervals.',
-      'Insert Interval: place one range and merge neighbors.',
-    ],
-  },
-  'prefix-sums': {
-    plainEnglish: 'Can I answer a range question with two stored totals?',
-    interviewQuestion:
-      'Given an array, quickly return the sum between two indexes.',
-    inputExample: 'nums = [2, 1, 3, 4]\nleft = 1\nright = 3\n\nrange_sum(nums, left, right)',
-    outputExample: '8',
-    explanation: 'The values from index 1 through 3 are 1, 3, and 4, which sum to 8.',
-    brassTacks:
-      'Prefix sums answer: "What changed between the total before and the total after?"',
-    leetcodeExamples: [
-      'Range Sum Query: subtract two prefix totals.',
-      'Subarray Sum Equals K: remember earlier running totals.',
-      'Continuous Subarray Sum: group prefix remainders.',
-    ],
-  },
-  'monotonic-stack': {
-    plainEnglish: 'What earlier items are resolved by this new item?',
-    interviewQuestion:
-      'Given daily temperatures, return how many days each day waits for a warmer temperature.',
-    inputExample: 'temps = [73, 74, 75, 71]\n\ndaily_temperatures(temps)',
-    outputExample: '[1, 1, 0, 0]',
-    explanation: '73 waits one day for 74, and 74 waits one day for 75.',
-    brassTacks:
-      'Monotonic stack answers: "Which unresolved previous values does this value finally beat?"',
-    leetcodeExamples: [
-      'Daily Temperatures: resolve colder days when a warmer day appears.',
-      'Next Greater Element: pop everything beaten by the current value.',
-      'Largest Rectangle in Histogram: resolve bars when height drops.',
-    ],
-  },
-  stack: {
-    plainEnglish: 'What earlier items are resolved by this new item?',
-    interviewQuestion:
-      'Given daily temperatures, return how many days each day waits for a warmer temperature.',
-    inputExample: 'temps = [73, 74, 75, 71]\n\ndaily_temperatures(temps)',
-    outputExample: '[1, 1, 0, 0]',
-    explanation: '73 waits one day for 74, and 74 waits one day for 75.',
-    brassTacks:
-      'Monotonic stack answers: "Which unresolved previous values does this value finally beat?"',
-    leetcodeExamples: [
-      'Daily Temperatures: resolve colder days when a warmer day appears.',
-      'Next Greater Element: pop everything beaten by the current value.',
-      'Largest Rectangle in Histogram: resolve bars when height drops.',
-    ],
-  },
-  generic: {
-    plainEnglish: 'What reusable interview move is this card asking me to practice?',
-    interviewQuestion:
-      'Given an input with a recognizable structure, apply the matching pattern and return the requested result.',
-    inputExample: 'input = ...\n\nsolve(input)',
-    outputExample: 'expected result',
-    explanation: 'The concise prompt names the core move; the code target shows how that move is written.',
-    brassTacks:
-      'The goal is to translate the short pattern reminder into a working interview solution.',
-    leetcodeExamples: [
-      'Identify the pattern from the input shape.',
-      'Maintain the key invariant while scanning or recursing.',
-      'Return the result once the structure has been fully processed.',
-    ],
-  },
-}
-
-const patternDisplayLabel = (patternTag: string) =>
-  patternTag
-    .split('-')
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(' ') || 'Algorithm'
-
-const extractFunctionSignature = (target: string) => {
-  const firstDef = target.match(/^\s*def\s+([A-Za-z_]\w*)\s*\(([^)]*)\):/m)
-  if (!firstDef) return { name: 'solve', params: '', call: 'solve(...)', signature: 'solve(...)' }
-  const params = firstDef[2].trim()
-  return {
-    name: firstDef[1],
-    params,
-    call: `${firstDef[1]}(${params})`,
-    signature: `${firstDef[1]}(${params})`,
-  }
-}
-
-const functionWords = (name: string) =>
-  name
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .split(/[_\s]+/)
-    .filter(Boolean)
-    .join(' ')
-
-const sampleValueForParam = (param: string) => {
-  const name = param.split('=', 1)[0].replace(/[*:\s].*$/g, '').trim().toLowerCase()
-  if (!name) return 'value'
-  if (/^(s|str|string|expr|expression)$/.test(name) || name.includes('text')) return '"3+2*2"'
-  if (name.includes('graph') || name.includes('adj')) return '{"A": ["B"], "B": []}'
-  if (name.includes('interval')) return '[[1, 3], [2, 6]]'
-  if (name.includes('edge')) return '[[0, 1], [1, 2]]'
-  if (name.includes('grid') || name.includes('matrix')) return '[[1, 0], [1, 1]]'
-  if (name.includes('target')) return '5'
-  if (name === 'k') return '2'
-  if (name === 'n') return '5'
-  if (name.includes('num') || name.includes('arr') || name.includes('item') || name.includes('value')) return '[1, 2, 3]'
-  return '...'
-}
-
-const getSignatureParamNames = (signature: ReturnType<typeof extractFunctionSignature>) =>
-  signature.params
-    .split(',')
-    .map((param) => param.trim())
-    .filter(Boolean)
-    .map((param) => param.split(':', 1)[0].split('=', 1)[0].trim())
-    .filter(Boolean)
-
-const buildInputExampleFromSignature = (signature: ReturnType<typeof extractFunctionSignature>) => {
-  const params = signature.params
-    .split(',')
-    .map((param) => param.trim())
-    .filter(Boolean)
-    .map((param) => param.split(':', 1)[0].split('=', 1)[0].trim())
-    .filter(Boolean)
-
-  if (params.length === 0) return `${signature.name}()`
-
-  const assignments = params.map((param) => `${param} = ${sampleValueForParam(param)}`)
-  return `${assignments.join('\n')}\n\n${signature.name}(${params.join(', ')})`
-}
-
-const extractReturnSummary = (target: string) => {
-  const returns = [...target.matchAll(/^\s*return\s+(.+)$/gm)].map((match) => match[1].trim())
-  if (returns.length === 0) return 'the value produced by the generated target'
-  return `the expression \`${returns[returns.length - 1]}\``
-}
-
-const inferPlainEnglishProblem = (
-  prompt: string,
-  tags: string[],
-  cardTitle: string,
-  target: string,
-  signature: ReturnType<typeof extractFunctionSignature>,
-): PlainEnglishPromptDetail => {
-  const name = signature.name.toLowerCase()
-  const loweredTarget = target.toLowerCase()
-  const primaryPattern = getPrimaryPatternTag(tags)
-  const patternLabel = patternDisplayLabel(primaryPattern)
-  const fallbackDetail = fallbackPlainEnglishPromptDetails[primaryPattern] ?? fallbackPlainEnglishPromptDetails.generic
-  const readablePrompt = normalizePromptLookup(prompt).replace(/\.$/, '')
-  const returnSummary = extractReturnSummary(target)
-  const params = getSignatureParamNames(signature)
-
-  if (
-    primaryPattern === 'sliding-window' &&
-    ((name.includes('window') && name.includes('max') && name.includes('sum')) ||
-      /window_sum\s*=\s*sum\([^)]*\[:k\]\)/.test(target) ||
-      /nums\[right\]\s*-\s*nums\[right\s*-\s*k\]/.test(target))
-  ) {
-    return {
-      plainEnglish: 'What is the largest sum of any contiguous window of length k?',
-      interviewQuestion:
-        'Given an array of numbers and an integer k, return the maximum sum of any contiguous subarray of length k.',
-      inputExample: `nums = [1, 4, 2, 10, 3]\nk = 3\n\n${signature.name}(nums, k)`,
-      outputExample: '16',
-      explanation: 'The best length-3 window is [4, 2, 10], whose sum is 16.',
-      brassTacks: 'Keep the current k-sized window sum, slide one step, and remember the best sum seen.',
-      leetcodeExamples: [
-        'Maximum Average Subarray I: fixed-size window scoring.',
-        'Subarray Product Less Than K: window score changes as edges move.',
-        'Permutation in String: fixed-size window with counts.',
-      ],
-    }
-  }
-
-  if (name.includes('eval') && (name.includes('expr') || loweredTarget.includes("op = '+'"))) {
-    return {
-      plainEnglish: 'What number does this arithmetic expression evaluate to?',
-      interviewQuestion:
-        'Given a string expression containing non-negative integers and +, -, *, and /, evaluate it with normal operator precedence.',
-      inputExample: `s = "3+2*2"\n\n${signature.name}(s)`,
-      outputExample: '7',
-      explanation: 'Multiplication is applied before addition, so the expression is 3 + 4.',
-      brassTacks: 'Accumulate the current number, push signed terms, collapse multiply/divide immediately, then sum the stack.',
-      leetcodeExamples: [
-        'Basic Calculator II: evaluate +, -, *, and /.',
-        'Basic Calculator: parse signs and nested structure.',
-        'Evaluate Reverse Polish Notation: use a stack for pending values.',
-      ],
-    }
-  }
-
-  if (primaryPattern === 'backtracking' && (name.includes('subset') || name.includes('enumerate') || loweredTarget.includes('path.append'))) {
-    const itemParam = params[0] || 'items'
-    return {
-      plainEnglish: `What are all the take/skip combinations from ${itemParam}?`,
-      interviewQuestion:
-        `Given ${itemParam}, return every subset that can be formed by choosing or skipping each item.`,
-      inputExample: `${itemParam} = [1, 2]\n\n${signature.name}(${itemParam})`,
-      outputExample: '[[], [2], [1], [1, 2]]',
-      explanation: 'Each item has two choices: leave it out or include it in the current path.',
-      brassTacks: 'At each index, recurse once without the item, then choose it, recurse, and undo the choice.',
-      leetcodeExamples: [
-        'Subsets: choose or skip each item.',
-        'Combination Sum: choose, recurse, and backtrack.',
-        'Permutations: track a path and undo choices.',
-      ],
-    }
-  }
-
-  if (primaryPattern === 'binary-search' || name.includes('lower_bound') || name.includes('binary_search')) {
-    return {
-      plainEnglish: 'Where is the first position that satisfies the search condition?',
-      interviewQuestion:
-        `Given sorted input, implement ${signature.signature} by repeatedly discarding the half that cannot contain the answer.`,
-      inputExample: buildInputExampleFromSignature(signature),
-      outputExample: 'the first valid index, or the insertion/search result',
-      explanation: 'Each midpoint check decides which half still might contain the boundary.',
-      brassTacks: 'Keep the answer inside [left, right), probe mid, then move one boundary.',
-      leetcodeExamples: [
-        'Search Insert Position: find the first legal slot.',
-        'Find First and Last Position: locate boundaries.',
-        'Koko Eating Bananas: binary search the answer.',
-      ],
-    }
-  }
-
-  const action = functionWords(signature.name)
-  return {
-    plainEnglish: `What should ${action} return?`,
-    interviewQuestion:
-      `Implement ${signature.signature}: ${readablePrompt || `return the ${action} result for the given input`}.`,
-    inputExample: buildInputExampleFromSignature(signature),
-    outputExample: `returns ${returnSummary}`,
-    explanation:
-      `${cardTitle} is a ${patternLabel} card. The function name and target code define the concrete problem this prompt is asking for.`,
-    brassTacks:
-      readablePrompt || `Write ${signature.signature} so the returned value matches the function's name.`,
-    leetcodeExamples: [
-      ...fallbackDetail.leetcodeExamples.slice(0, 2),
-      `${patternLabel}: return the accumulated answer.`,
-    ],
-  }
-}
-
-const getPlainEnglishPromptDetail = (
-  prompt: string,
-  tags: string[],
-  cardTitle: string,
-  target: string,
-): PlainEnglishPromptDetail => {
-  const signature = extractFunctionSignature(target)
-  return inferPlainEnglishProblem(prompt, tags, cardTitle, target, signature)
 }
 
 const normalizeTyping = (value: string) =>
@@ -2043,7 +1572,6 @@ const stripHashAnnotationComments = (code: string) =>
   code
     .split('\n')
     .map((line) => line.split('#', 1)[0].trimEnd())
-    .filter((line) => line.trim().length > 0)
     .join('\n')
     .trimEnd()
 
@@ -2161,47 +1689,64 @@ const parseMicroDrillContent = (text: string): MicroDrillContent => {
   }
 }
 
-function MicroDrillBlankEditor({ template, language }: { template: string, language: string }) {
+function MicroDrillBlankEditor({ template, language, syntaxTheme, theme, onAnswerChange, disabled = false }: {
+  template: string
+  language: string
+  syntaxTheme: Record<string, CSSProperties>
+  theme: AppTheme
+  onAnswerChange?: (answer: { code: string; complete: boolean }) => void
+  disabled?: boolean
+}) {
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [fallbackValue, setFallbackValue] = useState(template)
   const lines = useMemo(() => template.split('\n'), [template])
   const blankCount = useMemo(() => (template.match(/_{3,}/g) ?? []).length, [template])
 
+  useEffect(() => {
+    let index = 0
+    const code = template.replace(/_{3,}/g, () => answers[index++] ?? '')
+    onAnswerChange?.({ code: blankCount ? code : fallbackValue, complete: blankCount ? Array.from({ length: blankCount }, (_, i) => answers[i]?.trim()).every(Boolean) : Boolean(fallbackValue.trim()) })
+  }, [answers, blankCount, fallbackValue, onAnswerChange, template])
+
   if (blankCount === 0) {
     return (
-      <textarea
-        className="micro-drill-fallback-editor"
+      <RecallCodeEditor
         value={fallbackValue}
-        onChange={(event) => setFallbackValue(event.target.value)}
-        aria-label="Reinforcement answer editor"
-        spellCheck={false}
-        rows={Math.max(lines.length, 5)}
+        language={language}
+        theme={theme}
+        editable={!disabled}
+        placeholder="Complete the code"
+        lineMeta={[]}
+        minHeight={Math.max(lines.length * 20 + 30, 180)}
+        intellisense={false}
+        commonPatterns={false}
+        onChange={setFallbackValue}
+        onSubmitHotkey={() => undefined}
       />
     )
   }
 
   return (
     <div className="micro-drill-code" role="group" aria-label={`Editable ${language} fill-in-the-blank code`}>
-      {lines.map((line, lineIndex) => {
-        const parts = line.split(/(_{3,})/g)
-        const priorLineBlankCount = lines
-          .slice(0, lineIndex)
-          .reduce((count, priorLine) => count + (priorLine.match(/_{3,}/g) ?? []).length, 0)
-        return (
-          <div className="micro-drill-code-line" key={`${lineIndex}-${line}`}>
-            <span className="micro-drill-line-number" aria-hidden="true">{lineIndex + 1}</span>
-            <code>
-              {parts.map((part, partIndex) => {
-                if (!/^_{3,}$/.test(part)) return <span key={partIndex}>{part}</span>
-                const currentBlank = priorLineBlankCount + parts
-                  .slice(0, partIndex)
-                  .filter((priorPart) => /^_{3,}$/.test(priorPart))
-                  .length
+      <SyntaxHighlighter
+        language={language}
+        style={syntaxTheme}
+        customStyle={{ margin: 0, padding: 0, background: 'transparent', font: 'inherit' }}
+        codeTagProps={{ style: { font: 'inherit' } }}
+        wrapLines
+        renderer={({ rows, stylesheet }) => {
+          let blankIndex = 0
+          const renderNode = (node: rendererNode, key: string, lineIndex: number): ReactNode => {
+            if (node.type === 'text') {
+              return String(node.value ?? '').split(/(_{3,})/g).map((part, partIndex) => {
+                if (!/^_{3,}$/.test(part)) return part
+                const currentBlank = blankIndex++
                 const value = answers[currentBlank] ?? ''
                 return (
                   <input
-                    key={partIndex}
+                    key={`${key}-${partIndex}`}
                     className="micro-drill-blank"
+                    disabled={disabled}
                     value={value}
                     onChange={(event) => setAnswers((current) => ({ ...current, [currentBlank]: event.target.value }))}
                     aria-label={`Blank ${currentBlank + 1}, line ${lineIndex + 1}`}
@@ -2209,14 +1754,29 @@ function MicroDrillBlankEditor({ template, language }: { template: string, langu
                     autoComplete="off"
                     autoFocus={currentBlank === 0}
                     spellCheck={false}
-                    style={{ width: `${Math.min(Math.max(value.length + 1, Math.ceil(part.length * 0.72)), 22)}ch` }}
+                    style={{ width: `${Math.max(value.length + 1, Math.ceil(part.length * 0.72))}ch` }}
                   />
                 )
-              })}
-            </code>
-          </div>
-        )
-      })}
+              })
+            }
+            const classes = node.properties?.className ?? []
+            const style = Object.assign({}, ...classes.map((name: string) => stylesheet[name]))
+            return (
+              <span key={key} style={style}>
+                {node.children?.map((child, index) => renderNode(child, `${key}-${index}`, lineIndex))}
+              </span>
+            )
+          }
+          return rows.map((row, lineIndex) => (
+            <span className="micro-drill-code-line" key={lineIndex}>
+              <span className="micro-drill-line-number" aria-hidden="true">{lineIndex + 1}</span>
+              <span className="micro-drill-code-content">{renderNode(row, `${lineIndex}`, lineIndex)}</span>
+            </span>
+          ))
+        }}
+      >
+        {template}
+      </SyntaxHighlighter>
     </div>
   )
 }
@@ -2254,6 +1814,24 @@ const renderInlineMarkdownText = (text: string) => {
     }
     return <span key={index}>{part}</span>
   })
+}
+
+function MicroDrillInstructions({ text }: { text: string }) {
+  return (
+    <div className="micro-drill-instructions">
+      {text.split(/\r?\n/).filter((line) => line.trim()).map((line, index) => {
+        const heading = line.match(/^ {0,3}#{1,6}\s+(.+?)\s*$/)
+        if (heading) {
+          return (
+            <h3 className="micro-drill-instruction-heading" key={index}>
+              {renderInlineMarkdownText(heading[1].replace(/\s+#+\s*$/, ''))}
+            </h3>
+          )
+        }
+        return <span key={index}>{renderInlineMarkdownText(line)}</span>
+      })}
+    </div>
+  )
 }
 
 function MarkdownCodeContent({
@@ -2344,6 +1922,86 @@ function MarkdownCodeContent({
   )
 }
 
+type FlowMicroDrill = { prompt: string; template: string; solution: string; language: string }
+
+function FlowMicroDrillCard({ title, prompt, target, focus, rep, provider, theme, syntaxTheme, random, onSave, onNext }: {
+  title: string; prompt: string; target: string; focus: string; rep: number; provider: string
+  theme: AppTheme; syntaxTheme: Record<string, CSSProperties>; random: boolean
+  onSave: (drill: FlowMicroDrill, answer: string, elapsedMs: number, interactionId: string) => Promise<SubmissionSaveResponse | null>
+  onNext: () => void
+}) {
+  const [drill, setDrill] = useState<FlowMicroDrill | null>(null)
+  const [error, setError] = useState('')
+  const [retry, setRetry] = useState(0)
+  const [answer, setAnswer] = useState({ code: '', complete: false })
+  const [saving, setSaving] = useState(false)
+  const [result, setResult] = useState<SubmissionSaveResponse | null>(null)
+  const startedAt = useRef(Date.now())
+  const savingRef = useRef(false)
+  const interactionId = useRef(createInteractionId())
+  useEffect(() => {
+    const controller = new AbortController()
+    setDrill(null)
+    setError('')
+    void (async () => {
+      try {
+        const response = await fetch(apiUrl('/api/coach/micro-drill'), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
+          body: JSON.stringify({ cardTitle: title, prompt, target, focus, rep, llmProvider: provider }),
+        })
+        const payload = await response.json()
+        if (!response.ok) throw new Error(typeof payload.detail === 'string' ? payload.detail : 'Microdrill generation failed. Try again.')
+        if (!controller.signal.aborted) {
+          setDrill(payload as FlowMicroDrill)
+          startedAt.current = Date.now()
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) setError(error instanceof Error ? error.message : 'Unable to generate microdrill.')
+      }
+    })()
+    return () => controller.abort()
+  }, [title, prompt, target, focus, rep, provider, retry])
+
+  const submit = async () => {
+    if (!drill || !answer.complete || savingRef.current || result) return
+    savingRef.current = true
+    setSaving(true)
+    setError('')
+    try {
+      const saved = await onSave(drill, answer.code, Math.max(1, Date.now() - startedAt.current), interactionId.current)
+      if (!saved || !saved.saved) throw new Error('Your rep could not be saved. Please try again.')
+      setResult(saved)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unable to submit microdrill.')
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
+  }
+  return (
+    <div className="card-grid micro-drill-card-grid drill-fade-in">
+      <div className="panel micro-drill-question-card">
+        <div className="micro-drill-header"><span className="micro-drill-eyebrow">Microdrill · Rep {rep}</span></div>
+        {drill ? <div className="micro-drill-prompt"><MicroDrillInstructions text={drill.prompt} /></div> : !error && <p role="status">Preparing your microdrill…</p>}
+        {error && <p role="alert">{error}</p>}
+        {!drill && error && <button type="button" className="secondary" onClick={() => setRetry(value => value + 1)}>Try again</button>}
+        {result && <div className="submission-feedback-detail" role="status">
+          <p>{result.evaluation.feedback.fullFeedback || (result.successful ? 'Sound. Rep complete.' : 'Rep logged. Review the focused decision before continuing.')}</p>
+          {result.feedbackUnavailable && <p>{result.feedbackUnavailable.message}</p>}
+        </div>}
+      </div>
+      {drill && <div className="panel micro-drill-answer-card">
+        <span className="answer-label">Fill only the blanks</span>
+        <MicroDrillBlankEditor template={drill.template} language={drill.language} theme={theme} syntaxTheme={syntaxTheme} onAnswerChange={setAnswer} disabled={saving || Boolean(result)} />
+        <p className="typing-help">Tab moves to the next blank.</p>
+        <button type="button" className="primary" disabled={!result && (!answer.complete || saving)} onClick={result ? onNext : () => void submit()}>
+          {result ? (random ? 'Reveal next rep' : 'Next flow rep') : saving ? 'Checking your rep…' : 'Submit microdrill'}
+        </button>
+      </div>}
+    </div>
+  )
+}
+
 function App() {
   const { theme } = useTheme()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -2369,15 +2027,12 @@ function App() {
   const [inlineEnabled, setInlineEnabled] = useState(false)
   const [inlineLens] = useState<InlineLens>('pattern')
   const [inlineTaskProgress, setInlineTaskProgress] = useState(0)
-  const [plainEnglishPromptOpen, setPlainEnglishPromptOpen] = useState(false)
-  const [submissionFeedbackOpen, setSubmissionFeedbackOpen] = useState(false)
-  const [microDrillExplanationOpen, setMicroDrillExplanationOpen] = useState(false)
-  const [promptToggleDetail, setPromptToggleDetail] = useState<PromptToggleExplanationResponse | null>(null)
-  const [plainEnglishPromptLoading, setPlainEnglishPromptLoading] = useState(false)
   const [tagsExpanded, setTagsExpanded] = useState(false)
   const [relatedDrawerOpen, setRelatedDrawerOpen] = useState(false)
   const [flowDrawerOpen, setFlowDrawerOpen] = useState(false)
   const [zenMode, setZenMode] = useState(false)
+  const flowInteractionVersionRef = useRef(0)
+  const [flowConfig, setFlowConfig] = useState(loadFlowConfig)
   const [practiceFlow, setPracticeFlow] = useState<PracticeFlowState | null>(null)
   const [flowMultipleChoiceDeck, setFlowMultipleChoiceDeck] = useState<MultipleChoiceCard[]>([])
   const [flowMultipleChoiceLoading, setFlowMultipleChoiceLoading] = useState(false)
@@ -2432,7 +2087,9 @@ function App() {
   const shouldFocusMainInputRef = useRef(false)
   const pendingGhostFocusLineRef = useRef<number | null>(null)
   const previewCodeContainerRef = useRef<HTMLDivElement | null>(null)
+  const cardContainerRef = useRef<HTMLElement | null>(null)
   const [recallMinHeight, setRecallMinHeight] = useState<number | undefined>(undefined)
+  const [cardFlowPanelMaxHeight, setCardFlowPanelMaxHeight] = useState<number | undefined>(undefined)
   const currentCardIdRef = useRef('')
   const liveCoachRequestVersionRef = useRef(0)
   const recallEvaluationPendingRef = useRef(false)
@@ -2441,7 +2098,6 @@ function App() {
   const stuckHintDepthRef = useRef(0)
   const lastStuckHintInputRef = useRef('')
   const lastMainInputEditAtRef = useRef(0)
-  const promptToggleExplanationRequestVersionRef = useRef(0)
   const skillMapDeckRequestVersionRef = useRef(0)
   const multipleChoiceDeckRequestVersionRef = useRef(0)
   const flowMultipleChoiceDeckRequestVersionRef = useRef(0)
@@ -2731,8 +2387,8 @@ function App() {
     }
 
     const requestBody: MultipleChoiceDrillsRequest = {
-      questionType: `skill-map-mcq:card:progressive:flow-cycle-${practiceFlow.cycle}`,
-      count: practiceFlow.mcqTarget,
+      questionType: `skill-map-mcq:card:progressive:flow-${practiceFlow.runId}-step-${practiceFlow.step}`,
+      count: 1,
       skillMap: cardBasedSkillMap,
       difficulty: multipleChoiceDifficulty,
       sourceMode: 'card',
@@ -2816,7 +2472,7 @@ function App() {
     if (flowMultipleChoiceDeck.length > 0) return
     void fetchFlowMultipleChoiceDeck()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [practiceFlow?.stage, practiceFlow?.cycle, practiceFlow?.focus.focusSummary, multipleChoiceDifficulty, requestLlmProvider])
+  }, [practiceFlow?.stage, practiceFlow?.step, practiceFlow?.runId, multipleChoiceDifficulty, requestLlmProvider])
 
   useEffect(() => {
     saveStoredLiveCoachTuning(liveCoachTuning)
@@ -2840,8 +2496,31 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [practiceMode, multipleChoiceSessionVersion, multipleChoiceLoading])
 
+  useEffect(() => {
+    const cardElement = cardContainerRef.current
+    if (!cardElement) return undefined
+
+    const updateCardFlowPanelMaxHeight = () => {
+      const nextHeight = Math.max(0, Math.round(cardElement.getBoundingClientRect().height))
+      setCardFlowPanelMaxHeight((currentHeight) => (
+        currentHeight === nextHeight ? currentHeight : nextHeight
+      ))
+    }
+
+    updateCardFlowPanelMaxHeight()
+
+    const resizeObserver = new ResizeObserver(updateCardFlowPanelMaxHeight)
+    resizeObserver.observe(cardElement)
+    window.addEventListener('resize', updateCardFlowPanelMaxHeight)
+
+    return () => {
+      resizeObserver.disconnect()
+      window.removeEventListener('resize', updateCardFlowPanelMaxHeight)
+    }
+  }, [])
+
   const currentDeckIndex = sessionOrder[sessionPosition] ?? 0
-  const card = filteredDeck[currentDeckIndex] ?? filteredDeck[0] ?? emptySkillMapCard
+  const card = (practiceFlow ? filteredDeck.find(item => item.id === practiceFlow.anchorCardId) : filteredDeck[currentDeckIndex]) ?? filteredDeck[0] ?? emptySkillMapCard
   const multipleChoiceCard = multipleChoiceDeck[currentDeckIndex] ?? multipleChoiceDeck[0] ?? null
   const flowMultipleChoiceCard = flowMultipleChoiceDeck[flowMultipleChoicePosition] ?? flowMultipleChoiceDeck[0] ?? null
   const isFlowActive = practiceFlow !== null
@@ -2904,54 +2583,9 @@ function App() {
     () => generatedPracticePrompt || buildPracticePrompt(currentTemplateMode, primaryPatternTag),
     [currentTemplateMode, generatedPracticePrompt, primaryPatternTag]
   )
-  const fallbackPlainEnglishPromptDetail = useMemo(
-    () => card.plainEnglishPromptDetail ?? getPlainEnglishPromptDetail(practicePrompt, card.tags, card.title, plainPracticeTarget),
-    [card.plainEnglishPromptDetail, card.tags, card.title, plainPracticeTarget, practicePrompt]
-  )
   const skeletonReference = card.tags.includes('google-skeletons') ? card.skeletonApplicability : null
-  const isPlainEnglishPromptOpen = plainEnglishPromptOpen
-  const plainEnglishPromptDetailId = `plain-english-prompt-${card.id}`
   const submissionFeedbackDetailId = `submission-feedback-detail-${card.id}`
-  const promptToggleRequestKey = `${card.id}:${practicePrompt}:${practiceTarget}:${requestLlmProvider}`
   const tagsListId = `card-tags-${card.id}`
-
-  const fetchPlainEnglishPromptExplanation = async () => {
-    const requestCardId = card.id
-    promptToggleExplanationRequestVersionRef.current += 1
-    const requestVersion = promptToggleExplanationRequestVersionRef.current
-    setPlainEnglishPromptLoading(true)
-
-    try {
-      const payload = await requestPromptToggleExplanation({
-        cardId: requestCardId,
-        cardTitle: card.title,
-        prompt: practicePrompt,
-        target: practiceTarget,
-        tags: card.tags,
-        llmProvider: requestLlmProvider,
-      })
-      if (currentCardIdRef.current !== requestCardId || promptToggleExplanationRequestVersionRef.current !== requestVersion) return
-      setPromptToggleDetail(payload)
-    } catch {
-      if (currentCardIdRef.current !== requestCardId || promptToggleExplanationRequestVersionRef.current !== requestVersion) return
-      setPromptToggleDetail({
-        plainEnglish: fallbackPlainEnglishPromptDetail.plainEnglish,
-        inputExample: fallbackPlainEnglishPromptDetail.inputExample,
-        outputExample: fallbackPlainEnglishPromptDetail.outputExample,
-        llmUsed: false,
-      })
-    } finally {
-      if (currentCardIdRef.current === requestCardId && promptToggleExplanationRequestVersionRef.current === requestVersion) {
-        setPlainEnglishPromptLoading(false)
-      }
-    }
-  }
-
-  useEffect(() => {
-    setPromptToggleDetail(null)
-    setPlainEnglishPromptLoading(false)
-    promptToggleExplanationRequestVersionRef.current = 0
-  }, [promptToggleRequestKey])
 
   const flowGhostTarget = useMemo(
     () => buildFlowGhostTarget(practiceFlow?.focus.missedLines ?? []),
@@ -3021,10 +2655,10 @@ function App() {
   const currentInlineTask = inlineEnabled && mainPhase === 'typing' && !isGhostRepsEnabled
     ? inlineTaskProgression[inlineTaskProgress]
     : undefined
-  const hasAnsweredCurrent = Boolean(activeCardId && Object.prototype.hasOwnProperty.call(sessionResults, activeCardId))
+  const hasAnsweredCurrent = !isFlowActive && Boolean(activeCardId && Object.prototype.hasOwnProperty.call(sessionResults, activeCardId))
   const sessionCounterText =
     isFlowActive && practiceFlow
-      ? `Flow ${practiceFlow.cycle}`
+      ? `${FLOW_LABELS[practiceFlow.stage]} · ${practiceFlow.step + 1}`
       : sessionOrder.length === 0
       ? '0 / 0'
       : `${Math.min(sessionPosition + 1, Math.max(sessionOrder.length, 1))} / ${sessionOrder.length}`
@@ -3129,8 +2763,8 @@ function App() {
         body: JSON.stringify({
           cardId: card.id,
           cardTitle: card.title,
-          question: practicePrompt,
-          questionType: currentQuestionType,
+          question: payload.question ?? practicePrompt,
+          questionType: payload.microdrill ? `${currentQuestionType}:microdrill` : currentQuestionType,
           categoryTags: currentSkillTags,
           correctAnswer: payload.correctAnswer,
           userAnswer: payload.userAnswer,
@@ -3138,7 +2772,7 @@ function App() {
           elapsedMs: payload.elapsedMs,
           interactionId: payload.interactionId,
           generatedCardId: card.id,
-          generatedCard: { ...card, prompt: practicePrompt },
+          generatedCard: { ...card, prompt: payload.question ?? practicePrompt },
           templateMode: payload.templateMode,
           supportLayer: payload.supportLayer,
           liveCoachUsed: payload.liveCoachUsed,
@@ -3146,7 +2780,7 @@ function App() {
           targetSource: isFlowActive ? 'recall-miss' : 'skill-map',
           targetControl: isFlowActive ? 'system' : 'user',
           formatControl: isFlowActive ? 'system' : 'user',
-          submissionTuning,
+          submissionTuning: isFlowActive ? { ...submissionTuning, microDrillEnabled: false } : submissionTuning,
           llmProvider: requestLlmProvider,
         }),
       })
@@ -3223,13 +2857,7 @@ function App() {
     setCoachLoading(false)
     setCoachError('')
     setSubmissionFailureModal(null)
-    setPlainEnglishPromptOpen(false)
-    setSubmissionFeedbackOpen(false)
-    setMicroDrillExplanationOpen(false)
-    setPromptToggleDetail(null)
-    setPlainEnglishPromptLoading(false)
     setTagsExpanded(false)
-    promptToggleExplanationRequestVersionRef.current = 0
     liveCoachRequestVersionRef.current = 0
     liveCoachSnapshotRef.current = null
     lastLiveCoachDecisionKeyRef.current = ''
@@ -3251,29 +2879,33 @@ function App() {
   }
 
   const startPracticeFlow = () => {
+    flowInteractionVersionRef.current += 1
     if (!hasRecallDeck || sessionFinished) return
+    saveFlowConfig(flowConfig)
+    const first = nextFlowStep(flowConfig, 0)
     setPracticeMode('recall')
     setSupportLayer('none')
     resetFlowMultipleChoiceState()
     setPracticeFlow({
       anchorCardId: card.id,
       anchorTitle: card.title,
-      cycle: 1,
-      stage: 'recall',
+      ...first,
+      config: structuredClone(flowConfig),
+      step: 0,
+      runId: createInteractionId(),
       focus: {
         sequenceStage: 'recall',
-        focusSummary: '',
-        missedLines: [],
+        focusSummary: `Practice the core decisions in ${card.title}.`,
+        missedLines: practiceTarget.split('\n').flatMap((expected, index) => expected.trim()
+          ? [{ lineNumber: index + 1, expected, actual: '', status: 'missing' as const }]
+          : []),
       },
-      ghostCompleted: 0,
-      ghostTarget: FLOW_GHOST_REP_TARGET,
-      mcqCompleted: 0,
-      mcqTarget: FLOW_MCQ_TARGET,
     })
     resetPerCardInteraction()
   }
 
   const stopPracticeFlow = () => {
+    flowInteractionVersionRef.current += 1
     setPracticeFlow(null)
     setSupportLayer('none')
     resetFlowMultipleChoiceState()
@@ -3281,49 +2913,25 @@ function App() {
     resetPerCardInteraction()
   }
 
-  const advanceFlowMultipleChoice = () => {
+  const advancePracticeFlow = () => {
+    flowInteractionVersionRef.current += 1
     if (!practiceFlow) return
-
-    if (flowMultipleChoicePosition < Math.max(flowMultipleChoiceDeck.length - 1, 0)) {
-      setFlowMultipleChoicePosition((prev) => prev + 1)
-      return
-    }
-
-    setPracticeFlow((current) => current
-      ? {
-          ...current,
-          cycle: current.cycle + 1,
-          stage: 'recall',
-          focus: {
-            sequenceStage: 'recall',
-            focusSummary: '',
-            missedLines: [],
-          },
-          ghostCompleted: 0,
-          mcqCompleted: 0,
-        }
-      : current)
+    const step = practiceFlow.step + 1
+    const next = nextFlowStep(practiceFlow.config, step)
+    setPracticeFlow({ ...practiceFlow, ...next, step })
     setSupportLayer('none')
     resetFlowMultipleChoiceState()
     resetPerCardInteraction()
   }
 
-  const switchPracticeFlowStage = (nextStage: PracticeFlowStage) => {
-    if (!practiceFlow || practiceFlow.stage === nextStage || mainPhase === 'typing') return
-    const hasTargetedLines = practiceFlow.focus.missedLines.some((line) => line.expected.trim().length > 0)
-    if (nextStage !== 'recall' && !hasTargetedLines) return
+  const advanceFlowMultipleChoice = advancePracticeFlow
 
-    setPracticeFlow((current) => current
-      ? {
-          ...current,
-          stage: nextStage,
-          focus: {
-            ...current.focus,
-            sequenceStage: nextStage,
-          },
-        }
-      : current)
-    setSupportLayer(nextStage === 'ghost' ? 'ghost-reps' : 'none')
+  const switchPracticeFlowStage = (nextStage: PracticeFlowStage) => {
+    flowInteractionVersionRef.current += 1
+    if (!practiceFlow || practiceFlow.stage === nextStage || mainPhase === 'typing') return
+    setPracticeFlow({ ...practiceFlow, stage: nextStage })
+    setSupportLayer('none')
+    resetFlowMultipleChoiceState()
     resetPerCardInteraction()
   }
 
@@ -3337,7 +2945,7 @@ function App() {
 
   useEffect(() => {
     resetPerCardInteraction()
-  }, [activeCardId, currentPracticeMode, flowMultipleChoicePosition, practiceFlow?.cycle, sessionPosition])
+  }, [activeCardId, currentPracticeMode, flowMultipleChoicePosition, practiceFlow?.cycle, practiceFlow?.step, sessionPosition])
 
   useEffect(() => {
     if (mainPhase !== 'typing') return
@@ -3556,6 +3164,7 @@ function App() {
       || recallEvaluationPendingRef.current
     ) return
 
+    const flowInteractionVersion = flowInteractionVersionRef.current
     const startedAt = mainStartedAt ?? Date.now()
     const interactionId = currentInteractionId || createInteractionId()
     if (!currentInteractionId) setCurrentInteractionId(interactionId)
@@ -3583,8 +3192,13 @@ function App() {
     })
       .finally(() => {
         recallEvaluationPendingRef.current = false
-        setCoachLoading(false)
+        if (flowInteractionVersionRef.current === flowInteractionVersion) setCoachLoading(false)
       })
+    if (flowInteractionVersionRef.current !== flowInteractionVersion) return
+    if (practiceFlow && !submission?.saved) {
+      setCoachError('Your rep could not be saved. Submit again to continue.')
+      return
+    }
     const sound = submission?.successful ?? normalizedInput === normalizedTarget
     const storedFeedback = submission?.evaluation?.feedback ?? {}
     const feedback = Object.keys(storedFeedback).length > 0
@@ -3619,65 +3233,17 @@ function App() {
       [historyKey]: [...(prev[historyKey] ?? []), attemptSnapshot],
     }))
 
-    if (practiceFlow?.stage === 'recall') {
-      const missedLines = toMultipleChoiceFocusLines(computeLineReview(practiceTarget, normalizedInput).reviews)
-      resetFlowMultipleChoiceState()
-      if (missedLines.length === 0) {
-        setPracticeFlow((current) => current
-          ? {
-              ...current,
-              cycle: current.cycle + 1,
-              focus: {
-                sequenceStage: 'recall',
-                focusSummary: '',
-                missedLines: [],
-              },
-              ghostCompleted: 0,
-              mcqCompleted: 0,
-            }
-          : current)
-        setSupportLayer('none')
-        resetPerCardInteraction()
-        return
-      }
-
-      const nextGhostTarget = buildFlowGhostTarget(missedLines)
-      setPracticeFlow((current) => current
-        ? {
-            ...current,
-            stage: nextGhostTarget ? 'ghost' : 'multiple-choice',
-            focus: {
-              sequenceStage: nextGhostTarget ? 'ghost' : 'multiple-choice',
-              focusSummary: buildFlowFocusSummary(card.title, missedLines),
-              missedLines,
-            },
-            ghostCompleted: 0,
-            mcqCompleted: 0,
-          }
-        : current)
-      setSupportLayer(nextGhostTarget ? 'ghost-reps' : 'none')
-      return
-    }
-
-    if (practiceFlow?.stage === 'ghost') {
-      const nextGhostCompleted = sound
-        ? Math.min(practiceFlow.ghostCompleted + 1, practiceFlow.ghostTarget)
-        : practiceFlow.ghostCompleted
-      const readyForMcq = sound && nextGhostCompleted >= practiceFlow.ghostTarget
-      setPracticeFlow((current) => current
-        ? {
-            ...current,
-            stage: readyForMcq ? 'multiple-choice' : current.stage,
-            ghostCompleted: nextGhostCompleted,
-            focus: {
-              ...current.focus,
-              sequenceStage: readyForMcq ? 'multiple-choice' : current.focus.sequenceStage,
-            },
-            mcqCompleted: readyForMcq ? 0 : current.mcqCompleted,
-          }
-        : current)
-      if (readyForMcq) {
-        setSupportLayer('none')
+    if (practiceFlow) {
+      if (practiceFlow.stage === 'recall') {
+        const missedLines = toMultipleChoiceFocusLines(computeLineReview(practiceTarget, normalizedInput).reviews)
+        setPracticeFlow((current) => current ? {
+          ...current,
+          focus: missedLines.length ? {
+            sequenceStage: 'recall',
+            focusSummary: buildFlowFocusSummary(card.title, missedLines),
+            missedLines,
+          } : current.focus,
+        } : current)
       }
       return
     }
@@ -3715,12 +3281,7 @@ function App() {
         ...prev,
         [activeMultipleChoiceCard.id]: selectedChoice.id,
       }))
-      setPracticeFlow((current) => current
-        ? {
-            ...current,
-            mcqCompleted: Math.min(current.mcqCompleted + 1, current.mcqTarget),
-          }
-        : current)
+
     } else {
       setMultipleChoiceSubmittedByCard((prev) => ({
         ...prev,
@@ -4029,14 +3590,16 @@ function App() {
   const multipleChoiceSubmitted = Boolean(submittedMultipleChoiceId)
   const multipleChoiceCorrect = Boolean(submittedMultipleChoiceId && submittedMultipleChoiceId === activeMultipleChoiceCard?.correctChoiceId)
   const primaryCardAction = (() => {
+    if (practiceFlow?.stage === 'microdrill') return null
     if (!hasDeck) return null
+    if (practiceFlow && currentPracticeMode === 'recall' && mainPhase === 'submitted') {
+      return { label: practiceFlow.config.mode === 'random' ? 'Reveal next rep' : 'Next flow rep', onClick: advancePracticeFlow, disabled: coachLoading, icon: null }
+    }
 
     if (currentPracticeMode === 'multiple-choice') {
       if (isFlowActive && multipleChoiceSubmitted) {
         return {
-          label: flowMultipleChoicePosition < Math.max(flowMultipleChoiceDeck.length - 1, 0)
-            ? 'Next targeted question'
-            : 'Start next recall cycle',
+          label: practiceFlow?.config.mode === 'random' ? 'Reveal next rep' : 'Next flow rep',
           onClick: advanceFlowMultipleChoice,
           disabled: sessionFinished,
           icon: (
@@ -4059,7 +3622,7 @@ function App() {
       }
     }
 
-    if (submissionTuning.microDrillEnabled && coachLoading && effectiveSupportLayer !== 'ghost-reps') {
+    if (!isFlowActive && submissionTuning.microDrillEnabled && coachLoading && effectiveSupportLayer !== 'ghost-reps') {
       return {
         label: 'Building next rep',
         onClick: () => undefined,
@@ -4141,7 +3704,7 @@ function App() {
   })()
 
   useEffect(() => {
-    if (mainPhase !== 'submitted' || !latestSubmittedWasGhostRep) return
+    if (isFlowActive || mainPhase !== 'submitted' || !latestSubmittedWasGhostRep) return
     const handler = (event: KeyboardEvent) => {
       if (matchesHotkey(event, 'primary-recall-action')) {
         event.preventDefault()
@@ -4150,7 +3713,7 @@ function App() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [latestSubmittedWasGhostRep, mainPhase, sessionFinished, sessionOrder.length, sessionPosition])
+  }, [isFlowActive, latestSubmittedWasGhostRep, mainPhase, sessionFinished, sessionOrder.length, sessionPosition])
 
   useEffect(() => {
     if (isFlowActive) return
@@ -4218,7 +3781,9 @@ function App() {
           ? 'ghost'
           : matchesHotkey(event, 'flow-targeted-mcq')
             ? 'multiple-choice'
-            : null
+            : matchesHotkey(event, 'flow-targeted-microdrill')
+              ? 'microdrill'
+              : null
       if (!nextStage) return
 
       event.preventDefault()
@@ -4241,13 +3806,16 @@ function App() {
   }, [zenMode])
 
   const flowStatusText = !practiceFlow
-    ? 'Anchor the current card, run a full recall, then sequence targeted ghost reps and MCQs from the lines you missed.'
-    : practiceFlow.stage === 'recall'
-      ? `Cycle ${practiceFlow.cycle}: do a full recall on ${practiceFlow.anchorTitle}.`
-      : practiceFlow.stage === 'ghost'
-        ? `Cycle ${practiceFlow.cycle}: ${practiceFlow.ghostCompleted} of ${practiceFlow.ghostTarget} ghost reps logged on the targeted lines.`
-        : `Cycle ${practiceFlow.cycle}: ${practiceFlow.mcqCompleted} of ${practiceFlow.mcqTarget} targeted MCQs completed from the last recall misses.`
+    ? 'Build a sequence or let each next rep surprise you.'
+    : practiceFlow.config.mode === 'random'
+      ? `Rep ${practiceFlow.step + 1} · ${FLOW_LABELS[practiceFlow.stage]}. The next modality is chosen when you continue.`
+      : `Cycle ${practiceFlow.cycle} · Rep ${practiceFlow.step % expandFlow(practiceFlow.config.blocks).length + 1} of ${expandFlow(practiceFlow.config.blocks).length} · ${FLOW_LABELS[practiceFlow.stage]}`
   const flowFocusPreviewLines = practiceFlow?.focus.missedLines.slice(0, 3) ?? []
+  const cardFlowPanelStyle = useMemo<CSSProperties>(() => (
+    cardFlowPanelMaxHeight
+      ? ({ '--card-flow-panel-max-height': `${cardFlowPanelMaxHeight}px` } as CSSProperties)
+      : {}
+  ), [cardFlowPanelMaxHeight])
   const isMac = navigator.platform.includes('Mac')
   const primaryRecallHotkey = formatHotkey('primary-recall-action', isMac)
   const moveCardsHotkey = formatHotkey('move-cards', isMac)
@@ -4280,6 +3848,10 @@ function App() {
   ), [plainPracticeTarget])
 
   const handleRecallEditorSubmitHotkey = () => {
+    if (practiceFlow && mainPhase === 'submitted') {
+      advancePracticeFlow()
+      return
+    }
     if (mainPhase === 'submitted' && latestSubmittedWasGhostRep) {
       repeatGhostRep()
       return
@@ -4330,7 +3902,7 @@ function App() {
     latestSubmittedWasGhostRep,
     mainPhase,
   ])
-  const activeMicroDrill = submissionTuning.microDrillEnabled
+  const activeMicroDrill = !isFlowActive && submissionTuning.microDrillEnabled
     ? coachFeedback?.microDrill.trim() ?? ''
     : ''
   const microDrillContent = useMemo(
@@ -4338,18 +3910,11 @@ function App() {
     [activeMicroDrill]
   )
   const microDrillLoading = Boolean(
-    submissionTuning.microDrillEnabled
+    !isFlowActive && submissionTuning.microDrillEnabled
     && currentPracticeMode === 'recall'
     && coachLoading
     && effectiveSupportLayer !== 'ghost-reps'
   )
-  const microDrillExplanation = coachFeedback?.microDrillExplanation?.trim()
-    || coachFeedback?.why?.trim()
-    || 'This rep keeps the structure that worked and isolates the decision that broke the original solution.'
-  const microDrillInvariant = coachFeedback?.microDrillInvariant?.trim()
-    || coachFeedback?.nextRepTarget?.trim()
-    || coachFeedback?.primaryFocus?.trim()
-    || 'Validate the new state before recording or expanding it.'
   const submissionFeedbackBlock = feedbackRailModel ? (
     <div
       className={[
@@ -4370,53 +3935,26 @@ function App() {
             {feedbackRailModel.loading
               ? 'Generating your review…'
               : feedbackRailModel.items.length > 0
-                ? 'Ready to review'
+                ? 'Review your feedback'
                 : 'No feedback returned'}
           </span>
         </div>
-        {!feedbackRailModel.loading && feedbackRailModel.items.length > 0 && (
-          <button
-            type="button"
-            className={submissionFeedbackOpen ? 'prompt-toggle-button active' : 'prompt-toggle-button'}
-            onClick={() => setSubmissionFeedbackOpen((current) => !current)}
-            aria-expanded={submissionFeedbackOpen}
-            aria-controls={submissionFeedbackDetailId}
-            title={submissionFeedbackOpen ? 'Close feedback' : 'View feedback'}
-          >
-            <span>{submissionFeedbackOpen ? 'Hide' : 'Review'}</span>
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d={submissionFeedbackOpen ? 'm18 15-6-6-6 6' : 'm6 9 6 6 6-6'} />
-            </svg>
-          </button>
-        )}
       </div>
-      {submissionFeedbackOpen && (
-        <div className="prompt-detail submission-feedback-detail" id={submissionFeedbackDetailId}>
-          <div className="prompt-detail-section">
-            {feedbackRailModel.loading && <p>Generating feedback...</p>}
-            {!feedbackRailModel.loading && feedbackRailModel.items.length === 0 && (
-              <p>{feedbackRailModel.submitted ? 'No feedback returned.' : 'No submission yet.'}</p>
-            )}
-            {!feedbackRailModel.loading && feedbackRailModel.items.length > 0 && (
-              <div className="submission-feedback-block-list">
-                {feedbackRailModel.items.map((item, index) => (
-                  <p key={`${index}-${item}`}>{item}</p>
-                ))}
-              </div>
-            )}
-          </div>
+      <div className="prompt-detail submission-feedback-detail" id={submissionFeedbackDetailId}>
+        <div className="prompt-detail-section">
+          {feedbackRailModel.loading && <p>Generating feedback...</p>}
+          {!feedbackRailModel.loading && feedbackRailModel.items.length === 0 && (
+            <p>{feedbackRailModel.submitted ? 'No feedback returned.' : 'No submission yet.'}</p>
+          )}
+          {!feedbackRailModel.loading && feedbackRailModel.items.length > 0 && (
+            <div className="submission-feedback-block-list">
+              {feedbackRailModel.items.map((item, index) => (
+                <p key={`${index}-${item}`}>{item}</p>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   ) : null
 
@@ -4430,7 +3968,7 @@ function App() {
         </span>
         <div className="micro-drill-loading-copy">
           <span className="related-problems-eyebrow">Next rep</span>
-          <h3>Shaping your reinforcement question</h3>
+          <h3>Preparing your next drill</h3>
           <p>Keeping what worked. Isolating one decision worth another pass.</p>
         </div>
         <div className="micro-drill-loading-line" aria-hidden="true"><span /></div>
@@ -4439,42 +3977,15 @@ function App() {
   ) : activeMicroDrill ? (
     <div className="card-grid micro-drill-card-grid drill-fade-in">
       <div className="panel micro-drill-question-card">
-        <div className="prompt-toggle-header">
-          <div className="prompt-section-content">
-            <span className="prompt-section-label">Next rep</span>
-            <h3 className="micro-drill-title">Reinforcement question</h3>
-          </div>
-          <button
-            type="button"
-            className={microDrillExplanationOpen ? 'prompt-toggle-button active' : 'prompt-toggle-button'}
-            onClick={() => setMicroDrillExplanationOpen((current) => !current)}
-            aria-expanded={microDrillExplanationOpen}
-            aria-controls={`micro-drill-explanation-${card.id}`}
-          >
-            <span>{microDrillExplanationOpen ? 'Hide' : 'Explain'}</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d={microDrillExplanationOpen ? 'm18 15-6-6-6 6' : 'm6 9 6 6 6-6'} />
-            </svg>
-          </button>
+        <div className="prompt-toggle-header micro-drill-header">
+          <span className="micro-drill-eyebrow">Next rep</span>
+
         </div>
         <div className="micro-drill-prompt">
-          <MarkdownCodeContent
+          <MicroDrillInstructions
             text={microDrillContent.prompt || 'Fill the focused blanks without looking back at the original solution.'}
-            syntaxTheme={syntaxTheme}
           />
         </div>
-        {microDrillExplanationOpen && (
-          <div className="micro-drill-explanation" id={`micro-drill-explanation-${card.id}`}>
-            <div>
-              <span>Explanation</span>
-              <p>{microDrillExplanation}</p>
-            </div>
-            <div>
-              <span>Invariant</span>
-              <p>{microDrillInvariant}</p>
-            </div>
-          </div>
-        )}
       </div>
       <div className="panel micro-drill-answer-card">
         <label className="answer-label">Fill only the blanks</label>
@@ -4482,6 +3993,8 @@ function App() {
           key={activeMicroDrill}
           template={microDrillContent.code || activeMicroDrill}
           language={microDrillContent.language}
+          syntaxTheme={syntaxTheme}
+          theme={theme}
         />
         <p className="typing-help">Type directly into each quiet underline · Tab moves to the next blank.</p>
       </div>
@@ -4529,7 +4042,7 @@ function App() {
     relatedLeetCodeSet ? 'card-shell-has-drawer' : '',
     skeletonReference ? 'skeleton-card-shell' : '',
   ].filter(Boolean).join(' ')}>
-      <section className="card">
+      <section className="card" ref={cardContainerRef}>
         <div className="card-header">
           <div className="card-header-main">
             <h3>{headerCardTitle}</h3>
@@ -4567,7 +4080,7 @@ function App() {
                 <span className="coach-metric-chip">
                   {isFlowActive ? 'Missed-line remediation' : mcqTuning.flowMode === 'progressive' ? 'Socratic chain' : 'Balanced random'}
                 </span>
-                <span className="coach-metric-chip">{isFlowActive && practiceFlow ? practiceFlow.mcqTarget : multipleChoiceQuestionCount} questions</span>
+                <span className="coach-metric-chip">{isFlowActive ? 1 : multipleChoiceQuestionCount} questions</span>
                 {(focusedPatternSlug || requestedPlaylist) && (
                   <span className="coach-metric-chip">
                     {requestedPlaylist ? 'Playlist bias' : `Focus ${focusedPatternLabel}`}
@@ -4615,7 +4128,6 @@ function App() {
                   MCQ
                 </button>
               </div>
-              {currentPracticeMode === 'recall' ? (
                 <div className="support-layer-control" aria-label="Practice support controls">
                 <button
                   type="button"
@@ -4627,7 +4139,7 @@ function App() {
                   aria-pressed={INLINE_FEEDBACK_ENABLED && inlineEnabled}
                   aria-label={INLINE_FEEDBACK_ENABLED ? (inlineEnabled ? 'Turn Inline off' : 'Turn Inline on') : 'Inline disabled'}
                   title={INLINE_FEEDBACK_ENABLED ? 'Inline' : 'Inline disabled'}
-                  disabled={isFlowActive || !INLINE_FEEDBACK_ENABLED}
+                  disabled={isFlowActive || currentPracticeMode !== 'recall' || !INLINE_FEEDBACK_ENABLED}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
@@ -4640,7 +4152,7 @@ function App() {
                   aria-pressed={isGhostRepsEnabled}
                   aria-label={isGhostRepsEnabled ? 'Turn Ghost Reps off' : 'Turn Ghost Reps on'}
                   title="Ghost Reps"
-                  disabled={isFlowActive}
+                  disabled={isFlowActive || currentPracticeMode !== 'recall'}
                 >
                   <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M2 12.5V6.5a5 5 0 0 1 10 0v6l-1.5-1.5-1.5 1.5-1.5-1.5-1.5 1.5-1.5-1.5-1.5 1.5Z"/>
@@ -4658,14 +4170,13 @@ function App() {
                   aria-pressed={liveFeedbackEnabled}
                   aria-label={LIVE_FEEDBACK_ENABLED ? (liveFeedbackEnabled ? 'Turn live feedback off' : 'Turn live feedback on') : 'Live feedback disabled'}
                   title={LIVE_FEEDBACK_ENABLED ? 'Live' : 'Live feedback disabled'}
-                  disabled={isFlowActive || !LIVE_FEEDBACK_ENABLED}
+                  disabled={isFlowActive || currentPracticeMode !== 'recall' || !LIVE_FEEDBACK_ENABLED}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
                   </svg>
                 </button>
                 </div>
-              ) : null}
               <div className="card-side-drawer-actions" aria-label="Card side controls">
                 <button
                   type="button"
@@ -4689,7 +4200,6 @@ function App() {
                   </svg>
                   <span className="sr-only">Zen mode</span>
                 </button>
-                {currentPracticeMode === 'recall' && (
                   <button
                     type="button"
                     className={submissionTuning.microDrillEnabled ? 'card-side-drawer-toggle active' : 'card-side-drawer-toggle'}
@@ -4697,14 +4207,13 @@ function App() {
                     aria-label={submissionTuning.microDrillEnabled ? 'Turn reinforcement drill off' : 'Turn reinforcement drill on'}
                     title={submissionTuning.microDrillEnabled ? 'Reinforcement drill on' : 'Reinforcement drill off'}
                     onClick={toggleMicroDrill}
-                    disabled={isFlowActive}
+                    disabled={isFlowActive || currentPracticeMode !== 'recall'}
                   >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <path d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" />
                     </svg>
                     <span className="sr-only">Reinforcement drill</span>
                   </button>
-                )}
                 <button
                   type="button"
                   className={flowDrawerOpen ? 'card-side-drawer-toggle active' : 'card-side-drawer-toggle'}
@@ -4722,14 +4231,14 @@ function App() {
                   </svg>
                   <span className="sr-only">Flow</span>
                 </button>
-                {relatedLeetCodeSet && (
                   <button
                     type="button"
                     className={relatedDrawerOpen ? 'card-side-drawer-toggle active' : 'card-side-drawer-toggle'}
                     aria-expanded={relatedDrawerOpen}
-                    aria-controls="related-problems-drawer"
+                    aria-controls={relatedLeetCodeSet ? 'related-problems-drawer' : undefined}
                     aria-label={relatedDrawerOpen ? 'Hide related LeetCode drawer' : 'Show related LeetCode drawer'}
-                    title="Related LeetCode"
+                    title={relatedLeetCodeSet ? 'Related LeetCode' : 'No related LeetCode problems for this card'}
+                    disabled={!relatedLeetCodeSet}
                     onClick={() => {
                       setFlowDrawerOpen(false)
                       setRelatedDrawerOpen((open) => !open)
@@ -4740,15 +4249,14 @@ function App() {
                     </svg>
                     <span className="sr-only">Related LeetCode</span>
                   </button>
-                )}
-                {visibleCardTags.length > 0 && (
                   <button
                     type="button"
                     className={tagsExpanded ? 'card-side-drawer-toggle card-tags-drawer-toggle active' : 'card-side-drawer-toggle card-tags-drawer-toggle'}
                     aria-expanded={tagsExpanded}
-                    aria-controls={tagsListId}
+                    aria-controls={visibleCardTags.length > 0 ? tagsListId : undefined}
                     aria-label={tagsExpanded ? 'Hide tags' : 'Show tags'}
-                    title={tagsExpanded ? 'Hide tags' : 'Show tags'}
+                    title={visibleCardTags.length ? (tagsExpanded ? 'Hide tags' : 'Show tags') : 'No tags for this card'}
+                    disabled={visibleCardTags.length === 0}
                     onClick={() => setTagsExpanded((current) => !current)}
                   >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -4756,7 +4264,6 @@ function App() {
                     </svg>
                     <span className="sr-only">Tags</span>
                   </button>
-                )}
               </div>
             </div>
             </div>
@@ -4787,7 +4294,21 @@ function App() {
           </div>
         )}
 
-        {microDrillCardGrid ?? (
+        {isFlowActive && coachError && mainPhase === 'typing' && <p className="flow-submit-error" role="alert">{coachError}</p>}
+        {practiceFlow?.stage === 'microdrill' ? (
+          <FlowMicroDrillCard
+            key={`${practiceFlow.runId}-${practiceFlow.step}`}
+            title={card.title} prompt={practicePrompt} target={practiceTarget}
+            focus={practiceFlow.focus.focusSummary} rep={practiceFlow.step + 1}
+            provider={requestLlmProvider} theme={theme} syntaxTheme={syntaxTheme}
+            random={practiceFlow.config.mode === 'random'} onNext={advancePracticeFlow}
+            onSave={(drill, answer, elapsedMs, interactionId) => submitAttemptToServer({
+              mode: 'main-recall', correctAnswer: drill.solution, userAnswer: answer, question: drill.prompt,
+              microdrill: true, elapsedMs, interactionId,
+              templateMode: currentTemplateMode, supportLayer: 'none', liveCoachUsed: false,
+            })}
+          />
+        ) : microDrillCardGrid ?? (
         <div className="card-grid">
           <div className="panel prompt-surface-panel">
             {currentPracticeMode === 'multiple-choice' ? (
@@ -4802,6 +4323,7 @@ function App() {
                   <>
                     <p className="prompt prompt-bar">Multiple choice is unavailable right now.</p>
                     <p className="hint">{activeError || 'Regenerate to request another LLM question set.'}</p>
+                    {isFlowActive && <button type="button" className="secondary" onClick={() => void fetchFlowMultipleChoiceDeck()}>Retry MCQ</button>}
                   </>
                 )
               ) : activeMultipleChoiceCard ? (
@@ -4833,8 +4355,6 @@ function App() {
               <div className="drill-fade-in">
                 <div className={skeletonReference
                   ? 'prompt-toggle-card prompt-feedback-surface skeleton-reference-surface'
-                  : isPlainEnglishPromptOpen
-                    ? 'prompt-toggle-card prompt-feedback-surface expanded'
                   : 'prompt-toggle-card prompt-feedback-surface'}>
                   <div className="prompt-surface-section">
                     {!skeletonReference && (
@@ -4843,36 +4363,7 @@ function App() {
                           <span className="prompt-section-label">Prompt</span>
                           <p className="prompt prompt-toggle-text">{practicePrompt}</p>
                         </div>
-                        {fallbackPlainEnglishPromptDetail && (
-                        <button
-                          type="button"
-                          className={isPlainEnglishPromptOpen ? 'prompt-toggle-button active' : 'prompt-toggle-button'}
-                          onClick={() => {
-                            if (!plainEnglishPromptOpen && !promptToggleDetail && !plainEnglishPromptLoading) {
-                              void fetchPlainEnglishPromptExplanation()
-                            }
-                            setPlainEnglishPromptOpen((current) => !current)
-                          }}
-                          aria-expanded={isPlainEnglishPromptOpen}
-                          aria-controls={plainEnglishPromptDetailId}
-                          title={isPlainEnglishPromptOpen ? 'Hide explanation' : 'Show explanation'}
-                        >
-                          <span>{isPlainEnglishPromptOpen ? 'Hide' : 'Explain'}</span>
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.8"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            aria-hidden="true"
-                          >
-                            <path d={isPlainEnglishPromptOpen ? 'm18 15-6-6-6 6' : 'm6 9 6 6 6-6'} />
-                          </svg>
-                        </button>
-                        )}
+
                       </div>
                     )}
                     {skeletonReference ? (
@@ -4910,65 +4401,7 @@ function App() {
                           <p>{skeletonReference.invariant}</p>
                         </div>
                       </section>
-                    ) : isPlainEnglishPromptOpen && fallbackPlainEnglishPromptDetail && (
-                      <div className="prompt-detail" id={plainEnglishPromptDetailId}>
-                      <div className="prompt-detail-section">
-                        <h3>Explanation</h3>
-                        <p>
-                          {plainEnglishPromptLoading
-                            ? 'Generating a plain English explanation...'
-                            : promptToggleDetail?.plainEnglish || fallbackPlainEnglishPromptDetail.plainEnglish}
-                        </p>
-                      </div>
-                      <div className="prompt-detail-section">
-                        <h3>Input / Output</h3>
-                        <div className="prompt-io-console" aria-label="Input and output example">
-                          <div className="prompt-io-row">
-                            <span className="prompt-io-label prompt-io-label-input">In [1]:</span>
-                            <div className="prompt-io-code">
-                              <SyntaxHighlighter
-                                language="python"
-                                style={syntaxTheme}
-                                customStyle={{
-                                  margin: 0,
-                                  padding: 0,
-                                  background: 'transparent',
-                                  border: 'none',
-                                  fontFamily: 'inherit',
-                                  fontSize: 'inherit',
-                                  lineHeight: 'inherit',
-                                }}
-                                codeTagProps={{ style: { fontFamily: 'inherit' } }}
-                              >
-                                {promptToggleDetail?.inputExample || fallbackPlainEnglishPromptDetail.inputExample}
-                              </SyntaxHighlighter>
-                            </div>
-                          </div>
-                          <div className="prompt-io-row prompt-io-row-output">
-                            <span className="prompt-io-label prompt-io-label-output">Out[1]:</span>
-                            <div className="prompt-io-code">
-                              <SyntaxHighlighter
-                                language="python"
-                                style={syntaxTheme}
-                                customStyle={{
-                                  margin: 0,
-                                  padding: 0,
-                                  background: 'transparent',
-                                  border: 'none',
-                                  fontFamily: 'inherit',
-                                  fontSize: 'inherit',
-                                  lineHeight: 'inherit',
-                                }}
-                                codeTagProps={{ style: { fontFamily: 'inherit' } }}
-                              >
-                                {promptToggleDetail?.outputExample || fallbackPlainEnglishPromptDetail.outputExample}
-                              </SyntaxHighlighter>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      </div>
-                    )}
+                    ) : null}
                   </div>
                   {submissionFeedbackBlock}
                 </div>
@@ -5216,12 +4649,14 @@ function App() {
         className={flowDrawerOpen ? 'card-flow-panel card-flow-panel-open' : 'card-flow-panel'}
         aria-label="Flow"
         aria-hidden={!flowDrawerOpen}
+        inert={!flowDrawerOpen}
+        style={cardFlowPanelStyle}
       >
         <div className="related-problems-header">
           <div>
             <span className="related-problems-eyebrow">Flow</span>
             <h3>Flow</h3>
-            <p>{practiceFlow ? `Cycle ${practiceFlow.cycle} on ${practiceFlow.anchorTitle}` : card.title}</p>
+            <p>{practiceFlow ? `${practiceFlow.config.mode === 'random' ? 'Random flow' : `Cycle ${practiceFlow.cycle}`} on ${practiceFlow.anchorTitle}` : card.title}</p>
           </div>
           <button type="button" className="related-problems-close" onClick={() => setFlowDrawerOpen(false)} aria-label="Close Flow drawer">
             Close
@@ -5240,15 +4675,7 @@ function App() {
             </button>
           </div>
           <p className="card-flow-anchor">{practiceFlow?.anchorTitle ?? card.title}</p>
-          <div className="card-flow-stage-row" aria-label="Flow stages">
-            <span className={practiceFlow?.stage === 'recall' ? 'card-flow-stage active' : 'card-flow-stage'}>Recall</span>
-            <span className={practiceFlow?.stage === 'ghost' ? 'card-flow-stage active' : 'card-flow-stage'}>
-              Ghost {practiceFlow ? `${practiceFlow.ghostCompleted}/${practiceFlow.ghostTarget}` : `0/${FLOW_GHOST_REP_TARGET}`}
-            </span>
-            <span className={practiceFlow?.stage === 'multiple-choice' ? 'card-flow-stage active' : 'card-flow-stage'}>
-              MCQ {practiceFlow ? `${practiceFlow.mcqCompleted}/${practiceFlow.mcqTarget}` : `0/${FLOW_MCQ_TARGET}`}
-            </span>
-          </div>
+          <FlowBuilder config={flowConfig} disabled={isFlowActive} onChange={(config) => { setFlowConfig(config); saveFlowConfig(config) }} />
           <p className="card-flow-status">{flowStatusText}</p>
           {practiceFlow?.focus.focusSummary && (
             <p className="card-flow-summary">{practiceFlow.focus.focusSummary}</p>

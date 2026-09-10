@@ -355,7 +355,7 @@ def test_google_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -
         "Binary Tree DFS -- Return & Combine Skeleton": "def tree_dfs(root):",
         "Binary Tree DFS -- Carry State Skeleton": "def tree_dfs_with_state(root):",
         "Binary Tree BFS -- Level Order Skeleton": "def tree_level_order(root):",
-        "Backtracking Skeleton": "def backtrack(state, choices, out):",
+        "Backtracking Skeleton": "def backtrack(state, choices, output):",
         "Two Pointers Skeleton": "def two_pointers(nums):",
         "Monotonic Stack Skeleton": "def monotonic_stack(nums):",
         "Heap / Top-K Skeleton": "def top_k(items, k):",
@@ -375,10 +375,10 @@ def test_google_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -
 
     grid_bfs_solution = cards["Grid BFS Skeleton"]["solution"]
     assert "start = (r, c)" in grid_bfs_solution
-    assert "q = deque([start])" in grid_bfs_solution
+    assert "queue = deque([start])" in grid_bfs_solution
     assert "visited = {start}" in grid_bfs_solution
-    assert "while q:" in grid_bfs_solution
-    assert "r, c = q.popleft()" in grid_bfs_solution
+    assert "while queue:" in grid_bfs_solution
+    assert "r, c = queue.popleft()" in grid_bfs_solution
 
     bfs_card = cards["BFS Skeleton"]
     dfs_card = cards["DFS Skeleton"]
@@ -391,15 +391,16 @@ def test_google_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -
     assert "google-skeletons" in bfs_card["tags"]
     assert bfs_card["solution"].startswith("from collections import deque")
     assert "def bfs(start, graph):" in bfs_card["solution"]
-    assert "q = deque([start])" in bfs_card["solution"]
-    assert "for ngbr in graph[node]:" in bfs_card["solution"]
+    assert "queue = deque([start])" in bfs_card["solution"]
+    assert "output = []" in bfs_card["solution"]
+    assert "for neighbor in graph[node]:" in bfs_card["solution"]
 
     assert dfs_card["id"] == "playlist-google-skeletons-dfs-skeleton"
     assert "google-skeletons" in dfs_card["tags"]
     assert dfs_card["solution"].startswith("def dfs(start, graph):")
     assert "visited = set()" in dfs_card["solution"]
     assert "def walk(node):" in dfs_card["solution"]
-    assert "for ngbr in graph[node]:" in dfs_card["solution"]
+    assert "for neighbor in graph[node]:" in dfs_card["solution"]
 
     assert fixed_window_card["id"] == (
         "playlist-google-skeletons-fixed-size-sliding-window-skeleton"

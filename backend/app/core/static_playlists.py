@@ -563,20 +563,20 @@ def bfs(start, graph):
     if start not in graph:
         return []
 
-    q = deque([start])
+    queue = deque([start])
     visited = {start}
-    out = []
+    output = []
 
-    while q:
-        node = q.popleft()
-        out.append(node)
+    while queue:
+        node = queue.popleft()
+        output.append(node)
 
-        for ngbr in graph[node]:
-            if ngbr not in visited:
-                visited.add(ngbr)
-                q.append(ngbr)
+        for neighbor in graph[node]:
+            if neighbor not in visited:
+                visited.add(neighbor)
+                queue.append(neighbor)
 
-    return out
+    return output
 """,
     "Grid BFS Skeleton": """
 from collections import deque
@@ -585,13 +585,13 @@ from collections import deque
 def bfs(grid, r, c):
     rows, cols = len(grid), len(grid[0])
     start = (r, c)
-    q = deque([start])
+    queue = deque([start])
     visited = {start}
     distance = 0
 
-    while q:
-        for _ in range(len(q)):
-            r, c = q.popleft()
+    while queue:
+        for _ in range(len(queue)):
+            r, c = queue.popleft()
 
             for dr, dc in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
                 nr, nc = r + dr, c + dc
@@ -602,7 +602,7 @@ def bfs(grid, r, c):
                     and (nr, nc) not in visited
                 ):
                     visited.add((nr, nc))
-                    q.append((nr, nc))
+                    queue.append((nr, nc))
 
         distance += 1
 
@@ -614,18 +614,18 @@ def dfs(start, graph):
         return []
 
     visited = set()
-    out = []
+    output = []
 
     def walk(node):
         visited.add(node)
-        out.append(node)
+        output.append(node)
 
-        for ngbr in graph[node]:
-            if ngbr not in visited:
-                walk(ngbr)
+        for neighbor in graph[node]:
+            if neighbor not in visited:
+                walk(neighbor)
 
     walk(start)
-    return out
+    return output
 """,
     "Grid DFS Skeleton": """
 def dfs(grid, r, c):
@@ -686,20 +686,20 @@ def tree_level_order(root):
     if root is None:
         return []
 
-    q = deque([root])
+    queue = deque([root])
     result = []
 
-    while q:
+    while queue:
         level = []
 
-        for _ in range(len(q)):
-            node = q.popleft()
+        for _ in range(len(queue)):
+            node = queue.popleft()
             level.append(node.val)
 
             if node.left is not None:
-                q.append(node.left)
+                queue.append(node.left)
             if node.right is not None:
-                q.append(node.right)
+                queue.append(node.right)
 
         result.append(level)
 
@@ -808,9 +808,9 @@ def binary_search(nums, target):
     return -1
 """,
     "Backtracking Skeleton": """
-def backtrack(state, choices, out):
+def backtrack(state, choices, output):
     if goal_reached(state):
-        out.append(state.copy())
+        output.append(state.copy())
         return
 
     for choice in choices:
@@ -818,7 +818,7 @@ def backtrack(state, choices, out):
             continue
 
         state.append(choice)            # choose
-        backtrack(state, choices, out)  # explore
+        backtrack(state, choices, output)  # explore
         state.pop()                     # undo
 """,
     "Two Pointers Skeleton": """
@@ -840,16 +840,16 @@ def two_pointers(nums):
     "Monotonic Stack Skeleton": """
 def monotonic_stack(nums):
     stack = []
-    out = [-1] * len(nums)
+    output = [-1] * len(nums)
 
     for i, num in enumerate(nums):
         while stack and nums[stack[-1]] < num:
             j = stack.pop()
-            out[j] = num
+            output[j] = num
 
         stack.append(i)
 
-    return out
+    return output
 """,
     "Heap / Top-K Skeleton": """
 import heapq
@@ -931,22 +931,22 @@ def topological_sort(n, edges):
         graph[a].append(b)
         indegree[b] += 1
 
-    q = deque(
+    queue = deque(
         node for node in range(n)
         if indegree[node] == 0
     )
 
     order = []
 
-    while q:
-        node = q.popleft()
+    while queue:
+        node = queue.popleft()
         order.append(node)
 
-        for ngbr in graph[node]:
-            indegree[ngbr] -= 1
+        for neighbor in graph[node]:
+            indegree[neighbor] -= 1
 
-            if indegree[ngbr] == 0:
-                q.append(ngbr)
+            if indegree[neighbor] == 0:
+                queue.append(neighbor)
 
     return order if len(order) == n else []
 """,
@@ -966,11 +966,11 @@ def dijkstra(start, graph):
 
         distance[node] = dist
 
-        for ngbr, weight in graph.get(node, []):
-            if ngbr not in distance:
+        for neighbor, weight in graph.get(node, []):
+            if neighbor not in distance:
                 heapq.heappush(
                     heap,
-                    (dist + weight, ngbr)
+                    (dist + weight, neighbor)
                 )
 
     return distance

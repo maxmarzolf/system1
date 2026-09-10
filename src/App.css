@@ -5,6 +5,8 @@
 .app {
   --related-drawer-width: 17rem;
   --related-drawer-gap: 1.25rem;
+  --card-flow-panel-top: 5.65rem;
+  --card-flow-panel-viewport-gap: 1rem;
   max-width: 1000px;
   margin: 0 auto;
   padding: 1rem 2rem 4rem;
@@ -2694,10 +2696,13 @@ button.link:hover {
 
 .card-flow-panel {
   position: fixed;
-  top: 5.25rem;
+  top: var(--card-flow-panel-top);
   right: 0.75rem;
   width: min(var(--related-drawer-width), calc(100vw - 1.5rem));
-  max-height: calc(100vh - 6.25rem);
+  max-height: min(
+    var(--card-flow-panel-max-height, calc(100vh - var(--card-flow-panel-top) - var(--card-flow-panel-viewport-gap))),
+    calc(100vh - var(--card-flow-panel-top) - var(--card-flow-panel-viewport-gap))
+  );
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2718,9 +2723,17 @@ button.link:hover {
 }
 
 .card-flow-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
+}
+
+.card-flow-body::-webkit-scrollbar {
+  display: none;
 }
 
 .card-flow-header-row {
@@ -3108,39 +3121,6 @@ button.link:hover {
   margin: 0;
 }
 
-.prompt-toggle-button {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.28rem;
-  min-height: 1.55rem;
-  padding: 0.25rem 0.42rem;
-  border: 1px solid var(--hc-border-dim);
-  background: transparent;
-  color: var(--hc-fg-dim);
-  font-size: 0.62rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.prompt-toggle-button:hover,
-.prompt-toggle-button.active {
-  border-color: var(--hc-accent);
-  background: var(--hc-option-hover-bg);
-  color: var(--hc-fg);
-}
-
-.prompt-toggle-button.active {
-  background: var(--hc-picker-active-bg);
-}
-
-.prompt-toggle-button svg {
-  flex: 0 0 auto;
-}
-
 .prompt-detail {
   display: flex;
   flex-direction: column;
@@ -3180,74 +3160,11 @@ button.link:hover {
   padding-left: 0.15rem;
 }
 
-.prompt-io-console {
-  overflow: auto;
-  max-height: 18rem;
-  margin-top: 0.2rem;
-  padding: 0.58rem 0.65rem;
-  border: 1px solid var(--hc-border-dim);
-  background: var(--hc-bg);
-  color: var(--hc-fg);
-  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-  font-size: 0.72rem;
-  line-height: 1.45;
-}
-
-.prompt-io-row {
-  display: grid;
-  grid-template-columns: 3.9rem minmax(0, 1fr);
-  gap: 0.6rem;
-  align-items: start;
-}
-
-.prompt-io-row + .prompt-io-row {
-  margin-top: 0.52rem;
-  padding-top: 0.52rem;
-  border-top: 1px solid var(--hc-border-dim);
-}
-
-.prompt-io-label {
-  padding-top: 0.02rem;
-  font-weight: 700;
-  text-align: right;
-  white-space: nowrap;
-}
-
-.prompt-io-label-input {
-  color: var(--hc-accent);
-}
-
-.prompt-io-label-output {
-  color: var(--hc-fg-dim);
-}
-
-.prompt-io-code {
-  min-width: 0;
-}
-
-.prompt-io-code pre {
-  white-space: pre;
-}
-
 @media (max-width: 720px) {
   .prompt-toggle-header {
     align-items: stretch;
     flex-direction: column;
     gap: 0.5rem;
-  }
-
-  .prompt-toggle-button {
-    align-self: flex-start;
-  }
-
-  .prompt-io-console {
-    padding: 0.52rem;
-    font-size: 0.68rem;
-  }
-
-  .prompt-io-row {
-    grid-template-columns: 3.45rem minmax(0, 1fr);
-    gap: 0.45rem;
   }
 }
 
@@ -3396,9 +3313,7 @@ button.link:hover {
   }
 
   .card-flow-panel {
-    top: 4.8rem;
     width: min(15.5rem, calc(100vw - 1rem));
-    max-height: calc(100vh - 5.4rem);
   }
 
   .feedback-rails {
@@ -3431,10 +3346,9 @@ button.link:hover {
   }
 
   .card-flow-panel {
-    top: 4.4rem;
+    --card-flow-panel-top: 4.8rem;
     right: 0.5rem;
     width: min(var(--related-drawer-width), calc(100vw - 1rem));
-    max-height: min(30rem, calc(100vh - 4.9rem));
   }
 }
 
@@ -5648,18 +5562,6 @@ button.tune-reset {
   }
 }
 
-.card-shell .prompt-feedback-surface .prompt-toggle-button {
-  min-height: 1.8rem;
-  padding: 0.32rem 0.5rem;
-  border-color: transparent;
-  background: color-mix(in srgb, var(--hc-bg) 46%, transparent);
-}
-
-.card-shell .prompt-feedback-surface .prompt-toggle-button:hover,
-.card-shell .prompt-feedback-surface .prompt-toggle-button.active {
-  border-color: color-mix(in srgb, var(--hc-accent) 48%, var(--workbench-edge));
-}
-
 .card-shell .multiple-choice-question-panel {
   margin-bottom: 0;
 }
@@ -5721,10 +5623,6 @@ button.tune-reset {
 .card-shell .multiple-choice-option.incorrect {
   border-color: var(--hc-status-chip-error-border);
   background: color-mix(in srgb, var(--hc-status-chip-error-bg) 76%, var(--workbench-surface-raised));
-}
-
-.card-shell .prompt-toggle-button {
-  border-radius: var(--workbench-radius-sm);
 }
 
 .card-shell .prompt-detail {
@@ -5905,8 +5803,7 @@ button.tune-reset {
   height: 1rem;
 }
 
-.micro-drill-loading-copy h3,
-.card-shell .micro-drill-title {
+.micro-drill-loading-copy h3 {
   margin: 0.35rem 0 0;
   padding: 0;
   border: 0;
@@ -5945,34 +5842,14 @@ button.tune-reset {
   margin-top: 1rem;
 }
 
-.micro-drill-prompt .multiple-choice-text-block {
-  color: var(--hc-fg);
-  font-size: 0.88rem;
-  line-height: 1.65;
-}
-
-.micro-drill-explanation {
+.micro-drill-instructions {
   display: grid;
-  gap: 0.8rem;
-  margin-top: 1rem;
-  padding-top: 0.9rem;
-  border-top: 1px solid var(--workbench-edge);
-  animation: submissionFeedbackDetailReveal 0.24s ease both;
-}
-
-.micro-drill-explanation span {
-  color: color-mix(in srgb, var(--hc-accent) 82%, var(--hc-fg));
-  font-size: 0.57rem;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.micro-drill-explanation p {
-  margin: 0.3rem 0 0;
+  gap: 0.45rem;
   color: var(--hc-fg);
-  font-size: 0.76rem;
-  line-height: 1.55;
+  font-size: 0.92rem;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .micro-drill-code {
@@ -5999,7 +5876,7 @@ button.tune-reset {
   user-select: none;
 }
 
-.micro-drill-code-line code {
+.micro-drill-code-content {
   padding-right: 1rem;
   font: inherit;
   white-space: pre;
@@ -6102,8 +5979,7 @@ button.tune-reset {
   .submission-feedback-block-ready .submission-feedback-dot,
   .card-shell .submission-feedback-detail,
   .micro-drill-loading-icon,
-  .micro-drill-loading-line span,
-  .micro-drill-explanation {
+  .micro-drill-loading-line span {
     animation: none;
   }
 }
@@ -6307,11 +6183,6 @@ button.tune-reset {
     align-items: center;
     flex-direction: row;
     gap: 0.75rem;
-  }
-
-  .submission-feedback-block .prompt-toggle-button {
-    align-self: center;
-    margin-left: auto;
   }
 
   .card-shell .card-control-bar {
@@ -6787,5 +6658,115 @@ button.tune-reset {
 @media (prefers-reduced-motion: reduce) {
   .app-zen-mode .card-shell {
     animation: none;
+  }
+}
+
+/* Reinforcement prompts have their own hierarchy, independent of MCQ text. */
+.micro-drill-header {
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--workbench-edge);
+}
+
+.micro-drill-eyebrow {
+  color: var(--hc-accent);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.micro-drill-instructions .multiple-choice-inline-code {
+  padding: 0.12rem 0.32rem;
+  border-radius: 0.3rem;
+  font-size: 0.85em;
+}
+
+.micro-drill-answer-card .answer-label {
+  display: block;
+  margin-bottom: 0.85rem;
+}
+
+.card-shell .micro-drill-instruction-heading {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--hc-fg);
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: -0.015em;
+}
+
+.flow-builder {
+  min-width: 0;
+  margin: 0;
+  padding: 1rem 0;
+  border: 0;
+  border-top: 1px solid var(--workbench-edge);
+}
+.flow-builder legend { padding: 0 0.4rem 0 0; color: var(--hc-fg); font-size: 0.82rem; font-weight: 600; }
+.flow-mode-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+.flow-builder button, .flow-builder select, .flow-builder input[type='number'] {
+  min-height: 2rem;
+  border: 1px solid var(--workbench-edge);
+  border-radius: 0.35rem;
+  background: var(--hc-editor-bg);
+  color: var(--hc-fg);
+  font: inherit;
+  font-size: 0.75rem;
+}
+.flow-builder button { padding: 0.3rem 0.5rem; }
+.flow-builder button[aria-pressed='true'] { border-color: var(--hc-accent); background: color-mix(in srgb, var(--hc-accent) 12%, var(--hc-editor-bg)); }
+.flow-builder button:focus-visible, .flow-builder select:focus-visible, .flow-builder input:focus-visible { outline: 2px solid var(--hc-accent); outline-offset: 2px; }
+.flow-builder-help { color: var(--hc-fg-dim); font-size: 0.75rem; line-height: 1.6; margin: 0.75rem 0; }
+.flow-builder-blocks { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.55rem; }
+.flow-builder-block { display: grid; grid-template-columns: 1rem minmax(0, 1fr) 4.25rem; align-items: center; gap: 0.5rem; padding: 0.6rem; border: 1px solid var(--workbench-edge); border-radius: 0.5rem; }
+.flow-block-index { color: var(--hc-fg-dim); font-size: 0.7rem; }
+.flow-builder select { min-width: 0; width: 100%; padding: 0.3rem; }
+.flow-block-count { display: flex; align-items: center; gap: 0.3rem; color: var(--hc-fg-dim); font-size: 0.65rem; }
+.flow-block-count input { min-width: 0; width: 2.6rem; padding: 0.2rem; }
+.flow-block-actions { grid-column: 2 / -1; display: flex; justify-content: flex-end; gap: 0.3rem; }
+.flow-block-actions button { min-width: 2rem; }
+.flow-builder-footer { margin-top: 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; color: var(--hc-fg-dim); font-size: 0.7rem; }
+.flow-random-options { display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem; }
+.flow-random-options label { display: flex; align-items: center; gap: 0.45rem; font-size: 0.78rem; padding: 0.6rem; border: 1px solid var(--workbench-edge); border-radius: 0.4rem; }
+.flow-random-options input { accent-color: var(--hc-accent); }
+.flow-builder :disabled { cursor: default; opacity: 0.5; }
+
+/* Keep every card's toolbar visible, independent of title length or content. */
+.card-shell .card-header {
+  flex-wrap: wrap;
+}
+
+.card-shell .card-header-main {
+  flex: 1 1 12rem;
+}
+
+.card-shell .card-header-main h3 {
+  overflow-wrap: anywhere;
+}
+
+.card-shell .card-header-aside {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.card-shell .card-header-controls-panel {
+  max-width: 100%;
+  overflow: visible;
+}
+
+.card-shell .card-header-controls-panel .card-header-side {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 720px) {
+  .card-shell .card-header-main {
+    flex: 0 1 auto;
   }
 }

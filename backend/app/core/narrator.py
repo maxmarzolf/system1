@@ -55,13 +55,11 @@ def narrator_submission_system_prompt(
             "Preserve the structures the learner already got right and blank only the decisions tied to the mistake. "
             "Use 60-150 words with a short setup, a 2-4 item goal list, and a fenced code fill-in template when the attempt is code. "
             "Mark every editable code blank with three or more underscores. Use valid Markdown only inside microDrill. "
-            "Set microDrillExplanation to a concise explanation of what this variation is practicing without filling the blanks. "
-            "Set microDrillInvariant to one sentence stating the reusable mental model the learner should preserve. "
             "Do not reveal the filled answers. If the submission is sound, make it a small transfer question targeting the least fluent step. "
         )
     else:
         micro_drill_instruction = (
-            "Return microDrill, microDrillExplanation, and microDrillInvariant as empty strings because reinforcement drills are disabled. "
+            "Return microDrill as an empty string because reinforcement drills are disabled. "
         )
 
     return (
@@ -71,7 +69,7 @@ def narrator_submission_system_prompt(
         "Base your diagnosis on the provided assessment signals. "
         "Use correctedVersion only for meaningful structural corrections, never line-by-line rewrites. "
         "Return strict JSON: diagnosis, primaryFocus, immediateCorrection, fullFeedback, correctedVersion, "
-        "affirmation, keepInMind, nextMove, why, microDrill, microDrillExplanation, microDrillInvariant, "
+        "affirmation, keepInMind, nextMove, why, microDrill, "
         "nextRepTarget, strengths (max 3), errorTags. "
         "Use affirmation and strengths for what was correct and how it generalizes. "
         "Use diagnosis, primaryFocus, immediateCorrection, and why for what was wrong and why it matters in plain English. "
@@ -203,8 +201,6 @@ async def attempt_feedback_with_narrator(
         "nextMove": str(llm_response.get("nextMove", "")),
         "why": str(llm_response.get("why", "")),
         "microDrill": str(llm_response.get("microDrill", "")),
-        "microDrillExplanation": str(llm_response.get("microDrillExplanation", "")),
-        "microDrillInvariant": str(llm_response.get("microDrillInvariant", "")),
         "nextRepTarget": str(llm_response.get("nextRepTarget", "")),
         "strengths": [str(x) for x in llm_response.get("strengths", assessment.get("strengths", []))][:3],
         "errorTags": [str(x) for x in llm_response.get("errorTags", assessment.get("errorTags", []))][:6],

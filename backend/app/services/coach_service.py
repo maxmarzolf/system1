@@ -6,7 +6,6 @@ from app.models import (
     AdaptiveVariationRequest,
     CoachAttemptFeedbackRequest,
     CoachPracticeHistoryRequest,
-    CoachPromptToggleExplanationRequest,
     CoachSessionPlanRequest,
     MultipleChoiceDrillsRequest,
     SequentialVariationRequest,
@@ -32,10 +31,6 @@ async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
 
 async def coach_session_plan(body: CoachSessionPlanRequest):
     return await coach_orchestration_service.coach_session_plan(body)
-
-
-async def coach_prompt_toggle_explanation(body: CoachPromptToggleExplanationRequest):
-    return await coach_orchestration_service.coach_prompt_toggle_explanation(body)
 
 
 async def coach_practice_history(body: CoachPracticeHistoryRequest):

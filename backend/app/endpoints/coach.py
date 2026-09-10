@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from app.models import (
+    FlowMicroDrillRequest,
+    FlowMicroDrillResponse,
     AdaptiveVariationRequest,
     AdaptiveVariationResponse,
     CoachAttemptFeedbackRequest,
@@ -9,8 +11,6 @@ from app.models import (
     CoachPracticeHistoryRequest,
     CoachPracticeHistoryResponse,
     CoachProviderDefaultResponse,
-    CoachPromptToggleExplanationRequest,
-    CoachPromptToggleExplanationResponse,
     CoachSessionPlanRequest,
     CoachSessionPlanResponse,
     MultipleChoiceDrillsRequest,
@@ -20,6 +20,7 @@ from app.models import (
     SkillMapDrillsRequest,
     SkillMapDrillsResponse,
 )
+from app.services import micro_drill_service
 from app.services import coach_service
 from app.services import problem_practice_service
 
@@ -39,11 +40,6 @@ async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
 @router.post("/session-plan", response_model=CoachSessionPlanResponse)
 async def coach_session_plan(body: CoachSessionPlanRequest):
     return await coach_service.coach_session_plan(body)
-
-
-@router.post("/prompt-toggle-explanation", response_model=CoachPromptToggleExplanationResponse)
-async def coach_prompt_toggle_explanation(body: CoachPromptToggleExplanationRequest):
-    return await coach_service.coach_prompt_toggle_explanation(body)
 
 
 @router.post("/history", response_model=CoachPracticeHistoryResponse)
@@ -103,3 +99,11 @@ async def coach_adaptive_variation(body: AdaptiveVariationRequest):
 @router.post("/sequential-variation", response_model=SequentialVariationResponse)
 async def coach_sequential_variation(body: SequentialVariationRequest):
     return await coach_service.coach_sequential_variation(body)
+
+
+@router.post("/micro-drill", response_model=FlowMicroDrillResponse)
+async def coach_micro_drill(body: FlowMicroDrillRequest):
+    try:
+        return await micro_drill_service.generate_flow_micro_drill(body)
+    except micro_drill_service.MicroDrillGenerationError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error

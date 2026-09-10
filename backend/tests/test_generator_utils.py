@@ -35,6 +35,50 @@ def test_clean_concise_prompt_normalizes_whitespace() -> None:
     assert _clean_concise_prompt(" Recall   the\tpattern ", max_chars=80) == "Recall the pattern"
 
 
+def test_specimen_tuning_normalizes_python_skeletons_to_pep8() -> None:
+    target = (
+        "from collections import deque\n"
+        "def bfs(start, graph):\n"
+        "   if start not in graph:\n"
+        "       return []\n"
+        "   q = deque([start])\n"
+        "   visited = {start}\n"
+        "   out = []\n"
+        "   while q:\n"
+        "       node = q.popleft()\n"
+        "       out.append(node)\n"
+        "       for ngbr in graph[node]:\n"
+        "           if ngbr not in visited:\n"
+        "               visited.add(ngbr)\n"
+        "               q.append(ngbr)\n"
+        "   return out"
+    )
+
+    styled = apply_specimen_tuning_to_target(
+        target,
+        {"typeHints": "omit", "comments": "omit", "variableNames": "readable"},
+    )
+
+    assert styled == (
+        "from collections import deque\n"
+        "\n"
+        "def bfs(start, graph):\n"
+        "    if start not in graph:\n"
+        "        return []\n"
+        "    queue = deque([start])\n"
+        "    visited = {start}\n"
+        "    output = []\n"
+        "    while queue:\n"
+        "        node = queue.popleft()\n"
+        "        output.append(node)\n"
+        "        for neighbor in graph[node]:\n"
+        "            if neighbor not in visited:\n"
+        "                visited.add(neighbor)\n"
+        "                queue.append(neighbor)\n"
+        "    return output"
+    )
+
+
 def test_template_mode_value_defaults_to_algorithm() -> None:
     assert _template_mode_value(None) == TemplateMode.algorithm.value
     assert _template_mode_value("unknown") == TemplateMode.algorithm.value

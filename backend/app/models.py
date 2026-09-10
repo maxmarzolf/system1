@@ -88,8 +88,6 @@ class CoachAttemptFeedbackResponse(BaseModel):
     nextMove: str = ""
     why: str = ""
     microDrill: str
-    microDrillExplanation: str = ""
-    microDrillInvariant: str = ""
     nextRepTarget: str
     strengths: list[str] = []
     errorTags: list[str] = []
@@ -140,22 +138,6 @@ class CoachSessionPlanResponse(BaseModel):
     mainSet: str
     cooldown: str
     note: str
-    llmUsed: bool = False
-
-
-class CoachPromptToggleExplanationRequest(BaseModel):
-    cardId: str = Field(min_length=1)
-    cardTitle: str = ""
-    prompt: str = ""
-    target: str = ""
-    tags: list[str] = []
-    llmProvider: str = "openai"
-
-
-class CoachPromptToggleExplanationResponse(BaseModel):
-    plainEnglish: str = ""
-    inputExample: str = ""
-    outputExample: str = ""
     llmUsed: bool = False
 
 
@@ -516,3 +498,19 @@ class AdminResetPracticeHistoryResponse(BaseModel):
     clearedTables: list[str] = []
     before: dict[str, int] = {}
     after: dict[str, int] = {}
+
+
+class FlowMicroDrillRequest(BaseModel):
+    cardTitle: str
+    prompt: str
+    target: str = Field(min_length=1)
+    focus: str = ""
+    rep: int = Field(default=1, ge=1)
+    llmProvider: str = "openai"
+
+
+class FlowMicroDrillResponse(BaseModel):
+    prompt: str
+    language: str
+    template: str
+    solution: str
