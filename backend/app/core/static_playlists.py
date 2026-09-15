@@ -89,7 +89,7 @@ GOOGLE_QUESTIONS: tuple[dict[str, Any], ...] = (
 )
 
 
-GOOGLE_SKELETON_QUESTIONS: tuple[dict[str, Any], ...] = (
+SKELETON_QUESTIONS: tuple[dict[str, Any], ...] = (
     _question(
         "BFS Skeleton",
         "Graphs",
@@ -462,13 +462,25 @@ STATIC_PLAYLISTS: dict[str, dict[str, Any]] = {
         "title": "Google",
         "questions": GOOGLE_QUESTIONS,
     },
-    "google-skeletons": {
+    "skeletons": {
         "title": "Skeletons",
-        "questions": GOOGLE_SKELETON_QUESTIONS,
+        "questions": SKELETON_QUESTIONS,
     },
 }
 
+STATIC_PLAYLIST_ALIASES: dict[str, str] = {
+    "google-skeletons": "skeletons",
+}
+
 STATIC_PLAYLIST_ORDERS: tuple[str, ...] = (
+    "curated",
+    "solution-length",
+    "family",
+    "difficulty",
+    "mastery",
+)
+
+GOOGLE_PLAYLIST_ORDERS: tuple[str, ...] = (
     "curated",
     "google-15",
     "solution-length",
@@ -554,44 +566,42 @@ DIFFICULTY_RANK: dict[str, int] = {
     "Hard": 2,
 }
 
-GOOGLE_SOLUTIONS: dict[str, str] = {
+SKELETON_SOLUTIONS: dict[str, str] = {
     "BFS Skeleton": """
 from collections import deque
-
 
 def bfs(start, graph):
     if start not in graph:
         return []
 
-    queue = deque([start])
+    q = deque([start])
     visited = {start}
     output = []
 
-    while queue:
-        node = queue.popleft()
+    while q:
+        node = q.popleft()
         output.append(node)
 
-        for neighbor in graph[node]:
-            if neighbor not in visited:
-                visited.add(neighbor)
-                queue.append(neighbor)
+        for ngbr in graph.get(node, []):
+            if ngbr not in visited:
+                visited.add(ngbr)
+                q.append(ngbr)
 
     return output
 """,
     "Grid BFS Skeleton": """
 from collections import deque
 
-
 def bfs(grid, r, c):
     rows, cols = len(grid), len(grid[0])
     start = (r, c)
-    queue = deque([start])
+    q = deque([start])
     visited = {start}
     distance = 0
 
-    while queue:
-        for _ in range(len(queue)):
-            r, c = queue.popleft()
+    while q:
+        for _ in range(len(q)):
+            r, c = q.popleft()
 
             for dr, dc in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
                 nr, nc = r + dr, c + dc
@@ -602,7 +612,7 @@ def bfs(grid, r, c):
                     and (nr, nc) not in visited
                 ):
                     visited.add((nr, nc))
-                    queue.append((nr, nc))
+                    q.append((nr, nc))
 
         distance += 1
 
@@ -620,9 +630,9 @@ def dfs(start, graph):
         visited.add(node)
         output.append(node)
 
-        for neighbor in graph[node]:
-            if neighbor not in visited:
-                walk(neighbor)
+        for ngbr in graph[node]:
+            if ngbr not in visited:
+                walk(ngbr)
 
     walk(start)
     return output
@@ -681,25 +691,24 @@ def tree_dfs_with_state(root):
     "Binary Tree BFS -- Level Order Skeleton": """
 from collections import deque
 
-
 def tree_level_order(root):
     if root is None:
         return []
 
-    queue = deque([root])
+    q = deque([root])
     result = []
 
-    while queue:
+    while q:
         level = []
 
-        for _ in range(len(queue)):
-            node = queue.popleft()
+        for _ in range(len(q)):
+            node = q.popleft()
             level.append(node.val)
 
             if node.left is not None:
-                queue.append(node.left)
+                q.append(node.left)
             if node.right is not None:
-                queue.append(node.right)
+                q.append(node.right)
 
         result.append(level)
 
@@ -854,7 +863,6 @@ def monotonic_stack(nums):
     "Heap / Top-K Skeleton": """
 import heapq
 
-
 def top_k(items, k):
     heap = []
 
@@ -901,7 +909,6 @@ class UnionFind:
     def find(self, x):
         if x != self.parent[x]:
             self.parent[x] = self.find(self.parent[x])
-
         return self.parent[x]
 
     def union(self, a, b):
@@ -922,7 +929,6 @@ class UnionFind:
     "Topological Sort -- Kahn's Algorithm Skeleton": """
 from collections import defaultdict, deque
 
-
 def topological_sort(n, edges):
     graph = defaultdict(list)
     indegree = [0] * n
@@ -931,28 +937,27 @@ def topological_sort(n, edges):
         graph[a].append(b)
         indegree[b] += 1
 
-    queue = deque(
+    q = deque(
         node for node in range(n)
         if indegree[node] == 0
     )
 
     order = []
 
-    while queue:
-        node = queue.popleft()
+    while q:
+        node = q.popleft()
         order.append(node)
 
-        for neighbor in graph[node]:
-            indegree[neighbor] -= 1
+        for ngbr in graph[node]:
+            indegree[ngbr] -= 1
 
-            if indegree[neighbor] == 0:
-                queue.append(neighbor)
+            if indegree[ngbr] == 0:
+                q.append(ngbr)
 
     return order if len(order) == n else []
 """,
     "Dijkstra Skeleton": """
 import heapq
-
 
 def dijkstra(start, graph):
     heap = [(0, start)]
@@ -966,11 +971,11 @@ def dijkstra(start, graph):
 
         distance[node] = dist
 
-        for neighbor, weight in graph.get(node, []):
-            if neighbor not in distance:
+        for ngbr, weight in graph.get(node, []):
+            if ngbr not in distance:
                 heapq.heappush(
                     heap,
-                    (dist + weight, neighbor)
+                    (dist + weight, ngbr)
                 )
 
     return distance
@@ -1032,6 +1037,10 @@ def divide_and_conquer(problem):
 
     return combine(left_answer, right_answer)
 """,
+}
+
+
+GOOGLE_SOLUTIONS: dict[str, str] = {
     "1. Two Sum": """
 def solution(nums, target):
     seen = {}
@@ -1044,7 +1053,6 @@ def solution(nums, target):
 """,
     "49. Group Anagrams": """
 from collections import defaultdict
-
 
 def solution(strs):
     groups = defaultdict(list)
@@ -1070,7 +1078,6 @@ def solution(nums):
 """,
     "347. Top K Frequent Elements": """
 from collections import Counter
-
 
 def solution(nums, k):
     return [num for num, _ in Counter(nums).most_common(k)]
@@ -1104,7 +1111,6 @@ def solution(s):
     "424. Longest Repeating Character Replacement": """
 from collections import defaultdict
 
-
 def solution(s, k):
     counts = defaultdict(int)
     left = 0
@@ -1121,7 +1127,6 @@ def solution(s, k):
 """,
     "567. Permutation in String": """
 from collections import Counter
-
 
 def solution(s1, s2):
     need = Counter(s1)
@@ -1141,7 +1146,6 @@ def solution(s1, s2):
 """,
     "76. Minimum Window Substring": """
 from collections import Counter
-
 
 def solution(s, t):
     need = Counter(t)
@@ -1288,7 +1292,6 @@ def solution(nums):
     "875. Koko Eating Bananas": """
 import math
 
-
 def solution(piles, h):
     left = 1
     right = max(piles)
@@ -1303,7 +1306,6 @@ def solution(piles, h):
 """,
     "981. Time Based Key-Value Store": """
 import bisect
-
 
 class TimeMap:
     def __init__(self):
@@ -1330,7 +1332,6 @@ def solution(root):
 """,
     "102. Binary Tree Level Order Traversal": """
 from collections import deque
-
 
 def solution(root):
     if not root:
@@ -1427,14 +1428,13 @@ def solution(node):
             return copies[current]
         copy = Node(current.val)
         copies[current] = copy
-        copy.neighbors = [clone(neighbor) for neighbor in current.neighbors]
+        copy.neighbors = [clone(ngbr) for ngbr in current.neighbors]
         return copy
 
     return clone(node)
 """,
     "207. Course Schedule": """
 from collections import deque
-
 
 def solution(num_courses, prerequisites):
     graph = [[] for _ in range(num_courses)]
@@ -1448,15 +1448,14 @@ def solution(num_courses, prerequisites):
     while q:
         course = q.popleft()
         taken += 1
-        for neighbor in graph[course]:
-            indegree[neighbor] -= 1
-            if indegree[neighbor] == 0:
-                q.append(neighbor)
+        for ngbr in graph[course]:
+            indegree[ngbr] -= 1
+            if indegree[ngbr] == 0:
+                q.append(ngbr)
     return taken == num_courses
 """,
     "210. Course Schedule II": """
 from collections import deque
-
 
 def solution(num_courses, prerequisites):
     graph = [[] for _ in range(num_courses)]
@@ -1470,15 +1469,14 @@ def solution(num_courses, prerequisites):
     while q:
         course = q.popleft()
         order.append(course)
-        for neighbor in graph[course]:
-            indegree[neighbor] -= 1
-            if indegree[neighbor] == 0:
-                q.append(neighbor)
+        for ngbr in graph[course]:
+            indegree[ngbr] -= 1
+            if indegree[ngbr] == 0:
+                q.append(ngbr)
     return order if len(order) == num_courses else []
 """,
     "994. Rotting Oranges": """
 from collections import deque
-
 
 def solution(grid):
     rows = len(grid)
@@ -1542,13 +1540,11 @@ def solution(heights):
     "215. Kth Largest Element": """
 import heapq
 
-
 def solution(nums, k):
     return heapq.nlargest(k, nums)[-1]
 """,
     "295. Find Median from Data Stream": """
 import heapq
-
 
 class MedianFinder:
     def __init__(self):
@@ -1568,7 +1564,6 @@ class MedianFinder:
 """,
     "973. K Closest Points": """
 import heapq
-
 
 def solution(points, k):
     return heapq.nsmallest(
@@ -1813,7 +1808,6 @@ def solution(heights):
     "239. Sliding Window Maximum": """
 from collections import deque
 
-
 def solution(nums, k):
     q = deque()
     result = []
@@ -1860,7 +1854,6 @@ class Codec:
     "23. Merge k Sorted Lists": """
 import heapq
 
-
 def solution(lists):
     heap = []
     counter = 0
@@ -1883,7 +1876,6 @@ def solution(lists):
     "269. Alien Dictionary": """
 from collections import deque
 
-
 def solution(words):
     graph = {char: set() for word in words for char in word}
     indegree = {char: 0 for char in graph}
@@ -1903,16 +1895,15 @@ def solution(words):
     while q:
         char = q.popleft()
         order.append(char)
-        for neighbor in graph[char]:
-            indegree[neighbor] -= 1
-            if indegree[neighbor] == 0:
-                q.append(neighbor)
+        for ngbr in graph[char]:
+            indegree[ngbr] -= 1
+            if indegree[ngbr] == 0:
+                q.append(ngbr)
 
     return "".join(order) if len(order) == len(indegree) else ""
 """,
     "642. Design Search Autocomplete System": """
 from collections import defaultdict
-
 
 class AutocompleteSystem:
     def __init__(self, sentences, times):
@@ -1943,17 +1934,35 @@ def _card_id(playlist_slug: str, title: str) -> str:
     return f"playlist-{playlist_slug}-{_slug(title)}"
 
 
-def _solution_line_count(question: dict[str, Any]) -> int:
-    return len(_outline_target(question).splitlines())
+def normalize_static_playlist_slug(playlist_slug: str) -> str:
+    slug = _slug(playlist_slug)
+    return STATIC_PLAYLIST_ALIASES.get(slug, slug)
+
+
+def _solution_for_question(playlist_slug: str, title: str) -> str | None:
+    if playlist_slug == "skeletons":
+        return SKELETON_SOLUTIONS.get(title)
+    if playlist_slug == "google":
+        return GOOGLE_SOLUTIONS.get(title)
+    return None
+
+
+def _solution_line_count(playlist_slug: str, question: dict[str, Any]) -> int:
+    return len(_outline_target(playlist_slug, question).splitlines())
+
+
+def static_playlist_orders(playlist_slug: str) -> tuple[str, ...]:
+    normalized_slug = normalize_static_playlist_slug(playlist_slug)
+    return GOOGLE_PLAYLIST_ORDERS if normalized_slug == "google" else STATIC_PLAYLIST_ORDERS
 
 
 def _ordered_questions(playlist_slug: str, questions: tuple[dict[str, Any], ...], order: str) -> list[dict[str, Any]]:
-    normalized_order = order if order in STATIC_PLAYLIST_ORDERS else "curated"
+    normalized_order = order if order in static_playlist_orders(playlist_slug) else "curated"
     indexed = list(enumerate(questions))
 
     if (
-        playlist_slug == "google-skeletons"
-        and normalized_order in {"curated", "mastery", "google-15"}
+        playlist_slug == "skeletons"
+        and normalized_order in {"curated", "mastery"}
     ):
         rank = {title: index for index, title in enumerate(SKELETON_APPLICABILITY)}
         return [
@@ -1969,7 +1978,7 @@ def _ordered_questions(playlist_slug: str, questions: tuple[dict[str, Any], ...]
             question
             for _, question in sorted(
                 indexed,
-                key=lambda item: (_solution_line_count(item[1]), item[0]),
+                key=lambda item: (_solution_line_count(playlist_slug, item[1]), item[0]),
             )
         ]
 
@@ -2011,8 +2020,8 @@ def _ordered_questions(playlist_slug: str, questions: tuple[dict[str, Any], ...]
     return [question for _, question in indexed]
 
 
-def _outline_target(question: dict[str, Any]) -> str:
-    solution = GOOGLE_SOLUTIONS.get(str(question["title"]))
+def _outline_target(playlist_slug: str, question: dict[str, Any]) -> str:
+    solution = _solution_for_question(playlist_slug, str(question["title"]))
     if solution:
         return dedent(solution).strip()
 
@@ -2048,14 +2057,14 @@ def _tags(playlist_slug: str, question: dict[str, Any]) -> list[str]:
 
 
 def build_static_playlist_drills(playlist_slug: str, order: str = "curated") -> dict[str, Any] | None:
-    normalized_slug = _slug(playlist_slug)
+    normalized_slug = normalize_static_playlist_slug(playlist_slug)
     playlist = STATIC_PLAYLISTS.get(normalized_slug)
     if not playlist:
         return None
 
     drills = []
     for question in _ordered_questions(normalized_slug, playlist["questions"], order):
-        target = _outline_target(question)
+        target = _outline_target(normalized_slug, question)
         title = str(question["title"])
         core_shape = str(question["coreShape"])
         tier = str(question["tier"])
@@ -2091,7 +2100,7 @@ def build_static_playlist_drills(playlist_slug: str, order: str = "curated") -> 
             },
         }
         applicability = SKELETON_APPLICABILITY.get(title)
-        if normalized_slug == "google-skeletons" and applicability:
+        if normalized_slug == "skeletons" and applicability:
             drill["skeletonApplicability"] = applicability
         drills.append(drill)
 

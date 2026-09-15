@@ -4,8 +4,8 @@ from typing import Any
 
 from app.core.static_playlists import (
     STATIC_PLAYLISTS,
-    STATIC_PLAYLIST_ORDERS,
     build_static_playlist_drills,
+    static_playlist_orders,
 )
 from app.repositories.unified_catalog_repository import (
     seed_static_playlist,
@@ -14,7 +14,7 @@ from app.repositories.unified_catalog_repository import (
 
 _STATIC_PLAYLIST_DESCRIPTIONS = {
     "google": "Google-focused LeetCode playlist organized by tier and algorithm family.",
-    "google-skeletons": "Static skeleton drills for reusable search, traversal, graph, data structure, and optimization patterns.",
+    "skeletons": "Static skeleton drills for reusable search, traversal, graph, data structure, and optimization patterns.",
 }
 
 
@@ -26,7 +26,7 @@ def _playlist_item(drill: dict[str, Any], question: dict[str, Any] | None = None
         (
             tag
             for tag in tags
-            if tag not in {"skill-map", "static-playlist", "google", "google-skeletons"}
+            if tag not in {"skill-map", "static-playlist", "google", "skeletons", "google-skeletons"}
             and not tag.startswith("tier-")
         ),
         None,
@@ -79,7 +79,7 @@ async def seed_canonical_catalog() -> None:
         ]
         orderings = {
             order_slug: _ordered_ids(playlist_slug, order_slug)
-            for order_slug in STATIC_PLAYLIST_ORDERS
+            for order_slug in static_playlist_orders(playlist_slug)
         }
         await seed_static_playlist(
             slug=playlist_slug,

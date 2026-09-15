@@ -71,7 +71,63 @@ def test_static_playlist_drills_route_serves_google_without_generation(monkeypat
     assert 'static-playlist' in payload['drills'][0]['tags']
 
 
-def test_static_playlist_drills_route_serves_google_skeletons(monkeypatch) -> None:
+def test_static_playlist_drills_route_serves_skeletons(monkeypatch) -> None:
+    async def _noop_connect():
+        return None
+
+    async def _noop_disconnect():
+        return None
+
+    monkeypatch.setattr(app_main, 'connect', _noop_connect)
+    monkeypatch.setattr(app_main, 'disconnect', _noop_disconnect)
+
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get('/api/coach/playlist-drills/skeletons')
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload['llmUsed'] is False
+    assert len(payload['drills']) == 24
+    assert payload['drills'][0]['id'] == 'playlist-skeletons-bfs-skeleton'
+    assert payload['drills'][0]['title'] == 'BFS Skeleton'
+    assert 'def bfs(start, graph):' in payload['drills'][0]['solution']
+    assert payload['drills'][1]['id'] == 'playlist-skeletons-grid-bfs-skeleton'
+    assert payload['drills'][1]['title'] == 'Grid BFS Skeleton'
+    assert 'def bfs(grid, r, c):' in payload['drills'][1]['solution']
+    assert payload['drills'][2]['id'] == 'playlist-skeletons-dfs-skeleton'
+    assert payload['drills'][2]['title'] == 'DFS Skeleton'
+    assert 'def dfs(start, graph):' in payload['drills'][2]['solution']
+    assert payload['drills'][3]['id'] == 'playlist-skeletons-grid-dfs-skeleton'
+    assert payload['drills'][3]['title'] == 'Grid DFS Skeleton'
+    assert 'def dfs(grid, r, c):' in payload['drills'][3]['solution']
+    assert payload['drills'][4]['title'] == 'Binary Tree DFS -- Return & Combine Skeleton'
+    assert 'def tree_dfs(root):' in payload['drills'][4]['solution']
+    assert payload['drills'][5]['title'] == 'Binary Tree DFS -- Carry State Skeleton'
+    assert 'def tree_dfs_with_state(root):' in payload['drills'][5]['solution']
+    assert payload['drills'][6]['title'] == 'Binary Tree BFS -- Level Order Skeleton'
+    assert 'def tree_level_order(root):' in payload['drills'][6]['solution']
+    assert payload['drills'][7]['title'] == 'Union-Find / Disjoint Set Skeleton'
+    assert 'class UnionFind:' in payload['drills'][7]['solution']
+    assert payload['drills'][9]['id'] == 'playlist-skeletons-binary-search-skeleton'
+    assert payload['drills'][9]['title'] == 'Binary Search Skeleton'
+    assert 'def binary_search(nums, target):' in payload['drills'][9]['solution']
+    assert payload['drills'][0]['skeletonApplicability'] == {
+        'templateStrength': 10,
+        'applicationAbstraction': 2,
+        'summary': 'Queue → visited → neighbors',
+        'explanation': 'Breadth-first search expands the graph one distance layer at a time. Mark each node when it enters the queue so it is scheduled exactly once.',
+        'invariant': 'Every queued node has been discovered but not yet processed, and every discovered node is already in visited.',
+        'timeComplexity': 'O(V + E)',
+    }
+    assert payload['drills'][-2]['title'] == 'Top-Down DP Skeleton'
+    assert payload['drills'][-2]['skeletonApplicability']['applicationAbstraction'] == 10
+    assert payload['drills'][-1]['id'] == 'playlist-skeletons-bottom-up-dp-skeleton'
+    assert payload['drills'][-1]['title'] == 'Bottom-Up DP Skeleton'
+    assert 'for state in dependency_order(problem):' in payload['drills'][-1]['solution']
+
+
+def test_static_playlist_drills_route_accepts_legacy_google_skeletons_slug(monkeypatch) -> None:
     async def _noop_connect():
         return None
 
@@ -87,44 +143,9 @@ def test_static_playlist_drills_route_serves_google_skeletons(monkeypatch) -> No
 
     assert response.status_code == 200, response.text
     payload = response.json()
-    assert payload['llmUsed'] is False
-    assert len(payload['drills']) == 24
-    assert payload['drills'][0]['id'] == 'playlist-google-skeletons-bfs-skeleton'
-    assert payload['drills'][0]['title'] == 'BFS Skeleton'
-    assert 'def bfs(start, graph):' in payload['drills'][0]['solution']
-    assert payload['drills'][1]['id'] == 'playlist-google-skeletons-grid-bfs-skeleton'
-    assert payload['drills'][1]['title'] == 'Grid BFS Skeleton'
-    assert 'def bfs(grid, r, c):' in payload['drills'][1]['solution']
-    assert payload['drills'][2]['id'] == 'playlist-google-skeletons-dfs-skeleton'
-    assert payload['drills'][2]['title'] == 'DFS Skeleton'
-    assert 'def dfs(start, graph):' in payload['drills'][2]['solution']
-    assert payload['drills'][3]['id'] == 'playlist-google-skeletons-grid-dfs-skeleton'
-    assert payload['drills'][3]['title'] == 'Grid DFS Skeleton'
-    assert 'def dfs(grid, r, c):' in payload['drills'][3]['solution']
-    assert payload['drills'][4]['title'] == 'Binary Tree DFS -- Return & Combine Skeleton'
-    assert 'def tree_dfs(root):' in payload['drills'][4]['solution']
-    assert payload['drills'][5]['title'] == 'Binary Tree DFS -- Carry State Skeleton'
-    assert 'def tree_dfs_with_state(root):' in payload['drills'][5]['solution']
-    assert payload['drills'][6]['title'] == 'Binary Tree BFS -- Level Order Skeleton'
-    assert 'def tree_level_order(root):' in payload['drills'][6]['solution']
-    assert payload['drills'][7]['title'] == 'Union-Find / Disjoint Set Skeleton'
-    assert 'class UnionFind:' in payload['drills'][7]['solution']
-    assert payload['drills'][9]['id'] == 'playlist-google-skeletons-binary-search-skeleton'
-    assert payload['drills'][9]['title'] == 'Binary Search Skeleton'
-    assert 'def binary_search(nums, target):' in payload['drills'][9]['solution']
-    assert payload['drills'][0]['skeletonApplicability'] == {
-        'templateStrength': 10,
-        'applicationAbstraction': 2,
-        'summary': 'Queue → visited → neighbors',
-        'explanation': 'Breadth-first search expands the graph one distance layer at a time. Mark each node when it enters the queue so it is scheduled exactly once.',
-        'invariant': 'Every queued node has been discovered but not yet processed, and every discovered node is already in visited.',
-        'timeComplexity': 'O(V + E)',
-    }
-    assert payload['drills'][-2]['title'] == 'Top-Down DP Skeleton'
-    assert payload['drills'][-2]['skeletonApplicability']['applicationAbstraction'] == 10
-    assert payload['drills'][-1]['id'] == 'playlist-google-skeletons-bottom-up-dp-skeleton'
-    assert payload['drills'][-1]['title'] == 'Bottom-Up DP Skeleton'
-    assert 'for state in dependency_order(problem):' in payload['drills'][-1]['solution']
+    assert payload['drills'][0]['id'] == 'playlist-skeletons-bfs-skeleton'
+    assert 'skeletons' in payload['drills'][0]['tags']
+    assert 'google-skeletons' not in payload['drills'][0]['tags']
 
 
 def test_static_playlist_drills_route_accepts_order(monkeypatch) -> None:

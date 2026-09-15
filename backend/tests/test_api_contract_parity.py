@@ -225,14 +225,14 @@ def test_playlist_drills_endpoint_supports_skeleton_metadata(monkeypatch) -> Non
         return {
             "drills": [
                 {
-                    "id": "playlist-google-skeletons-bfs-skeleton",
+                    "id": "playlist-skeletons-bfs-skeleton",
                     "title": "BFS Skeleton",
                     "difficulty": "Easy",
                     "prompt": "Skeletons: recall the static solution for BFS Skeleton.",
                     "solution": "def bfs(start, graph): pass",
                     "missing": "# static playlist outline complete",
                     "hint": "Focus on the queue invariant.",
-                    "tags": ["skill-map", "static-playlist", "google-skeletons"],
+                    "tags": ["skill-map", "static-playlist", "skeletons"],
                     "skeletonApplicability": {
                         "templateStrength": 10,
                         "applicationAbstraction": 2,
@@ -258,7 +258,7 @@ def test_playlist_drills_endpoint_supports_skeleton_metadata(monkeypatch) -> Non
 
     app = create_app()
     with TestClient(app) as client:
-        response = client.get("/api/coach/playlist-drills/google-skeletons")
+        response = client.get("/api/coach/playlist-drills/skeletons")
 
     assert response.status_code == 200, response.text
     applicability = response.json()["drills"][0]["skeletonApplicability"]

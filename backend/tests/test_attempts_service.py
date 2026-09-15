@@ -166,7 +166,7 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
         generated_rows=[
             {"id": "playlist-google-1-two-sum", "title": "1. Two Sum", "tags": ["skill-map", "static-playlist", "google", "arrays-hash-maps"]},
             {"id": "playlist-google-3-longest-substring-without-repeating-characters", "title": "3. Longest Substring Without Repeating Characters", "tags": ["skill-map", "static-playlist", "google", "sliding-window", "valid-window-rule"]},
-            {"id": "playlist-google-skeletons-bfs-skeleton", "title": "BFS Skeleton", "tags": ["skill-map", "static-playlist", "google-skeletons", "graphs", "bfs-skeleton"]},
+            {"id": "playlist-skeletons-bfs-skeleton", "title": "BFS Skeleton", "tags": ["skill-map", "static-playlist", "skeletons", "graphs", "bfs-skeleton"]},
         ],
         attempt_rows=[
             {
@@ -183,10 +183,10 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
                 "signals": {},
             },
             {
-                "tracked_card_id": "playlist-google-skeletons-bfs-skeleton",
+                "tracked_card_id": "playlist-skeletons-bfs-skeleton",
                 "card_title": "BFS Skeleton",
-                "category_tags": ["skill-map", "static-playlist", "google-skeletons", "graphs", "bfs-skeleton"],
-                "question_type": "playlist:google-skeletons:algorithm",
+                "category_tags": ["skill-map", "static-playlist", "skeletons", "graphs", "bfs-skeleton"],
+                "question_type": "playlist:skeletons:algorithm",
                 "successful": True,
                 "created_at": now,
                 "template_mode": "algorithm",
@@ -201,7 +201,7 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
     arrays = next(item for item in overview["algorithms"] if item["slug"] == "arrays-hash-maps")
     sliding = next(item for item in overview["algorithms"] if item["slug"] == "sliding-window")
     google = next(item for item in overview["algorithms"] if item["slug"] == "google")
-    google_skeletons = next(item for item in overview["algorithms"] if item["slug"] == "google-skeletons")
+    skeletons = next(item for item in overview["algorithms"] if item["slug"] == "skeletons")
 
     assert arrays["totalCards"] == 1
     assert arrays["untouchedCards"] == 0
@@ -210,8 +210,8 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
     assert sliding["untouchedCards"] == 1
     assert google["totalCards"] == 2
     assert google["overallAttemptCount"] == 1
-    assert google_skeletons["totalCards"] == 1
-    assert google_skeletons["overallAttemptCount"] == 1
+    assert skeletons["totalCards"] == 1
+    assert skeletons["overallAttemptCount"] == 1
     assert overview["summary"]["totalGeneratedCards"] == 3
 
     today_bucket = next(
@@ -223,7 +223,7 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
     assert today_bucket["total"] == 2
     assert [segment["slug"] for segment in today_bucket["segments"]] == [
         "google",
-        "google-skeletons",
+        "skeletons",
     ]
     google_activity = next(
         item for item in overview["ghostRepActivity"]["algorithms"]
@@ -231,7 +231,7 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
     )
     skeleton_activity = next(
         item for item in overview["ghostRepActivity"]["algorithms"]
-        if item["slug"] == "google-skeletons"
+        if item["slug"] == "skeletons"
     )
     assert google_activity["totalPerfectRecalls"] == 1
     assert google_activity["coreCardCount"] == 2

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from app.core.core_algorithm_practice import build_core_algorithm_drill
-from app.core.static_playlists import build_static_playlist_drills
+from app.core.static_playlists import build_static_playlist_drills, normalize_static_playlist_slug
 from app.repositories.problems_repository import (
     fetch_problem_practice_rows,
     fetch_problem_practice_rows_by_tag,
@@ -56,8 +56,9 @@ async def problem_drills_for_technique(technique_slug: str):
     }
 
 async def static_playlist_drills(playlist_slug: str, order: str = "curated"):
+    normalized_slug = normalize_static_playlist_slug(playlist_slug)
     try:
-        rows = await fetch_static_playlist_drills(playlist_slug, order)
+        rows = await fetch_static_playlist_drills(normalized_slug, order)
     except AssertionError:
         rows = []
     if rows:
@@ -83,7 +84,7 @@ async def static_playlist_drills(playlist_slug: str, order: str = "curated"):
             drills.append(drill)
         return {"drills": drills, "llmUsed": False}
 
-    return build_static_playlist_drills(playlist_slug, order) or {
+    return build_static_playlist_drills(normalized_slug, order) or {
         "drills": [],
         "llmUsed": False,
     }

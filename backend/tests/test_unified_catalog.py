@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.core.static_playlists import STATIC_PLAYLISTS, STATIC_PLAYLIST_ORDERS, build_static_playlist_drills
+from app.core.static_playlists import STATIC_PLAYLISTS, build_static_playlist_drills, static_playlist_orders
 from app.services import problem_practice_service
 from app.services.unified_catalog_service import _ordered_ids, _playlist_item
 
@@ -13,7 +13,7 @@ def test_static_playlist_seed_covers_every_declared_order() -> None:
         assert curated is not None
         expected_ids = [str(drill["id"]) for drill in curated["drills"]]
 
-        for order_slug in STATIC_PLAYLIST_ORDERS:
+        for order_slug in static_playlist_orders(playlist_slug):
             ordered_ids = _ordered_ids(playlist_slug, order_slug)
             if playlist_slug == "google" and order_slug == "google-15":
                 assert len(ordered_ids) == 15
@@ -24,13 +24,13 @@ def test_static_playlist_seed_covers_every_declared_order() -> None:
 
 
 def test_static_playlist_seed_preserves_skeleton_metadata() -> None:
-    payload = build_static_playlist_drills("google-skeletons", "curated")
+    payload = build_static_playlist_drills("skeletons", "curated")
     assert payload is not None
 
     skeleton = next(drill for drill in payload["drills"] if drill["title"] == "BFS Skeleton")
     item = _playlist_item(skeleton)
 
-    assert item["id"] == "playlist-google-skeletons-bfs-skeleton"
+    assert item["id"] == "playlist-skeletons-bfs-skeleton"
     assert item["metadata"]["skeletonApplicability"]["templateStrength"] == 10
     assert item["playlistMetadata"]["skeletonApplicability"]["timeComplexity"] == "O(V + E)"
 

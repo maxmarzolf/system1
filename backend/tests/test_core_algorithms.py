@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import re
 
 from app.core import core_algorithms as sf
 from app.core import core_meta
@@ -270,17 +271,21 @@ def test_google_static_playlist_contains_requested_questions() -> None:
     ].startswith("def solution(root):")
     for card in deck["drills"]:
         compile(card["solution"], f"<{card['id']}>", "exec")
+        assert not re.search(
+            r"^(?:from .*|import .*)\n\n\n(?:def|class)\b",
+            card["solution"],
+        )
     assert all(card["solution"].replace("# static playlist outline complete", "").strip() for card in deck["drills"])
     assert "heap" in next(card for card in deck["drills"] if card["title"] == "215. Kth Largest Element")["tags"]
     assert "heap-priority-queue" not in next(card for card in deck["drills"] if card["title"] == "215. Kth Largest Element")["tags"]
     overview_rows = static_playlist_overview_rows()
     assert len([row for row in overview_rows if "google" in row["tags"]]) == 50
-    assert len([row for row in overview_rows if "google-skeletons" in row["tags"]]) == 24
+    assert len([row for row in overview_rows if "skeletons" in row["tags"]]) == 24
     assert len(overview_rows) == 74
 
 
-def test_google_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -> None:
-    deck = build_static_playlist_drills("google-skeletons")
+def test_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -> None:
+    deck = build_static_playlist_drills("skeletons")
 
     assert deck is not None
     assert deck["llmUsed"] is False
@@ -314,7 +319,7 @@ def test_google_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -
 
     cards = {card["title"]: card for card in deck["drills"]}
     assert all("skeletonApplicability" in card for card in cards.values())
-    mastery_deck = build_static_playlist_drills("google-skeletons", "mastery")
+    mastery_deck = build_static_playlist_drills("skeletons", "mastery")
     assert mastery_deck is not None
     assert [card["title"] for card in mastery_deck["drills"]] == list(cards)
     assert cards["BFS Skeleton"]["skeletonApplicability"] == {
@@ -375,10 +380,10 @@ def test_google_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -
 
     grid_bfs_solution = cards["Grid BFS Skeleton"]["solution"]
     assert "start = (r, c)" in grid_bfs_solution
-    assert "queue = deque([start])" in grid_bfs_solution
+    assert "q = deque([start])" in grid_bfs_solution
     assert "visited = {start}" in grid_bfs_solution
-    assert "while queue:" in grid_bfs_solution
-    assert "r, c = queue.popleft()" in grid_bfs_solution
+    assert "while q:" in grid_bfs_solution
+    assert "r, c = q.popleft()" in grid_bfs_solution
 
     bfs_card = cards["BFS Skeleton"]
     dfs_card = cards["DFS Skeleton"]
@@ -387,23 +392,29 @@ def test_google_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -
     top_down_card = cards["Top-Down DP Skeleton"]
     bottom_up_card = cards["Bottom-Up DP Skeleton"]
 
-    assert bfs_card["id"] == "playlist-google-skeletons-bfs-skeleton"
-    assert "google-skeletons" in bfs_card["tags"]
+    assert bfs_card["id"] == "playlist-skeletons-bfs-skeleton"
+    assert "skeletons" in bfs_card["tags"]
     assert bfs_card["solution"].startswith("from collections import deque")
     assert "def bfs(start, graph):" in bfs_card["solution"]
-    assert "queue = deque([start])" in bfs_card["solution"]
+    assert "q = deque([start])" in bfs_card["solution"]
     assert "output = []" in bfs_card["solution"]
-    assert "for neighbor in graph[node]:" in bfs_card["solution"]
+    assert "for ngbr in graph.get(node, []):" in bfs_card["solution"]
 
-    assert dfs_card["id"] == "playlist-google-skeletons-dfs-skeleton"
-    assert "google-skeletons" in dfs_card["tags"]
+    assert dfs_card["id"] == "playlist-skeletons-dfs-skeleton"
+    assert "skeletons" in dfs_card["tags"]
     assert dfs_card["solution"].startswith("def dfs(start, graph):")
     assert "visited = set()" in dfs_card["solution"]
     assert "def walk(node):" in dfs_card["solution"]
-    assert "for neighbor in graph[node]:" in dfs_card["solution"]
+    assert "for ngbr in graph[node]:" in dfs_card["solution"]
+
+    for card in deck["drills"]:
+        assert not re.search(
+            r"^(?:from .*|import .*)\n\n\n(?:def|class)\b",
+            card["solution"],
+        )
 
     assert fixed_window_card["id"] == (
-        "playlist-google-skeletons-fixed-size-sliding-window-skeleton"
+        "playlist-skeletons-fixed-size-sliding-window-skeleton"
     )
     assert fixed_window_card["solution"].startswith("def fixed_size_window(items, k):")
     assert "# Add the item that entered the window." in fixed_window_card["solution"]
@@ -412,14 +423,14 @@ def test_google_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -
     compile(fixed_window_card["solution"], f"<{fixed_window_card['id']}>", "exec")
 
     assert variable_window_card["id"] == (
-        "playlist-google-skeletons-variable-size-sliding-window-skeleton"
+        "playlist-skeletons-variable-size-sliding-window-skeleton"
     )
     assert variable_window_card["solution"].startswith("def variable_size_window(items):")
     assert "while window_is_invalid(state):" in variable_window_card["solution"]
     assert "# Shrink from the left until the invariant is restored." in variable_window_card["solution"]
     compile(variable_window_card["solution"], f"<{variable_window_card['id']}>", "exec")
 
-    assert top_down_card["id"] == "playlist-google-skeletons-top-down-dp-skeleton"
+    assert top_down_card["id"] == "playlist-skeletons-top-down-dp-skeleton"
     assert top_down_card["solution"].startswith("def top_down_dp(problem):")
     assert "memo = {}" in top_down_card["solution"]
     assert "def solve(state):" in top_down_card["solution"]
@@ -428,7 +439,7 @@ def test_google_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -
     assert "# Keep the best candidate for this state." in top_down_card["solution"]
     compile(top_down_card["solution"], f"<{top_down_card['id']}>", "exec")
 
-    assert bottom_up_card["id"] == "playlist-google-skeletons-bottom-up-dp-skeleton"
+    assert bottom_up_card["id"] == "playlist-skeletons-bottom-up-dp-skeleton"
     assert bottom_up_card["solution"].startswith("def bottom_up_dp(problem):")
     assert "dp = initialize_dp_storage(problem)" in bottom_up_card["solution"]
     assert "set_base_cases(dp, problem)" in bottom_up_card["solution"]

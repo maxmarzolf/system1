@@ -122,7 +122,7 @@ export const practicePlaylists: PracticePlaylist[] = [
     ],
   },
   {
-    slug: 'google-skeletons',
+    slug: 'skeletons',
     title: 'Skeletons',
     description: 'Static skeleton drills for reusable search, traversal, graph, data structure, and optimization patterns.',
     showOnSkillMap: true,

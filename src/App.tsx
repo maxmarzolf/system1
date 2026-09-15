@@ -1924,9 +1924,9 @@ function MarkdownCodeContent({
 
 type FlowMicroDrill = { prompt: string; template: string; solution: string; language: string }
 
-function FlowMicroDrillCard({ title, prompt, target, focus, rep, provider, theme, syntaxTheme, random, onSave, onNext }: {
+function FlowMicroDrillCard({ title, prompt, target, focus, rep, provider, theme, syntaxTheme, onSave, onNext }: {
   title: string; prompt: string; target: string; focus: string; rep: number; provider: string
-  theme: AppTheme; syntaxTheme: Record<string, CSSProperties>; random: boolean
+  theme: AppTheme; syntaxTheme: Record<string, CSSProperties>
   onSave: (drill: FlowMicroDrill, answer: string, elapsedMs: number, interactionId: string) => Promise<SubmissionSaveResponse | null>
   onNext: () => void
 }) {
@@ -1995,7 +1995,7 @@ function FlowMicroDrillCard({ title, prompt, target, focus, rep, provider, theme
         <MicroDrillBlankEditor template={drill.template} language={drill.language} theme={theme} syntaxTheme={syntaxTheme} onAnswerChange={setAnswer} disabled={saving || Boolean(result)} />
         <p className="typing-help">Tab moves to the next blank.</p>
         <button type="button" className="primary" disabled={!result && (!answer.complete || saving)} onClick={result ? onNext : () => void submit()}>
-          {result ? (random ? 'Reveal next rep' : 'Next flow rep') : saving ? 'Checking your rep…' : 'Submit microdrill'}
+          {result ? 'Start' : 'Submit'}
         </button>
       </div>}
     </div>
@@ -2253,7 +2253,8 @@ function App() {
       }
 
       if (requestedPlaylist.staticDeck) {
-        const payload = await requestStaticPlaylistDrills(requestedPlaylist.slug, googlePlaylistTuning.order)
+        const staticOrder = requestedPlaylist.slug === 'google' ? googlePlaylistTuning.order : 'mastery'
+        const payload = await requestStaticPlaylistDrills(requestedPlaylist.slug, staticOrder)
         if (skillMapDeckRequestVersionRef.current !== requestVersion) return
         setSkillMapDeck(payload.drills)
         setSkillMapSessionVersion((prev) => prev + 1)
@@ -2583,7 +2584,7 @@ function App() {
     () => generatedPracticePrompt || buildPracticePrompt(currentTemplateMode, primaryPatternTag),
     [currentTemplateMode, generatedPracticePrompt, primaryPatternTag]
   )
-  const skeletonReference = card.tags.includes('google-skeletons') ? card.skeletonApplicability : null
+  const skeletonReference = card.skeletonApplicability ?? null
   const submissionFeedbackDetailId = `submission-feedback-detail-${card.id}`
   const tagsListId = `card-tags-${card.id}`
 
@@ -2721,12 +2722,6 @@ function App() {
       ? 'Trace only the lines you missed on the last recall...'
       : `Trace the faint ${activeRecallLabel.toLowerCase()} target here...`
     : practicePlaceholder
-  const startRecallLabel = 'Start'
-  const supportedStartRecallLabel = isGhostRepsEnabled
-    ? practiceFlow?.stage === 'ghost'
-      ? 'Start targeted Ghost Reps'
-      : `Start Ghost Reps for ${activeRecallLabel}`
-    : startRecallLabel
   const relatedLeetCodeSet = useMemo(
     () => currentPracticeMode === 'recall'
       ? resolveRelatedLeetCodeSet({
@@ -3593,13 +3588,13 @@ function App() {
     if (practiceFlow?.stage === 'microdrill') return null
     if (!hasDeck) return null
     if (practiceFlow && currentPracticeMode === 'recall' && mainPhase === 'submitted') {
-      return { label: practiceFlow.config.mode === 'random' ? 'Reveal next rep' : 'Next flow rep', onClick: advancePracticeFlow, disabled: coachLoading, icon: null }
+      return { label: 'Start', onClick: advancePracticeFlow, disabled: coachLoading, icon: null }
     }
 
     if (currentPracticeMode === 'multiple-choice') {
       if (isFlowActive && multipleChoiceSubmitted) {
         return {
-          label: practiceFlow?.config.mode === 'random' ? 'Reveal next rep' : 'Next flow rep',
+          label: 'Start',
           onClick: advanceFlowMultipleChoice,
           disabled: sessionFinished,
           icon: (
@@ -3611,7 +3606,7 @@ function App() {
       }
       if (multipleChoiceSubmitted) return null
       return {
-        label: 'Submit answer',
+        label: 'Submit',
         onClick: submitMultipleChoice,
         disabled: !selectedMultipleChoice || hasAnsweredCurrent || sessionFinished,
         icon: (
@@ -3624,7 +3619,7 @@ function App() {
 
     if (!isFlowActive && submissionTuning.microDrillEnabled && coachLoading && effectiveSupportLayer !== 'ghost-reps') {
       return {
-        label: 'Building next rep',
+        label: 'Start',
         onClick: () => undefined,
         disabled: true,
         icon: (
@@ -3637,7 +3632,7 @@ function App() {
 
     if (practiceFlow?.stage === 'ghost' && mainPhase === 'submitted' && !latestSubmittedWasGhostRep) {
       return {
-        label: 'Start targeted ghost reps',
+        label: 'Start',
         onClick: repeatGhostRep,
         disabled: sessionFinished,
         icon: (
@@ -3650,7 +3645,7 @@ function App() {
 
     if (mainPhase === 'preview') {
       return {
-        label: supportedStartRecallLabel,
+        label: 'Start',
         onClick: startMainRecall,
         disabled: !hasDeck || hasAnsweredCurrent || sessionFinished,
         icon: (
@@ -3663,7 +3658,7 @@ function App() {
 
     if (mainPhase === 'typing') {
       return {
-        label: isGhostRepsEnabled ? 'Log ghost rep' : `Submit ${activeRecallLabel.toLowerCase()}`,
+        label: 'Submit',
         onClick: submitMainRecall,
         disabled: currentRecallSubmissionInput.trim().length === 0,
         icon: (
@@ -3676,7 +3671,7 @@ function App() {
 
     if (latestSubmittedWasGhostRep) {
       return {
-        label: 'Log another ghost rep',
+        label: 'Submit',
         onClick: repeatGhostRep,
         disabled: sessionFinished,
         icon: (
@@ -3689,7 +3684,7 @@ function App() {
 
     if (!mainCloseEnough) {
       return {
-        label: 'Revise and resubmit',
+        label: 'Submit',
         onClick: reviseMainRecall,
         disabled: sessionFinished,
         icon: (
@@ -4301,7 +4296,7 @@ function App() {
             title={card.title} prompt={practicePrompt} target={practiceTarget}
             focus={practiceFlow.focus.focusSummary} rep={practiceFlow.step + 1}
             provider={requestLlmProvider} theme={theme} syntaxTheme={syntaxTheme}
-            random={practiceFlow.config.mode === 'random'} onNext={advancePracticeFlow}
+            onNext={advancePracticeFlow}
             onSave={(drill, answer, elapsedMs, interactionId) => submitAttemptToServer({
               mode: 'main-recall', correctAnswer: drill.solution, userAnswer: answer, question: drill.prompt,
               microdrill: true, elapsedMs, interactionId,

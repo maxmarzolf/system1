@@ -272,6 +272,7 @@ def test_focused_core_algorithm_catalog_covers_dashboard_methods() -> None:
             assert difficulty in {"Easy", "Med.", "Hard"}
             assert skeleton
             assert target_terms
+            compile(skeleton, f"<{pattern}:{method}>", "exec")
             assert _test_word_count(prompt) <= 8
             assert _test_word_count(hint) <= 12
             assert any(term.lower() in skeleton.lower() for term in target_terms)

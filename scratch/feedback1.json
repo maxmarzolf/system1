@@ -191,3 +191,124 @@
     "recommendedAction": "Code is not syntactically valid and misuses rows/cols and set/queue operations, preventing execution."
   }
 }
+
+
+
+
+
+{
+  "elapsed_ms": 314491,
+  "evaluation": {
+    "score": {
+      "fluency": 55,
+      "overall": 34.2,
+      "fidelity": 25,
+      "conceptual": 34.2,
+      "executable": 0
+    },
+    "verdict": "needs-work",
+    "version": 1,
+    "feedback": {
+      "why": "If you compute the wrong neighbor or check/add the wrong coordinate, BFS either crashes, loops, or never expands beyond the start, which defeats the purpose of the template.",
+      "nextMove": "Rewrite just the inner neighbor expansion (nr/nc computation + if guard + visited.add + q.append) from memory three times without looking, then run it on a 2x2 grid to confirm it visits all 4 cells.",
+      "diagnosis": "needs work",
+      "errorTags": [
+        "syntax-error",
+        "neighbor-computation-bug",
+        "bounds-check-bug",
+        "visited-set-misuse",
+        "wrong-visited-key",
+        "wrong-enqueue-node"
+      ],
+      "strengths": [
+        "Correct high-level BFS loop structure (while q + level loop)",
+        "Uses deque appropriately for BFS",
+        "Includes standard 4-direction neighbor iteration"
+      ],
+      "keepInMind": "In grid BFS, the only state that should be added/enqueued inside the guard is the neighbor (nr,nc), and visited should be updated at enqueue-time to prevent duplicates.",
+      "microDrill": "Fill in the blanks: `nr, nc = ___ + dr, ___ + dc`; `if 0 <= nr < ___ and 0 <= nc < ___ and (___, ___) not in visited:` then `visited.___((nr,nc)); q.___((nr,nc))`.",
+      "affirmation": "You set up the right BFS scaffolding (deque queue, visited initialized with start, 4-direction loop, and level-order traversal).",
+      "fullFeedback": "needs work: the overall BFS skeleton shape is present, but the core algorithmic logic is currently non-functional because neighbor coordinates, bounds checks, visited membership/update, and enqueue target are all incorrect (and the if-block is syntactically broken), so the traversal cannot correctly expand to adjacent cells.",
+      "primaryFocus": "Fix the BFS neighbor/guard/update core: compute (nr,nc) correctly, bounds-check against rows/cols ints, and do visited-on-enqueue for (nr,nc) using set.add and q.append.",
+      "nextRepTarget": "Produce a runnable grid BFS skeleton with correct neighbor/guard/update in under 90 seconds.",
+      "correctedVersion": "from collections import deque\n\ndef grid_bfs(grid, r, c):\n    rows, cols = len(grid), len(grid[0])\n    start = (r, c)\n    q = deque([start])\n    visited = {start}\n    distance = 0\n\n    while q:\n        for _ in range(len(q)):\n            r, c = q.popleft()\n            for dr, dc in [(1, 0), (-1, 0), (0, 1), (0, -1)]:\n                nr, nc = r + dr, c + dc\n                if 0 <= nr < rows and 0 <= nc < cols and (nr, nc) not in visited:\n                    visited.add((nr, nc))\n                    q.append((nr, nc))\n        distance += 1\n\n    return visited",
+      "immediateCorrection": "Replace the malformed neighbor line and if-block with: `nr, nc = r + dr, c + dc` then `if 0 <= nr < rows and 0 <= nc < cols and (nr, nc) not in visited: visited.add((nr, nc)); q.append((nr, nc))`."
+    },
+    "modifiers": {
+      "syntax": {
+        "key": "syntax",
+        "label": "Syntax and executability",
+        "score": 0,
+        "status": "fail",
+        "missing": [],
+        "evidence": []
+      },
+      "completionTime": {
+        "key": "completionTime",
+        "label": "Speed and fluency",
+        "score": 55,
+        "status": "partial",
+        "missing": [],
+        "evidence": [
+          "Elapsed ~314s; time is moderate but outcome indicates unresolved template issues."
+        ]
+      }
+    },
+    "dimensions": {
+      "structure": {
+        "key": "structure",
+        "label": "Solution structure",
+        "score": 75,
+        "status": "partial",
+        "missing": [],
+        "evidence": [
+          "Has function, queue init, visited init, while q loop, inner level loop, 4-direction neighbor iteration, and distance increment. However, neighbor computation and guard block are malformed/incorrectly indented."
+        ]
+      },
+      "correctness": {
+        "key": "correctness",
+        "label": "Correctness",
+        "score": 10,
+        "status": "fail",
+        "missing": [],
+        "evidence": [
+          "Multiple critical bugs: nr,nc computed as 'dr + r, nc + c' (uses nc before assignment); bounds checks use len(rows)/len(cols) where rows/cols are ints; visited check uses (r,c) instead of (nr,nc); visited is a set but code uses append; enqueues (r,c) instead of (nr,nc); missing colon/parentheses/indentation for if block."
+        ]
+      },
+      "completeness": {
+        "key": "completeness",
+        "label": "Completeness",
+        "score": 40,
+        "status": "fail",
+        "missing": [],
+        "evidence": [
+          "Intended components present (visited, queue, 4 dirs, level traversal, return visited), but missing correct guard body and correct visited-on-enqueue behavior, so the template is not fully realized."
+        ]
+      },
+      "patternFidelity": {
+        "key": "patternFidelity",
+        "label": "Pattern fidelity",
+        "score": 25,
+        "status": "fail",
+        "missing": [],
+        "evidence": [
+          "Attempts the expected BFS skeleton but deviates in key fidelity points: neighbor calc, bounds, visited check/update, enqueue target, and set operations."
+        ]
+      }
+    },
+    "provenance": {
+      "source": "assessor-narrator",
+      "llmUsed": true,
+      "provider": "openai"
+    },
+    "primaryFailure": {
+      "key": "grid-bfs-neighbor-guard-visited-enqueue",
+      "label": "Grid-Bfs-Neighbor-Guard-Visited-Enqueue",
+      "evidence": [
+        "Incorrect neighbor computation and guard/update logic (visited/enqueue/bounds) causing non-functional BFS skeleton."
+      ],
+      "severity": "blocking"
+    },
+    "recommendedAction": "Incorrect neighbor computation and guard/update logic (visited/enqueue/bounds) causing non-functional BFS skeleton."
+  }
+}
