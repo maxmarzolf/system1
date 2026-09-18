@@ -162,6 +162,7 @@ def test_performance_guard_required_indexes_exist() -> None:
             assert "idx_submission_generated_card_id" in submission_indexes
             assert "idx_submission_category_tags" in submission_indexes
             assert "idx_submission_created_at" in submission_indexes
+            assert "idx_submission_flow_anchor_created_at" in submission_indexes
         finally:
             await conn.close()
 

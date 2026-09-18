@@ -120,6 +120,10 @@ CREATE INDEX IF NOT EXISTS idx_submission_multiple_choice_problem_id_created_at
 CREATE INDEX IF NOT EXISTS idx_submission_session_id_created_at
     ON submission(session_id, created_at DESC);
 
+CREATE INDEX IF NOT EXISTS idx_submission_flow_anchor_created_at
+    ON submission ((signals->'flow'->>'anchorCardId'), created_at DESC)
+    WHERE signals ? 'flow';
+
 -- ============================================================================
 -- Taxonomy: algorithm -> problem -> [skill, technique]
 -- ============================================================================

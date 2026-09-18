@@ -263,10 +263,22 @@ class MultipleChoiceSpecimenFocusLine(BaseModel):
     status: Literal["mismatch", "missing", "extra"] = "mismatch"
 
 
+class FlowAttemptContext(BaseModel):
+    modality: SubmissionModality
+    successful: bool = False
+    score: float = Field(default=0, ge=0, le=100)
+    weakness: str = ""
+    question: str = ""
+
+
 class MultipleChoiceSpecimenFocus(BaseModel):
     sequenceStage: Literal["recall", "ghost", "multiple-choice"] = "multiple-choice"
     focusSummary: str = ""
     missedLines: list[MultipleChoiceSpecimenFocusLine] = Field(default_factory=list)
+    phase: Literal["establish", "remediate", "consolidate", "challenge", "mastered"] = "establish"
+    proficiency: int = Field(default=0, ge=0, le=100)
+    weaknessSummary: str = ""
+    recentAttempts: list[FlowAttemptContext] = Field(default_factory=list, max_length=8)
 
 
 class MultipleChoiceSpecimenContext(BaseModel):
@@ -543,6 +555,10 @@ class FlowMicroDrillRequest(BaseModel):
     target: str = Field(min_length=1)
     focus: str = ""
     rep: int = Field(default=1, ge=1)
+    phase: Literal["establish", "remediate", "consolidate", "challenge", "mastered"] = "establish"
+    proficiency: int = Field(default=0, ge=0, le=100)
+    weaknessSummary: str = ""
+    recentAttempts: list[FlowAttemptContext] = Field(default_factory=list, max_length=8)
     llmProvider: str = "openai"
 
 

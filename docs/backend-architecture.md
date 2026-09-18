@@ -75,12 +75,22 @@ Practical implications:
 - Core generator stream APIs return framework-agnostic async iterators.
 - Repository writes are always delegated by services; attempt signals are persisted through the canonical submission repository.
 
-The canonical `submission.signals` JSONB object has exactly two top-level fields:
+The canonical `submission.signals` JSONB object has four allowed top-level fields:
 
 - `elapsed_ms`
 - `evaluation`
+- `flow` (optional adaptive/custom flow context)
+- `modality` (modality-specific measurements plus canonical `kind`)
 
 `evaluation` contains the versioned verdict, score, primary failure, dimensions, modifiers, recommended action, narrative feedback, and provenance. Narrative feedback does not embed another copy of the evaluation. The ledger's `successful` value is derived from `evaluation.verdict`; it is never accepted from the client.
+
+## Adaptive Flow Contract
+
+- The current card is the immutable flow anchor. Historical MCQs are joined back to it through `signals.flow.anchorCardId`.
+- The client derives a deterministic phase (`establish`, `remediate`, `consolidate`, `challenge`, or `mastered`) from recent scores, success streaks, missed lines, and modality coverage.
+- Recall failures route to Ghost; unresolved conceptual failures route through MCQ and Microdrill; Microdrill failures return to Recall so a fresh line-level weakness can be measured.
+- MCQ and Microdrill generation receive a bounded summary of recent cross-modality attempts and weaknesses. Challenge prompts may vary constraints or edge cases but must remain inside the anchor card's algorithm space.
+- Mastery requires strong recent scores and successful Recall, MCQ, and Microdrill evidence. Ghost evidence is required only when remediation was needed. Once mastered, the flow advances to another card already present in the active deck.
 
 Anti-pattern examples:
 - Endpoint calling repository directly.

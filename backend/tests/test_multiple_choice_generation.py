@@ -184,6 +184,18 @@ async def test_generate_multiple_choice_drills_response_sends_card_context(flow_
             "focus": {
                 "sequenceStage": "multiple-choice",
                 "focusSummary": "Target the left-boundary update and why it preserves the valid window invariant.",
+                "phase": "challenge",
+                "proficiency": 86,
+                "weaknessSummary": "The learner still confuses if with while during shrink.",
+                "recentAttempts": [
+                    {
+                        "modality": "total-recall",
+                        "successful": False,
+                        "score": 62,
+                        "weakness": "shrink loop",
+                        "question": "Recall the window skeleton.",
+                    }
+                ],
                 "missedLines": [
                     {
                         "lineNumber": 2,
@@ -243,6 +255,8 @@ async def test_generate_multiple_choice_drills_response_sends_card_context(flow_
         assert "immediately previous drill" in captured["system_prompt"]
     if with_focus:
         assert "missed lines" in captured["system_prompt"]
+        assert "cross-modality evidence" in captured["system_prompt"]
+        assert "Increase the challenge" in captured["system_prompt"]
     assert response.drills[0].tags[-2:] == ["source-card", f"flow-{flow_mode}"]
 
 

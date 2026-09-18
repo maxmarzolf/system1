@@ -628,13 +628,25 @@ async def generate_multiple_choice_drills_response(
         )
 
     focus_instruction = ""
-    if body.sourceMode == "card" and body.specimen and body.specimen.focus and body.specimen.focus.missedLines:
-        focus_instruction = (
-            "The provided specimenContext also includes missed lines from the learner's prior recall attempt. "
-            "Treat those missed lines as the remediation target for this sequence. "
-            "Most drills should directly test why a missed line exists, what bug the learner's drift would cause, how to repair it, or what invariant that line protects. "
-            "Do not ignore the missed lines in favor of generic specimen trivia. "
-        )
+    if body.sourceMode == "card" and body.specimen and body.specimen.focus:
+        focus = body.specimen.focus
+        if focus.missedLines:
+            focus_instruction += (
+                "The provided specimenContext includes missed lines from the learner's prior recall attempt. "
+                "Treat those missed lines as the remediation target. Test why a missed line exists, what bug the drift causes, how to repair it, or what invariant it protects. "
+            )
+        if focus.recentAttempts or focus.weaknessSummary:
+            focus_instruction += (
+                "It also includes recentAttempts across recall, ghost, MCQ, and microdrill plus a weaknessSummary. "
+                "Use that cross-modality evidence to address the most persistent unresolved weakness, and avoid repeating recent questions. "
+            )
+        if focus.phase in {"challenge", "mastered"}:
+            focus_instruction += (
+                "The learner is proficient in this card space. Increase the challenge with an edge case, transfer case, competing invariant, tradeoff, or subtle bug, "
+                "while remaining strictly grounded in the same specimen and algorithm space. Do not switch to a different card. "
+            )
+        elif focus.phase == "remediate":
+            focus_instruction += "Keep the question narrow and corrective before adding novelty. "
 
     flow_instruction = (
         "Create a varied but balanced set across the requested patterns or specimen facets. "

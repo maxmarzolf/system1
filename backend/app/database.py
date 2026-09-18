@@ -841,6 +841,10 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
             CREATE INDEX IF NOT EXISTS idx_submission_session_id_created_at
                 ON submission(session_id, created_at DESC);
 
+            CREATE INDEX IF NOT EXISTS idx_submission_flow_anchor_created_at
+                ON submission ((signals->'flow'->>'anchorCardId'), created_at DESC)
+                WHERE signals ? 'flow';
+
             """
         )
         await conn.execute(

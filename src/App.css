@@ -6705,7 +6705,7 @@ button.tune-reset {
   border-top: 1px solid var(--workbench-edge);
 }
 .flow-builder legend { padding: 0 0.4rem 0 0; color: var(--hc-fg); font-size: 0.82rem; font-weight: 600; }
-.flow-mode-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+.flow-mode-picker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.4rem; }
 .flow-builder button, .flow-builder select, .flow-builder input[type='number'] {
   min-height: 2rem;
   border: 1px solid var(--workbench-edge);

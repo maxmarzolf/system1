@@ -3,7 +3,21 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vs, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useSearchParams } from 'react-router-dom'
 import FlowBuilder from './FlowBuilder'
-import { FLOW_LABELS, loadFlowConfig, saveFlowConfig, nextFlowStep, expandFlow, type FlowConfig, type FlowStage } from './practiceFlow'
+import {
+  FLOW_LABELS,
+  buildFlowGenerationContext,
+  expandFlow,
+  loadFlowConfig,
+  mergeFlowAttempts,
+  nextFlowStep,
+  saveFlowConfig,
+  summarizeFlowMastery,
+  type FlowAttempt,
+  type FlowConfig,
+  type FlowGenerationContext,
+  type FlowStage,
+  type SubmissionModality,
+} from './practiceFlow'
 import RelatedLeetCodeDrawer from './RelatedLeetCodeDrawer'
 import { skillMap, type SkillMapNode } from './data/skill-map'
 import { playlistQuestionsToSkillMap, practicePlaylists, type PracticePlaylist } from './data/playlists'
@@ -81,6 +95,10 @@ type MultipleChoiceSpecimenFocus = {
   sequenceStage: 'recall' | 'ghost' | 'multiple-choice'
   focusSummary: string
   missedLines: MultipleChoiceSpecimenFocusLine[]
+  phase?: FlowGenerationContext['phase']
+  proficiency?: number
+  weaknessSummary?: string
+  recentAttempts?: FlowGenerationContext['recentAttempts']
 }
 
 type PracticeFlowState = {
@@ -92,6 +110,7 @@ type PracticeFlowState = {
   step: number
   runId: string
   focus: MultipleChoiceSpecimenFocus
+  completedAnchorIds: string[]
 }
 
 const CARD_MOVE_DOUBLE_TAP_WINDOW_MS = 350
@@ -115,7 +134,6 @@ type HelperLayer = 'inline'
 type CoreShapeLayer = 'coreShape'
 type RecallTargetMode = TemplateMode | CoreShapeLayer
 type SupportLayer = 'none' | 'ghost-reps'
-type SubmissionModality = 'total-recall' | 'ghost-rep' | 'mcq' | 'microdrill'
 type InlineLens = 'pattern' | 'plainEnglish' | 'why' | 'transfer' | 'debug'
 
 type AttemptRequestSignals = {
@@ -185,6 +203,25 @@ type SubmissionSaveResponse = {
   } | null
 }
 
+type FlowHistoryEntry = {
+  attemptId: number
+  sessionId: string
+  interactionId: string
+  cardId: string
+  question: string
+  successful: boolean
+  modality: string
+  signals: {
+    elapsedMs: number
+    evaluation: Record<string, unknown>
+    flow: Record<string, unknown>
+    modality: Record<string, unknown>
+  }
+  createdAt: string
+}
+
+type FlowHistoryResponse = { entries: FlowHistoryEntry[] }
+
 type FeedbackRailModel = {
   source: 'Live' | 'Submission'
   items: string[]
@@ -209,6 +246,76 @@ const compactFeedbackItems = (items: Array<string | undefined>, limit = 4) => {
       return true
     })
     .slice(0, limit)
+}
+
+const isSubmissionModality = (value: unknown): value is SubmissionModality =>
+  value === 'total-recall' || value === 'ghost-rep' || value === 'mcq' || value === 'microdrill'
+
+const flowEvaluationScore = (evaluation: Record<string, unknown>) => {
+  const score = evaluation.score
+  const overall = score && typeof score === 'object' ? Number((score as Record<string, unknown>).overall) : 0
+  return Number.isFinite(overall) ? Math.max(0, Math.min(100, overall)) : 0
+}
+
+const flowEvaluationWeaknesses = (evaluation: Record<string, unknown>, missedLineCount = 0) => {
+  const primaryFailure = evaluation.primaryFailure && typeof evaluation.primaryFailure === 'object'
+    ? evaluation.primaryFailure as Record<string, unknown>
+    : {}
+  const feedback = evaluation.feedback && typeof evaluation.feedback === 'object'
+    ? evaluation.feedback as Record<string, unknown>
+    : {}
+  const errorTags = Array.isArray(feedback.errorTags) ? feedback.errorTags.map(String) : []
+  return compactFeedbackItems([
+    String(primaryFailure.label ?? primaryFailure.key ?? ''),
+    String(feedback.primaryFocus ?? ''),
+    ...errorTags,
+    missedLineCount > 0 ? `${missedLineCount} missed code line${missedLineCount === 1 ? '' : 's'}` : '',
+  ])
+}
+
+const flowModalityWeakness = (modality: SubmissionModality, successful: boolean) => {
+  if (successful) return ''
+  if (modality === 'mcq') return 'incorrect conceptual choice'
+  if (modality === 'microdrill') return 'code reconstruction remained unsound'
+  if (modality === 'ghost-rep') return 'targeted recall remained unsound'
+  return 'full recall remained unsound'
+}
+
+const flowAttemptFromHistoryEntry = (entry: FlowHistoryEntry, anchorCardId: string): FlowAttempt | null => {
+  if (!isSubmissionModality(entry.modality)) return null
+  const storedAnchor = String(entry.signals.flow?.anchorCardId ?? entry.cardId ?? '')
+  if (storedAnchor !== anchorCardId) return null
+  const missedLineCount = Number(entry.signals.modality?.missedLineCount ?? 0)
+  return {
+    attemptId: entry.attemptId,
+    interactionId: entry.interactionId,
+    anchorCardId: storedAnchor,
+    modality: entry.modality,
+    successful: entry.successful,
+    score: flowEvaluationScore(entry.signals.evaluation ?? {}),
+    elapsedMs: Number(entry.signals.elapsedMs ?? 0),
+    missedLineCount: Number.isFinite(missedLineCount) ? Math.max(0, missedLineCount) : 0,
+    weaknesses: compactFeedbackItems([
+      ...flowEvaluationWeaknesses(entry.signals.evaluation ?? {}, missedLineCount),
+      flowModalityWeakness(entry.modality, entry.successful),
+    ]),
+    question: entry.question,
+    createdAt: entry.createdAt,
+  }
+}
+
+const requestFlowAttemptHistory = async (anchorCard: Flashcard): Promise<FlowAttempt[]> => {
+  const response = await fetch(apiUrl('/api/coach/history'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cardId: anchorCard.id, questionType: '', skillTags: [], limit: 20 }),
+  })
+  if (!response.ok) throw new Error('Unable to load flow history')
+  const payload = await response.json() as FlowHistoryResponse
+  return payload.entries
+    .map((entry) => flowAttemptFromHistoryEntry(entry, anchorCard.id))
+    .filter((entry): entry is FlowAttempt => entry !== null)
+    .reverse()
 }
 
 type CoachSessionPlan = {
@@ -1498,9 +1605,11 @@ const buildFlowGhostScaffold = (fullTarget: string, missedLines: MultipleChoiceS
 
 const extractFlowGhostFocusedInput = (fullInput: string, missedLines: MultipleChoiceSpecimenFocusLine[]) => {
   const inputLines = fullInput.replace(/\r\n/g, '\n').split('\n')
-  const focusedLines = missedLines
+  const focusedLineNumbers = missedLines
     .filter((line) => line.expected.trim().length > 0)
-    .map((line) => inputLines[line.lineNumber - 1] ?? '')
+    .map((line) => line.lineNumber)
+  if (focusedLineNumbers.length === 0) return normalizeTyping(fullInput)
+  const focusedLines = focusedLineNumbers.map((lineNumber) => inputLines[lineNumber - 1] ?? '')
 
   return normalizeTyping(focusedLines.join('\n'))
 }
@@ -1583,6 +1692,34 @@ const stripHashAnnotationComments = (code: string) =>
     .map((line) => line.split('#', 1)[0].trimEnd())
     .join('\n')
     .trimEnd()
+
+const flowTargetForCard = (card: Flashcard) => {
+  const generatedTarget = card.templateTargets?.algorithm?.trim()
+  const resolvedTarget = (generatedTarget || card.solution).replace('{{missing}}', card.missing)
+  return normalizeTyping(stripHashAnnotationComments(stripInlineAnnotationNotes(resolvedTarget)))
+}
+
+const initialFlowFocus = (card: Flashcard): MultipleChoiceSpecimenFocus => {
+  const target = flowTargetForCard(card)
+  return {
+    sequenceStage: 'recall',
+    focusSummary: `Establish the core decisions in ${card.title}.`,
+    missedLines: target.split('\n').flatMap((expected, index) => expected.trim()
+      ? [{ lineNumber: index + 1, expected, actual: '', status: 'missing' as const }]
+      : []),
+  }
+}
+
+const nextFlowAnchor = (deck: Flashcard[], currentCardId: string, completedAnchorIds: string[]) => {
+  if (deck.length < 2) return null
+  const currentIndex = Math.max(0, deck.findIndex((item) => item.id === currentCardId))
+  const completed = new Set([...completedAnchorIds, currentCardId])
+  for (let offset = 1; offset < deck.length; offset += 1) {
+    const candidate = deck[(currentIndex + offset) % deck.length]
+    if (!completed.has(candidate.id)) return candidate
+  }
+  return deck[(currentIndex + 1) % deck.length]
+}
 
 const inlineDisplayLines = (code: string) => {
   const displayLines: Array<{ line: string, sourceLineNumber: number, absorbedDecision: boolean }> = []
@@ -1933,8 +2070,9 @@ function MarkdownCodeContent({
 
 type FlowMicroDrill = { prompt: string; template: string; solution: string; language: string }
 
-function FlowMicroDrillCard({ title, prompt, target, focus, rep, provider, theme, syntaxTheme, onSave, onNext }: {
+function FlowMicroDrillCard({ title, prompt, target, focus, rep, context, provider, theme, syntaxTheme, onSave, onNext }: {
   title: string; prompt: string; target: string; focus: string; rep: number; provider: string
+  context: FlowGenerationContext
   theme: AppTheme; syntaxTheme: Record<string, CSSProperties>
   onSave: (drill: FlowMicroDrill, answer: string, elapsedMs: number, interactionId: string) => Promise<SubmissionSaveResponse | null>
   onNext: () => void
@@ -1948,6 +2086,7 @@ function FlowMicroDrillCard({ title, prompt, target, focus, rep, provider, theme
   const startedAt = useRef(Date.now())
   const savingRef = useRef(false)
   const interactionId = useRef(createInteractionId())
+  const generationContext = useRef(context).current
   useEffect(() => {
     const controller = new AbortController()
     setDrill(null)
@@ -1956,7 +2095,7 @@ function FlowMicroDrillCard({ title, prompt, target, focus, rep, provider, theme
       try {
         const response = await fetch(apiUrl('/api/coach/micro-drill'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
-          body: JSON.stringify({ cardTitle: title, prompt, target, focus, rep, llmProvider: provider }),
+          body: JSON.stringify({ cardTitle: title, prompt, target, focus, rep, ...generationContext, llmProvider: provider }),
         })
         const payload = await response.json()
         if (!response.ok) throw new Error(typeof payload.detail === 'string' ? payload.detail : 'Microdrill generation failed. Try again.')
@@ -1969,7 +2108,7 @@ function FlowMicroDrillCard({ title, prompt, target, focus, rep, provider, theme
       }
     })()
     return () => controller.abort()
-  }, [title, prompt, target, focus, rep, provider, retry])
+  }, [title, prompt, target, focus, rep, generationContext, provider, retry])
 
   const submit = async () => {
     if (!drill || !answer.complete || savingRef.current || result) return
@@ -2043,6 +2182,10 @@ function App() {
   const flowInteractionVersionRef = useRef(0)
   const [flowConfig, setFlowConfig] = useState(loadFlowConfig)
   const [practiceFlow, setPracticeFlow] = useState<PracticeFlowState | null>(null)
+  const [flowAttempts, setFlowAttempts] = useState<FlowAttempt[]>([])
+  const flowAttemptsRef = useRef<FlowAttempt[]>([])
+  const [flowHistoryLoading, setFlowHistoryLoading] = useState(false)
+  const [flowHistoryError, setFlowHistoryError] = useState('')
   const [flowMultipleChoiceDeck, setFlowMultipleChoiceDeck] = useState<MultipleChoiceCard[]>([])
   const [flowMultipleChoiceLoading, setFlowMultipleChoiceLoading] = useState(false)
   const [flowMultipleChoiceError, setFlowMultipleChoiceError] = useState('')
@@ -2393,6 +2536,7 @@ function App() {
         sequenceStage: 'multiple-choice',
         focusSummary: practiceFlow.focus.focusSummary,
         missedLines: practiceFlow.focus.missedLines,
+        ...flowGenerationContext,
       },
     }
 
@@ -2400,7 +2544,9 @@ function App() {
       questionType: `skill-map-mcq:card:progressive:flow-${practiceFlow.runId}-step-${practiceFlow.step}`,
       count: 1,
       skillMap: cardBasedSkillMap,
-      difficulty: multipleChoiceDifficulty,
+      difficulty: flowGenerationContext.phase === 'challenge' || flowGenerationContext.phase === 'mastered'
+        ? 'Hard'
+        : multipleChoiceDifficulty,
       sourceMode: 'card',
       flowMode: 'progressive',
       specimen: specimenContext,
@@ -2531,6 +2677,12 @@ function App() {
 
   const currentDeckIndex = sessionOrder[sessionPosition] ?? 0
   const card = (practiceFlow ? filteredDeck.find(item => item.id === practiceFlow.anchorCardId) : filteredDeck[currentDeckIndex]) ?? filteredDeck[0] ?? emptySkillMapCard
+  const currentFlowAttempts = useMemo(
+    () => practiceFlow ? flowAttempts.filter((attempt) => attempt.anchorCardId === practiceFlow.anchorCardId) : [],
+    [flowAttempts, practiceFlow]
+  )
+  const flowMastery = useMemo(() => summarizeFlowMastery(currentFlowAttempts), [currentFlowAttempts])
+  const flowGenerationContext = useMemo(() => buildFlowGenerationContext(currentFlowAttempts), [currentFlowAttempts])
   const multipleChoiceCard = multipleChoiceDeck[currentDeckIndex] ?? multipleChoiceDeck[0] ?? null
   const flowMultipleChoiceCard = flowMultipleChoiceDeck[flowMultipleChoicePosition] ?? flowMultipleChoiceDeck[0] ?? null
   const isFlowActive = practiceFlow !== null
@@ -2759,6 +2911,27 @@ function App() {
     }
   }
 
+  const addFlowAttempts = (incoming: FlowAttempt[]) => {
+    const merged = mergeFlowAttempts(flowAttemptsRef.current, incoming)
+    flowAttemptsRef.current = merged
+    setFlowAttempts(merged)
+    return merged
+  }
+
+  const loadFlowHistoryForCard = async (anchorCard: Flashcard) => {
+    setFlowHistoryLoading(true)
+    setFlowHistoryError('')
+    try {
+      const loaded = await requestFlowAttemptHistory(anchorCard)
+      return addFlowAttempts(loaded).filter((attempt) => attempt.anchorCardId === anchorCard.id)
+    } catch {
+      setFlowHistoryError('Previous attempts are unavailable; this flow will adapt from the current run.')
+      return flowAttemptsRef.current.filter((attempt) => attempt.anchorCardId === anchorCard.id)
+    } finally {
+      setFlowHistoryLoading(false)
+    }
+  }
+
   const currentFlowSignals = (): Record<string, unknown> | undefined => {
     if (!practiceFlow) return undefined
     return {
@@ -2768,7 +2941,51 @@ function App() {
       stage: practiceFlow.stage,
       step: practiceFlow.step,
       cycle: practiceFlow.cycle,
+      phase: flowMastery.phase,
+      proficiency: flowMastery.proficiency,
+      successfulModalities: flowMastery.successfulModalities,
+      weaknessSummary: flowMastery.weaknesses.join('; '),
+      completedAnchorCount: practiceFlow.completedAnchorIds.length,
     }
+  }
+
+  const recordFlowSubmission = ({
+    response,
+    flowSignals,
+    modality,
+    modalitySignals,
+    elapsedMs,
+    interactionId,
+    question,
+  }: {
+    response: SubmissionSaveResponse
+    flowSignals: Record<string, unknown>
+    modality: SubmissionModality
+    modalitySignals: Record<string, unknown>
+    elapsedMs: number
+    interactionId: string
+    question: string
+  }) => {
+    const anchorCardId = String(flowSignals.anchorCardId ?? '')
+    if (!anchorCardId || !response.saved) return
+    const missedLineCount = Number(modalitySignals.missedLineCount ?? 0)
+    const evaluation = response.evaluation as unknown as Record<string, unknown>
+    addFlowAttempts([{
+      attemptId: response.attemptId,
+      interactionId,
+      anchorCardId,
+      modality,
+      successful: response.successful,
+      score: flowEvaluationScore(evaluation),
+      elapsedMs,
+      missedLineCount: Number.isFinite(missedLineCount) ? Math.max(0, missedLineCount) : 0,
+      weaknesses: compactFeedbackItems([
+        ...flowEvaluationWeaknesses(evaluation, missedLineCount),
+        flowModalityWeakness(modality, response.successful),
+      ]),
+      question,
+      createdAt: new Date().toISOString(),
+    }])
   }
 
   const submitAttemptToServer = async (payload: AttemptPayload) => {
@@ -2811,7 +3028,19 @@ function App() {
         }),
       })
       if (!response.ok) throw new Error('Unable to submit attempt')
-      return (await response.json()) as SubmissionSaveResponse
+      const saved = (await response.json()) as SubmissionSaveResponse
+      if (flowSignals) {
+        recordFlowSubmission({
+          response: saved,
+          flowSignals,
+          modality: payload.modality,
+          modalitySignals: payload.signals?.modality ?? {},
+          elapsedMs: payload.elapsedMs,
+          interactionId: payload.interactionId,
+          question: payload.question ?? practicePrompt,
+        })
+      }
+      return saved
     } catch {
       return null
     }
@@ -2827,7 +3056,7 @@ function App() {
     if (!activeMultipleChoiceCard) return
     const flowSignals = currentFlowSignals()
     try {
-      await fetch(apiUrl('/api/attempts'), {
+      const response = await fetch(apiUrl('/api/attempts'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2868,8 +3097,27 @@ function App() {
           llmProvider: requestLlmProvider,
         }),
       })
+      if (!response.ok) throw new Error('Unable to submit attempt')
+      const saved = (await response.json()) as SubmissionSaveResponse
+      if (flowSignals) {
+        recordFlowSubmission({
+          response: saved,
+          flowSignals,
+          modality: 'mcq',
+          modalitySignals: {
+            correct: payload.correct,
+            selectedChoiceId: payload.selectedChoice.id,
+            correctChoiceId: payload.correctChoice.id,
+          },
+          elapsedMs: payload.elapsedMs,
+          interactionId: payload.interactionId,
+          question: activeMultipleChoiceCard.question,
+        })
+      }
+      return saved
     } catch {
       // silently fail
+      return null
     }
   }
 
@@ -2915,11 +3163,14 @@ function App() {
     flowMultipleChoiceDeckRequestVersionRef.current += 1
   }
 
-  const startPracticeFlow = () => {
+  const startPracticeFlow = async () => {
     flowInteractionVersionRef.current += 1
+    const flowInteractionVersion = flowInteractionVersionRef.current
     if (!hasRecallDeck || sessionFinished) return
     saveFlowConfig(flowConfig)
-    const first = nextFlowStep(flowConfig, 0)
+    const history = await loadFlowHistoryForCard(card)
+    if (flowInteractionVersionRef.current !== flowInteractionVersion) return
+    const first = nextFlowStep(flowConfig, 0, Math.random, history)
     setPracticeMode('recall')
     setSupportLayer('none')
     resetFlowMultipleChoiceState()
@@ -2930,13 +3181,8 @@ function App() {
       config: structuredClone(flowConfig),
       step: 0,
       runId: createInteractionId(),
-      focus: {
-        sequenceStage: 'recall',
-        focusSummary: `Practice the core decisions in ${card.title}.`,
-        missedLines: practiceTarget.split('\n').flatMap((expected, index) => expected.trim()
-          ? [{ lineNumber: index + 1, expected, actual: '', status: 'missing' as const }]
-          : []),
-      },
+      focus: initialFlowFocus(card),
+      completedAnchorIds: [],
     })
     resetPerCardInteraction()
   }
@@ -2950,11 +3196,35 @@ function App() {
     resetPerCardInteraction()
   }
 
-  const advancePracticeFlow = () => {
+  const advancePracticeFlow = async () => {
     flowInteractionVersionRef.current += 1
+    const flowInteractionVersion = flowInteractionVersionRef.current
     if (!practiceFlow) return
     const step = practiceFlow.step + 1
-    const next = nextFlowStep(practiceFlow.config, step)
+    const anchorHistory = flowAttemptsRef.current.filter((attempt) => attempt.anchorCardId === practiceFlow.anchorCardId)
+    const mastery = summarizeFlowMastery(anchorHistory)
+    if (practiceFlow.config.mode === 'adaptive' && mastery.mastered) {
+      const nextAnchor = nextFlowAnchor(filteredDeck, practiceFlow.anchorCardId, practiceFlow.completedAnchorIds)
+      if (nextAnchor) {
+        await loadFlowHistoryForCard(nextAnchor)
+        if (flowInteractionVersionRef.current !== flowInteractionVersion) return
+        setPracticeFlow({
+          ...practiceFlow,
+          anchorCardId: nextAnchor.id,
+          anchorTitle: nextAnchor.title,
+          stage: 'recall',
+          cycle: practiceFlow.cycle + 1,
+          step,
+          focus: initialFlowFocus(nextAnchor),
+          completedAnchorIds: [...practiceFlow.completedAnchorIds, practiceFlow.anchorCardId],
+        })
+        setSupportLayer('none')
+        resetFlowMultipleChoiceState()
+        resetPerCardInteraction()
+        return
+      }
+    }
+    const next = nextFlowStep(practiceFlow.config, step, Math.random, anchorHistory)
     setPracticeFlow({ ...practiceFlow, ...next, step })
     setSupportLayer('none')
     resetFlowMultipleChoiceState()
@@ -3289,11 +3559,11 @@ function App() {
         const missedLines = toMultipleChoiceFocusLines(lineReviews)
         setPracticeFlow((current) => current ? {
           ...current,
-          focus: missedLines.length ? {
+          focus: {
             sequenceStage: 'recall',
             focusSummary: buildFlowFocusSummary(card.title, missedLines),
             missedLines,
-          } : current.focus,
+          },
         } : current)
       }
       return
@@ -3341,13 +3611,21 @@ function App() {
       completeCardInSession(correct, elapsedMs)
     }
 
-    await submitMultipleChoiceAttemptToServer({
+    const saved = await submitMultipleChoiceAttemptToServer({
       interactionId,
       selectedChoice,
       correctChoice,
       correct,
       elapsedMs,
     })
+    if (isFlowActive && !saved?.saved) {
+      setFlowMultipleChoiceSubmittedByCard((current) => {
+        const next = { ...current }
+        delete next[activeMultipleChoiceCard.id]
+        return next
+      })
+      setFlowMultipleChoiceError('Your answer could not be saved. Submit again before continuing.')
+    }
   }
 
   const reviseMainRecall = () => {
@@ -3857,7 +4135,9 @@ function App() {
   }, [zenMode])
 
   const flowStatusText = !practiceFlow
-    ? 'Build a sequence or let each next rep surprise you.'
+    ? flowHistoryLoading ? 'Loading prior attempts…' : 'Choose Adaptive to sequence from prior results and cross-modality weaknesses.'
+    : practiceFlow.config.mode === 'adaptive'
+      ? `${flowMastery.phase === 'mastered' ? 'Mastered' : flowMastery.phase[0].toUpperCase() + flowMastery.phase.slice(1)} · ${flowMastery.proficiency}% proficiency · evidence across ${flowMastery.successfulModalities} modalities · ${FLOW_LABELS[practiceFlow.stage]}`
     : practiceFlow.config.mode === 'random'
       ? `Rep ${practiceFlow.step + 1} · ${FLOW_LABELS[practiceFlow.stage]}. The next modality is chosen when you continue.`
       : `Cycle ${practiceFlow.cycle} · Rep ${practiceFlow.step % expandFlow(practiceFlow.config.blocks).length + 1} of ${expandFlow(practiceFlow.config.blocks).length} · ${FLOW_LABELS[practiceFlow.stage]}`
@@ -4351,6 +4631,7 @@ function App() {
             key={`${practiceFlow.runId}-${practiceFlow.step}`}
             title={card.title} prompt={practicePrompt} target={practiceTarget}
             focus={practiceFlow.focus.focusSummary} rep={practiceFlow.step + 1}
+            context={flowGenerationContext}
             provider={requestLlmProvider} theme={theme} syntaxTheme={syntaxTheme}
             onNext={advancePracticeFlow}
             onSave={(drill, answer, elapsedMs, interactionId) => submitAttemptToServer({
@@ -4715,7 +4996,7 @@ function App() {
           <div>
             <span className="related-problems-eyebrow">Flow</span>
             <h3>Flow</h3>
-            <p>{practiceFlow ? `${practiceFlow.config.mode === 'random' ? 'Random flow' : `Cycle ${practiceFlow.cycle}`} on ${practiceFlow.anchorTitle}` : card.title}</p>
+            <p>{practiceFlow ? `${practiceFlow.config.mode === 'adaptive' ? `Adaptive · ${flowMastery.proficiency}%` : practiceFlow.config.mode === 'random' ? 'Random flow' : `Cycle ${practiceFlow.cycle}`} on ${practiceFlow.anchorTitle}` : card.title}</p>
           </div>
           <button type="button" className="related-problems-close" onClick={() => setFlowDrawerOpen(false)} aria-label="Close Flow drawer">
             Close
@@ -4728,7 +5009,7 @@ function App() {
               type="button"
               className="secondary card-flow-action"
               onClick={practiceFlow ? stopPracticeFlow : startPracticeFlow}
-              disabled={!practiceFlow && (!hasRecallDeck || sessionFinished)}
+              disabled={!practiceFlow && (!hasRecallDeck || sessionFinished || flowHistoryLoading)}
             >
               {practiceFlow ? 'Stop flow' : 'Start flow'}
             </button>
@@ -4736,6 +5017,7 @@ function App() {
           <p className="card-flow-anchor">{practiceFlow?.anchorTitle ?? card.title}</p>
           <FlowBuilder config={flowConfig} disabled={isFlowActive} onChange={(config) => { setFlowConfig(config); saveFlowConfig(config) }} />
           <p className="card-flow-status">{flowStatusText}</p>
+          {flowHistoryError && <p className="card-flow-summary" role="status">{flowHistoryError}</p>}
           {practiceFlow?.focus.focusSummary && (
             <p className="card-flow-summary">{practiceFlow.focus.focusSummary}</p>
           )}

@@ -13,13 +13,15 @@ export default function FlowBuilder({ config, onChange, disabled }: {
     <fieldset className="flow-builder" disabled={disabled}>
       <legend>Build your flow</legend>
       <div className="flow-mode-picker" aria-label="Flow mode">
-        {(['custom', 'random'] as const).map(mode => (
+        {(['adaptive', 'custom', 'random'] as const).map(mode => (
           <button key={mode} type="button" aria-pressed={config.mode === mode} onClick={() => onChange({ ...config, mode })}>
-            {mode === 'custom' ? 'Custom sequence' : 'Random'}
+            {mode === 'adaptive' ? 'Adaptive' : mode === 'custom' ? 'Custom sequence' : 'Random'}
           </button>
         ))}
       </div>
-      {config.mode === 'custom' ? <>
+      {config.mode === 'adaptive' ? (
+        <p className="flow-builder-help">Uses results across all four modalities to remediate weaknesses, raise the challenge, and advance after mastery.</p>
+      ) : config.mode === 'custom' ? <>
         <p className="flow-builder-help">Set the order and reps. Your sequence repeats until you stop.</p>
         <ol className="flow-builder-blocks">
           {config.blocks.map((block, index) => (

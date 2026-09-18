@@ -72,7 +72,10 @@ async def fetch_practice_history_rows(
             rows = await conn.fetch(
                 f"""
                 {_PRACTICE_HISTORY_SELECT}
-                                    AND (COALESCE(a.generated_card_id, a.multiple_choice_problem_id) = $1)
+                                    AND (
+                                        COALESCE(a.generated_card_id, a.multiple_choice_problem_id) = $1
+                                        OR (a.signals ? 'flow' AND a.signals->'flow'->>'anchorCardId' = $1)
+                                    )
                                 ORDER BY a.created_at DESC
                 LIMIT $2
                 """,

@@ -17,7 +17,9 @@ async def generate_flow_micro_drill(body: FlowMicroDrillRequest) -> FlowMicroDri
         raise MicroDrillGenerationError("Configure a model provider to generate microdrills.")
     prompt = (
         "Create one self-contained coding reinforcement microdrill based on the supplied card and focus. "
-        "Vary the scenario for this rep while preserving the core skill. Return strict JSON with "
+        "The card prompt and target are the immutable anchor. Use recentAttempts and weaknessSummary to repair the learner's unresolved weakness without repeating a recent task. "
+        "When phase is challenge or mastered, increase difficulty with an edge case, transfer case, alternative constraint, or subtle bug inside the same card space. "
+        "Otherwise keep the drill narrow and corrective. Vary the scenario while preserving the core skill. Return strict JSON with "
         "prompt (a short task, no answers), language, template (raw code, no fences), and answers "
         "(an ordered array of strings, one per blank). Use exactly three underscores for each blank, "
         "and 1-4 blanks total. Each answer must fit on one line. Keep the template under 30 lines. "
