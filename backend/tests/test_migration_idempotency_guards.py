@@ -21,6 +21,35 @@ def test_dead_signal_tables_are_dropped_on_startup() -> None:
     assert "DROP TABLE IF EXISTS submission_misconception" in source
 
 
+def test_answer_migration_uses_column_names_in_submission_insert_target() -> None:
+    source = inspect.getsource(database._ensure_generated_question_schema)
+    insert_start = source.index("INSERT INTO submission (")
+    select_start = source.index(")\n                    SELECT", insert_start)
+    insert_target = source[insert_start:select_start]
+
+    assert "signals," in insert_target
+    assert "jsonb_build_object(" not in insert_target
+
+
+def test_legacy_signals_constraint_is_removed_before_normalization() -> None:
+    source = inspect.getsource(database._ensure_generated_question_schema)
+    normalize_index = source.index(
+        "UPDATE submission\n            SET signals = '{\"elapsed_ms\": 0}'::jsonb || signals"
+    )
+    drop_index = source.rfind(
+        "DROP CONSTRAINT IF EXISTS submission_signals_object_check",
+        0,
+        normalize_index,
+    )
+    add_index = source.index(
+        "ADD CONSTRAINT submission_signals_object_check",
+        normalize_index,
+    )
+
+    assert drop_index != -1
+    assert drop_index < normalize_index < add_index
+
+
 def test_taxonomy_remap_only_touches_legacy_slugs() -> None:
     source = inspect.getsource(database._apply_taxonomy_remap_migration)
     assert "&& $1::text[]" in source
