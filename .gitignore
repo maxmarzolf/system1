@@ -18,6 +18,7 @@ coverage
 venv/
 __pycache__/
 *.pyc
+.ipynb_checkpoints/
 
 # Environment files
 .env

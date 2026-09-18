@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import datetime, timedelta, timezone
 
 from app.models import AttemptCreate
@@ -20,7 +21,7 @@ def test_create_attempt_forwards_multiple_choice_metadata(monkeypatch) -> None:
         "cardId": "mcq-1",
         "mode": "main-recall",
         "elapsedMs": 875,
-        "activityFormat": "multiple-choice",
+        "modality": "mcq",
         "targetSource": "skill-map",
         "targetControl": "user",
         "formatControl": "user",
@@ -30,9 +31,107 @@ def test_create_attempt_forwards_multiple_choice_metadata(monkeypatch) -> None:
     result = asyncio.run(attempts_service.create_attempt(body, successful=False, evaluation=evaluation))
 
     assert result == {"saved": True, "attemptId": 91}
-    assert captured["activity_format"] == "multiple-choice"
+    assert captured["modality"] == "mcq"
     assert captured["target_source"] == "skill-map"
-    assert captured["signals_json"] == '{"elapsed_ms": 875, "evaluation": {"version": 1, "verdict": "needs-work"}}'
+    assert json.loads(str(captured["signals_json"])) == {
+        "elapsed_ms": 875,
+        "evaluation": {"version": 1, "verdict": "needs-work"},
+        "modality": {"kind": "mcq"},
+    }
+
+
+def test_create_attempt_normalizes_legacy_activity_format(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def _insert(**kwargs):
+        captured.update(kwargs)
+        return {"id": 92}
+
+    monkeypatch.setattr(attempts_service, "insert_submission_attempt_row", _insert)
+    body = AttemptCreate.model_validate({
+        "cardId": "mcq-legacy",
+        "mode": "main-recall",
+        "activityFormat": "multiple-choice",
+    })
+
+    result = asyncio.run(attempts_service.create_attempt(body, successful=True, evaluation={"verdict": "sound"}))
+
+    assert result == {"saved": True, "attemptId": 92}
+    assert captured["session_id"] == "0000"
+    assert captured["modality"] == "mcq"
+
+
+def test_create_attempt_persists_flow_and_modality_signals(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def _insert(**kwargs):
+        captured.update(kwargs)
+        return {"id": 93}
+
+    monkeypatch.setattr(attempts_service, "insert_submission_attempt_row", _insert)
+    body = AttemptCreate.model_validate({
+        "cardId": "flow-card",
+        "mode": "main-recall",
+        "elapsedMs": 1500,
+        "supportLayer": "ghost-reps",
+        "modality": "ghost-rep",
+        "signals": {
+            "flow": {
+                "runId": "flow-1",
+                "anchorCardId": "flow-card",
+                "stage": "ghost",
+                "step": 1,
+                "cycle": 1,
+            },
+            "modality": {
+                "missedLineCount": 2,
+                "kind": "client-value-ignored",
+            },
+        },
+    })
+
+    result = asyncio.run(attempts_service.create_attempt(body, successful=True, evaluation={"verdict": "sound"}))
+
+    assert result == {"saved": True, "attemptId": 93}
+    assert captured["session_id"] == "flow-1"
+    assert captured["modality"] == "ghost-rep"
+    assert json.loads(str(captured["signals_json"])) == {
+        "elapsed_ms": 1500,
+        "evaluation": {"verdict": "sound"},
+        "flow": {
+            "runId": "flow-1",
+            "anchorCardId": "flow-card",
+            "stage": "ghost",
+            "step": 1,
+            "cycle": 1,
+        },
+        "modality": {
+            "kind": "ghost-rep",
+            "missedLineCount": 2,
+        },
+    }
+
+
+def test_create_attempt_prefers_explicit_session_id_over_flow_signal(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def _insert(**kwargs):
+        captured.update(kwargs)
+        return {"id": 94}
+
+    monkeypatch.setattr(attempts_service, "insert_submission_attempt_row", _insert)
+    body = AttemptCreate.model_validate({
+        "cardId": "flow-card",
+        "mode": "main-recall",
+        "sessionId": "flow-session-explicit",
+        "flowRunId": "flow-run-fallback",
+        "signals": {"flow": {"runId": "flow-signal-fallback"}},
+    })
+
+    result = asyncio.run(attempts_service.create_attempt(body, successful=True, evaluation={"verdict": "sound"}))
+
+    assert result == {"saved": True, "attemptId": 94}
+    assert captured["session_id"] == "flow-session-explicit"
 
 
 def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
@@ -93,7 +192,7 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
                 "created_at": today,
                 "template_mode": "algorithm",
                 "support_layer": "none",
-                "activity_format": "multiple-choice",
+                "modality": "mcq",
                 "live_coach_used": False,
                 "signals": {},
             },
@@ -105,7 +204,7 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
                 "created_at": today,
                 "template_mode": "algorithm",
                 "support_layer": "none",
-                "activity_format": "recall",
+                "modality": "total-recall",
                 "live_coach_used": False,
                 "signals": {},
             },
@@ -178,7 +277,7 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
                 "created_at": now,
                 "template_mode": "algorithm",
                 "support_layer": "none",
-                "activity_format": "recall",
+                "modality": "total-recall",
                 "live_coach_used": False,
                 "signals": {},
             },
@@ -191,7 +290,7 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
                 "created_at": now,
                 "template_mode": "algorithm",
                 "support_layer": "none",
-                "activity_format": "recall",
+                "modality": "total-recall",
                 "live_coach_used": False,
                 "signals": {},
             }

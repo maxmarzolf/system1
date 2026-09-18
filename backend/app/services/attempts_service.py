@@ -89,6 +89,49 @@ SPACED_REPETITION_PACKET_DEFINITIONS = (
 )
 
 
+def _submission_modality(row: dict[str, Any]) -> str:
+    modality = str(row.get("modality") or "").strip()
+    if modality:
+        return modality
+    activity_format = str(row.get("activity_format") or "").strip()
+    if activity_format == "multiple-choice":
+        return "mcq"
+    if (
+        activity_format == "code-completion"
+        or str(row.get("question_type") or "").endswith(":microdrill")
+    ):
+        return "microdrill"
+    if str(row.get("support_layer") or "none") == "ghost-reps":
+        return "ghost-rep"
+    return "total-recall"
+
+
+def _submission_signals(
+    body: AttemptCreate,
+    *,
+    modality: str,
+    evaluation: dict[str, Any],
+) -> dict[str, Any]:
+    raw_signals = body.signals if isinstance(body.signals, dict) else {}
+    signals: dict[str, Any] = {
+        "elapsed_ms": body.elapsedMs,
+        "evaluation": evaluation,
+    }
+    flow_signals = raw_signals.get("flow")
+    if isinstance(flow_signals, dict) and flow_signals:
+        signals["flow"] = flow_signals
+
+    modality_signals = raw_signals.get("modality")
+    if isinstance(modality_signals, dict):
+        signals["modality"] = {
+            **modality_signals,
+            "kind": modality,
+        }
+    else:
+        signals["modality"] = {"kind": modality}
+    return signals
+
+
 def _algorithm_slug(algorithm: str) -> str:
     return re.sub(
         r"\s+",
@@ -217,17 +260,14 @@ def _build_ghost_rep_activity(
         if created_at is None:
             continue
         category_tags = [str(tag) for tag in (row["category_tags"] or [])]
+        modality = _submission_modality(row)
         is_mcq = (
-            str(row.get("activity_format") or "") == "multiple-choice"
+            modality == "mcq"
             or str(row.get("question_type") or "").startswith("skill-map-mcq")
             or "skill-map-mcq" in category_tags
         )
-        is_ghost_rep = str(row["support_layer"] or "none") == "ghost-reps"
-        is_perfect_total_recall = (
-            str(row.get("activity_format") or "") == "recall"
-            and not is_ghost_rep
-            and bool(row.get("successful"))
-        )
+        is_ghost_rep = modality == "ghost-rep"
+        is_perfect_total_recall = modality == "total-recall" and bool(row.get("successful"))
         if not is_ghost_rep and not is_mcq and not is_perfect_total_recall:
             continue
         matched_algorithm_slugs = [tag for tag in category_tags if tag in known_algorithm_slugs]
@@ -427,7 +467,7 @@ def _build_spaced_repetition(
     }
 
     for row in attempt_rows:
-        if str(row["support_layer"] or "none") != "ghost-reps":
+        if _submission_modality(row) != "ghost-rep":
             continue
         card_id = str(row["tracked_card_id"] or "").strip()
         created_at = _coerce_utc_datetime(row["created_at"])
@@ -667,7 +707,7 @@ def build_skill_map_overview(
             continue
         category_tags = [str(tag) for tag in (row["category_tags"] or [])]
         if (
-            str(row.get("activity_format") or "") == "multiple-choice"
+            _submission_modality(row) == "mcq"
             or str(row.get("question_type") or "").startswith("skill-map-mcq")
             or "skill-map-mcq" in category_tags
         ):
@@ -692,6 +732,7 @@ def build_skill_map_overview(
             "successful": bool(row["successful"]),
             "created_at": row["created_at"],
             "supportLayer": support_layer,
+            "modality": _submission_modality(row),
             "liveCoachUsed": bool(row["live_coach_used"]),
             "signals": {
                 "evaluation": compact_submission_rubric(stored_signals.get("evaluation")),
@@ -863,11 +904,10 @@ async def create_attempt(
     evaluation: dict[str, Any],
 ) -> AttemptSaveResult:
     now = datetime.now(tz=timezone.utc)
-    signals = {
-        "elapsed_ms": body.elapsedMs,
-        "evaluation": evaluation,
-    }
+    modality = body.resolved_modality().value
+    signals = _submission_signals(body, modality=modality, evaluation=evaluation)
     row = await insert_submission_attempt_row(
+        session_id=body.resolved_session_id(),
         card_id=body.cardId,
         card_title=body.cardTitle,
         question=body.question,
@@ -884,7 +924,7 @@ async def create_attempt(
         template_mode=body.templateMode.value,
         support_layer=body.supportLayer.value,
         live_coach_used=body.liveCoachUsed,
-        activity_format=body.activityFormat,
+        modality=modality,
         target_source=body.targetSource,
         target_control=body.targetControl,
         format_control=body.formatControl,

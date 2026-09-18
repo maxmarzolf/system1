@@ -49,7 +49,24 @@ CREATE TABLE IF NOT EXISTS submission (
     category_tags TEXT[] NOT NULL DEFAULT '{}',
     correct_answer TEXT,
     successful BOOLEAN NOT NULL DEFAULT FALSE,
-    signals JSONB NOT NULL DEFAULT '{"elapsed_ms": 0}'::jsonb CONSTRAINT submission_signals_object_check CHECK (jsonb_typeof(signals) = 'object'),
+    signals JSONB NOT NULL DEFAULT '{"elapsed_ms": 0}'::jsonb CONSTRAINT submission_signals_object_check CHECK (
+        jsonb_typeof(signals) = 'object'
+        AND signals ? 'elapsed_ms'
+        AND jsonb_typeof(signals->'elapsed_ms') = 'number'
+        AND (signals - 'elapsed_ms' - 'evaluation' - 'flow' - 'modality') = '{}'::jsonb
+        AND (
+            NOT (signals ? 'evaluation')
+            OR jsonb_typeof(signals->'evaluation') = 'object'
+        )
+        AND (
+            NOT (signals ? 'flow')
+            OR jsonb_typeof(signals->'flow') = 'object'
+        )
+        AND (
+            NOT (signals ? 'modality')
+            OR jsonb_typeof(signals->'modality') = 'object'
+        )
+    ),
     interaction_id VARCHAR(80),
     generated_card_id VARCHAR(80),
     problem_slug VARCHAR(120),
@@ -57,7 +74,7 @@ CREATE TABLE IF NOT EXISTS submission (
     template_mode VARCHAR(20) NOT NULL DEFAULT 'algorithm' CHECK (template_mode IN ('algorithm')),
     support_layer VARCHAR(30) NOT NULL DEFAULT 'none' CHECK (support_layer IN ('none', 'ghost-reps')),
     live_coach_used BOOLEAN NOT NULL DEFAULT FALSE,
-    activity_format VARCHAR(30),
+    modality VARCHAR(30) NOT NULL DEFAULT 'total-recall' CHECK (modality IN ('total-recall', 'ghost-rep', 'mcq', 'microdrill')),
     target_source VARCHAR(30),
     target_control VARCHAR(20),
     format_control VARCHAR(20),

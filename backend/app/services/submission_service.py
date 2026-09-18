@@ -4,7 +4,7 @@ from typing import Any
 
 from app.domain.llm_resilience import SubmissionFeedbackUnavailableError
 from app.domain.submission_evaluation import outcome_evaluation
-from app.models import AttemptCreate, CoachAttemptEvaluationRequest, CoachAttemptFeedbackRequest
+from app.models import AttemptCreate, CoachAttemptEvaluationRequest, CoachAttemptFeedbackRequest, SubmissionModality
 from app.services import attempts_service, evaluation_service, feedback_service
 
 
@@ -52,11 +52,12 @@ async def _fallback_recall_evaluation(body: AttemptCreate) -> dict[str, Any]:
 
 async def create_submission(body: AttemptCreate) -> dict[str, Any]:
     feedback_unavailable: dict[str, Any] | None = None
+    modality = body.resolved_modality()
 
-    if body.activityFormat == "multiple-choice":
+    if modality == SubmissionModality.mcq:
         successful = (body.userAnswer or "").strip() == (body.correctAnswer or "").strip()
         evaluation = outcome_evaluation(successful, source="multiple-choice-answer-key")
-    elif body.supportLayer.value == "ghost-reps":
+    elif modality == SubmissionModality.ghost_rep:
         evaluation = await _fallback_recall_evaluation(body)
         successful = evaluation["verdict"] == "sound"
     else:

@@ -286,8 +286,17 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                     ALTER TABLE submission
                     ADD COLUMN IF NOT EXISTS successful BOOLEAN NOT NULL DEFAULT FALSE;
 
+                    ALTER TABLE submission
+                    ADD COLUMN IF NOT EXISTS modality VARCHAR(30) NOT NULL DEFAULT 'total-recall';
+
+                    ALTER TABLE submission
+                    DROP CONSTRAINT IF EXISTS submission_signals_object_check;
+
                     ALTER TABLE answer
                     ADD COLUMN IF NOT EXISTS signals JSONB NOT NULL DEFAULT '{"elapsed_ms": 0}'::jsonb;
+
+                    ALTER TABLE answer
+                    ADD COLUMN IF NOT EXISTS activity_format VARCHAR(30);
 
                     IF EXISTS (
                         SELECT 1 FROM information_schema.columns
@@ -318,14 +327,38 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                         category_tags,
                         correct_answer,
                         successful,
-                        signals,
+                        jsonb_build_object(
+                            'elapsed_ms', COALESCE(signals->'elapsed_ms', '0'::jsonb)
+                        ) || CASE
+                            WHEN signals ? 'evaluation' THEN
+                                jsonb_build_object('evaluation', signals->'evaluation')
+                            WHEN signals ? 'submission_rubric' OR signals ? 'coach_feedback' THEN
+                                jsonb_build_object(
+                                    'evaluation',
+                                    COALESCE(
+                                        signals->'submission_rubric',
+                                        signals#>'{coach_feedback,submissionRubric}',
+                                        '{}'::jsonb
+                                    ) || jsonb_build_object(
+                                        'version', 1,
+                                        'feedback', COALESCE(signals->'coach_feedback', '{}'::jsonb)
+                                            - 'submissionRubric' - 'llmUsed' - 'llmProvider',
+                                        'provenance', jsonb_build_object(
+                                            'llmUsed', COALESCE((signals#>>'{coach_feedback,llmUsed}')::boolean, FALSE),
+                                            'provider', COALESCE(signals#>>'{coach_feedback,llmProvider}', ''),
+                                            'source', 'answer-migration'
+                                        )
+                                    )
+                                )
+                            ELSE '{}'::jsonb
+                        END,
                         interaction_id,
                         generated_card_id,
                         generated_card,
                         template_mode,
                         support_layer,
                         live_coach_used,
-                        activity_format,
+                        modality,
                         target_source,
                         target_control,
                         format_control,
@@ -354,7 +387,12 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                         template_mode,
                         support_layer,
                         live_coach_used,
-                        activity_format,
+                        CASE
+                            WHEN activity_format = 'multiple-choice' THEN 'mcq'
+                            WHEN activity_format = 'code-completion' THEN 'microdrill'
+                            WHEN support_layer = 'ghost-reps' THEN 'ghost-rep'
+                            ELSE 'total-recall'
+                        END,
                         target_source,
                         target_control,
                         format_control,
@@ -529,8 +567,57 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
             ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS live_coach_used BOOLEAN NOT NULL DEFAULT FALSE;
 
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'submission'
+                      AND column_name = 'activity_format'
+                ) AND NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'submission'
+                      AND column_name = 'modality'
+                ) THEN
+                    ALTER TABLE submission RENAME COLUMN activity_format TO modality;
+                ELSIF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'submission'
+                      AND column_name = 'activity_format'
+                ) THEN
+                    UPDATE submission
+                    SET modality = CASE
+                        WHEN activity_format = 'multiple-choice' THEN 'mcq'
+                        WHEN activity_format = 'code-completion' THEN 'microdrill'
+                        WHEN support_layer = 'ghost-reps' THEN 'ghost-rep'
+                        ELSE COALESCE(modality, 'total-recall')
+                    END;
+                    ALTER TABLE submission DROP COLUMN activity_format;
+                END IF;
+            END $$;
+
             ALTER TABLE submission
-            ADD COLUMN IF NOT EXISTS activity_format VARCHAR(30);
+            ADD COLUMN IF NOT EXISTS modality VARCHAR(30);
+
+            UPDATE submission
+            SET modality = CASE
+                WHEN modality IN ('total-recall', 'ghost-rep', 'mcq', 'microdrill') THEN modality
+                WHEN modality = 'multiple-choice' THEN 'mcq'
+                WHEN modality = 'code-completion' THEN 'microdrill'
+                WHEN support_layer = 'ghost-reps' THEN 'ghost-rep'
+                WHEN question_type LIKE '%:microdrill' THEN 'microdrill'
+                ELSE 'total-recall'
+            END
+            WHERE modality IS NULL
+               OR modality NOT IN ('total-recall', 'ghost-rep', 'mcq', 'microdrill');
+
+            ALTER TABLE submission
+            ALTER COLUMN modality SET DEFAULT 'total-recall';
+
+            ALTER TABLE submission
+            ALTER COLUMN modality SET NOT NULL;
 
             ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS target_source VARCHAR(30);
@@ -600,7 +687,27 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                         )
                     )
                 ELSE '{}'::jsonb
+            END || CASE
+                WHEN signals ? 'flow' AND jsonb_typeof(signals->'flow') = 'object' THEN
+                    jsonb_build_object('flow', signals->'flow')
+                ELSE '{}'::jsonb
+            END || CASE
+                WHEN signals ? 'modality' AND jsonb_typeof(signals->'modality') = 'object' THEN
+                    jsonb_build_object('modality', signals->'modality')
+                ELSE '{}'::jsonb
             END;
+
+            UPDATE submission
+            SET signals = signals || jsonb_build_object(
+                'modality',
+                CASE
+                    WHEN jsonb_typeof(signals->'modality') = 'object' THEN signals->'modality'
+                    ELSE '{}'::jsonb
+                END || jsonb_build_object('kind', modality)
+            )
+            WHERE NOT (signals ? 'modality')
+               OR jsonb_typeof(signals->'modality') <> 'object'
+               OR NOT (signals->'modality' ? 'kind');
 
             ALTER TABLE submission
             ALTER COLUMN signals SET DEFAULT '{"elapsed_ms": 0}'::jsonb;
@@ -621,10 +728,18 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                 jsonb_typeof(signals) = 'object'
                 AND signals ? 'elapsed_ms'
                 AND jsonb_typeof(signals->'elapsed_ms') = 'number'
-                AND (signals - 'elapsed_ms' - 'evaluation') = '{}'::jsonb
+                AND (signals - 'elapsed_ms' - 'evaluation' - 'flow' - 'modality') = '{}'::jsonb
                 AND (
                     NOT (signals ? 'evaluation')
                     OR jsonb_typeof(signals->'evaluation') = 'object'
+                )
+                AND (
+                    NOT (signals ? 'flow')
+                    OR jsonb_typeof(signals->'flow') = 'object'
+                )
+                AND (
+                    NOT (signals ? 'modality')
+                    OR jsonb_typeof(signals->'modality') = 'object'
                 )
             );
 
@@ -647,6 +762,13 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
             ALTER TABLE submission
             ADD CONSTRAINT submission_support_layer_check
             CHECK (support_layer IN ('none', 'ghost-reps'));
+
+            ALTER TABLE submission
+            DROP CONSTRAINT IF EXISTS submission_modality_check;
+
+            ALTER TABLE submission
+            ADD CONSTRAINT submission_modality_check
+            CHECK (modality IN ('total-recall', 'ghost-rep', 'mcq', 'microdrill'));
 
             ALTER TABLE submission
             ADD COLUMN IF NOT EXISTS multiple_choice_problem_id VARCHAR(80)
@@ -944,6 +1066,7 @@ async def _backfill_submission_attempts_from_score_attempts(db_pool: asyncpg.Poo
                         template_mode,
                         support_layer,
                         live_coach_used,
+                        modality,
                         migration_key,
                         created_at,
                         updated_at
@@ -980,6 +1103,11 @@ async def _backfill_submission_attempts_from_score_attempts(db_pool: asyncpg.Poo
                         COALESCE(s.template_mode, 'algorithm'),
                         COALESCE(s.support_layer, 'none'),
                         COALESCE(s.live_coach_used, FALSE),
+                        CASE
+                            WHEN COALESCE(s.support_layer, 'none') = 'ghost-reps' THEN 'ghost-rep'
+                            WHEN COALESCE(s.question_type, '') LIKE '%:microdrill' THEN 'microdrill'
+                            ELSE 'total-recall'
+                        END,
                         'score_attempts:' || s.legacy_attempt_id::text,
                         s.created_at_norm,
                         s.updated_at_norm

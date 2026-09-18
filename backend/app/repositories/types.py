@@ -6,6 +6,7 @@ from typing import Any, TypedDict
 
 class PracticeHistoryRow(TypedDict):
     attemptId: int
+    sessionId: str
     interactionId: str
     cardId: str
     cardTitle: str
@@ -17,6 +18,7 @@ class PracticeHistoryRow(TypedDict):
     signals: dict[str, Any] | str | None
     templateMode: str
     supportLayer: str
+    modality: str
     liveCoachUsed: bool
     categoryTags: list[str]
     generatedCard: dict[str, Any] | str | None
@@ -25,6 +27,7 @@ class PracticeHistoryRow(TypedDict):
 
 class PracticeHistoryEntry(TypedDict):
     attemptId: int
+    sessionId: str
     interactionId: str
     cardId: str
     cardTitle: str
@@ -36,6 +39,7 @@ class PracticeHistoryEntry(TypedDict):
     signals: dict[str, Any]
     templateMode: str
     supportLayer: str
+    modality: str
     liveCoachUsed: bool
     categoryTags: list[str]
     generatedCard: dict[str, Any]
@@ -92,6 +96,6 @@ class SkillMapOverviewAttemptRow(TypedDict):
     created_at: datetime
     template_mode: str
     support_layer: str
-    activity_format: str | None
+    modality: str | None
     live_coach_used: bool
     signals: dict[str, Any] | str | None

@@ -17,8 +17,11 @@ async def _read_and_cleanup(attempt_id: int, question_id: str) -> asyncpg.Record
         submission = await conn.fetchrow(
             """
             SELECT
+                session_id,
+                interaction_id,
                 multiple_choice_problem_id,
-                activity_format,
+                modality,
+                signals->'modality'->>'kind' AS modality_signal_kind,
                 (signals->>'elapsed_ms')::int AS elapsed_ms,
                 EXISTS (
                     SELECT 1 FROM information_schema.columns
@@ -27,7 +30,7 @@ async def _read_and_cleanup(attempt_id: int, question_id: str) -> asyncpg.Record
                 EXISTS (
                     SELECT 1 FROM information_schema.columns
                     WHERE table_schema = 'public' AND table_name = 'submission'
-                      AND column_name = ANY(ARRAY['is_correct', 'exact', 'elapsed_ms', 'coach_feedback', 'submission_rubric'])
+                      AND column_name = ANY(ARRAY['is_correct', 'exact', 'elapsed_ms', 'coach_feedback', 'submission_rubric', 'activity_format'])
                 ) AS has_legacy_columns
             FROM submission
             WHERE id = $1
@@ -60,7 +63,9 @@ def test_mcq_attempt_persists_multiple_choice_problem_link() -> None:
                     "userAnswer": "B. Current value",
                     "mode": "main-recall",
                     "elapsedMs": 725,
-                    "activityFormat": "multiple-choice",
+                    "sessionId": "flow-session-itest",
+                    "interactionId": "interaction-itest",
+                    "modality": "mcq",
                     "targetSource": "skill-map",
                     "targetControl": "user",
                     "formatControl": "user",
@@ -73,8 +78,11 @@ def test_mcq_attempt_persists_multiple_choice_problem_link() -> None:
     attempt_id = int(response.json()["attemptId"])
     submission = asyncio.run(_read_and_cleanup(attempt_id, question_id))
 
+    assert submission["session_id"] == "flow-session-itest"
+    assert submission["interaction_id"] == "interaction-itest"
     assert submission["multiple_choice_problem_id"] == question_id
-    assert submission["activity_format"] == "multiple-choice"
+    assert submission["modality"] == "mcq"
+    assert submission["modality_signal_kind"] == "mcq"
     assert submission["elapsed_ms"] == 725
     assert submission["has_signals"] is True
     assert submission["has_legacy_columns"] is False

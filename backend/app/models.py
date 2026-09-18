@@ -22,12 +22,21 @@ class SupportLayer(str, Enum):
     ghost_reps = "ghost-reps"
 
 
+class SubmissionModality(str, Enum):
+    total_recall = "total-recall"
+    ghost_rep = "ghost-rep"
+    mcq = "mcq"
+    microdrill = "microdrill"
+
+
 # ─── Request schemas ───
 
 
 class SubmissionSignals(BaseModel):
     elapsedMs: int = Field(default=0, ge=0)
     evaluation: dict[str, Any] | None = None
+    flow: dict[str, Any] | None = None
+    modality: dict[str, Any] | None = None
 
 
 class AttemptCreate(BaseModel):
@@ -40,18 +49,44 @@ class AttemptCreate(BaseModel):
     userAnswer: str | None = None
     mode: GameMode
     elapsedMs: int = Field(default=0, ge=0)
+    sessionId: str | None = Field(default=None, max_length=80)
+    flowRunId: str | None = Field(default=None, max_length=80)
     interactionId: str | None = None
     generatedCardId: str | None = None
     generatedCard: dict[str, Any] | None = None
     templateMode: TemplateMode = TemplateMode.algorithm
     supportLayer: SupportLayer = SupportLayer.none
+    modality: SubmissionModality | None = None
     liveCoachUsed: bool = False
     activityFormat: Literal["recall", "multiple-choice", "code-completion"] | None = None
     targetSource: Literal["recall-miss", "algorithm", "skill-map"] | None = None
     targetControl: Literal["user", "system"] | None = None
     formatControl: Literal["user", "system"] | None = None
+    signals: dict[str, Any] = Field(default_factory=dict)
     submissionTuning: dict[str, Any] = Field(default_factory=dict)
     llmProvider: str = "openai"
+
+    def resolved_modality(self) -> SubmissionModality:
+        if self.modality is not None:
+            return self.modality
+        if self.activityFormat == "multiple-choice" or self.questionType.startswith("skill-map-mcq"):
+            return SubmissionModality.mcq
+        if self.activityFormat == "code-completion" or self.questionType.endswith(":microdrill"):
+            return SubmissionModality.microdrill
+        if self.supportLayer == SupportLayer.ghost_reps:
+            return SubmissionModality.ghost_rep
+        return SubmissionModality.total_recall
+
+    def resolved_session_id(self) -> str:
+        for value in (self.sessionId, self.flowRunId):
+            if value and value.strip():
+                return value.strip()
+        flow_signals = self.signals.get("flow") if isinstance(self.signals, dict) else None
+        if isinstance(flow_signals, dict):
+            run_id = flow_signals.get("runId")
+            if isinstance(run_id, str) and run_id.strip():
+                return run_id.strip()[:80]
+        return "0000"
 
 
 # ─── Response schemas ───
@@ -306,6 +341,7 @@ class CoachPracticeHistoryRequest(BaseModel):
 
 class CoachPracticeHistoryEntry(BaseModel):
     attemptId: int
+    sessionId: str = ""
     interactionId: str = ""
     cardId: str = ""
     cardTitle: str = ""
@@ -317,6 +353,7 @@ class CoachPracticeHistoryEntry(BaseModel):
     signals: SubmissionSignals = Field(default_factory=SubmissionSignals)
     templateMode: str = TemplateMode.algorithm.value
     supportLayer: str = SupportLayer.none.value
+    modality: str = SubmissionModality.total_recall.value
     liveCoachUsed: bool = False
     categoryTags: list[str] = []
     generatedCard: dict[str, Any] = {}

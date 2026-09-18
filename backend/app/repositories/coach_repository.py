@@ -12,6 +12,7 @@ from app.repositories.types import MultipleChoiceProblemInsertResult, PracticeHi
 _PRACTICE_HISTORY_SELECT = """
     SELECT
         a.id AS "attemptId",
+        COALESCE(a.session_id, '') AS "sessionId",
         COALESCE(a.interaction_id, '') AS "interactionId",
         COALESCE(a.generated_card_id, a.multiple_choice_problem_id) AS "cardId",
         COALESCE(NULLIF(a.generated_card->>'title', ''), q.question_text, a.multiple_choice_problem_id) AS "cardTitle",
@@ -23,6 +24,7 @@ _PRACTICE_HISTORY_SELECT = """
         a.signals,
         a.template_mode AS "templateMode",
         a.support_layer AS "supportLayer",
+        a.modality,
         a.live_coach_used AS "liveCoachUsed",
         a.category_tags AS "categoryTags",
         a.generated_card AS "generatedCard",
@@ -143,6 +145,7 @@ async def fetch_practice_history_entries(
         evaluation = _parse_json_field(stored_signals.get("evaluation"), {})
         history.append({
             "attemptId": int(row["attemptId"]),
+            "sessionId": str(row["sessionId"] or ""),
             "interactionId": str(row["interactionId"] or ""),
             "cardId": row["cardId"],
             "cardTitle": row["cardTitle"],
@@ -154,9 +157,12 @@ async def fetch_practice_history_entries(
             "signals": {
                 "elapsedMs": int(stored_signals.get("elapsed_ms") or 0),
                 "evaluation": evaluation,
+                "flow": _parse_json_field(stored_signals.get("flow"), {}),
+                "modality": _parse_json_field(stored_signals.get("modality"), {}),
             },
             "templateMode": str(row["templateMode"] or "algorithm"),
             "supportLayer": str(row["supportLayer"] or "none"),
+            "modality": str(row["modality"] or "total-recall"),
             "liveCoachUsed": bool(row["liveCoachUsed"]),
             "categoryTags": list(row["categoryTags"] or []),
             "generatedCard": _parse_json_field(row["generatedCard"], {}),

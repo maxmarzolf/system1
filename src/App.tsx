@@ -115,7 +115,13 @@ type HelperLayer = 'inline'
 type CoreShapeLayer = 'coreShape'
 type RecallTargetMode = TemplateMode | CoreShapeLayer
 type SupportLayer = 'none' | 'ghost-reps'
+type SubmissionModality = 'total-recall' | 'ghost-rep' | 'mcq' | 'microdrill'
 type InlineLens = 'pattern' | 'plainEnglish' | 'why' | 'transfer' | 'debug'
+
+type AttemptRequestSignals = {
+  flow?: Record<string, unknown>
+  modality?: Record<string, unknown>
+}
 
 type AttemptPayload = {
   question?: string
@@ -124,9 +130,12 @@ type AttemptPayload = {
   correctAnswer: string
   userAnswer: string
   elapsedMs: number
+  sessionId?: string
   interactionId: string
   templateMode: TemplateMode
   supportLayer: SupportLayer
+  modality: SubmissionModality
+  signals?: AttemptRequestSignals
   liveCoachUsed: boolean
 }
 
@@ -2750,7 +2759,20 @@ function App() {
     }
   }
 
+  const currentFlowSignals = (): Record<string, unknown> | undefined => {
+    if (!practiceFlow) return undefined
+    return {
+      runId: practiceFlow.runId,
+      anchorCardId: practiceFlow.anchorCardId,
+      anchorTitle: practiceFlow.anchorTitle,
+      stage: practiceFlow.stage,
+      step: practiceFlow.step,
+      cycle: practiceFlow.cycle,
+    }
+  }
+
   const submitAttemptToServer = async (payload: AttemptPayload) => {
+    const flowSignals = currentFlowSignals()
     try {
       const response = await fetch(apiUrl('/api/attempts'), {
         method: 'POST',
@@ -2765,13 +2787,22 @@ function App() {
           userAnswer: payload.userAnswer,
           mode: payload.mode,
           elapsedMs: payload.elapsedMs,
+          sessionId: payload.sessionId ?? (flowSignals?.runId as string | undefined),
           interactionId: payload.interactionId,
           generatedCardId: card.id,
           generatedCard: { ...card, prompt: payload.question ?? practicePrompt },
           templateMode: payload.templateMode,
           supportLayer: payload.supportLayer,
+          modality: payload.modality,
+          signals: {
+            ...(payload.signals ?? {}),
+            ...(flowSignals ? { flow: flowSignals } : {}),
+            modality: {
+              ...(payload.signals?.modality ?? {}),
+              kind: payload.modality,
+            },
+          },
           liveCoachUsed: payload.liveCoachUsed,
-          activityFormat: 'recall',
           targetSource: isFlowActive ? 'recall-miss' : 'skill-map',
           targetControl: isFlowActive ? 'system' : 'user',
           formatControl: isFlowActive ? 'system' : 'user',
@@ -2794,6 +2825,7 @@ function App() {
     elapsedMs: number
   }) => {
     if (!activeMultipleChoiceCard) return
+    const flowSignals = currentFlowSignals()
     try {
       await fetch(apiUrl('/api/attempts'), {
         method: 'POST',
@@ -2808,6 +2840,7 @@ function App() {
           userAnswer: `${payload.selectedChoice.id}. ${payload.selectedChoice.text}`,
           mode: 'main-recall',
           elapsedMs: payload.elapsedMs,
+          sessionId: flowSignals?.runId,
           interactionId: payload.interactionId,
           generatedCardId: activeMultipleChoiceCard.id,
           generatedCard: {
@@ -2817,8 +2850,17 @@ function App() {
           },
           templateMode: 'algorithm',
           supportLayer: 'none',
+          modality: 'mcq',
+          signals: {
+            ...(flowSignals ? { flow: flowSignals } : {}),
+            modality: {
+              kind: 'mcq',
+              correct: payload.correct,
+              selectedChoiceId: payload.selectedChoice.id,
+              correctChoiceId: payload.correctChoice.id,
+            },
+          },
           liveCoachUsed: false,
-          activityFormat: 'multiple-choice',
           targetSource: 'recall-miss',
           targetControl: isFlowActive ? 'system' : 'user',
           formatControl: isFlowActive ? 'system' : 'user',
@@ -3168,6 +3210,8 @@ function App() {
     const normalizedInputLines = normalizedInput.split('\n')
     const normalizedTarget = activeRecallTarget
     const isGhostRep = effectiveSupportLayer === 'ghost-reps'
+    const lineReviews = computeLineReview(normalizedTarget, normalizedInput).reviews
+    const missedLineCount = lineReviews.filter((line) => line.status !== 'match').length
     recallEvaluationPendingRef.current = true
     if (!isGhostRep) {
       setCoachFeedback(null)
@@ -3184,6 +3228,18 @@ function App() {
       templateMode: currentTemplateMode,
       supportLayer: effectiveSupportLayer,
       liveCoachUsed: liveCoachUsedThisAttempt,
+      modality: isGhostRep ? 'ghost-rep' : 'total-recall',
+      signals: {
+        modality: {
+          exact: normalizedInput === normalizedTarget,
+          targetLineCount: normalizedTarget.split('\n').filter((line) => line.trim().length > 0).length,
+          submittedLineCount: normalizedInputLines.filter((line) => line.trim().length > 0).length,
+          missedLineCount,
+          ...(isGhostRep && practiceFlow
+            ? { focusedLineNumbers: practiceFlow.focus.missedLines.map((line) => line.lineNumber) }
+            : {}),
+        },
+      },
     })
       .finally(() => {
         recallEvaluationPendingRef.current = false
@@ -3230,7 +3286,7 @@ function App() {
 
     if (practiceFlow) {
       if (practiceFlow.stage === 'recall') {
-        const missedLines = toMultipleChoiceFocusLines(computeLineReview(practiceTarget, normalizedInput).reviews)
+        const missedLines = toMultipleChoiceFocusLines(lineReviews)
         setPracticeFlow((current) => current ? {
           ...current,
           focus: missedLines.length ? {
@@ -4301,6 +4357,14 @@ function App() {
               mode: 'main-recall', correctAnswer: drill.solution, userAnswer: answer, question: drill.prompt,
               microdrill: true, elapsedMs, interactionId,
               templateMode: currentTemplateMode, supportLayer: 'none', liveCoachUsed: false,
+              modality: 'microdrill',
+              signals: {
+                modality: {
+                  blankCount: drill.template.match(/_{3,}/g)?.length ?? 0,
+                  language: drill.language,
+                  templateLineCount: drill.template.split('\n').length,
+                },
+              },
             })}
           />
         ) : microDrillCardGrid ?? (

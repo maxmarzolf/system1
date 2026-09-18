@@ -11,6 +11,7 @@ import TopNav from './TopNav'
 
 type PracticeHistoryEntry = {
   attemptId: number
+  sessionId: string
   interactionId: string
   cardId: string
   cardTitle: string
@@ -22,9 +23,12 @@ type PracticeHistoryEntry = {
   signals: {
     elapsedMs: number
     evaluation: SubmissionEvaluation
+    flow?: Record<string, unknown>
+    modality?: Record<string, unknown>
   }
   templateMode: string
   supportLayer: 'none' | 'ghost-reps'
+  modality?: 'total-recall' | 'ghost-rep' | 'mcq' | 'microdrill'
   liveCoachUsed: boolean
   categoryTags: string[]
   generatedCard: {
@@ -123,7 +127,14 @@ type SkillMapOverviewForGhostReps = {
 }
 
 const isMultipleChoiceEntry = (entry: PracticeHistoryEntry) =>
-  entry.questionType.startsWith('skill-map-mcq') || entry.generatedCard.cardMode === 'multiple-choice'
+  entry.modality === 'mcq' || entry.questionType.startsWith('skill-map-mcq') || entry.generatedCard.cardMode === 'multiple-choice'
+
+const modalityLabel = (entry: PracticeHistoryEntry) => {
+  if (entry.modality === 'microdrill') return 'Microdrill'
+  if (entry.modality === 'mcq' || isMultipleChoiceEntry(entry)) return 'MCQ'
+  if (entry.modality === 'ghost-rep' || entry.supportLayer === 'ghost-reps') return 'Ghost Rep'
+  return 'Total Recall'
+}
 
 const summarizeHistoryText = (entry: PracticeHistoryEntry) => {
   if (isMultipleChoiceEntry(entry)) {
@@ -275,7 +286,7 @@ export default function PracticeHistoryPage() {
                       </span>
                     </div>
                     <p className="practice-history-meta">
-                      {entryDate} · {multipleChoice ? 'MCQ' : 'Ghost Rep'} · {(entry.signals.elapsedMs / 1000).toFixed(1)}s
+                      {entryDate} · {modalityLabel(entry)} · {(entry.signals.elapsedMs / 1000).toFixed(1)}s
                     </p>
                     <p className="practice-history-feedback">{summarizeHistoryText(entry)}</p>
                   </article>

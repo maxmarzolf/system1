@@ -16,6 +16,7 @@ class AttemptHistoryEntry(TypedDict, total=False):
     signals: dict[str, Any]
     question: str
     successful: bool
+    modality: str
 
 
 class AttemptHistorySummary(TypedDict, total=False):

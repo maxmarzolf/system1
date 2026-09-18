@@ -49,10 +49,10 @@ def _is_multiple_choice_attempt(
     generated_card_id: str | None,
     question_type: str,
     category_tags: list[str],
-    activity_format: str | None,
+    modality: str | None,
 ) -> bool:
     return (
-        activity_format == "multiple-choice"
+        modality == "mcq"
         or str(question_type or "").startswith("skill-map-mcq")
         or "skill-map-mcq" in category_tags
         or str(generated_card_id or "").startswith("mcq-")
@@ -67,7 +67,7 @@ async def _resolve_multiple_choice_problem_id(
     correct_answer: str,
     generated_card_json: str | None,
     category_tags: list[str],
-    activity_format: str | None,
+    modality: str | None,
     created_at: datetime,
     updated_at: datetime,
 ) -> str | None:
@@ -75,7 +75,7 @@ async def _resolve_multiple_choice_problem_id(
         generated_card_id=generated_card_id,
         question_type=question_type,
         category_tags=category_tags,
-        activity_format=activity_format,
+        modality=modality,
     ):
         return None
 
@@ -134,6 +134,7 @@ async def _resolve_multiple_choice_problem_id(
 
 async def insert_submission_attempt_row(
     *,
+    session_id: str,
     card_id: str,
     card_title: str,
     question: str,
@@ -150,7 +151,7 @@ async def insert_submission_attempt_row(
     template_mode: str,
     support_layer: str,
     live_coach_used: bool,
-    activity_format: str | None,
+    modality: str,
     target_source: str | None,
     target_control: str | None,
     format_control: str | None,
@@ -169,7 +170,7 @@ async def insert_submission_attempt_row(
         correct_answer=normalized_correct_answer,
         generated_card_json=generated_card_json,
         category_tags=category_tags,
-        activity_format=activity_format,
+        modality=modality,
         created_at=created_at,
         updated_at=updated_at,
     )
@@ -180,7 +181,7 @@ async def insert_submission_attempt_row(
             generated_card_id=generated_card_id,
             question_type=question_type,
             category_tags=category_tags,
-            activity_format=activity_format,
+            modality=modality,
         ):
             problem_slug = await conn.fetchval(
                 "SELECT slug FROM problem WHERE slug = $1",
@@ -192,12 +193,12 @@ async def insert_submission_attempt_row(
                 (session_id, user_id, multiple_choice_problem_id, answer, question_type, category_tags,
                  correct_answer, successful, signals, interaction_id,
                  generated_card_id, problem_slug, generated_card, template_mode, support_layer,
-                 live_coach_used, activity_format,
+                 live_coach_used, modality,
                  target_source, target_control, format_control, created_at, updated_at)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
             RETURNING id
             """,
-            interaction_id or generated_card_id or multiple_choice_problem_id or "0000",
+            session_id or "0000",
             "0000",
             multiple_choice_problem_id,
             normalized_user_answer,
@@ -213,7 +214,7 @@ async def insert_submission_attempt_row(
             template_mode,
             support_layer,
             live_coach_used,
-            activity_format,
+            modality,
             target_source,
             target_control,
             format_control,
@@ -304,7 +305,7 @@ async def fetch_skill_map_overview_attempt_rows() -> list[SkillMapOverviewAttemp
                 a.created_at,
                 a.template_mode,
                 a.support_layer,
-                a.activity_format,
+                a.modality,
                 a.live_coach_used,
                 a.signals
             FROM submission a
