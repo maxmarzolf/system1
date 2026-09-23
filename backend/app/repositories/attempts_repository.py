@@ -264,6 +264,7 @@ async def fetch_skill_map_overview_algorithm_rows() -> list[SkillMapOverviewAlgo
             f"""
             SELECT
                 (DENSE_RANK() OVER (ORDER BY a.display_order ASC, a.slug ASC))::int AS algorithm_id,
+                a.slug AS algorithm_slug,
                 a.name AS algorithm_name,
                 s.name AS skill_name
             {_ALGORITHM_SKILL_JOIN}
@@ -277,14 +278,29 @@ async def fetch_skill_map_overview_generated_rows() -> list[SkillMapOverviewGene
     async with acquire_connection() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, title, tags
+            SELECT id, title, tags, algorithm_slug, source_type
             FROM (
                 SELECT
-                    'core-algorithm-' || slug AS id,
+                    CASE
+                        WHEN source_type IN ('core-catalog', 'core-meta')
+                            THEN 'core-algorithm-' || slug
+                        ELSE slug
+                    END AS id,
                     title,
                     tags,
+                    algorithm_slug,
+                    source_type,
                     display_order
                 FROM problem
+                WHERE source_type <> 'static-playlist'
+                   OR EXISTS (
+                        SELECT 1
+                        FROM playlist_problem_order ppo
+                        JOIN playlist pl ON pl.slug = ppo.playlist_slug
+                        WHERE ppo.problem_slug = problem.slug
+                          AND ppo.order_slug = 'curated'
+                          AND pl.show_on_skill_map
+                   )
             ) rows
             ORDER BY display_order ASC
             """

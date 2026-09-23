@@ -284,8 +284,8 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
             {
                 "tracked_card_id": "playlist-skeletons-bfs-skeleton",
                 "card_title": "BFS Skeleton",
-                "category_tags": ["skill-map", "static-playlist", "skeletons", "graphs", "bfs-skeleton"],
-                "question_type": "playlist:skeletons:algorithm",
+                "category_tags": ["skill-map", "static-playlist", "google-skeletons", "graphs", "bfs-skeleton"],
+                "question_type": "playlist:google-skeletons:algorithm",
                 "successful": True,
                 "created_at": now,
                 "template_mode": "algorithm",
@@ -302,11 +302,11 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
     google = next(item for item in overview["algorithms"] if item["slug"] == "google")
     skeletons = next(item for item in overview["algorithms"] if item["slug"] == "skeletons")
 
-    assert arrays["totalCards"] == 1
+    assert arrays["totalCards"] == 0
     assert arrays["untouchedCards"] == 0
     assert arrays["overallAttemptCount"] == 1
-    assert sliding["totalCards"] == 1
-    assert sliding["untouchedCards"] == 1
+    assert sliding["totalCards"] == 0
+    assert sliding["untouchedCards"] == 0
     assert google["totalCards"] == 2
     assert google["overallAttemptCount"] == 1
     assert skeletons["totalCards"] == 1
@@ -336,6 +336,67 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
     assert google_activity["coreCardCount"] == 2
     assert skeleton_activity["totalPerfectRecalls"] == 1
     assert skeleton_activity["coreCardCount"] == 1
+
+
+def test_skill_map_overview_keeps_generated_cards_out_of_core_catalog_counts() -> None:
+    now = datetime.now(timezone.utc)
+    overview = build_skill_map_overview(
+        algorithm_rows=[
+            {
+                "algorithm_id": 1,
+                "algorithm_slug": "heap",
+                "algorithm_name": "Heap / Priority Queue",
+                "skill_name": "top-k maintenance",
+            },
+        ],
+        generated_rows=[
+            {
+                "id": "core-algorithm-kth-largest",
+                "title": "Kth Largest Heap Top",
+                "tags": ["skill-map", "core-algorithm", "heap"],
+                "algorithm_slug": "heap",
+                "source_type": "core-catalog",
+            },
+            {
+                "id": "skill-map-20260921000000000000-1",
+                "title": "Generated Heap Drill",
+                "tags": ["skill-map", "heap-priority-queue"],
+                "algorithm_slug": "heap",
+                "source_type": "generated-llm",
+            },
+            {
+                "id": "playlist-google-973-k-closest-points",
+                "title": "973. K Closest Points",
+                "tags": ["skill-map", "static-playlist", "google", "heap"],
+                "algorithm_slug": "heap",
+                "source_type": "static-playlist",
+            },
+        ],
+        attempt_rows=[
+            {
+                "tracked_card_id": "skill-map-20260921000000000000-1",
+                "card_title": "Generated Heap Drill",
+                "category_tags": ["skill-map", "heap-priority-queue"],
+                "question_type": "skill-map",
+                "successful": True,
+                "created_at": now,
+                "template_mode": "algorithm",
+                "support_layer": "none",
+                "modality": "total-recall",
+                "live_coach_used": False,
+                "signals": {},
+            },
+        ],
+    )
+
+    heap = next(item for item in overview["algorithms"] if item["slug"] == "heap")
+    google = next(item for item in overview["algorithms"] if item["slug"] == "google")
+
+    assert heap["totalCards"] == 1
+    assert heap["overallAttemptCount"] == 1
+    assert heap["practicedCards"] == 0
+    assert google["totalCards"] == 1
+    assert overview["reviewQueue"][0]["cardId"] == "skill-map-20260921000000000000-1"
 
 
 def test_spaced_repetition_schedules_algorithm_and_method_tracks_after_ghost_reps() -> None:

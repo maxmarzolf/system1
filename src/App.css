@@ -2753,9 +2753,25 @@ button.link:hover {
 }
 
 .card-flow-action {
-  min-height: auto;
-  padding: 0.28rem 0.45rem;
-  font-size: 0.66rem;
+  min-width: 6.5rem;
+  min-height: 2rem;
+  padding: 0.3rem 0.72rem;
+  border-color: var(--hc-accent);
+  border-radius: 0.34rem;
+  background: var(--hc-accent);
+  color: var(--hc-bg);
+  font-size: 0.68rem;
+}
+
+.card-flow-action:hover:not(:disabled) {
+  border-color: var(--hc-fg);
+  background: color-mix(in srgb, var(--hc-accent) 86%, var(--hc-fg));
+  color: var(--hc-bg);
+}
+
+.card-flow-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
 }
 
 .card-flow-anchor {

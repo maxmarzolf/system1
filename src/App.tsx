@@ -2070,12 +2070,30 @@ function MarkdownCodeContent({
 
 type FlowMicroDrill = { prompt: string; template: string; solution: string; language: string }
 
-function FlowMicroDrillCard({ title, prompt, target, focus, rep, context, provider, theme, syntaxTheme, onSave, onNext }: {
+type FlowMicroDrillPrimaryActionState = {
+  interactionKey: string
+  ready: boolean
+  complete: boolean
+  saving: boolean
+  submitted: boolean
+}
+
+const EMPTY_FLOW_MICRODRILL_ACTION_STATE: FlowMicroDrillPrimaryActionState = {
+  interactionKey: '',
+  ready: false,
+  complete: false,
+  saving: false,
+  submitted: false,
+}
+
+function FlowMicroDrillCard({ title, prompt, target, focus, rep, context, provider, theme, syntaxTheme, actionKey, onSave, primaryActionRef, onPrimaryActionStateChange }: {
   title: string; prompt: string; target: string; focus: string; rep: number; provider: string
   context: FlowGenerationContext
   theme: AppTheme; syntaxTheme: Record<string, CSSProperties>
+  actionKey: string
   onSave: (drill: FlowMicroDrill, answer: string, elapsedMs: number, interactionId: string) => Promise<SubmissionSaveResponse | null>
-  onNext: () => void
+  primaryActionRef: { current: () => void }
+  onPrimaryActionStateChange: (state: FlowMicroDrillPrimaryActionState) => void
 }) {
   const [drill, setDrill] = useState<FlowMicroDrill | null>(null)
   const [error, setError] = useState('')
@@ -2126,6 +2144,26 @@ function FlowMicroDrillCard({ title, prompt, target, focus, rep, context, provid
       setSaving(false)
     }
   }
+
+  useEffect(() => {
+    primaryActionRef.current = () => {
+      void submit()
+    }
+    return () => {
+      primaryActionRef.current = () => undefined
+    }
+  })
+
+  useEffect(() => {
+    onPrimaryActionStateChange({
+      interactionKey: actionKey,
+      ready: Boolean(drill),
+      complete: answer.complete,
+      saving,
+      submitted: Boolean(result),
+    })
+  }, [actionKey, answer.complete, drill, onPrimaryActionStateChange, result, saving])
+
   return (
     <div className="card-grid micro-drill-card-grid drill-fade-in">
       <div className="panel micro-drill-question-card">
@@ -2142,9 +2180,6 @@ function FlowMicroDrillCard({ title, prompt, target, focus, rep, context, provid
         <span className="answer-label">Fill only the blanks</span>
         <MicroDrillBlankEditor template={drill.template} language={drill.language} theme={theme} syntaxTheme={syntaxTheme} onAnswerChange={setAnswer} disabled={saving || Boolean(result)} />
         <p className="typing-help">Tab moves to the next blank.</p>
-        <button type="button" className="primary" disabled={!result && (!answer.complete || saving)} onClick={result ? onNext : () => void submit()}>
-          {result ? 'Start' : 'Submit'}
-        </button>
       </div>}
     </div>
   )
@@ -2193,6 +2228,8 @@ function App() {
   const [flowMultipleChoiceSelectedChoiceId, setFlowMultipleChoiceSelectedChoiceId] = useState('')
   const [flowMultipleChoiceStartedAt, setFlowMultipleChoiceStartedAt] = useState<number | null>(null)
   const [flowMultipleChoiceSubmittedByCard, setFlowMultipleChoiceSubmittedByCard] = useState<Record<string, string>>({})
+  const [flowMicroDrillPrimaryActionState, setFlowMicroDrillPrimaryActionState] = useState<FlowMicroDrillPrimaryActionState>(EMPTY_FLOW_MICRODRILL_ACTION_STATE)
+  const flowMicroDrillPrimaryActionRef = useRef<() => void>(() => undefined)
 
   const [sessionOrder, setSessionOrder] = useState<number[]>([])
   const [sessionPosition, setSessionPosition] = useState(0)
@@ -3252,7 +3289,12 @@ function App() {
 
   useEffect(() => {
     resetPerCardInteraction()
-  }, [activeCardId, currentPracticeMode, flowMultipleChoicePosition, practiceFlow?.cycle, practiceFlow?.step, sessionPosition])
+    if (practiceFlow?.stage === 'recall' || practiceFlow?.stage === 'ghost') {
+      startMainRecall()
+    }
+    // Flow stages should begin as soon as they are selected; standalone recall still begins from preview.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCardId, currentPracticeMode, flowMultipleChoicePosition, practiceFlow?.cycle, practiceFlow?.stage, practiceFlow?.step, sessionPosition])
 
   useEffect(() => {
     if (mainPhase !== 'typing') return
@@ -3918,22 +3960,62 @@ function App() {
   const correctMultipleChoice = activeMultipleChoiceCard?.choices.find((choice) => choice.id === activeMultipleChoiceCard.correctChoiceId) ?? null
   const multipleChoiceSubmitted = Boolean(submittedMultipleChoiceId)
   const multipleChoiceCorrect = Boolean(submittedMultipleChoiceId && submittedMultipleChoiceId === activeMultipleChoiceCard?.correctChoiceId)
+  const flowMicroDrillActionKey = practiceFlow?.stage === 'microdrill'
+    ? `${practiceFlow.runId}-${practiceFlow.step}`
+    : ''
   const primaryCardAction = (() => {
-    if (practiceFlow?.stage === 'microdrill') return null
+    if (practiceFlow?.stage === 'microdrill') {
+      const microDrillActionState = flowMicroDrillPrimaryActionState.interactionKey === flowMicroDrillActionKey
+        ? flowMicroDrillPrimaryActionState
+        : EMPTY_FLOW_MICRODRILL_ACTION_STATE
+      if (microDrillActionState.submitted) {
+        return {
+          label: 'Next',
+          onClick: advancePracticeFlow,
+          disabled: false,
+          icon: (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+            </svg>
+          ),
+        }
+      }
+      return {
+        label: 'Submit',
+        onClick: () => flowMicroDrillPrimaryActionRef.current(),
+        disabled: !microDrillActionState.ready
+          || !microDrillActionState.complete
+          || microDrillActionState.saving,
+        icon: (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m4.5 12.75 6 6 9-13.5" />
+          </svg>
+        ),
+      }
+    }
     if (!hasDeck) return null
     if (practiceFlow && currentPracticeMode === 'recall' && mainPhase === 'submitted') {
-      return { label: 'Start', onClick: advancePracticeFlow, disabled: coachLoading, icon: null }
+      return {
+        label: 'Next',
+        onClick: advancePracticeFlow,
+        disabled: coachLoading,
+        icon: (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+          </svg>
+        ),
+      }
     }
 
     if (currentPracticeMode === 'multiple-choice') {
       if (isFlowActive && multipleChoiceSubmitted) {
         return {
-          label: 'Start',
+          label: 'Next',
           onClick: advanceFlowMultipleChoice,
           disabled: sessionFinished,
           icon: (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M5.25 4.5 18.75 12 5.25 19.5V4.5Z" />
+              <path d="m8.25 4.5 7.5 7.5-7.5 7.5" />
             </svg>
           ),
         }
@@ -4628,12 +4710,14 @@ function App() {
         {isFlowActive && coachError && mainPhase === 'typing' && <p className="flow-submit-error" role="alert">{coachError}</p>}
         {practiceFlow?.stage === 'microdrill' ? (
           <FlowMicroDrillCard
-            key={`${practiceFlow.runId}-${practiceFlow.step}`}
+            key={flowMicroDrillActionKey}
             title={card.title} prompt={practicePrompt} target={practiceTarget}
             focus={practiceFlow.focus.focusSummary} rep={practiceFlow.step + 1}
             context={flowGenerationContext}
             provider={requestLlmProvider} theme={theme} syntaxTheme={syntaxTheme}
-            onNext={advancePracticeFlow}
+            actionKey={flowMicroDrillActionKey}
+            primaryActionRef={flowMicroDrillPrimaryActionRef}
+            onPrimaryActionStateChange={setFlowMicroDrillPrimaryActionState}
             onSave={(drill, answer, elapsedMs, interactionId) => submitAttemptToServer({
               mode: 'main-recall', correctAnswer: drill.solution, userAnswer: answer, question: drill.prompt,
               microdrill: true, elapsedMs, interactionId,
@@ -4970,7 +5054,7 @@ function App() {
             </button>
           </div>
 
-          {primaryCardAction && (
+          {primaryCardAction && !(flowDrawerOpen && primaryCardAction.label === 'Start') && (
             <div className="card-control-group card-control-group-primary">
               <button
                 className="card-control-button"
@@ -5007,11 +5091,20 @@ function App() {
             <span className="card-flow-kicker">Status</span>
             <button
               type="button"
-              className="secondary card-flow-action"
+              className="card-control-button card-flow-action"
               onClick={practiceFlow ? stopPracticeFlow : startPracticeFlow}
               disabled={!practiceFlow && (!hasRecallDeck || sessionFinished || flowHistoryLoading)}
             >
-              {practiceFlow ? 'Stop flow' : 'Start flow'}
+              {practiceFlow ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M6.75 6.75h10.5v10.5H6.75z" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M5.25 4.5 18.75 12 5.25 19.5V4.5Z" />
+                </svg>
+              )}
+              <span>{practiceFlow ? 'Stop flow' : 'Start flow'}</span>
             </button>
           </div>
           <p className="card-flow-anchor">{practiceFlow?.anchorTitle ?? card.title}</p>

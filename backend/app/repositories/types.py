@@ -63,6 +63,7 @@ class AlgorithmSkillRow(TypedDict):
 
 class SkillMapOverviewAlgorithmRow(TypedDict):
     algorithm_id: int
+    algorithm_slug: str
     algorithm_name: str
     skill_name: str | None
 
@@ -71,6 +72,8 @@ class SkillMapOverviewGeneratedRow(TypedDict):
     id: str
     title: str
     tags: list[str] | None
+    algorithm_slug: str
+    source_type: str
 
 
 class ProblemPracticeRow(TypedDict):

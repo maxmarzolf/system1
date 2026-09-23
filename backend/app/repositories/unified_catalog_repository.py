@@ -41,6 +41,21 @@ async def fetch_playlist_catalog_rows() -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+async def delete_static_playlist_aliases(slugs: list[str]) -> None:
+    if not slugs:
+        return
+
+    async with acquire_connection() as conn:
+        await conn.execute(
+            """
+            DELETE FROM playlist
+            WHERE static_deck = TRUE
+              AND slug = ANY($1::text[])
+            """,
+            slugs,
+        )
+
+
 async def upsert_generated_problem(
     *, card_id: str, question_type: str, title: str, difficulty: str,
     prompt: str, solution: str, missing: str, hint: str, tags: list[str],

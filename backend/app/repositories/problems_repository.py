@@ -33,13 +33,16 @@ _PROBLEM_PRACTICE_SELECT = """
     ) sk ON TRUE
 """
 
+_CORE_PRACTICE_FILTER = "p.source_type IN ('core-catalog', 'core-meta')"
+
 
 async def fetch_problem_practice_rows(algorithm_slug: str) -> list[ProblemPracticeRow]:
     async with acquire_connection() as conn:
         rows = await conn.fetch(
             f"""
             {_PROBLEM_PRACTICE_SELECT}
-            WHERE p.algorithm_slug = $1
+            WHERE {_CORE_PRACTICE_FILTER}
+              AND p.algorithm_slug = $1
             ORDER BY p.display_order ASC
             """,
             algorithm_slug,
@@ -52,7 +55,8 @@ async def fetch_problem_practice_rows_by_technique(technique_slug: str) -> list[
         rows = await conn.fetch(
             f"""
             {_PROBLEM_PRACTICE_SELECT}
-            WHERE EXISTS (
+            WHERE {_CORE_PRACTICE_FILTER}
+              AND EXISTS (
                 SELECT 1
                 FROM problem_technique pt2
                 WHERE pt2.problem_slug = p.slug
@@ -70,7 +74,8 @@ async def fetch_problem_practice_rows_by_tag(tag_slug: str, count: int) -> list[
         rows = await conn.fetch(
             f"""
             {_PROBLEM_PRACTICE_SELECT}
-            WHERE p.tags && ARRAY[$1]::text[]
+            WHERE {_CORE_PRACTICE_FILTER}
+              AND p.tags && ARRAY[$1]::text[]
             ORDER BY p.display_order ASC
             LIMIT $2
             """,
@@ -85,6 +90,7 @@ async def fetch_random_problem_practice_rows(count: int) -> list[ProblemPractice
         rows = await conn.fetch(
             f"""
             {_PROBLEM_PRACTICE_SELECT}
+            WHERE {_CORE_PRACTICE_FILTER}
             ORDER BY random()
             LIMIT $1
             """,

@@ -3,11 +3,13 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.static_playlists import (
+    STATIC_PLAYLIST_ALIASES,
     STATIC_PLAYLISTS,
     build_static_playlist_drills,
     static_playlist_orders,
 )
 from app.repositories.unified_catalog_repository import (
+    delete_static_playlist_aliases,
     seed_static_playlist,
 )
 
@@ -89,3 +91,5 @@ async def seed_canonical_catalog() -> None:
             items=items,
             orderings=orderings,
         )
+
+    await delete_static_playlist_aliases(list(STATIC_PLAYLIST_ALIASES))

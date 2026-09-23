@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from app.core.static_playlists import STATIC_PLAYLISTS, build_static_playlist_drills, static_playlist_orders
-from app.services import problem_practice_service
+from app.services import problem_practice_service, unified_catalog_service
 from app.services.unified_catalog_service import _ordered_ids, _playlist_item
 
 
@@ -59,3 +59,22 @@ def test_playlist_service_falls_back_when_catalog_database_is_unavailable(monkey
 
     assert len(result["drills"]) == 50
     assert result["drills"][0]["id"] == "playlist-google-1-two-sum"
+
+
+def test_canonical_catalog_prunes_retired_playlist_aliases(monkeypatch) -> None:
+    seeded: list[str] = []
+    deleted_aliases: list[list[str]] = []
+
+    async def _seed(**kwargs) -> None:
+        seeded.append(str(kwargs["slug"]))
+
+    async def _delete(slugs: list[str]) -> None:
+        deleted_aliases.append(slugs)
+
+    monkeypatch.setattr(unified_catalog_service, "seed_static_playlist", _seed)
+    monkeypatch.setattr(unified_catalog_service, "delete_static_playlist_aliases", _delete)
+
+    asyncio.run(unified_catalog_service.seed_canonical_catalog())
+
+    assert seeded == list(STATIC_PLAYLISTS)
+    assert deleted_aliases == [["google-skeletons"]]

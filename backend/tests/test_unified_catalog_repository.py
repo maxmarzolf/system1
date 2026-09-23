@@ -56,6 +56,19 @@ def test_fetch_static_playlist_drills_uses_problem_order_projection(monkeypatch)
     assert "practice_item" not in connection.fetch_calls[0][0]
 
 
+def test_delete_static_playlist_aliases_only_removes_static_alias_rows(monkeypatch):
+    connection = FakeConnection()
+    monkeypatch.setattr(repository, "acquire_connection", lambda: FakeConnectionContext(connection))
+
+    asyncio.run(repository.delete_static_playlist_aliases(["google-skeletons"]))
+
+    assert len(connection.execute_calls) == 1
+    query, args = connection.execute_calls[0]
+    assert "DELETE FROM playlist" in query
+    assert "static_deck = TRUE" in query
+    assert args == (["google-skeletons"],)
+
+
 def test_upsert_generated_problem_writes_problem_only(monkeypatch):
     connection = FakeConnection()
     monkeypatch.setattr(repository, "acquire_connection", lambda: FakeConnectionContext(connection))

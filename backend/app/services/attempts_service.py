@@ -15,7 +15,7 @@ from app.repositories.attempts_repository import (
     fetch_skill_map_overview_generated_rows,
     insert_submission_attempt_row,
 )
-from app.core.static_playlists import static_playlist_activity_rows, static_playlist_overview_rows
+from app.core.static_playlists import static_playlist_activity_rows
 from app.repositories.types import (
     AlgorithmSkillRow,
     SkillMapOverviewAlgorithmRow,
@@ -133,11 +133,23 @@ def _submission_signals(
 
 
 def _algorithm_slug(algorithm: str) -> str:
-    return re.sub(
+    slug = re.sub(
         r"\s+",
         "-",
         re.sub(r"[^a-z0-9\s-]", " ", algorithm.lower().replace("/", " ").replace("&", " ").replace("-", " ")).strip(),
     )
+    return {
+        "google-skeletons": "skeletons",
+        "heap-priority-queue": "heap",
+    }.get(slug, slug)
+
+
+def _matched_algorithm_slugs(tags: list[str], known_slugs: set[str]) -> list[str]:
+    return list(dict.fromkeys(
+        normalized
+        for tag in tags
+        if (normalized := _algorithm_slug(tag)) in known_slugs
+    ))
 
 
 def _coerce_utc_datetime(value: Any) -> datetime | None:
@@ -270,7 +282,7 @@ def _build_ghost_rep_activity(
         is_perfect_total_recall = modality == "total-recall" and bool(row.get("successful"))
         if not is_ghost_rep and not is_mcq and not is_perfect_total_recall:
             continue
-        matched_algorithm_slugs = [tag for tag in category_tags if tag in known_algorithm_slugs]
+        matched_algorithm_slugs = _matched_algorithm_slugs(category_tags, known_algorithm_slugs)
         primary_matches = [
             slug
             for slug in matched_algorithm_slugs
@@ -475,7 +487,7 @@ def _build_spaced_repetition(
             continue
         attempt_date = created_at.date()
         category_tags = [str(tag) for tag in (row["category_tags"] or [])]
-        pattern_slugs = [tag for tag in category_tags if tag in slug_to_pattern]
+        pattern_slugs = _matched_algorithm_slugs(category_tags, set(slug_to_pattern))
         track_ids: set[str] = set()
         if card_id:
             track_ids.update(card_to_track_ids.get(card_id, set()))
@@ -648,16 +660,18 @@ def build_skill_map_overview(
     for row in algorithm_rows:
         algorithm_id = int(row["algorithm_id"])
         algorithm_name = str(row["algorithm_name"])
+        algorithm_slug = str(row.get("algorithm_slug") or _algorithm_slug(algorithm_name))
         if algorithm_id not in grouped:
             grouped[algorithm_id] = {
                 "algorithm": algorithm_name,
-                "slug": _algorithm_slug(algorithm_name),
+                "slug": algorithm_slug,
                 "skills": [],
             }
         if row["skill_name"]:
             grouped[algorithm_id]["skills"].append(str(row["skill_name"]))
 
     static_playlist_algorithms = static_playlist_activity_rows()
+    static_playlist_slugs = {str(item["slug"]) for item in static_playlist_algorithms}
     algorithms = [*list(grouped.values()), *static_playlist_algorithms]
     slug_to_algorithm = {str(item["slug"]): str(item["algorithm"]) for item in algorithms}
     skills_by_algorithm_slug = {
@@ -669,6 +683,7 @@ def build_skill_map_overview(
     slug_to_pattern = slug_to_algorithm
     methods_by_pattern_slug = skills_by_algorithm_slug
     card_ids_by_algorithm: dict[str, set[str]] = {slug: set() for slug in known_algorithm_slugs}
+    review_card_ids_by_algorithm: dict[str, set[str]] = {slug: set() for slug in known_algorithm_slugs}
 
     generated_cards: dict[str, dict[str, Any]] = {}
     card_ids_by_pattern: dict[str, set[str]] = {slug: set() for slug in known_pattern_slugs}
@@ -679,16 +694,31 @@ def build_skill_map_overview(
     }
     for row in generated_rows:
         tags = [str(tag) for tag in (row["tags"] or [])]
-        matched_algorithm_slugs = [tag for tag in tags if tag in known_algorithm_slugs]
-        matched_pattern_slugs = matched_algorithm_slugs
+        matched_algorithm_slugs = _matched_algorithm_slugs(tags, known_algorithm_slugs)
+        source_type = str(
+            row.get("source_type")
+            or ("static-playlist" if "static-playlist" in tags else "core-catalog")
+        )
+        row_algorithm_slug = str(row.get("algorithm_slug") or "")
+        if source_type in {"core-catalog", "core-meta"}:
+            inventory_algorithm_slugs = (
+                [row_algorithm_slug]
+                if row_algorithm_slug in known_algorithm_slugs
+                else [slug for slug in matched_algorithm_slugs if slug not in static_playlist_slugs]
+            )
+        elif source_type == "static-playlist":
+            inventory_algorithm_slugs = [slug for slug in matched_algorithm_slugs if slug in static_playlist_slugs]
+        else:
+            inventory_algorithm_slugs = []
         generated_cards[str(row["id"])] = {
             "cardId": str(row["id"]),
             "title": str(row["title"] or ""),
             "algorithmSlugs": matched_algorithm_slugs,
         }
         for slug in matched_algorithm_slugs:
+            review_card_ids_by_algorithm.setdefault(slug, set()).add(str(row["id"]))
+        for slug in inventory_algorithm_slugs:
             card_ids_by_algorithm.setdefault(slug, set()).add(str(row["id"]))
-        for slug in matched_pattern_slugs:
             card_ids_by_pattern.setdefault(slug, set()).add(str(row["id"]))
             for method in methods_by_pattern_slug.get(slug, []):
                 method_slug = _algorithm_slug(method)
@@ -718,7 +748,9 @@ def build_skill_map_overview(
             total_ghost_rep_count += 1
         else:
             total_unsupported_attempt_count += 1
-        matched_algorithm_slugs = [tag for tag in category_tags if tag in known_algorithm_slugs]
+        matched_algorithm_slugs = _matched_algorithm_slugs(category_tags, known_algorithm_slugs)
+        for slug in matched_algorithm_slugs:
+            review_card_ids_by_algorithm.setdefault(slug, set()).add(card_id)
 
         if card_id not in generated_cards:
             generated_cards[card_id] = {
@@ -749,6 +781,7 @@ def build_skill_map_overview(
     for algorithm in algorithms:
         slug = str(algorithm["slug"])
         algorithm_card_ids = card_ids_by_algorithm.get(slug, set())
+        algorithm_review_card_ids = review_card_ids_by_algorithm.get(slug, set())
         mode_summaries: dict[str, SkillMapModeSummary] = {}
         practiced_cards_any_mode: set[str] = set()
         stale_cards_any_mode: set[str] = set()
@@ -763,12 +796,15 @@ def build_skill_map_overview(
             practiced_card_ids = {
                 card_id for card_id in algorithm_card_ids if attempts_by_card_mode.get((card_id, template_mode))
             }
+            reviewed_card_ids = {
+                card_id for card_id in algorithm_review_card_ids if attempts_by_card_mode.get((card_id, template_mode))
+            }
             stale_card_count = 0
-            for card_id in practiced_card_ids:
+            for card_id in reviewed_card_ids:
                 card_attempts = attempts_by_card_mode.get((card_id, template_mode), [])
                 card_readiness = summarize_readiness(card_attempts)
                 card_support_counts = _build_support_counts(card_attempts)
-                if card_readiness["stale"]:
+                if card_id in practiced_card_ids and card_readiness["stale"]:
                     stale_card_count += 1
                     stale_cards_any_mode.add(card_id)
                 card_mode_summaries[(card_id, template_mode)] = {
@@ -943,9 +979,6 @@ async def get_skill_map() -> list[SkillMapNode]:
 
 async def get_skill_map_overview() -> SkillMapOverviewPayload:
     algorithm_rows = await fetch_skill_map_overview_algorithm_rows()
-    generated_rows = [
-        *await fetch_skill_map_overview_generated_rows(),
-        *static_playlist_overview_rows(),
-    ]
+    generated_rows = await fetch_skill_map_overview_generated_rows()
     attempt_rows = await fetch_skill_map_overview_attempt_rows()
     return build_skill_map_overview(algorithm_rows, generated_rows, attempt_rows)
