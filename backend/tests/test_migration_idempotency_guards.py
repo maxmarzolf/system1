@@ -15,6 +15,13 @@ def test_backfill_is_idempotent_via_migration_key_conflict_guard() -> None:
     assert "ON CONFLICT (migration_key) WHERE migration_key IS NOT NULL DO NOTHING" in source
 
 
+def test_answer_migration_targets_submission_signals_column() -> None:
+    source = inspect.getsource(database._ensure_generated_question_schema)
+    assert "successful,\n                        signals,\n                        interaction_id," in source
+    assert "'source', 'answer-migration'" in source
+    assert "SET signals = '{\"elapsed_ms\": 0}'::jsonb || signals;\n\n            ALTER TABLE submission\n            DROP CONSTRAINT IF EXISTS submission_signals_object_check;" in source
+
+
 def test_dead_signal_tables_are_dropped_on_startup() -> None:
     source = inspect.getsource(database._ensure_generated_question_schema)
     assert "DROP TABLE IF EXISTS submission_skill_evidence" in source

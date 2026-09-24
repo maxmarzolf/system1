@@ -112,6 +112,12 @@ docker compose up -d --build
 docker compose ps
 ```
 
+### Configure Practice Flows
+
+Open the Flow control from the practice card toolbar to replace the card body with the flow configuration view. Custom flows support drag-and-drop block ordering from the hamburger handle, modality and repetition controls, and block removal. The configuration is saved locally and can be started or stopped from the card footer.
+
+Each modality has its own visual cue while configuring a flow: Recall shows a running figure, Ghost shows a bouncing ghost, Multiple Choice uses flashing color sections, and Microdrill fills randomized square tiles.
+
 ### Stop Services
 
 ```bash
