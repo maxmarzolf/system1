@@ -327,31 +327,7 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                         category_tags,
                         correct_answer,
                         successful,
-                        jsonb_build_object(
-                            'elapsed_ms', COALESCE(signals->'elapsed_ms', '0'::jsonb)
-                        ) || CASE
-                            WHEN signals ? 'evaluation' THEN
-                                jsonb_build_object('evaluation', signals->'evaluation')
-                            WHEN signals ? 'submission_rubric' OR signals ? 'coach_feedback' THEN
-                                jsonb_build_object(
-                                    'evaluation',
-                                    COALESCE(
-                                        signals->'submission_rubric',
-                                        signals#>'{coach_feedback,submissionRubric}',
-                                        '{}'::jsonb
-                                    ) || jsonb_build_object(
-                                        'version', 1,
-                                        'feedback', COALESCE(signals->'coach_feedback', '{}'::jsonb)
-                                            - 'submissionRubric' - 'llmUsed' - 'llmProvider',
-                                        'provenance', jsonb_build_object(
-                                            'llmUsed', COALESCE((signals#>>'{coach_feedback,llmUsed}')::boolean, FALSE),
-                                            'provider', COALESCE(signals#>>'{coach_feedback,llmProvider}', ''),
-                                            'source', 'answer-migration'
-                                        )
-                                    )
-                                )
-                            ELSE '{}'::jsonb
-                        END,
+                        signals,
                         interaction_id,
                         generated_card_id,
                         generated_card,
@@ -380,7 +356,39 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
                             answer = correct_answer,
                             FALSE
                         ),
-                        signals,
+                        jsonb_build_object(
+                            'elapsed_ms', COALESCE(signals->'elapsed_ms', '0'::jsonb)
+                        ) || CASE
+                            WHEN signals ? 'evaluation' THEN
+                                jsonb_build_object('evaluation', signals->'evaluation')
+                            WHEN signals ? 'submission_rubric' OR signals ? 'coach_feedback' THEN
+                                jsonb_build_object(
+                                    'evaluation',
+                                    COALESCE(
+                                        signals->'submission_rubric',
+                                        signals#>'{coach_feedback,submissionRubric}',
+                                        '{}'::jsonb
+                                    ) || jsonb_build_object(
+                                        'version', 1,
+                                        'feedback', COALESCE(signals->'coach_feedback', '{}'::jsonb)
+                                            - 'submissionRubric' - 'llmUsed' - 'llmProvider',
+                                        'provenance', jsonb_build_object(
+                                            'llmUsed', COALESCE((signals#>>'{coach_feedback,llmUsed}')::boolean, FALSE),
+                                            'provider', COALESCE(signals#>>'{coach_feedback,llmProvider}', ''),
+                                            'source', 'answer-migration'
+                                        )
+                                    )
+                                )
+                            ELSE '{}'::jsonb
+                        END || CASE
+                            WHEN signals ? 'flow' AND jsonb_typeof(signals->'flow') = 'object' THEN
+                                jsonb_build_object('flow', signals->'flow')
+                            ELSE '{}'::jsonb
+                        END || CASE
+                            WHEN signals ? 'modality' AND jsonb_typeof(signals->'modality') = 'object' THEN
+                                jsonb_build_object('modality', signals->'modality')
+                            ELSE '{}'::jsonb
+                        END,
                         interaction_id,
                         generated_card_id,
                         generated_card,
@@ -661,6 +669,9 @@ async def _ensure_generated_question_schema(db_pool: asyncpg.Pool) -> None:
 
             UPDATE submission
             SET signals = '{"elapsed_ms": 0}'::jsonb || signals;
+
+            ALTER TABLE submission
+            DROP CONSTRAINT IF EXISTS submission_signals_object_check;
 
             UPDATE submission
             SET signals = jsonb_build_object(

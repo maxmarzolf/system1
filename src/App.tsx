@@ -2096,9 +2096,7 @@ function App() {
   const shouldFocusMainInputRef = useRef(false)
   const pendingGhostFocusLineRef = useRef<number | null>(null)
   const previewCodeContainerRef = useRef<HTMLDivElement | null>(null)
-  const cardContainerRef = useRef<HTMLElement | null>(null)
   const [recallMinHeight, setRecallMinHeight] = useState<number | undefined>(undefined)
-  const [cardFlowPanelMaxHeight, setCardFlowPanelMaxHeight] = useState<number | undefined>(undefined)
   const currentCardIdRef = useRef('')
   const liveCoachRequestVersionRef = useRef(0)
   const recallEvaluationPendingRef = useRef(false)
@@ -2505,29 +2503,6 @@ function App() {
     startSession(multipleChoiceDeck.length)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [practiceMode, multipleChoiceSessionVersion, multipleChoiceLoading])
-
-  useEffect(() => {
-    const cardElement = cardContainerRef.current
-    if (!cardElement) return undefined
-
-    const updateCardFlowPanelMaxHeight = () => {
-      const nextHeight = Math.max(0, Math.round(cardElement.getBoundingClientRect().height))
-      setCardFlowPanelMaxHeight((currentHeight) => (
-        currentHeight === nextHeight ? currentHeight : nextHeight
-      ))
-    }
-
-    updateCardFlowPanelMaxHeight()
-
-    const resizeObserver = new ResizeObserver(updateCardFlowPanelMaxHeight)
-    resizeObserver.observe(cardElement)
-    window.addEventListener('resize', updateCardFlowPanelMaxHeight)
-
-    return () => {
-      resizeObserver.disconnect()
-      window.removeEventListener('resize', updateCardFlowPanelMaxHeight)
-    }
-  }, [])
 
   const currentDeckIndex = sessionOrder[sessionPosition] ?? 0
   const card = (practiceFlow ? filteredDeck.find(item => item.id === practiceFlow.anchorCardId) : filteredDeck[currentDeckIndex]) ?? filteredDeck[0] ?? emptySkillMapCard
@@ -3856,17 +3831,23 @@ function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [zenMode])
 
+  useEffect(() => {
+    if (!flowDrawerOpen) return
+    const handler = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setFlowDrawerOpen(false)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [flowDrawerOpen])
+
   const flowStatusText = !practiceFlow
     ? 'Build a sequence or let each next rep surprise you.'
     : practiceFlow.config.mode === 'random'
       ? `Rep ${practiceFlow.step + 1} · ${FLOW_LABELS[practiceFlow.stage]}. The next modality is chosen when you continue.`
       : `Cycle ${practiceFlow.cycle} · Rep ${practiceFlow.step % expandFlow(practiceFlow.config.blocks).length + 1} of ${expandFlow(practiceFlow.config.blocks).length} · ${FLOW_LABELS[practiceFlow.stage]}`
   const flowFocusPreviewLines = practiceFlow?.focus.missedLines.slice(0, 3) ?? []
-  const cardFlowPanelStyle = useMemo<CSSProperties>(() => (
-    cardFlowPanelMaxHeight
-      ? ({ '--card-flow-panel-max-height': `${cardFlowPanelMaxHeight}px` } as CSSProperties)
-      : {}
-  ), [cardFlowPanelMaxHeight])
   const isMac = navigator.platform.includes('Mac')
   const primaryRecallHotkey = formatHotkey('primary-recall-action', isMac)
   const moveCardsHotkey = formatHotkey('move-cards', isMac)
@@ -4055,7 +4036,7 @@ function App() {
   return (
     <div className={[
       'app',
-      (flowDrawerOpen || (relatedDrawerOpen && relatedLeetCodeSet)) ? 'app-side-drawer-open' : '',
+      relatedDrawerOpen && relatedLeetCodeSet ? 'app-side-drawer-open' : '',
       zenMode ? 'app-zen-mode' : '',
     ].filter(Boolean).join(' ')}>
       {SUBMISSION_FEEDBACK_ENABLED && submissionFailureModal && (
@@ -4093,19 +4074,31 @@ function App() {
     relatedLeetCodeSet ? 'card-shell-has-drawer' : '',
     skeletonReference ? 'skeleton-card-shell' : '',
   ].filter(Boolean).join(' ')}>
-      <section className="card" ref={cardContainerRef}>
+      <section className="card">
         <div className="card-header">
           <div className="card-header-main">
-            <h3>{headerCardTitle}</h3>
-            {(!skeletonReference || isCoreAlgorithmCard || isMetaCard) && (
+            {flowDrawerOpen ? (
+              <>
+                <span className="related-problems-eyebrow">Flow</span>
+                <h3>Flow</h3>
+                <p className="card-flow-header-subtitle">
+                  {practiceFlow
+                    ? `${practiceFlow.config.mode === 'random' ? 'Random flow' : `Cycle ${practiceFlow.cycle}`} on ${practiceFlow.anchorTitle}`
+                    : card.title}
+                </p>
+              </>
+            ) : (
+              <>
+                <h3>{headerCardTitle}</h3>
+                {(!skeletonReference || isCoreAlgorithmCard || isMetaCard) && (
               <p className="card-badges">
                 {!skeletonReference && <span>{headerCardDifficultyLabel}</span>}
                 {!skeletonReference && (isCoreAlgorithmCard || isMetaCard) && <span aria-hidden="true">•</span>}
                 {isCoreAlgorithmCard && <span className="card-badge-core">core</span>}
                 {isMetaCard && <span className="card-badge-meta">meta</span>}
               </p>
-            )}
-            {visibleCardTags.length > 0 && (
+                )}
+                {visibleCardTags.length > 0 && (
               <div className={tagsExpanded ? 'tags expanded' : 'tags'}>
                 <div className={tagsExpanded ? 'tags-list expanded' : 'tags-list'} id={tagsListId} aria-hidden={!tagsExpanded}>
                   {visibleCardTags.map((tag) => (
@@ -4122,8 +4115,8 @@ function App() {
                   ))}
                 </div>
               </div>
-            )}
-            {currentPracticeMode === 'multiple-choice' ? (
+                )}
+                {currentPracticeMode === 'multiple-choice' ? (
               <div className="coach-metric-row card-header-metric-row">
                 <span className="coach-metric-chip">
                   {isFlowActive ? 'Targeted card flow' : 'Current card'}
@@ -4138,7 +4131,9 @@ function App() {
                   </span>
                 )}
               </div>
-            ) : null}
+                ) : null}
+              </>
+            )}
           </div>
           <div className="card-header-aside">
             <div
@@ -4270,11 +4265,14 @@ function App() {
                   className={flowDrawerOpen ? 'card-side-drawer-toggle active' : 'card-side-drawer-toggle'}
                   aria-expanded={flowDrawerOpen}
                   aria-controls="card-flow-panel"
-                  aria-label={flowDrawerOpen ? 'Hide Flow drawer' : 'Show Flow drawer'}
+                  aria-label={flowDrawerOpen ? 'Hide Flow menu' : 'Show Flow menu'}
                   title="Flow"
                   onClick={() => {
                     setRelatedDrawerOpen(false)
-                    setFlowDrawerOpen((open) => !open)
+                    setFlowDrawerOpen((open) => {
+                      if (open) return false
+                      return true
+                    })
                   }}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -4367,6 +4365,29 @@ function App() {
               },
             })}
           />
+        ) : flowDrawerOpen ? (
+          <aside
+            id="card-flow-panel"
+            className="card-flow-panel card-flow-panel-open"
+            aria-label="Flow configuration"
+          >
+            <div className="related-problems-body card-flow-body">
+              <FlowBuilder config={flowConfig} disabled={isFlowActive} onChange={(config) => { setFlowConfig(config); saveFlowConfig(config) }} />
+              <p className="card-flow-status">{flowStatusText}</p>
+              {practiceFlow?.focus.focusSummary && (
+                <p className="card-flow-summary">{practiceFlow.focus.focusSummary}</p>
+              )}
+              {flowFocusPreviewLines.length > 0 && (
+                <div className="card-flow-focus-list" aria-label="Targeted lines">
+                  {flowFocusPreviewLines.map((line) => (
+                    <span key={`${line.lineNumber}-${line.status}-${line.expected}`} className="card-flow-focus-chip">
+                      L{line.lineNumber} {summarizeFlowFocusLine(line)}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </aside>
         ) : microDrillCardGrid ?? (
         <div className="card-grid">
           <div className="panel prompt-surface-panel">
@@ -4663,6 +4684,29 @@ function App() {
         </div>
         )}
 
+        {flowDrawerOpen ? (
+          <div className="card-control-bar card-flow-footer">
+            <div className="card-control-group">
+              <button
+                type="button"
+                className="secondary card-control-button"
+                onClick={() => setFlowDrawerOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="card-control-group card-control-group-primary">
+              <button
+                type="button"
+                className="card-control-button"
+                onClick={practiceFlow ? stopPracticeFlow : startPracticeFlow}
+                disabled={!practiceFlow && (!hasRecallDeck || sessionFinished)}
+              >
+                {practiceFlow ? 'Stop flow' : 'Start flow'}
+              </button>
+            </div>
+          </div>
+        ) : (
         <div className="card-control-bar">
           <div className="card-control-group">
             <button className="secondary card-control-button" onClick={goPrev} disabled={!canGoPrev} aria-label="Previous card">
@@ -4702,54 +4746,8 @@ function App() {
             </div>
           )}
         </div>
+        )}
       </section>
-      <aside
-        id="card-flow-panel"
-        className={flowDrawerOpen ? 'card-flow-panel card-flow-panel-open' : 'card-flow-panel'}
-        aria-label="Flow"
-        aria-hidden={!flowDrawerOpen}
-        inert={!flowDrawerOpen}
-        style={cardFlowPanelStyle}
-      >
-        <div className="related-problems-header">
-          <div>
-            <span className="related-problems-eyebrow">Flow</span>
-            <h3>Flow</h3>
-            <p>{practiceFlow ? `${practiceFlow.config.mode === 'random' ? 'Random flow' : `Cycle ${practiceFlow.cycle}`} on ${practiceFlow.anchorTitle}` : card.title}</p>
-          </div>
-          <button type="button" className="related-problems-close" onClick={() => setFlowDrawerOpen(false)} aria-label="Close Flow drawer">
-            Close
-          </button>
-        </div>
-        <div className="related-problems-body card-flow-body">
-          <div className="card-flow-header-row">
-            <span className="card-flow-kicker">Status</span>
-            <button
-              type="button"
-              className="secondary card-flow-action"
-              onClick={practiceFlow ? stopPracticeFlow : startPracticeFlow}
-              disabled={!practiceFlow && (!hasRecallDeck || sessionFinished)}
-            >
-              {practiceFlow ? 'Stop flow' : 'Start flow'}
-            </button>
-          </div>
-          <p className="card-flow-anchor">{practiceFlow?.anchorTitle ?? card.title}</p>
-          <FlowBuilder config={flowConfig} disabled={isFlowActive} onChange={(config) => { setFlowConfig(config); saveFlowConfig(config) }} />
-          <p className="card-flow-status">{flowStatusText}</p>
-          {practiceFlow?.focus.focusSummary && (
-            <p className="card-flow-summary">{practiceFlow.focus.focusSummary}</p>
-          )}
-          {flowFocusPreviewLines.length > 0 && (
-            <div className="card-flow-focus-list" aria-label="Targeted lines">
-              {flowFocusPreviewLines.map((line) => (
-                <span key={`${line.lineNumber}-${line.status}-${line.expected}`} className="card-flow-focus-chip">
-                  L{line.lineNumber} {summarizeFlowFocusLine(line)}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      </aside>
       {relatedLeetCodeSet && (
         <RelatedLeetCodeDrawer
           relatedSet={relatedLeetCodeSet}
