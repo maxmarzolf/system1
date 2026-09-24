@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { apiUrl } from './api'
-import { skillMap } from './data/skill-map'
-import GhostRepActivityChart, {
-  type GhostRepActivity,
-  type GhostRepAlgorithmOrder,
-  type GhostRepSpacedRepetition,
-} from './GhostRepActivityChart'
+import DailyWorkHistory, {
+  type DailyWorkActivity,
+  type DailyWorkAlgorithm,
+} from './DailyWorkHistory'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 
@@ -120,10 +118,9 @@ type PracticeHistoryResponse = {
   entries: PracticeHistoryEntry[]
 }
 
-type SkillMapOverviewForGhostReps = {
-  algorithms: GhostRepAlgorithmOrder[]
-  ghostRepActivity: GhostRepActivity
-  spacedRepetition: GhostRepSpacedRepetition
+type SkillMapOverview = {
+  algorithms: DailyWorkAlgorithm[]
+  ghostRepActivity: DailyWorkActivity
 }
 
 const isMultipleChoiceEntry = (entry: PracticeHistoryEntry) =>
@@ -161,25 +158,25 @@ export default function PracticeHistoryPage() {
   const [practiceHistorySummary, setPracticeHistorySummary] = useState<PracticeHistorySummary | null>(null)
   const [practiceHistoryLoading, setPracticeHistoryLoading] = useState(false)
   const [practiceHistoryError, setPracticeHistoryError] = useState('')
-  const [ghostRepOverview, setGhostRepOverview] = useState<SkillMapOverviewForGhostReps | null>(null)
-  const [ghostRepOverviewError, setGhostRepOverviewError] = useState('')
+  const [skillMapOverview, setSkillMapOverview] = useState<SkillMapOverview | null>(null)
+  const [skillMapOverviewError, setSkillMapOverviewError] = useState('')
   const [selectedSlugs, setSelectedSlugs] = useState<string[]>([])
 
   useEffect(() => {
-    const loadGhostRepOverview = async () => {
-      setGhostRepOverviewError('')
+    const loadSkillMapOverview = async () => {
+      setSkillMapOverviewError('')
       try {
         const response = await fetch(apiUrl('/api/skill-map-overview'))
-        if (!response.ok) throw new Error('Unable to load Ghost Rep overview')
-        const payload = (await response.json()) as SkillMapOverviewForGhostReps
-        setGhostRepOverview(payload)
+        if (!response.ok) throw new Error('Unable to load skill map overview')
+        const payload = (await response.json()) as SkillMapOverview
+        setSkillMapOverview(payload)
       } catch {
-        setGhostRepOverview(null)
-        setGhostRepOverviewError('Ghost Rep activity is unavailable right now.')
+        setSkillMapOverview(null)
+        setSkillMapOverviewError('Daily work history is unavailable right now.')
       }
     }
 
-    void loadGhostRepOverview()
+    void loadSkillMapOverview()
   }, [])
 
   useEffect(() => {
@@ -226,27 +223,18 @@ export default function PracticeHistoryPage() {
     setSelectedSlugs(slugs)
   }, [])
 
-  const historyAlgorithmOrder = useMemo(() => {
-    const canonicalSkills = new Map(skillMap.map(node => [node.algorithm, node.skills]))
-    return (ghostRepOverview?.algorithms ?? []).map(algorithm => ({
-      ...algorithm,
-      skills: canonicalSkills.get(algorithm.algorithm) ?? algorithm.skills,
-    }))
-  }, [ghostRepOverview?.algorithms])
-
   const repeatedWeakDimensions = practiceHistorySummary?.dimensionSummary?.weakDimensions ?? []
 
   return (
     <div className="app">
       <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} />
 
-      <GhostRepActivityChart
-        activity={ghostRepOverview?.ghostRepActivity}
-        algorithmOrder={historyAlgorithmOrder}
-        spacedRepetition={ghostRepOverview?.spacedRepetition}
+      <DailyWorkHistory
+        activity={skillMapOverview?.ghostRepActivity}
+        algorithmOrder={skillMapOverview?.algorithms ?? []}
         onSelectionChange={handleSelectionChange}
       />
-      {ghostRepOverviewError && <p className="coach-error">{ghostRepOverviewError}</p>}
+      {skillMapOverviewError && <p className="coach-error">{skillMapOverviewError}</p>}
 
       {selectedSlugs.length > 0 && (
         <div className="pattern-history-section">

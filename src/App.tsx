@@ -4,7 +4,9 @@ import { vs, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useSearchParams } from 'react-router-dom'
 import FlowBuilder from './FlowBuilder'
 import {
+  FLOW_COACH_LABELS,
   FLOW_LABELS,
+  buildFlowTransitionCopy,
   buildFlowGenerationContext,
   expandFlow,
   loadFlowConfig,
@@ -113,7 +115,20 @@ type PracticeFlowState = {
   completedAnchorIds: string[]
 }
 
+type PracticeFlowTransitionState = {
+  id: string
+  fromStage: FlowStage | null
+  toStage: FlowStage
+  anchorCardId: string
+  step: number
+  startedAt: number
+  headline: string
+  detail: string
+  status: string
+}
+
 const CARD_MOVE_DOUBLE_TAP_WINDOW_MS = 350
+const FLOW_TRANSITION_MINIMUM_MS = 700
 const SUBMISSION_FEEDBACK_ENABLED = true
 const INLINE_FEEDBACK_ENABLED = true
 const LIVE_FEEDBACK_ENABLED = true
@@ -2073,6 +2088,7 @@ type FlowMicroDrill = { prompt: string; template: string; solution: string; lang
 type FlowMicroDrillPrimaryActionState = {
   interactionKey: string
   ready: boolean
+  failed: boolean
   complete: boolean
   saving: boolean
   submitted: boolean
@@ -2081,6 +2097,7 @@ type FlowMicroDrillPrimaryActionState = {
 const EMPTY_FLOW_MICRODRILL_ACTION_STATE: FlowMicroDrillPrimaryActionState = {
   interactionKey: '',
   ready: false,
+  failed: false,
   complete: false,
   saving: false,
   submitted: false,
@@ -2158,11 +2175,12 @@ function FlowMicroDrillCard({ title, prompt, target, focus, rep, context, provid
     onPrimaryActionStateChange({
       interactionKey: actionKey,
       ready: Boolean(drill),
+      failed: Boolean(error && !drill),
       complete: answer.complete,
       saving,
       submitted: Boolean(result),
     })
-  }, [actionKey, answer.complete, drill, onPrimaryActionStateChange, result, saving])
+  }, [actionKey, answer.complete, drill, error, onPrimaryActionStateChange, result, saving])
 
   return (
     <div className="card-grid micro-drill-card-grid drill-fade-in">
@@ -2182,6 +2200,35 @@ function FlowMicroDrillCard({ title, prompt, target, focus, rep, context, provid
         <p className="typing-help">Tab moves to the next blank.</p>
       </div>}
     </div>
+  )
+}
+
+function FlowCoachTransition({ transition }: { transition: PracticeFlowTransitionState }) {
+  const fromLabel = transition.fromStage ? FLOW_COACH_LABELS[transition.fromStage] : 'Start'
+  const toLabel = FLOW_COACH_LABELS[transition.toStage]
+
+  return (
+    <section className="flow-transition-card" role="status" aria-live="polite" aria-label={`Coach transition to ${toLabel}`}>
+      <div className="flow-transition-topline">
+        <span className="flow-transition-eyebrow">Coach · Next modality</span>
+        <div className="flow-transition-route" aria-label={`${fromLabel} to ${toLabel}`}>
+          <span>{fromLabel}</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m9 5.25 6.75 6.75L9 18.75" />
+          </svg>
+          <strong>{toLabel}</strong>
+        </div>
+      </div>
+      <div className="flow-transition-copy">
+        <h2>{transition.headline}</h2>
+        <p>{transition.detail}</p>
+      </div>
+      <div className="flow-transition-status">
+        <span className="flow-transition-status-dot" aria-hidden="true" />
+        <span>{transition.status}</span>
+      </div>
+      <div className="flow-transition-progress" aria-hidden="true"><span /></div>
+    </section>
   )
 }
 
@@ -2217,6 +2264,7 @@ function App() {
   const flowInteractionVersionRef = useRef(0)
   const [flowConfig, setFlowConfig] = useState(loadFlowConfig)
   const [practiceFlow, setPracticeFlow] = useState<PracticeFlowState | null>(null)
+  const [flowTransition, setFlowTransition] = useState<PracticeFlowTransitionState | null>(null)
   const [flowAttempts, setFlowAttempts] = useState<FlowAttempt[]>([])
   const flowAttemptsRef = useRef<FlowAttempt[]>([])
   const [flowHistoryLoading, setFlowHistoryLoading] = useState(false)
@@ -3200,6 +3248,36 @@ function App() {
     flowMultipleChoiceDeckRequestVersionRef.current += 1
   }
 
+  const beginPracticeFlowTransition = ({
+    fromStage,
+    toStage,
+    anchorCardId,
+    step,
+    mode,
+    latestAttempt,
+    newAnchor = false,
+  }: {
+    fromStage: FlowStage | null
+    toStage: FlowStage
+    anchorCardId: string
+    step: number
+    mode: FlowConfig['mode']
+    latestAttempt?: FlowAttempt
+    newAnchor?: boolean
+  }) => {
+    const copy = buildFlowTransitionCopy({ fromStage, toStage, mode, latestAttempt, newAnchor })
+    setFlowMicroDrillPrimaryActionState(EMPTY_FLOW_MICRODRILL_ACTION_STATE)
+    setFlowTransition({
+      id: createInteractionId(),
+      fromStage,
+      toStage,
+      anchorCardId,
+      step,
+      startedAt: Date.now(),
+      ...copy,
+    })
+  }
+
   const startPracticeFlow = async () => {
     flowInteractionVersionRef.current += 1
     const flowInteractionVersion = flowInteractionVersionRef.current
@@ -3208,16 +3286,24 @@ function App() {
     const history = await loadFlowHistoryForCard(card)
     if (flowInteractionVersionRef.current !== flowInteractionVersion) return
     const first = nextFlowStep(flowConfig, 0, Math.random, history)
+    const runId = createInteractionId()
     setPracticeMode('recall')
     setSupportLayer('none')
     resetFlowMultipleChoiceState()
+    beginPracticeFlowTransition({
+      fromStage: null,
+      toStage: first.stage,
+      anchorCardId: card.id,
+      step: 0,
+      mode: flowConfig.mode,
+    })
     setPracticeFlow({
       anchorCardId: card.id,
       anchorTitle: card.title,
       ...first,
       config: structuredClone(flowConfig),
       step: 0,
-      runId: createInteractionId(),
+      runId,
       focus: initialFlowFocus(card),
       completedAnchorIds: [],
     })
@@ -3227,6 +3313,7 @@ function App() {
   const stopPracticeFlow = () => {
     flowInteractionVersionRef.current += 1
     setPracticeFlow(null)
+    setFlowTransition(null)
     setSupportLayer('none')
     resetFlowMultipleChoiceState()
     setPracticeMode('recall')
@@ -3234,15 +3321,24 @@ function App() {
   }
 
   const advancePracticeFlow = async () => {
+    if (!practiceFlow || flowTransition) return
     flowInteractionVersionRef.current += 1
     const flowInteractionVersion = flowInteractionVersionRef.current
-    if (!practiceFlow) return
     const step = practiceFlow.step + 1
     const anchorHistory = flowAttemptsRef.current.filter((attempt) => attempt.anchorCardId === practiceFlow.anchorCardId)
     const mastery = summarizeFlowMastery(anchorHistory)
     if (practiceFlow.config.mode === 'adaptive' && mastery.mastered) {
       const nextAnchor = nextFlowAnchor(filteredDeck, practiceFlow.anchorCardId, practiceFlow.completedAnchorIds)
       if (nextAnchor) {
+        beginPracticeFlowTransition({
+          fromStage: practiceFlow.stage,
+          toStage: 'recall',
+          anchorCardId: nextAnchor.id,
+          step,
+          mode: practiceFlow.config.mode,
+          latestAttempt: anchorHistory.at(-1),
+          newAnchor: true,
+        })
         await loadFlowHistoryForCard(nextAnchor)
         if (flowInteractionVersionRef.current !== flowInteractionVersion) return
         setPracticeFlow({
@@ -3262,6 +3358,14 @@ function App() {
       }
     }
     const next = nextFlowStep(practiceFlow.config, step, Math.random, anchorHistory)
+    beginPracticeFlowTransition({
+      fromStage: practiceFlow.stage,
+      toStage: next.stage,
+      anchorCardId: practiceFlow.anchorCardId,
+      step,
+      mode: practiceFlow.config.mode,
+      latestAttempt: anchorHistory.at(-1),
+    })
     setPracticeFlow({ ...practiceFlow, ...next, step })
     setSupportLayer('none')
     resetFlowMultipleChoiceState()
@@ -3271,8 +3375,17 @@ function App() {
   const advanceFlowMultipleChoice = advancePracticeFlow
 
   const switchPracticeFlowStage = (nextStage: PracticeFlowStage) => {
+    if (!practiceFlow || flowTransition || practiceFlow.stage === nextStage || mainPhase === 'typing') return
     flowInteractionVersionRef.current += 1
-    if (!practiceFlow || practiceFlow.stage === nextStage || mainPhase === 'typing') return
+    const anchorHistory = flowAttemptsRef.current.filter((attempt) => attempt.anchorCardId === practiceFlow.anchorCardId)
+    beginPracticeFlowTransition({
+      fromStage: practiceFlow.stage,
+      toStage: nextStage,
+      anchorCardId: practiceFlow.anchorCardId,
+      step: practiceFlow.step,
+      mode: practiceFlow.config.mode,
+      latestAttempt: anchorHistory.at(-1),
+    })
     setPracticeFlow({ ...practiceFlow, stage: nextStage })
     setSupportLayer('none')
     resetFlowMultipleChoiceState()
@@ -3295,6 +3408,57 @@ function App() {
     // Flow stages should begin as soon as they are selected; standalone recall still begins from preview.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCardId, currentPracticeMode, flowMultipleChoicePosition, practiceFlow?.cycle, practiceFlow?.stage, practiceFlow?.step, sessionPosition])
+
+  const flowTransitionReady = useMemo(() => {
+    if (!flowTransition || !practiceFlow) return false
+    if (
+      practiceFlow.anchorCardId !== flowTransition.anchorCardId
+      || practiceFlow.step !== flowTransition.step
+      || practiceFlow.stage !== flowTransition.toStage
+    ) return false
+
+    if (flowTransition.toStage === 'recall' || flowTransition.toStage === 'ghost') {
+      return mainPhase === 'typing'
+    }
+    if (flowTransition.toStage === 'multiple-choice') {
+      return flowMultipleChoiceDeck.length > 0
+        || Boolean(flowMultipleChoiceError && !flowMultipleChoiceLoading)
+    }
+
+    const interactionKey = `${practiceFlow.runId}-${practiceFlow.step}`
+    return flowMicroDrillPrimaryActionState.interactionKey === interactionKey
+      && (flowMicroDrillPrimaryActionState.ready || flowMicroDrillPrimaryActionState.failed)
+  }, [
+    flowMicroDrillPrimaryActionState,
+    flowMultipleChoiceDeck.length,
+    flowMultipleChoiceError,
+    flowMultipleChoiceLoading,
+    flowTransition,
+    mainPhase,
+    practiceFlow,
+  ])
+
+  useEffect(() => {
+    if (!flowTransition || !flowTransitionReady) return
+    const transitionId = flowTransition.id
+    const delay = Math.max(0, FLOW_TRANSITION_MINIMUM_MS - (Date.now() - flowTransition.startedAt))
+    const timeoutId = window.setTimeout(() => {
+      setFlowTransition((current) => current?.id === transitionId ? null : current)
+      if (flowTransition.toStage === 'recall' || flowTransition.toStage === 'ghost') {
+        window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+          if (flowTransition.toStage === 'ghost') {
+            const firstTargetLine = firstIncompleteGhostLineNumber(flowGhostScaffold, practiceFlow?.focus.missedLines ?? [])
+            if (firstTargetLine) {
+              mainInputRef.current?.focusLine(firstTargetLine)
+              return
+            }
+          }
+          mainInputRef.current?.focusEnd()
+        }))
+      }
+    }, delay)
+    return () => window.clearTimeout(timeoutId)
+  }, [flowGhostScaffold, flowTransition, flowTransitionReady, practiceFlow?.focus.missedLines])
 
   useEffect(() => {
     if (mainPhase !== 'typing') return
@@ -4707,6 +4871,12 @@ function App() {
           </div>
         )}
 
+        {flowTransition && <FlowCoachTransition transition={flowTransition} />}
+        <div
+          className={flowTransition ? 'flow-stage-content flow-stage-content-preparing' : 'flow-stage-content'}
+          aria-hidden={flowTransition ? true : undefined}
+          inert={flowTransition ? true : undefined}
+        >
         {isFlowActive && coachError && mainPhase === 'typing' && <p className="flow-submit-error" role="alert">{coachError}</p>}
         {practiceFlow?.stage === 'microdrill' ? (
           <FlowMicroDrillCard
@@ -5027,8 +5197,9 @@ function App() {
 
         </div>
         )}
+        </div>
 
-        <div className="card-control-bar">
+        {!flowTransition && <div className="card-control-bar">
           <div className="card-control-group">
             <button className="secondary card-control-button" onClick={goPrev} disabled={!canGoPrev} aria-label="Previous card">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -5066,7 +5237,7 @@ function App() {
               </button>
             </div>
           )}
-        </div>
+        </div>}
       </section>
       <aside
         id="card-flow-panel"

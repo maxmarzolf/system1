@@ -134,7 +134,7 @@ def test_create_attempt_prefers_explicit_session_id_over_flow_signal(monkeypatch
     assert captured["session_id"] == "flow-session-explicit"
 
 
-def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
+def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
     now = datetime.now(timezone.utc)
     today = now.replace(hour=12, minute=0, second=0, microsecond=0)
     yesterday = today - timedelta(days=1)
@@ -208,6 +208,18 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
                 "live_coach_used": False,
                 "signals": {},
             },
+            {
+                "tracked_card_id": "bs-1",
+                "card_title": "Search Microdrill",
+                "category_tags": ["skill-map", "binary-search", "search-on-answer"],
+                "successful": False,
+                "created_at": today,
+                "template_mode": "algorithm",
+                "support_layer": "none",
+                "modality": "microdrill",
+                "live_coach_used": False,
+                "signals": {},
+            },
         ],
     )
 
@@ -219,17 +231,31 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
     assert activity["totalGhostReps"] == 2
     assert activity["totalMultipleChoice"] == 1
     assert activity["totalPerfectRecalls"] == 1
-    assert activity["workCount"] == 4
+    assert activity["workCount"] == 6
     assert today_bucket["ghostRepCount"] == 0
     assert today_bucket["multipleChoiceCount"] == 1
-    assert today_bucket["totalRecallCount"] == 1
+    assert today_bucket["totalRecallCount"] == 2
     assert today_bucket["segments"] == [
+        {
+            "algorithm": "Binary Search",
+            "slug": "binary-search",
+            "workType": "total-recall",
+            "count": 1,
+            "skills": [{"skill": "Unclassified", "slug": "unclassified", "count": 1}],
+        },
         {
             "algorithm": "Binary Search",
             "slug": "binary-search",
             "workType": "multiple-choice",
             "count": 1,
             "skills": [{"skill": "Unclassified", "slug": "unclassified", "count": 1}],
+        },
+        {
+            "algorithm": "Binary Search",
+            "slug": "binary-search",
+            "workType": "microdrill",
+            "count": 1,
+            "skills": [{"skill": "search on answer", "slug": "search-on-answer", "count": 1}],
         },
         {
             "algorithm": "Sliding Window",
@@ -251,7 +277,8 @@ def test_skill_map_overview_groups_ghost_reps_by_day_and_pattern() -> None:
     assert pattern_freshness["sliding-window"]["daysSinceLastGhostRep"] == 5
     assert pattern_freshness["binary-search"]["daysSinceLastGhostRep"] == 1
     assert pattern_freshness["binary-search"]["daysSinceLastPractice"] == 0
-    assert overview["summary"]["workCount"] == 4
+    assert pattern_freshness["binary-search"]["totalWork"] == 4
+    assert overview["summary"]["workCount"] == 5
 
 
 def test_skill_map_overview_counts_static_catalog_cards() -> None:

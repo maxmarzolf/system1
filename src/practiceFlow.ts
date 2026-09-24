@@ -3,6 +3,9 @@ export type FlowStage = typeof FLOW_STAGES[number]
 export const FLOW_LABELS: Record<FlowStage, string> = {
   recall: 'Recall', ghost: 'Ghost', 'multiple-choice': 'MCQ', microdrill: 'Microdrill',
 }
+export const FLOW_COACH_LABELS: Record<FlowStage, string> = {
+  recall: 'Total Recall', ghost: 'Ghost', 'multiple-choice': 'MCQ', microdrill: 'Microdrill',
+}
 
 export type SubmissionModality = 'total-recall' | 'ghost-rep' | 'mcq' | 'microdrill'
 export const STAGE_MODALITY: Record<FlowStage, SubmissionModality> = {
@@ -50,6 +53,84 @@ export type FlowGenerationContext = {
     weakness: string
     question: string
   }>
+}
+
+export type FlowTransitionCopy = {
+  headline: string
+  detail: string
+  status: string
+}
+
+export function buildFlowTransitionCopy({
+  fromStage,
+  toStage,
+  mode,
+  latestAttempt,
+  newAnchor = false,
+}: {
+  fromStage: FlowStage | null
+  toStage: FlowStage
+  mode: FlowConfig['mode']
+  latestAttempt?: FlowAttempt
+  newAnchor?: boolean
+}): FlowTransitionCopy {
+  if (fromStage === null) {
+    return {
+      headline: toStage === 'recall' ? 'Establish a clean baseline' : `Begin with ${FLOW_COACH_LABELS[toStage]}`,
+      detail: toStage === 'recall'
+        ? 'Start with independent recall so the coach can adapt the work that follows.'
+        : 'The first activity is being prepared from the current card and flow settings.',
+      status: `Preparing ${FLOW_COACH_LABELS[toStage]}…`,
+    }
+  }
+
+  if (newAnchor) {
+    return {
+      headline: 'Move to the next pattern',
+      detail: 'The current pattern is stable. Begin the next card with independent recall.',
+      status: 'Preparing Total Recall…',
+    }
+  }
+
+  if (mode !== 'adaptive') {
+    return {
+      headline: `Continue with ${FLOW_COACH_LABELS[toStage]}`,
+      detail: `${FLOW_COACH_LABELS[fromStage]} is complete. The next configured activity is being prepared.`,
+      status: `Preparing ${FLOW_COACH_LABELS[toStage]}…`,
+    }
+  }
+
+  if (toStage === 'ghost') {
+    return {
+      headline: 'Reinforce the missed steps',
+      detail: 'Narrow the next rep to the lines that need another pass before testing them again.',
+      status: 'Preparing targeted Ghost practice…',
+    }
+  }
+
+  if (toStage === 'multiple-choice') {
+    return {
+      headline: 'Check the decision',
+      detail: latestAttempt?.successful
+        ? 'The last rep is stable. Verify the reasoning behind the implementation with one targeted question.'
+        : 'Test the reasoning behind the last attempt before returning to the implementation.',
+      status: 'Preparing a targeted MCQ…',
+    }
+  }
+
+  if (toStage === 'microdrill') {
+    return {
+      headline: 'Turn feedback into code',
+      detail: 'A short reconstruction will isolate the decision that needs another pass.',
+      status: 'Building a focused Microdrill…',
+    }
+  }
+
+  return {
+    headline: 'Return to independent recall',
+    detail: 'Support is stepping back so you can apply the correction from memory.',
+    status: 'Preparing Total Recall…',
+  }
 }
 
 export const DEFAULT_FLOW: FlowConfig = {

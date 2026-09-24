@@ -264,6 +264,8 @@ def _build_ghost_rep_activity(
     algorithm_ghost_totals: Counter[str] = Counter()
     algorithm_mcq_totals: Counter[str] = Counter()
     algorithm_perfect_recall_totals: Counter[str] = Counter()
+    algorithm_work_totals: Counter[str] = Counter()
+    perfect_recall_counts_in_window: Counter[str] = Counter()
     last_ghost_seen_by_algorithm: dict[str, date] = {}
     last_work_seen_by_algorithm: dict[str, date] = {}
 
@@ -279,8 +281,9 @@ def _build_ghost_rep_activity(
             or "skill-map-mcq" in category_tags
         )
         is_ghost_rep = modality == "ghost-rep"
-        is_perfect_total_recall = modality == "total-recall" and bool(row.get("successful"))
-        if not is_ghost_rep and not is_mcq and not is_perfect_total_recall:
+        is_total_recall = modality == "total-recall"
+        is_microdrill = modality == "microdrill"
+        if not is_ghost_rep and not is_mcq and not is_total_recall and not is_microdrill:
             continue
         matched_algorithm_slugs = _matched_algorithm_slugs(category_tags, known_algorithm_slugs)
         primary_matches = [
@@ -292,9 +295,15 @@ def _build_ghost_rep_activity(
             matched_algorithm_slugs = primary_matches
         if not matched_algorithm_slugs:
             continue
-        work_type = "multiple-choice" if is_mcq else "ghost-reps"
-        if is_perfect_total_recall:
-            work_type = "total-recall"
+        work_type = (
+            "multiple-choice"
+            if is_mcq
+            else "ghost-reps"
+            if is_ghost_rep
+            else "microdrill"
+            if is_microdrill
+            else "total-recall"
+        )
         attempt_date = created_at.date()
         iso_date = attempt_date.isoformat()
         for slug in matched_algorithm_slugs:
@@ -307,13 +316,16 @@ def _build_ghost_rep_activity(
             skill_slug = matched_skill_slugs[0] if matched_skill_slugs else "unclassified"
             if is_mcq:
                 algorithm_mcq_totals[slug] += 1
-            elif is_perfect_total_recall:
+            elif is_total_recall and bool(row.get("successful")):
                 algorithm_perfect_recall_totals[slug] += 1
-            else:
+            elif is_ghost_rep:
                 algorithm_ghost_totals[slug] += 1
+            algorithm_work_totals[slug] += 1
             if attempt_date >= window_start:
                 counts_by_day_type_algorithm.setdefault(iso_date, Counter())[(work_type, slug)] += 1
                 skill_counts_by_day_type_algorithm.setdefault((iso_date, work_type, slug), Counter())[skill_slug] += 1
+                if is_total_recall and bool(row.get("successful")):
+                    perfect_recall_counts_in_window[iso_date] += 1
             if is_ghost_rep and (slug not in last_ghost_seen_by_algorithm or attempt_date > last_ghost_seen_by_algorithm[slug]):
                 last_ghost_seen_by_algorithm[slug] = attempt_date
             if slug not in last_work_seen_by_algorithm or attempt_date > last_work_seen_by_algorithm[slug]:
@@ -379,11 +391,7 @@ def _build_ghost_rep_activity(
             "totalGhostReps": int(algorithm_ghost_totals.get(slug, 0)),
             "totalMultipleChoice": int(algorithm_mcq_totals.get(slug, 0)),
             "totalPerfectRecalls": int(algorithm_perfect_recall_totals.get(slug, 0)),
-            "totalWork": int(
-                algorithm_ghost_totals.get(slug, 0)
-                + algorithm_mcq_totals.get(slug, 0)
-                + algorithm_perfect_recall_totals.get(slug, 0)
-            ),
+            "totalWork": int(algorithm_work_totals.get(slug, 0)),
             "coreCardCount": int((core_card_counts or {}).get(slug, 0)),
             "daysSinceLastGhostRep": (today - last_ghost_seen_by_algorithm[slug]).days if slug in last_ghost_seen_by_algorithm else None,
             "daysSinceLastPractice": (today - last_work_seen_by_algorithm[slug]).days if slug in last_work_seen_by_algorithm else None,
@@ -396,7 +404,7 @@ def _build_ghost_rep_activity(
         "windowEnd": today.isoformat(),
         "totalGhostReps": sum(day["ghostRepCount"] for day in days),
         "totalMultipleChoice": sum(day["multipleChoiceCount"] for day in days),
-        "totalPerfectRecalls": sum(day["totalRecallCount"] for day in days),
+        "totalPerfectRecalls": sum(perfect_recall_counts_in_window.values()),
         "workCount": sum(day["total"] for day in days),
         "activeDays": active_days,
         "peakDailyCount": peak_daily_count,

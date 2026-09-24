@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import ts from 'typescript'
 const source = fs.readFileSync(new URL('../src/practiceFlow.ts', import.meta.url), 'utf8')
 const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText
-const { nextFlowStep, loadFlowConfig, summarizeFlowMastery, FLOW_STAGES, DEFAULT_FLOW } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
+const { buildFlowTransitionCopy, nextFlowStep, loadFlowConfig, summarizeFlowMastery, FLOW_STAGES, DEFAULT_FLOW } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
 
 const attempt = (modality, successful, score, missedLineCount = 0, weaknesses = []) => ({
   anchorCardId: 'card-1', modality, successful, score, missedLineCount, weaknesses, elapsedMs: 1000, question: '',
@@ -75,4 +75,40 @@ test('clean mastery does not require an unnecessary ghost rep', () => {
   const summary = summarizeFlowMastery(history)
   assert.equal(summary.successfulModalities, 3)
   assert.equal(summary.mastered, true)
+})
+
+test('coach-led transitions provide destination-specific guidance for every modality', () => {
+  const latestAttempt = attempt('total-recall', false, 42, 2, ['left boundary update'])
+  const transitions = FLOW_STAGES.map((toStage) => ({
+    toStage,
+    copy: buildFlowTransitionCopy({
+      fromStage: 'recall',
+      toStage,
+      mode: 'adaptive',
+      latestAttempt,
+    }),
+  }))
+
+  transitions.forEach(({ toStage, copy }) => {
+    assert.ok(copy.headline.trim(), `${toStage} should have a headline`)
+    assert.ok(copy.detail.trim(), `${toStage} should explain the handoff`)
+    assert.ok(copy.status.trim(), `${toStage} should have a loading status`)
+  })
+  assert.match(transitions.find(({ toStage }) => toStage === 'ghost').copy.headline, /missed steps/i)
+  assert.match(transitions.find(({ toStage }) => toStage === 'multiple-choice').copy.headline, /decision/i)
+  assert.match(transitions.find(({ toStage }) => toStage === 'microdrill').copy.headline, /code/i)
+  assert.match(transitions.find(({ toStage }) => toStage === 'recall').copy.headline, /recall/i)
+})
+
+test('coach-led transitions explain flow starts and new anchors', () => {
+  const start = buildFlowTransitionCopy({ fromStage: null, toStage: 'recall', mode: 'adaptive' })
+  const nextAnchor = buildFlowTransitionCopy({
+    fromStage: 'microdrill',
+    toStage: 'recall',
+    mode: 'adaptive',
+    newAnchor: true,
+  })
+
+  assert.match(start.headline, /baseline/i)
+  assert.match(nextAnchor.headline, /next pattern/i)
 })
