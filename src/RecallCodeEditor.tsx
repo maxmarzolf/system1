@@ -88,7 +88,6 @@ type RecallCodeEditorProps = {
   showSearchPanel?: boolean
   className?: string
   onChange: (nextValue: string, context: { cursorLineNumber: number }) => void
-  onSubmitHotkey: () => void
   onEnterKey?: (context: { value: string, cursorLineNumber: number }) => boolean
 }
 
@@ -600,7 +599,6 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
     showSearchPanel = false,
     className,
     onChange,
-    onSubmitHotkey,
     onEnterKey,
   },
   ref
@@ -608,7 +606,6 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
   const hostRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
-  const onSubmitHotkeyRef = useRef(onSubmitHotkey)
   const onEnterKeyRef = useRef(onEnterKey)
   const languageCompartment = useMemo(() => new Compartment(), [])
   const indentationCompartment = useMemo(() => new Compartment(), [])
@@ -623,10 +620,6 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
   useEffect(() => {
     onChangeRef.current = onChange
   }, [onChange])
-
-  useEffect(() => {
-    onSubmitHotkeyRef.current = onSubmitHotkey
-  }, [onSubmitHotkey])
 
   useEffect(() => {
     onEnterKeyRef.current = onEnterKey
@@ -676,13 +669,6 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
               value: valueFromEditor(view),
               cursorLineNumber: view.state.doc.lineAt(view.state.selection.main.head).number,
             }) ?? false,
-          },
-          {
-            key: getEditorHotkeyKey('primary-recall-action'),
-            run: () => {
-              onSubmitHotkeyRef.current()
-              return true
-            },
           },
           {
             key: getEditorHotkeyKey('indent-outdent'),

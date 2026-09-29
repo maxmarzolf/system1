@@ -57,11 +57,9 @@ const compactAlgorithmLabel = (algorithm: string) => {
 export default function DailyWorkHistory({
   activity,
   algorithmOrder,
-  onSelectionChange,
 }: {
   activity?: DailyWorkActivity
   algorithmOrder: DailyWorkAlgorithm[]
-  onSelectionChange?: (slugs: string[]) => void
 }) {
   const today = activity?.windowEnd
   const activityByDate = useMemo(
@@ -71,10 +69,7 @@ export default function DailyWorkHistory({
   const chartDates = useMemo(() => {
     if (!activity) return []
     const visibleHistoryStart = addCalendarDays(activity.windowEnd, -13)
-    return activity.days
-      .map(day => day.date)
-      .filter(date => date >= visibleHistoryStart)
-      .sort()
+    return Array.from({ length: 28 }, (_, index) => addCalendarDays(visibleHistoryStart, index))
   }, [activity])
 
   const rows = useMemo<SwimLaneRow[]>(() => {
@@ -131,14 +126,12 @@ export default function DailyWorkHistory({
               {row.cells.map(cell => {
                 const title = `${row.label} on ${formatCalendarDate(cell.date)}: ${cell.hasWork ? 'work completed' : 'no work'}`
                 return (
-                  <button
+                  <span
                     key={`${row.slug}-${cell.date}`}
-                    type="button"
                     className={`daily-work-history-cell${cell.hasWork ? ' daily-work-history-cell-active' : ''}`}
                     title={title}
+                    role="img"
                     aria-label={title}
-                    disabled={!cell.hasWork}
-                    onClick={cell.hasWork ? () => onSelectionChange?.([row.slug]) : undefined}
                   />
                 )
               })}

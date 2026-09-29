@@ -33,7 +33,7 @@ async def get_playlist_catalog() -> dict[str, list[dict[str, Any]]]:
                 "questions": [],
             },
         )
-        metadata = _json_object(row["playlist_metadata"])
+        metadata = _json_object(row["item_metadata"])
         playlist["questions"].append({
             "title": str(row["item_title"]),
             "coreShape": str(metadata.get("coreShape") or ""),

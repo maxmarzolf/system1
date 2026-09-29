@@ -231,14 +231,13 @@ def test_playlist_drills_endpoint_supports_skeleton_metadata(monkeypatch) -> Non
                     "prompt": "Skeletons: recall the static solution for BFS Skeleton.",
                     "solution": "def bfs(start, graph): pass",
                     "missing": "# static playlist outline complete",
-                    "hint": "Focus on the queue invariant.",
+                    "hint": "Focus on the queue and visited set.",
                     "tags": ["skill-map", "static-playlist", "skeletons"],
                     "skeletonApplicability": {
                         "templateStrength": 10,
                         "applicationAbstraction": 2,
                         "summary": "Queue -> visited -> neighbors",
                         "explanation": "Explore one layer at a time.",
-                        "invariant": "Every queued node is discovered.",
                         "timeComplexity": "O(V + E)",
                     },
                 }

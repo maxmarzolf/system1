@@ -103,6 +103,9 @@ const readinessTone = (readiness: number) => {
   return 'error'
 }
 
+const isRetiredArraysHashMaps = (slug: string, title: string) =>
+  slug === 'arrays-hash-maps' || title === 'Arrays / Hash Maps'
+
 const spacedStatusTone = (status: SpacedRepetitionPacket['status']) => {
   if (status === 'overdue' || status === 'failed' || status === 'acquisition') return 'error'
   if (status === 'due') return 'warning'
@@ -627,17 +630,36 @@ function SkillAlgorithmIllustration({ slug, pattern }: { slug: string; pattern: 
     )
   }
 
+  if (patternKey === 'google') {
+    return (
+      <div className="skill-map-illustration" aria-hidden="true">
+        <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
+          <g className="skill-svg-brand-google">
+            <path className="skill-svg-google-red" d="M80 18a25 25 0 0 1 21 10" />
+            <path className="skill-svg-google-yellow" d="M80 18a25 25 0 0 0-25 25" />
+            <path className="skill-svg-google-green" d="M55 43a25 25 0 0 0 25 25" />
+            <path className="skill-svg-google-blue" d="M80 68a25 25 0 0 0 25-25H80" />
+          </g>
+        </svg>
+      </div>
+    )
+  }
+
   if (patternKey === 'meta') {
     return (
       <div className="skill-map-illustration" aria-hidden="true">
         <svg className="skill-map-illustration-svg" viewBox="0 0 160 86">
-          <rect className="skill-svg-block" x="31" y="14" width="78" height="50" rx="6" transform="rotate(-7 70 39)" />
-          <rect className="skill-svg-block" x="45" y="18" width="78" height="50" rx="6" transform="rotate(5 84 43)" />
-          <rect className="skill-svg-block skill-svg-accent-fill" x="41" y="21" width="78" height="50" rx="6" />
-          <path className="skill-svg-line skill-svg-muted" d="M54 35h31M54 45h42M54 55h24" />
-          <circle className="skill-svg-node skill-svg-accent-fill" cx="102" cy="53" r="11" />
-          <path className="skill-svg-play" d="m99 47 9 6-9 6Z" />
-          <path className="skill-svg-line skill-svg-accent" d="M126 20v10m-5-5h10M132 41l5 5m0-5-5 5" />
+          <defs>
+            <linearGradient id="skill-map-meta-gradient" x1="33" y1="43" x2="127" y2="43" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stopColor="#2469d8" />
+              <stop offset="0.55" stopColor="#228bea" />
+              <stop offset="1" stopColor="#67b8f3" />
+            </linearGradient>
+          </defs>
+          <path
+            className="skill-svg-meta-mark"
+            d="M80 43C63 19 49 21 40 31c-13 15 0 34 13 33 12-1 18-18 27-26 12-13 22-17 33-13 16 6 19 29 6 37-12 8-26-4-39-19"
+          />
         </svg>
       </div>
     )
@@ -707,13 +729,15 @@ export default function DashboardPage() {
     }
   }, [])
 
-  const skillMapPlaylists = (catalogPlaylists ?? practicePlaylists)
-    .filter((playlist) => playlist.showOnSkillMap)
+  const skillMapPlaylists = [...(catalogPlaylists ?? []), ...practicePlaylists]
     .filter((playlist, index, playlists) =>
       playlists.findIndex((candidate) => candidate.slug === playlist.slug) === index
     )
+    .filter((playlist) => playlist.showOnSkillMap && !isRetiredArraysHashMaps(playlist.slug, playlist.title))
   const skillMapPlaylistSlugs = new Set(skillMapPlaylists.map((playlist) => playlist.slug))
-  const algorithms = (overview?.algorithms ?? []).filter((node) => !skillMapPlaylistSlugs.has(node.slug))
+  const algorithms = (overview?.algorithms ?? []).filter((node) =>
+    !isRetiredArraysHashMaps(node.slug, node.algorithm) && !skillMapPlaylistSlugs.has(node.slug)
+  )
   const playlistPatternCount = (playlist: (typeof skillMapPlaylists)[number]) =>
     new Set(playlist.questions.map((question) => question.coreShape)).size
   const playlistTierCount = (playlist: (typeof skillMapPlaylists)[number]) =>
@@ -734,6 +758,36 @@ export default function DashboardPage() {
     })
     navigate(`/?${nextParams.toString()}`)
   }
+  const renderPlaylistCard = (playlist: PracticePlaylist) => {
+    const tierCount = playlistTierCount(playlist)
+    const problemLabel = playlist.questions.length === 1 ? 'problem' : 'problems'
+    const patternCount = playlistPatternCount(playlist)
+    const patternLabel = patternCount === 1 ? 'pattern' : 'patterns'
+
+    return (
+      <article key={playlist.slug} className="skill-map-card">
+        <div className="skill-map-header">
+          <h3>{playlist.title}</h3>
+          <span className="coach-status-value coach-status-value-success">Playlist</span>
+        </div>
+        <div className="dashboard-summary skill-map-card-stats">
+          <span className="coach-metric-chip">{playlist.questions.length} {problemLabel}</span>
+          <span className="coach-metric-chip">{tierCount > 0 ? `${tierCount} tiers` : 'Static'}</span>
+          <span className="coach-metric-chip">{patternCount} {patternLabel}</span>
+        </div>
+        <SkillAlgorithmIllustration slug={playlist.slug} pattern={playlist.title} />
+        <div className="dashboard-mode-tabs">
+          <button
+            type="button"
+            className="dashboard-mode-tab dashboard-mode-tab-actionable"
+            onClick={() => launchPlaylist(playlist.slug)}
+          >
+            <span className="dashboard-mode-tab-label">Start playlist</span>
+          </button>
+        </div>
+      </article>
+    )
+  }
 
   return (
     <div className="app app-dashboard">
@@ -741,9 +795,10 @@ export default function DashboardPage() {
 
       <section className="dashboard">
         {error && <p className="skill-map-intro">{error}</p>}
+        {loading && !error && <p className="skill-map-intro">Loading readiness overview...</p>}
 
         <div className="skill-map-grid">
-          {loading && !error && <p className="skill-map-intro">Loading readiness overview...</p>}
+          {skillMapPlaylists.filter((playlist) => playlist.slug === 'skeletons').map(renderPlaylistCard)}
           {algorithms.map((node) => {
             const isMeta = node.slug === 'meta'
             return (
@@ -772,40 +827,7 @@ export default function DashboardPage() {
               </article>
             )
           })}
-          {skillMapPlaylists.map((playlist) => {
-            const tierCount = playlistTierCount(playlist)
-            const problemLabel = playlist.questions.length === 1 ? 'problem' : 'problems'
-            const patternCount = playlistPatternCount(playlist)
-            const patternLabel = patternCount === 1 ? 'pattern' : 'patterns'
-
-            return (
-              <article key={playlist.slug} className="skill-map-card">
-                <div className="skill-map-header">
-                  <h3>{playlist.title}</h3>
-                  <span className="coach-status-value coach-status-value-success">Playlist</span>
-                </div>
-                <div className="dashboard-summary skill-map-card-stats">
-                  <span className="coach-metric-chip">
-                    {playlist.questions.length} {problemLabel}
-                  </span>
-                  <span className="coach-metric-chip">
-                    {tierCount > 0 ? `${tierCount} tiers` : 'Static'}
-                  </span>
-                  <span className="coach-metric-chip">{patternCount} {patternLabel}</span>
-                </div>
-                <SkillAlgorithmIllustration slug={playlist.slug} pattern={playlist.title} />
-                <div className="dashboard-mode-tabs">
-                  <button
-                    type="button"
-                    className="dashboard-mode-tab dashboard-mode-tab-actionable"
-                    onClick={() => launchPlaylist(playlist.slug)}
-                  >
-                    <span className="dashboard-mode-tab-label">Start playlist</span>
-                  </button>
-                </div>
-              </article>
-            )
-          })}
+          {skillMapPlaylists.filter((playlist) => playlist.slug !== 'skeletons').map(renderPlaylistCard)}
         </div>
 
       </section>

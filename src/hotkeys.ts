@@ -5,7 +5,7 @@ export type HotkeyId =
   | 'flow-targeted-ghost'
   | 'flow-targeted-mcq'
   | 'flow-targeted-microdrill'
-  | 'primary-recall-action'
+  | 'primary-card-action'
   | 'next-targeted-line'
   | 'toggle-ghost-reps'
   | 'move-cards'
@@ -22,7 +22,7 @@ type HotkeyBinding = {
 
 type HotkeyDefinition = {
   id: HotkeyId
-  group: 'Flow overrides' | 'Recall and Ghost Reps' | 'Editor and coaching'
+  group: 'Card modalities' | 'Recall and Ghost Reps' | 'Editor and coaching'
   displayKeys: string[]
   label: string
   description: string
@@ -42,48 +42,47 @@ export type PracticeHotkey = {
 const hotkeyDefinitions: HotkeyDefinition[] = [
   {
     id: 'flow-full-recall',
-    group: 'Flow overrides',
-    displayKeys: ['Mod', 'Shift', 'F'],
-    label: 'Full recall',
-    description: 'Run a new full recall and replace the targeted lines on submit.',
-    bindings: [{ key: 'f', modifier: 'mod', shift: true }],
+    group: 'Card modalities',
+    displayKeys: ['Mod', 'D'],
+    label: 'Recall from right',
+    description: 'Bring Recall in from the right, anchored to the current card.',
+    bindings: [{ key: 'd', modifier: 'mod' }],
     flowStage: 'recall',
   },
   {
     id: 'flow-targeted-ghost',
-    group: 'Flow overrides',
-    displayKeys: ['Mod', 'Shift', 'G'],
-    label: 'Targeted Ghost Reps',
-    description: 'Return to Ghost Reps for the current targeted lines.',
-    bindings: [{ key: 'g', modifier: 'mod', shift: true }],
+    group: 'Card modalities',
+    displayKeys: ['Mod', 'W'],
+    label: 'Ghost from top',
+    description: 'Drop Ghost in from the top, anchored to the current card.',
+    bindings: [{ key: 'w', modifier: 'mod' }],
     flowStage: 'ghost',
   },
   {
     id: 'flow-targeted-mcq',
-    group: 'Flow overrides',
-    displayKeys: ['Mod', 'Shift', 'M'],
-    label: 'Targeted MCQ',
-    description: 'Jump to targeted questions while preserving flow progress.',
-    bindings: [{ key: 'm', modifier: 'mod', shift: true }],
+    group: 'Card modalities',
+    displayKeys: ['Mod', 'A'],
+    label: 'MCQ from left',
+    description: 'Bring MCQ in from the left, anchored to the current card.',
+    bindings: [{ key: 'a', modifier: 'mod' }],
     flowStage: 'multiple-choice',
   },
   {
     id: 'flow-targeted-microdrill',
-    group: 'Flow overrides',
-    displayKeys: ['Mod', 'Shift', 'D'],
-    label: 'Microdrill',
-    description: 'Switch the current flow rep to a focused fill-in-the-blank drill.',
-    bindings: [{ key: 'd', modifier: 'mod', shift: true }],
+    group: 'Card modalities',
+    displayKeys: ['Mod', 'S'],
+    label: 'Microdrill from bottom',
+    description: 'Raise Microdrill from the bottom, anchored to the current card.',
+    bindings: [{ key: 's', modifier: 'mod' }],
     flowStage: 'microdrill',
   },
   {
-    id: 'primary-recall-action',
-    group: 'Recall and Ghost Reps',
+    id: 'primary-card-action',
+    group: 'Card modalities',
     displayKeys: ['Mod', 'Enter'],
-    label: 'Start, submit, or repeat',
-    description: 'Uses the primary recall or Ghost Rep action.',
+    label: 'Primary card action',
+    description: 'Activate the bottom-right card button, such as Start, Submit, or Next.',
     bindings: [{ key: 'Enter', modifier: 'mod' }],
-    editorKey: 'Mod-Enter',
   },
   {
     id: 'next-targeted-line',
@@ -160,9 +159,7 @@ export const getHotkeyDisplayKeys = (id: HotkeyId, isMac: boolean) => {
   return requireHotkey(id).displayKeys.map((key) => key.replace(/\bMod\b/g, modifierLabel))
 }
 
-export const formatHotkey = (id: HotkeyId, isMac: boolean) => getHotkeyDisplayKeys(id, isMac).join('+')
-
-export const getEditorHotkeyKey = (id: 'primary-recall-action' | 'next-targeted-line' | 'indent-outdent') => {
+export const getEditorHotkeyKey = (id: 'next-targeted-line' | 'indent-outdent') => {
   const editorKey = requireHotkey(id).editorKey
   if (!editorKey) throw new Error(`Hotkey ${id} does not define an editor key`)
   return editorKey
@@ -182,7 +179,7 @@ export const matchesHotkey = (event: KeyboardEvent, id: HotkeyId) => {
 }
 
 export const getHotkeyReferenceGroups = (isMac: boolean) => {
-  const groupTitles: HotkeyDefinition['group'][] = ['Flow overrides', 'Recall and Ghost Reps', 'Editor and coaching']
+  const groupTitles: HotkeyDefinition['group'][] = ['Card modalities', 'Recall and Ghost Reps', 'Editor and coaching']
 
   return groupTitles.map((title) => ({
     title,

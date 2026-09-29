@@ -1445,6 +1445,14 @@ async def _seed_taxonomy(db_pool: asyncpg.Pool) -> None:
                 [slug for slug, _, _, _ in problem_rows],
             )
 
+            # Arrays / Hash Maps is a Google playlist family, not a core
+            # algorithm. Preserve its cards and attempts while retiring the
+            # orphaned taxonomy row from existing databases.
+            await conn.execute(
+                "UPDATE problem SET algorithm_slug = 'meta' WHERE algorithm_slug = 'arrays-hash-maps'"
+            )
+            await conn.execute("DELETE FROM algorithm WHERE slug = 'arrays-hash-maps'")
+
             await conn.execute("DELETE FROM problem_skill")
             for problem_slug, skill_slug, display_order in problem_skill_rows:
                 await conn.execute(

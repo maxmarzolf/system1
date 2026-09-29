@@ -30,7 +30,7 @@ async def fetch_playlist_catalog_rows() -> list[dict[str, Any]]:
             """
             SELECT pl.slug, pl.title, pl.description, pl.show_on_skill_map,
                    pl.static_deck, p.slug AS id, p.title AS item_title,
-                   ppo.metadata AS playlist_metadata
+                   p.generation_context AS item_metadata
             FROM playlist pl
             JOIN playlist_problem_order ppo
               ON ppo.playlist_slug = pl.slug AND ppo.order_slug = 'curated'

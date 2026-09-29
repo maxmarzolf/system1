@@ -267,7 +267,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 2,
         "summary": "Queue → visited → neighbors",
         "explanation": "Breadth-first search expands the graph one distance layer at a time. Mark each node when it enters the queue so it is scheduled exactly once.",
-        "invariant": "Every queued node has been discovered but not yet processed, and every discovered node is already in visited.",
         "timeComplexity": "O(V + E)",
     },
     "Grid BFS Skeleton": {
@@ -275,7 +274,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 3,
         "summary": "Queue → visited → four neighbors",
         "explanation": "Grid BFS explores cells in increasing distance from the start. Its queue and four-direction traversal are reusable; the problem-specific work is defining valid cells, the goal condition, and whether traversal begins from one or many sources.",
-        "invariant": "At the start of each outer iteration, the queue contains the current distance layer; every queued cell is already in visited and will be processed once.",
         "timeComplexity": "O(rows · cols)",
     },
     "DFS Skeleton": {
@@ -283,7 +281,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 2,
         "summary": "Visit → neighbors → recurse/stack",
         "explanation": "Depth-first search follows one branch to completion before returning to explore the next. The visited set prevents cycles and repeated work.",
-        "invariant": "visited contains every discovered node, and recursion proceeds only to neighbors not yet in that set.",
         "timeComplexity": "O(V + E)",
     },
     "Grid DFS Skeleton": {
@@ -291,7 +288,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 3,
         "summary": "Bounds → visited → four neighbors",
         "explanation": "Grid DFS treats each cell as a graph node and explores its four orthogonal neighbors. The reusable traversal stays fixed; the problem-specific work is defining which cells are eligible to visit.",
-        "invariant": "visited contains every cell discovered from the start, and walk recurses only to in-bounds cells not already in that set.",
         "timeComplexity": "O(rows · cols)",
     },
     "Binary Tree DFS -- Return & Combine Skeleton": {
@@ -299,7 +295,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 5,
         "summary": "Base case → solve children → combine upward",
         "explanation": "Postorder tree DFS solves both child subtrees before combining their summaries into the value returned for the current subtree.",
-        "invariant": "dfs(node) returns the complete answer or summary required for the subtree rooted at node.",
         "timeComplexity": "O(n) time; O(h) recursion space",
     },
     "Binary Tree DFS -- Carry State Skeleton": {
@@ -307,7 +302,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 5,
         "summary": "Advance root-to-node state → process → recurse",
         "explanation": "Top-down tree DFS derives branch-local state for the current node, records any contribution, and passes that state into both child branches.",
-        "invariant": "On entry to dfs(node, state), state describes exactly the path from the root through the parent of node.",
         "timeComplexity": "O(n) time; O(h) recursion space",
     },
     "Binary Tree BFS -- Level Order Skeleton": {
@@ -315,7 +309,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 4,
         "summary": "Queue → snapshot level width → expand children",
         "explanation": "Level-order tree BFS snapshots the queue length so every outer iteration processes exactly one depth and can aggregate that level independently.",
-        "invariant": "At the start of each outer iteration, the queue contains exactly the nodes in the next unprocessed level.",
         "timeComplexity": "O(n) time; O(w) queue space",
     },
     "Union-Find / Disjoint Set Skeleton": {
@@ -323,7 +316,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 3,
         "summary": "find + union implementation barely changes",
         "explanation": "Union-Find represents each connected component as a rooted forest. Path compression and union by size keep those trees shallow.",
-        "invariant": "Nodes share a component exactly when find returns the same root; only roots carry valid component sizes.",
         "timeComplexity": "O(α(n)) amortized per operation",
     },
     "Merge Intervals Skeleton": {
@@ -331,7 +323,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 3,
         "summary": "Sort → compare current interval with previous",
         "explanation": "Sorting by start time makes every possible overlap local: each new interval only needs to be compared with the last merged interval.",
-        "invariant": "merged is the non-overlapping union of every interval processed so far, ordered by start time.",
         "timeComplexity": "O(n log n)",
     },
     "Binary Search Skeleton": {
@@ -339,7 +330,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 4,
         "summary": "Loop is stable; defining the search condition can be tricky",
         "explanation": "Probe the midpoint of a sorted search space, then discard the half whose ordering proves it cannot contain the target.",
-        "invariant": "If the target exists, it remains inside the inclusive interval [left, right].",
         "timeComplexity": "O(log n)",
     },
     "Topological Sort -- Kahn's Algorithm Skeleton": {
@@ -347,7 +337,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 4,
         "summary": "Build indegree → zero-indegree queue → remove edges",
         "explanation": "Kahn's algorithm repeatedly emits nodes with no remaining prerequisites. If every node is emitted, the graph is acyclic.",
-        "invariant": "indegree[v] equals the number of incoming edges to v from nodes not yet emitted.",
         "timeComplexity": "O(V + E)",
     },
     "Trie Skeleton": {
@@ -355,7 +344,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 4,
         "summary": "Node + children + character traversal",
         "explanation": "A trie stores one character per edge, so insertion and exact lookup follow a single path determined by the word.",
-        "invariant": "After consuming i characters, node represents exactly the prefix word[:i].",
         "timeComplexity": "O(L) per insert or search",
     },
     "Backtracking Skeleton": {
@@ -363,7 +351,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 5,
         "summary": "Choose → explore → undo",
         "explanation": "Backtracking enumerates a decision tree while mutating one shared path. Undoing each choice restores the parent state before the next branch.",
-        "invariant": "state contains exactly the choices on the current root-to-node path and is restored after every recursive call.",
         "timeComplexity": "O(b^d) in the general case",
     },
     "Dijkstra Skeleton": {
@@ -371,7 +358,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 5,
         "summary": "Heap + distances + relax edges",
         "explanation": "For non-negative edge weights, always expanding the smallest tentative distance makes that node's shortest path final.",
-        "invariant": "Every node in distance is finalized with its true shortest distance from start.",
         "timeComplexity": "O((V + E) log V)",
     },
     "Two Pointers Skeleton": {
@@ -379,7 +365,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 4,
         "summary": "Usually left/right with clear movement rules",
         "explanation": "Two pointers exploit ordering or structure to eliminate candidates without checking every pair.",
-        "invariant": "Any candidate excluded by a pointer move has been proven unable to satisfy the condition.",
         "timeComplexity": "O(n)",
     },
     "Heap / Top-K Skeleton": {
@@ -387,7 +372,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 4,
         "summary": "Push/pop heap; deciding what tuple or key to store matters",
         "explanation": "A size-k min-heap keeps only the strongest candidates seen so far; the weakest retained candidate stays at the root.",
-        "invariant": "After each item, the heap contains the k largest processed items, or all processed items when fewer than k exist.",
         "timeComplexity": "O(n log k)",
     },
     "Fixed-Size Sliding Window Skeleton": {
@@ -395,7 +379,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 5,
         "summary": "Expand → maintain fixed width → score",
         "explanation": "Update a rolling state as one item enters and, once necessary, one item leaves. This scores each length-k window without rebuilding it.",
-        "invariant": "state describes exactly items[left:right + 1], and the maintained window never exceeds width k.",
         "timeComplexity": "O(n)",
     },
     "Variable-Size Sliding Window Skeleton": {
@@ -403,7 +386,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 5,
         "summary": "Expand → detect invalid → shrink",
         "explanation": "Expand the right edge, then advance the left edge only as far as needed to restore the problem's validity rule.",
-        "invariant": "After the shrink loop, state describes exactly items[left:right + 1] and that window is valid.",
         "timeComplexity": "O(n)",
     },
     "Prefix Sum Skeleton": {
@@ -411,7 +393,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 5,
         "summary": "Construction is easy; recognizing the algebraic transformation is harder",
         "explanation": "Store cumulative totals with a leading zero so any inclusive range sum becomes the difference of two prefix values.",
-        "invariant": "prefix[i] equals the sum of nums[0:i].",
         "timeComplexity": "O(n) build; O(1) per query",
     },
     "Monotonic Stack Skeleton": {
@@ -419,7 +400,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 6,
         "summary": "Stack mechanics are stable; recognizing what belongs on it is harder",
         "explanation": "The current value resolves prior indices that it dominates; unresolved indices remain on the stack in monotonic order.",
-        "invariant": "Stack indices are unresolved, ordered by position, and their values are non-increasing from bottom to top.",
         "timeComplexity": "O(n)",
     },
     "Divide and Conquer Skeleton": {
@@ -427,7 +407,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 6,
         "summary": "Divide → solve → combine, but implementation varies",
         "explanation": "Split the problem into independent smaller instances, solve each recursively, and combine their answers.",
-        "invariant": "Each recursive return is a correct solution for its subproblem before combine is applied.",
         "timeComplexity": "T(n) = 2T(n/2) + C(n); O(n log n) when C(n) = O(n)",
     },
     "Greedy Skeleton": {
@@ -435,7 +414,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 9,
         "summary": "No universal template; proving the local choice works is the problem",
         "explanation": "Order candidates by a defensible rule, then accept each locally best feasible choice. Correctness depends on an exchange or staying-ahead proof.",
-        "invariant": "The accepted prefix remains feasible and can still be extended to an optimal solution under the chosen rule.",
         "timeComplexity": "O(n log n) with sorting",
     },
     "Top-Down DP Skeleton": {
@@ -443,7 +421,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 10,
         "summary": "Discover the state, transitions, dependencies, and evaluation order",
         "explanation": "Define the answer for one state, recurse into its dependencies, and memoize the result so each reachable state is solved once.",
-        "invariant": "Every memoized value is the complete optimal answer for its state.",
         "timeComplexity": "O(S · T) for S states and T transitions per state",
     },
     "Bottom-Up DP Skeleton": {
@@ -451,7 +428,6 @@ SKELETON_APPLICABILITY: dict[str, dict[str, Any]] = {
         "applicationAbstraction": 10,
         "summary": "Discover the state, transitions, dependencies, and evaluation order",
         "explanation": "Initialize base states, then fill the table in an order that guarantees every dependency is ready before it is used.",
-        "invariant": "When a state is evaluated, every predecessor it depends on already stores its final answer.",
         "timeComplexity": "O(S · T) for S states and T transitions per state",
     },
 }
@@ -746,7 +722,7 @@ def variable_size_window(items):
         add_to_window(state, item)
 
         while window_is_invalid(state):
-            # Shrink from the left until the invariant is restored.
+            # Shrink from the left until the window is valid.
             remove_from_window(state, items[left])
             left += 1
 
@@ -2095,7 +2071,11 @@ def build_static_playlist_drills(playlist_slug: str, order: str = "curated") -> 
                 "inputExample": "Use the examples from the original problem statement.",
                 "outputExample": "Return the value required by the original problem.",
                 "explanation": f"{tier}: {core_shape}. Key moves: {', '.join(methods)}.",
-                "brassTacks": f"Recall the invariant, data structure, and update rule for {title}.",
+                "brassTacks": (
+                    f"Recall the data structure and update rule for {title}."
+                    if normalized_slug == "skeletons"
+                    else f"Recall the invariant, data structure, and update rule for {title}."
+                ),
                 "leetcodeExamples": [title],
             },
         }

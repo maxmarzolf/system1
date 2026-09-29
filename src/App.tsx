@@ -37,7 +37,6 @@ import TopNav from './TopNav'
 import { useTheme, type AppTheme } from './theme'
 import RecallCodeEditor, { type RecallCodeEditorHandle, type RecallEditorLineMeta } from './RecallCodeEditor'
 import {
-  formatHotkey,
   matchesHotkey,
   type PracticeFlowStage,
 } from './hotkeys'
@@ -56,12 +55,8 @@ type Flashcard = {
   tags: string[]
   plainEnglishPromptDetail?: PlainEnglishPromptDetail
   skeletonApplicability?: {
-    templateStrength: number
-    applicationAbstraction: number
     summary: string
     explanation: string
-    invariant: string
-    timeComplexity: string
   } | null
 }
 
@@ -129,7 +124,7 @@ type PracticeFlowTransitionState = {
 
 const CARD_MOVE_DOUBLE_TAP_WINDOW_MS = 350
 const FLOW_TRANSITION_MINIMUM_MS = 700
-const SUBMISSION_FEEDBACK_ENABLED = true
+const FLOW_TRANSITION_SETTLE_MS = 280
 const INLINE_FEEDBACK_ENABLED = true
 const LIVE_FEEDBACK_ENABLED = true
 
@@ -236,13 +231,6 @@ type FlowHistoryEntry = {
 }
 
 type FlowHistoryResponse = { entries: FlowHistoryEntry[] }
-
-type FeedbackRailModel = {
-  source: 'Live' | 'Submission'
-  items: string[]
-  loading?: boolean
-  submitted?: boolean
-}
 
 type SubmissionFailureModalState = {
   providerLabel: string
@@ -1836,6 +1824,12 @@ type MicroDrillContent = {
   language: string
 }
 
+const focusMicroDrillInput = (container: HTMLElement | null) => {
+  container?.querySelector<HTMLElement>(
+    '.micro-drill-blank:not(:disabled), .micro-drill-answer-card .cm-content[contenteditable="true"]'
+  )?.focus()
+}
+
 const parseMicroDrillContent = (text: string): MicroDrillContent => {
   const segments = parseMarkdownCodeSegments(text)
   const codeSegments = segments.filter((segment): segment is Extract<MarkdownCodeSegment, { type: 'code' }> => segment.type === 'code')
@@ -1882,7 +1876,6 @@ function MicroDrillBlankEditor({ template, language, syntaxTheme, theme, onAnswe
         intellisense={false}
         commonPatterns={false}
         onChange={setFallbackValue}
-        onSubmitHotkey={() => undefined}
       />
     )
   }
@@ -1913,7 +1906,6 @@ function MicroDrillBlankEditor({ template, language, syntaxTheme, theme, onAnswe
                     aria-label={`Blank ${currentBlank + 1}, line ${lineIndex + 1}`}
                     autoCapitalize="off"
                     autoComplete="off"
-                    autoFocus={currentBlank === 0}
                     spellCheck={false}
                     style={{ width: `${Math.max(value.length + 1, Math.ceil(part.length * 0.72))}ch` }}
                   />
@@ -2033,7 +2025,6 @@ function MarkdownCodeContent({
                   commonPatterns={false}
                   className="recall-code-editor-snippet"
                   onChange={() => undefined}
-                  onSubmitHotkey={() => undefined}
                 />
               </div>
             )
@@ -2184,31 +2175,49 @@ function FlowMicroDrillCard({ title, prompt, target, focus, rep, context, provid
 
   return (
     <div className="card-grid micro-drill-card-grid drill-fade-in">
-      <div className="panel micro-drill-question-card">
-        <div className="micro-drill-header"><span className="micro-drill-eyebrow">Microdrill · Rep {rep}</span></div>
-        {drill ? <div className="micro-drill-prompt"><MicroDrillInstructions text={drill.prompt} /></div> : !error && <p role="status">Preparing your microdrill…</p>}
-        {error && <p role="alert">{error}</p>}
-        {!drill && error && <button type="button" className="secondary" onClick={() => setRetry(value => value + 1)}>Try again</button>}
-        {result && <div className="submission-feedback-detail" role="status">
-          <p>{result.evaluation.feedback.fullFeedback || (result.successful ? 'Sound. Rep complete.' : 'Rep logged. Review the focused decision before continuing.')}</p>
-          {result.feedbackUnavailable && <p>{result.feedbackUnavailable.message}</p>}
-        </div>}
+      <div className="panel prompt-surface-panel">
+        <div className="prompt-surface-section">
+          <div className="prompt-section-content">
+            <span className="prompt-section-label">Microdrill · Rep {rep}</span>
+            {drill ? <div className="prompt prompt-surface-body micro-drill-prompt"><MicroDrillInstructions text={drill.prompt} /></div> : !error && <p className="prompt prompt-surface-body" role="status">Preparing your microdrill…</p>}
+            {error && <p className="prompt prompt-surface-body" role="alert">{error}</p>}
+            {!drill && error && <button type="button" className="secondary" onClick={() => setRetry(value => value + 1)}>Try again</button>}
+            {result && <div className="submission-feedback-detail" role="status">
+              <p>{result.evaluation.feedback.fullFeedback || (result.successful ? 'Sound. Rep complete.' : 'Rep logged. Review the focused decision before continuing.')}</p>
+              {result.feedbackUnavailable && <p>{result.feedbackUnavailable.message}</p>}
+            </div>}
+          </div>
+        </div>
       </div>
       {drill && <div className="panel micro-drill-answer-card">
         <span className="answer-label">Fill only the blanks</span>
         <MicroDrillBlankEditor template={drill.template} language={drill.language} theme={theme} syntaxTheme={syntaxTheme} onAnswerChange={setAnswer} disabled={saving || Boolean(result)} />
-        <p className="typing-help">Tab moves to the next blank.</p>
       </div>}
     </div>
   )
 }
 
-function FlowCoachTransition({ transition }: { transition: PracticeFlowTransitionState }) {
+function FlowCoachTransition({
+  transition,
+  settling,
+}: {
+  transition: PracticeFlowTransitionState
+  settling: boolean
+}) {
   const fromLabel = transition.fromStage ? FLOW_COACH_LABELS[transition.fromStage] : 'Start'
   const toLabel = FLOW_COACH_LABELS[transition.toStage]
 
   return (
-    <section className="flow-transition-card" role="status" aria-live="polite" aria-label={`Coach transition to ${toLabel}`}>
+    <section
+      className={[
+        'flow-transition-card',
+        `flow-transition-card-${transition.toStage}`,
+        settling ? 'flow-transition-card-settling' : '',
+      ].filter(Boolean).join(' ')}
+      role="status"
+      aria-live="polite"
+      aria-label={`Coach transition to ${toLabel}`}
+    >
       <div className="flow-transition-topline">
         <span className="flow-transition-eyebrow">Coach · Next modality</span>
         <div className="flow-transition-route" aria-label={`${fromLabel} to ${toLabel}`}>
@@ -2232,6 +2241,25 @@ function FlowCoachTransition({ transition }: { transition: PracticeFlowTransitio
   )
 }
 
+function FlowNextIcon() {
+  return (
+    <svg
+      className="flow-next-icon"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+    </svg>
+  )
+}
+
 function App() {
   const { theme } = useTheme()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -2244,14 +2272,13 @@ function App() {
   const [skillMapDeck, setSkillMapDeck] = useState<Flashcard[]>([])
   const [catalogPlaylists, setCatalogPlaylists] = useState<PracticePlaylist[] | null>(null)
   const [catalogSkillMap, setCatalogSkillMap] = useState<SkillMapNode[] | null>(null)
+  const [catalogSkillMapResolved, setCatalogSkillMapResolved] = useState(false)
   const [skillMapLoading, setSkillMapLoading] = useState(false)
   const [skillMapError, setSkillMapError] = useState('')
-  const [skillMapRefreshToken, setSkillMapRefreshToken] = useState(0)
   const [skillMapSessionVersion, setSkillMapSessionVersion] = useState(0)
   const [multipleChoiceDeck, setMultipleChoiceDeck] = useState<MultipleChoiceCard[]>([])
   const [multipleChoiceLoading, setMultipleChoiceLoading] = useState(false)
   const [multipleChoiceError, setMultipleChoiceError] = useState('')
-  const [multipleChoiceRefreshToken, setMultipleChoiceRefreshToken] = useState(0)
   const [multipleChoiceSessionVersion, setMultipleChoiceSessionVersion] = useState(0)
   const [recallTargetMode] = useState<RecallTargetMode>('algorithm')
   const [inlineEnabled, setInlineEnabled] = useState(false)
@@ -2261,10 +2288,12 @@ function App() {
   const [relatedDrawerOpen, setRelatedDrawerOpen] = useState(false)
   const [flowDrawerOpen, setFlowDrawerOpen] = useState(false)
   const [zenMode, setZenMode] = useState(false)
+  const [headerControlsOpen, setHeaderControlsOpen] = useState(true)
   const flowInteractionVersionRef = useRef(0)
   const [flowConfig, setFlowConfig] = useState(loadFlowConfig)
   const [practiceFlow, setPracticeFlow] = useState<PracticeFlowState | null>(null)
   const [flowTransition, setFlowTransition] = useState<PracticeFlowTransitionState | null>(null)
+  const [flowTransitionSettlingId, setFlowTransitionSettlingId] = useState<string | null>(null)
   const [flowAttempts, setFlowAttempts] = useState<FlowAttempt[]>([])
   const flowAttemptsRef = useRef<FlowAttempt[]>([])
   const [flowHistoryLoading, setFlowHistoryLoading] = useState(false)
@@ -2278,6 +2307,7 @@ function App() {
   const [flowMultipleChoiceSubmittedByCard, setFlowMultipleChoiceSubmittedByCard] = useState<Record<string, string>>({})
   const [flowMicroDrillPrimaryActionState, setFlowMicroDrillPrimaryActionState] = useState<FlowMicroDrillPrimaryActionState>(EMPTY_FLOW_MICRODRILL_ACTION_STATE)
   const flowMicroDrillPrimaryActionRef = useRef<() => void>(() => undefined)
+  const primaryCardButtonRef = useRef<HTMLButtonElement | null>(null)
 
   const [sessionOrder, setSessionOrder] = useState<number[]>([])
   const [sessionPosition, setSessionPosition] = useState(0)
@@ -2320,6 +2350,7 @@ function App() {
   const googlePlaylistTuning = useMemo(() => loadStoredGooglePlaylistTuning(), [])
   const multipleChoiceQuestionCount = mcqTuning.questionCount
   const mainInputRef = useRef<RecallCodeEditorHandle | null>(null)
+  const flowStageContentRef = useRef<HTMLDivElement | null>(null)
   const lastCardMoveKeyRef = useRef<{ key: 'ArrowLeft' | 'ArrowRight', pressedAt: number } | null>(null)
   const shouldFocusMainInputRef = useRef(false)
   const pendingGhostFocusLineRef = useRef<number | null>(null)
@@ -2374,6 +2405,8 @@ function App() {
         }
       } catch {
         // Keep the local taxonomy fallback available when the API is unavailable.
+      } finally {
+        if (!cancelled) setCatalogSkillMapResolved(true)
       }
     }
 
@@ -2393,6 +2426,8 @@ function App() {
     () => availableSkillMap.find((node) => patternToSlug(node.algorithm) === focusedPatternSlug) ?? null,
     [availableSkillMap, focusedPatternSlug]
   )
+  const focusedCardPending = Boolean(focusedPatternSlug && !requestedPlaylist && !catalogSkillMapResolved)
+  const focusedCardNotFound = Boolean(focusedPatternSlug && !requestedPlaylist && catalogSkillMapResolved && !focusedPatternNode)
   const focusedTemplateMode = useMemo<TemplateMode | null>(() => {
     if (TEMPLATE_MODE_ORDER.includes(focusedModeParam as TemplateMode)) {
       return focusedModeParam as TemplateMode
@@ -2695,16 +2730,24 @@ function App() {
   }
 
   useEffect(() => {
+    if (focusedCardPending) return
+    if (focusedCardNotFound) {
+      skillMapDeckRequestVersionRef.current += 1
+      setSkillMapDeck([])
+      setSkillMapError('')
+      setSkillMapLoading(false)
+      return
+    }
     void fetchSkillMapDeck()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedPatternSlug, focusedTagSlug, googlePlaylistTuning.order, llmProvider, requestLlmProvider, requestedQuestionType, requestedSkillMapSignature, requestedTemplateMode, skillMapRefreshToken])
+  }, [focusedCardPending, focusedCardNotFound, focusedPatternSlug, focusedTagSlug, googlePlaylistTuning.order, llmProvider, requestLlmProvider, requestedQuestionType, requestedSkillMapSignature, requestedTemplateMode])
 
   useEffect(() => {
     if (practiceMode !== 'multiple-choice') return
     if (!mcqSourceSpecimen) return
     void fetchMultipleChoiceDeck()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [practiceMode, llmProvider, requestedQuestionType, multipleChoiceDifficulty, multipleChoiceQuestionCount, multipleChoiceRefreshToken, mcqTuning.flowMode, mcqSourceSpecimen])
+  }, [practiceMode, llmProvider, requestedQuestionType, multipleChoiceDifficulty, multipleChoiceQuestionCount, mcqTuning.flowMode, mcqSourceSpecimen])
 
   useEffect(() => {
     if (!practiceFlow || practiceFlow.stage !== 'multiple-choice') return
@@ -2806,7 +2849,6 @@ function App() {
     [currentTemplateMode, generatedPracticePrompt, primaryPatternTag]
   )
   const skeletonReference = card.skeletonApplicability ?? null
-  const submissionFeedbackDetailId = `submission-feedback-detail-${card.id}`
   const tagsListId = `card-tags-${card.id}`
 
   const flowGhostTarget = useMemo(
@@ -2856,6 +2898,12 @@ function App() {
     () => headerCardTags.filter((tag) => tag !== 'skill-map' && tag !== 'skill-map-mcq'),
     [headerCardTags]
   )
+  const headerBadgeLabels = [
+    ...(!skeletonReference ? [headerCardDifficultyLabel] : []),
+    ...(isCoreAlgorithmCard ? ['Core'] : []),
+    ...(isMetaCard ? ['Meta'] : []),
+  ]
+  const hasHeaderDetails = headerBadgeLabels.length > 0 || visibleCardTags.length > 0
 
   currentCardIdRef.current = activeCardId
 
@@ -2878,12 +2926,6 @@ function App() {
     ? inlineTaskProgression[inlineTaskProgress]
     : undefined
   const hasAnsweredCurrent = !isFlowActive && Boolean(activeCardId && Object.prototype.hasOwnProperty.call(sessionResults, activeCardId))
-  const sessionCounterText =
-    isFlowActive && practiceFlow
-      ? `${FLOW_LABELS[practiceFlow.stage]} · ${practiceFlow.step + 1}`
-      : sessionOrder.length === 0
-      ? '0 / 0'
-      : `${Math.min(sessionPosition + 1, Math.max(sessionOrder.length, 1))} / ${sessionOrder.length}`
   const practiceHistoryHref = useMemo(() => {
     if (!hasDeck) return '/practice-history'
 
@@ -3209,6 +3251,7 @@ function App() {
     stuckHintDepthRef.current = 0
     lastStuckHintInputRef.current = ''
     lastMainInputEditAtRef.current = 0
+    shouldFocusMainInputRef.current = false
     pendingGhostFocusLineRef.current = null
   }
 
@@ -3242,6 +3285,7 @@ function App() {
   }) => {
     const copy = buildFlowTransitionCopy({ fromStage, toStage, mode, latestAttempt, newAnchor })
     setFlowMicroDrillPrimaryActionState(EMPTY_FLOW_MICRODRILL_ACTION_STATE)
+    setFlowTransitionSettlingId(null)
     setFlowTransition({
       id: createInteractionId(),
       fromStage,
@@ -3290,6 +3334,7 @@ function App() {
     flowInteractionVersionRef.current += 1
     setPracticeFlow(null)
     setFlowTransition(null)
+    setFlowTransitionSettlingId(null)
     setSupportLayer('none')
     resetFlowMultipleChoiceState()
     setPracticeMode('recall')
@@ -3350,23 +3395,67 @@ function App() {
 
   const advanceFlowMultipleChoice = advancePracticeFlow
 
-  const switchPracticeFlowStage = (nextStage: PracticeFlowStage) => {
-    if (!practiceFlow || flowTransition || practiceFlow.stage === nextStage || mainPhase === 'typing') return
+  const activatePracticeFlowStage = async (nextStage: PracticeFlowStage) => {
+    if (!hasRecallDeck || sessionFinished || flowTransition) return
     flowInteractionVersionRef.current += 1
-    const anchorHistory = flowAttemptsRef.current.filter((attempt) => attempt.anchorCardId === practiceFlow.anchorCardId)
-    beginPracticeFlowTransition({
-      fromStage: practiceFlow.stage,
-      toStage: nextStage,
-      anchorCardId: practiceFlow.anchorCardId,
-      step: practiceFlow.step,
-      mode: practiceFlow.config.mode,
-      latestAttempt: anchorHistory.at(-1),
-    })
-    setPracticeFlow({ ...practiceFlow, stage: nextStage })
+    const flowInteractionVersion = flowInteractionVersionRef.current
+
+    if (practiceFlow) {
+      const step = practiceFlow.step + 1
+      const anchorHistory = flowAttemptsRef.current.filter((attempt) => attempt.anchorCardId === practiceFlow.anchorCardId)
+      beginPracticeFlowTransition({
+        fromStage: practiceFlow.stage,
+        toStage: nextStage,
+        anchorCardId: practiceFlow.anchorCardId,
+        step,
+        mode: practiceFlow.config.mode,
+        latestAttempt: anchorHistory.at(-1),
+      })
+      setFlowDrawerOpen(false)
+      setPracticeFlow({ ...practiceFlow, stage: nextStage, step })
+      setSupportLayer('none')
+      resetFlowMultipleChoiceState()
+      resetPerCardInteraction()
+      return
+    }
+
+    const anchorCard = card
+    const anchorHistory = await loadFlowHistoryForCard(anchorCard)
+    if (flowInteractionVersionRef.current !== flowInteractionVersion) return
+
+    const hotkeyFlowConfig: FlowConfig = {
+      ...structuredClone(flowConfig),
+      mode: 'adaptive',
+    }
+    setFlowDrawerOpen(false)
+    setPracticeMode('recall')
     setSupportLayer('none')
     resetFlowMultipleChoiceState()
+    beginPracticeFlowTransition({
+      fromStage: null,
+      toStage: nextStage,
+      anchorCardId: anchorCard.id,
+      step: 0,
+      mode: hotkeyFlowConfig.mode,
+      latestAttempt: anchorHistory.at(-1),
+    })
+    setPracticeFlow({
+      anchorCardId: anchorCard.id,
+      anchorTitle: anchorCard.title,
+      stage: nextStage,
+      cycle: 1,
+      config: hotkeyFlowConfig,
+      step: 0,
+      runId: createInteractionId(),
+      focus: initialFlowFocus(anchorCard),
+      completedAnchorIds: [],
+    })
     resetPerCardInteraction()
   }
+
+  const activatePracticeFlowStageFromHotkey = useEffectEvent((nextStage: PracticeFlowStage) => {
+    void activatePracticeFlowStage(nextStage)
+  })
 
   const toggleInlineHelper = () => {
     if (!INLINE_FEEDBACK_ENABLED) return
@@ -3418,22 +3507,30 @@ function App() {
     if (!flowTransition || !flowTransitionReady) return
     const transitionId = flowTransition.id
     const delay = Math.max(0, FLOW_TRANSITION_MINIMUM_MS - (Date.now() - flowTransition.startedAt))
-    const timeoutId = window.setTimeout(() => {
-      setFlowTransition((current) => current?.id === transitionId ? null : current)
-      if (flowTransition.toStage === 'recall' || flowTransition.toStage === 'ghost') {
-        window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-          if (flowTransition.toStage === 'ghost') {
-            const firstTargetLine = firstIncompleteGhostLineNumber(flowGhostScaffold, practiceFlow?.focus.missedLines ?? [])
-            if (firstTargetLine) {
-              mainInputRef.current?.focusLine(firstTargetLine)
-              return
+    let settleTimeoutId: number | undefined
+    const readyTimeoutId = window.setTimeout(() => {
+      setFlowTransitionSettlingId(transitionId)
+      settleTimeoutId = window.setTimeout(() => {
+        setFlowTransition((current) => current?.id === transitionId ? null : current)
+        setFlowTransitionSettlingId((current) => current === transitionId ? null : current)
+        if (flowTransition.toStage === 'recall' || flowTransition.toStage === 'ghost') {
+          window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+            if (flowTransition.toStage === 'ghost') {
+              const firstTargetLine = firstIncompleteGhostLineNumber(flowGhostScaffold, practiceFlow?.focus.missedLines ?? [])
+              if (firstTargetLine) {
+                mainInputRef.current?.focusLine(firstTargetLine)
+                return
+              }
             }
-          }
-          mainInputRef.current?.focusEnd()
-        }))
-      }
+            mainInputRef.current?.focusEnd()
+          }))
+        }
+      }, FLOW_TRANSITION_SETTLE_MS)
     }, delay)
-    return () => window.clearTimeout(timeoutId)
+    return () => {
+      window.clearTimeout(readyTimeoutId)
+      if (settleTimeoutId !== undefined) window.clearTimeout(settleTimeoutId)
+    }
   }, [flowGhostScaffold, flowTransition, flowTransitionReady, practiceFlow?.focus.missedLines])
 
   useEffect(() => {
@@ -3441,6 +3538,7 @@ function App() {
     const pendingGhostLine = pendingGhostFocusLineRef.current
     if (pendingGhostLine !== null) {
       pendingGhostFocusLineRef.current = null
+      shouldFocusMainInputRef.current = false
       window.requestAnimationFrame(() => {
         mainInputRef.current?.focusLine(pendingGhostLine)
       })
@@ -3463,6 +3561,7 @@ function App() {
 
   const startMainRecall = () => {
     if (!hasDeck || hasAnsweredCurrent || sessionFinished) return
+    shouldFocusMainInputRef.current = true
     if (previewCodeContainerRef.current) {
       setRecallMinHeight(previewCodeContainerRef.current.offsetHeight)
     }
@@ -3813,6 +3912,7 @@ function App() {
   const reviseMainRecall = () => {
     if (practiceFlow) return
     if (!hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'submitted' || mainCloseEnough) return
+    shouldFocusMainInputRef.current = true
     setMainPhase('typing')
     setInlineTaskProgress((current) => Math.max(
       current,
@@ -3827,7 +3927,7 @@ function App() {
 
   const repeatGhostRep = () => {
     if (!hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'submitted') return
-    shouldFocusMainInputRef.current = !practiceFlow || practiceFlow.stage !== 'ghost'
+    shouldFocusMainInputRef.current = true
     setMainPhase('typing')
     setInlineTaskProgress(0)
     if (practiceFlow?.stage === 'ghost') {
@@ -3846,15 +3946,6 @@ function App() {
     lastMainInputEditAtRef.current = Date.now()
     liveCoachSnapshotRef.current = null
     lastLiveCoachDecisionKeyRef.current = ''
-  }
-
-  const restartSession = () => {
-    if (isFlowActive) return
-    if (practiceMode === 'multiple-choice') {
-      setMultipleChoiceRefreshToken((prev) => prev + 1)
-      return
-    }
-    setSkillMapRefreshToken((prev) => prev + 1)
   }
 
   const goNext = () => {
@@ -4091,15 +4182,22 @@ function App() {
   const latestSubmittedAttempt =
     mainPhase === 'submitted' ? currentCardRecallHistory[currentCardRecallHistory.length - 1] ?? null : null
   const latestSubmittedWasGhostRep = latestSubmittedAttempt?.supportLayer === 'ghost-reps'
+  const totalRecallEvaluationPending = currentPracticeMode === 'recall'
+    && mainPhase === 'typing'
+    && coachLoading
+    && effectiveSupportLayer !== 'ghost-reps'
   const submittedMultipleChoiceId = activeMultipleChoiceCard
     ? (isFlowActive
         ? flowMultipleChoiceSubmittedByCard[activeMultipleChoiceCard.id] ?? ''
         : multipleChoiceSubmittedByCard[activeMultipleChoiceCard.id] ?? '')
     : ''
   const selectedMultipleChoice = activeMultipleChoiceCard?.choices.find((choice) => choice.id === (isFlowActive ? flowMultipleChoiceSelectedChoiceId : multipleChoiceSelectedChoiceId)) ?? null
-  const correctMultipleChoice = activeMultipleChoiceCard?.choices.find((choice) => choice.id === activeMultipleChoiceCard.correctChoiceId) ?? null
   const multipleChoiceSubmitted = Boolean(submittedMultipleChoiceId)
   const multipleChoiceCorrect = Boolean(submittedMultipleChoiceId && submittedMultipleChoiceId === activeMultipleChoiceCard?.correctChoiceId)
+  const multipleChoicePosition = isFlowActive ? flowMultipleChoicePosition + 1 : sessionPosition + 1
+  const multipleChoiceTotal = isFlowActive
+    ? flowMultipleChoiceDeck.length || 1
+    : multipleChoiceDeck.length || multipleChoiceQuestionCount
   const flowMicroDrillActionKey = practiceFlow?.stage === 'microdrill'
     ? `${practiceFlow.runId}-${practiceFlow.step}`
     : ''
@@ -4113,11 +4211,7 @@ function App() {
           label: 'Next',
           onClick: advancePracticeFlow,
           disabled: false,
-          icon: (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-            </svg>
-          ),
+          icon: <FlowNextIcon />,
         }
       }
       return {
@@ -4139,11 +4233,7 @@ function App() {
         label: 'Next',
         onClick: advancePracticeFlow,
         disabled: coachLoading,
-        icon: (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-          </svg>
-        ),
+        icon: <FlowNextIcon />,
       }
     }
 
@@ -4153,11 +4243,7 @@ function App() {
           label: 'Next',
           onClick: advanceFlowMultipleChoice,
           disabled: sessionFinished,
-          icon: (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-            </svg>
-          ),
+          icon: <FlowNextIcon />,
         }
       }
       if (multipleChoiceSubmitted) return null
@@ -4216,7 +4302,7 @@ function App() {
       return {
         label: 'Submit',
         onClick: submitMainRecall,
-        disabled: currentRecallSubmissionInput.trim().length === 0,
+        disabled: totalRecallEvaluationPending || currentRecallSubmissionInput.trim().length === 0,
         icon: (
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 0 0 2.25-2.25V6.75a2.25 2.25 0 0 0-2.25-2.25H6.75A2.25 2.25 0 0 0 4.5 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25Zm.75-12h9v9h-9v-9Z" />
@@ -4255,16 +4341,17 @@ function App() {
   })()
 
   useEffect(() => {
-    if (isFlowActive || mainPhase !== 'submitted' || !latestSubmittedWasGhostRep) return
     const handler = (event: KeyboardEvent) => {
-      if (matchesHotkey(event, 'primary-recall-action')) {
-        event.preventDefault()
-        repeatGhostRep()
-      }
+      if (event.repeat || event.isComposing || event.altKey || event.shiftKey || !matchesHotkey(event, 'primary-card-action')) return
+      const button = primaryCardButtonRef.current
+      if (!button || button.disabled) return
+      event.preventDefault()
+      event.stopPropagation()
+      button.click()
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [isFlowActive, latestSubmittedWasGhostRep, mainPhase, sessionFinished, sessionOrder.length, sessionPosition])
+    window.addEventListener('keydown', handler, true)
+    return () => window.removeEventListener('keydown', handler, true)
+  }, [])
 
   useEffect(() => {
     if (isFlowActive) return
@@ -4324,7 +4411,7 @@ function App() {
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (!practiceFlow || mainPhase === 'typing') return
+      if (event.repeat || event.altKey || event.shiftKey) return
 
       const nextStage = matchesHotkey(event, 'flow-full-recall')
         ? 'recall'
@@ -4338,12 +4425,12 @@ function App() {
       if (!nextStage) return
 
       event.preventDefault()
-      switchPracticeFlowStage(nextStage)
+      event.stopPropagation()
+      activatePracticeFlowStageFromHotkey(nextStage)
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mainPhase, practiceFlow])
+    window.addEventListener('keydown', handler, true)
+    return () => window.removeEventListener('keydown', handler, true)
+  }, [])
 
   useEffect(() => {
     if (!zenMode) return
@@ -4375,10 +4462,6 @@ function App() {
       ? `Rep ${practiceFlow.step + 1} · ${FLOW_LABELS[practiceFlow.stage]}. The next modality is chosen when you continue.`
       : `Cycle ${practiceFlow.cycle} · Rep ${practiceFlow.step % expandFlow(practiceFlow.config.blocks).length + 1} of ${expandFlow(practiceFlow.config.blocks).length} · ${FLOW_LABELS[practiceFlow.stage]}`
   const flowFocusPreviewLines = practiceFlow?.focus.missedLines.slice(0, 3) ?? []
-  const isMac = navigator.platform.includes('Mac')
-  const primaryRecallHotkey = formatHotkey('primary-recall-action', isMac)
-  const moveCardsHotkey = formatHotkey('move-cards', isMac)
-  const indentOutdentHotkey = formatHotkey('indent-outdent', isMac)
   const recallEditorLineMeta = useMemo<RecallEditorLineMeta[]>(() => {
     const lineCount = Math.max((mainInput || '').split('\n').length, displayLines.length, 1)
 
@@ -4406,21 +4489,6 @@ function App() {
     }))
   ), [plainPracticeTarget])
 
-  const handleRecallEditorSubmitHotkey = () => {
-    if (practiceFlow && mainPhase === 'submitted') {
-      advancePracticeFlow()
-      return
-    }
-    if (mainPhase === 'submitted' && latestSubmittedWasGhostRep) {
-      repeatGhostRep()
-      return
-    }
-
-    if (mainPhase === 'typing' && mainInput.trim().length > 0) {
-      void submitMainRecall()
-    }
-  }
-
   useEffect(() => {
     if (liveFeedbackEnabled) return
     liveCoachRequestVersionRef.current += 1
@@ -4430,37 +4498,6 @@ function App() {
     setLiveCoachFeedbackMeta({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
   }, [liveFeedbackEnabled])
 
-  const feedbackRailModel = useMemo<FeedbackRailModel | null>(() => {
-    if (currentPracticeMode !== 'recall' || !hasDeck) return null
-
-    if (mainPhase === 'submitted' && !latestSubmittedWasGhostRep && SUBMISSION_FEEDBACK_ENABLED) {
-      return {
-        source: 'Submission',
-        loading: coachLoading && !coachFeedback,
-        submitted: true,
-        items: compactFeedbackItems([
-          coachFeedback?.affirmation,
-          ...(coachFeedback?.strengths ?? []),
-          coachFeedback?.keepInMind,
-          coachError,
-          coachFeedback?.diagnosis,
-          coachFeedback?.primaryFocus,
-          coachFeedback?.immediateCorrection,
-          coachFeedback?.why,
-        ], 8),
-      }
-    }
-
-    return null
-  }, [
-    coachError,
-    coachFeedback,
-    coachLoading,
-    currentPracticeMode,
-    hasDeck,
-    latestSubmittedWasGhostRep,
-    mainPhase,
-  ])
   const activeMicroDrill = !isFlowActive && submissionTuning.microDrillEnabled
     ? coachFeedback?.microDrill.trim() ?? ''
     : ''
@@ -4474,48 +4511,19 @@ function App() {
     && coachLoading
     && effectiveSupportLayer !== 'ghost-reps'
   )
-  const submissionFeedbackBlock = feedbackRailModel ? (
-    <div
-      className={[
-        'submission-feedback-block',
-        feedbackRailModel.submitted && !feedbackRailModel.loading && feedbackRailModel.items.length > 0
-          ? 'submission-feedback-block-ready'
-          : '',
-      ].filter(Boolean).join(' ')}
-      aria-label={`${feedbackRailModel.source} feedback`}
-    >
-      <div className="prompt-toggle-header">
-        <div className="submission-feedback-heading">
-          <span className="submission-feedback-label">
-            <span className="submission-feedback-dot" aria-hidden="true" />
-            Feedback
-          </span>
-          <span className="submission-feedback-summary" aria-live="polite">
-            {feedbackRailModel.loading
-              ? 'Generating your review…'
-              : feedbackRailModel.items.length > 0
-                ? 'Review your feedback'
-                : 'No feedback returned'}
-          </span>
-        </div>
-      </div>
-      <div className="prompt-detail submission-feedback-detail" id={submissionFeedbackDetailId}>
-        <div className="prompt-detail-section">
-          {feedbackRailModel.loading && <p>Generating feedback...</p>}
-          {!feedbackRailModel.loading && feedbackRailModel.items.length === 0 && (
-            <p>{feedbackRailModel.submitted ? 'No feedback returned.' : 'No submission yet.'}</p>
-          )}
-          {!feedbackRailModel.loading && feedbackRailModel.items.length > 0 && (
-            <div className="submission-feedback-block-list">
-              {feedbackRailModel.items.map((item, index) => (
-                <p key={`${index}-${item}`}>{item}</p>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  ) : null
+  const microDrillEditorReady = !flowTransition && !flowDrawerOpen && (
+    practiceFlow?.stage === 'microdrill'
+      ? flowMicroDrillPrimaryActionState.interactionKey === flowMicroDrillActionKey
+        && flowMicroDrillPrimaryActionState.ready
+        && !flowMicroDrillPrimaryActionState.submitted
+      : Boolean(activeMicroDrill && !microDrillLoading)
+  )
+
+  useEffect(() => {
+    if (!microDrillEditorReady) return
+    const frame = window.requestAnimationFrame(() => focusMicroDrillInput(flowStageContentRef.current))
+    return () => window.cancelAnimationFrame(frame)
+  }, [microDrillEditorReady, flowMicroDrillActionKey, activeMicroDrill])
 
   const microDrillCardGrid = microDrillLoading ? (
     <div className="card-grid micro-drill-card-grid" aria-live="polite" aria-busy="true">
@@ -4535,15 +4543,16 @@ function App() {
     </div>
   ) : activeMicroDrill ? (
     <div className="card-grid micro-drill-card-grid drill-fade-in">
-      <div className="panel micro-drill-question-card">
-        <div className="prompt-toggle-header micro-drill-header">
-          <span className="micro-drill-eyebrow">Next rep</span>
-
-        </div>
-        <div className="micro-drill-prompt">
-          <MicroDrillInstructions
-            text={microDrillContent.prompt || 'Fill the focused blanks without looking back at the original solution.'}
-          />
+      <div className="panel prompt-surface-panel">
+        <div className="prompt-surface-section">
+          <div className="prompt-section-content">
+            <span className="prompt-section-label">Next rep</span>
+            <div className="prompt prompt-surface-body micro-drill-prompt">
+              <MicroDrillInstructions
+                text={microDrillContent.prompt || 'Fill the focused blanks without looking back at the original solution.'}
+              />
+            </div>
+          </div>
         </div>
       </div>
       <div className="panel micro-drill-answer-card">
@@ -4555,7 +4564,6 @@ function App() {
           syntaxTheme={syntaxTheme}
           theme={theme}
         />
-        <p className="typing-help">Type directly into each quiet underline · Tab moves to the next blank.</p>
       </div>
     </div>
   ) : null
@@ -4566,7 +4574,7 @@ function App() {
       relatedDrawerOpen && relatedLeetCodeSet ? 'app-side-drawer-open' : '',
       zenMode ? 'app-zen-mode' : '',
     ].filter(Boolean).join(' ')}>
-      {SUBMISSION_FEEDBACK_ENABLED && submissionFailureModal && (
+      {submissionFailureModal && (
         <div className="submission-feedback-modal" onClick={() => setSubmissionFailureModal(null)}>
           <div
             className="submission-feedback-popover"
@@ -4591,15 +4599,26 @@ function App() {
 
       <TopNav
         llmProviderLabel={`Auto (${configuredProviderLabel})`}
-        sessionCounterText={sessionCounterText}
-        sessionCounterLoading={activeLoading}
         practiceHistoryHref={practiceHistoryHref}
       />
 
+      {focusedCardNotFound || focusedCardPending ? (
+        <div className="card-shell">
+          <section className="card">
+            <div
+              className={focusedCardNotFound ? 'flow-stage-stack flow-stage-stack-not-found' : 'flow-stage-stack'}
+              role={focusedCardNotFound ? 'status' : undefined}
+              aria-busy={focusedCardPending || undefined}
+            >
+              {focusedCardNotFound && 'Card not Found'}
+            </div>
+          </section>
+        </div>
+      ) : (
   <div className={[
     'card-shell',
+    currentPracticeMode === 'multiple-choice' ? 'card-shell-mcq' : '',
     relatedLeetCodeSet ? 'card-shell-has-drawer' : '',
-    skeletonReference ? 'skeleton-card-shell' : '',
   ].filter(Boolean).join(' ')}>
       <section className="card">
         <div className="card-header">
@@ -4617,55 +4636,32 @@ function App() {
             ) : (
               <>
                 <h3>{headerCardTitle}</h3>
-                {(!skeletonReference || isCoreAlgorithmCard || isMetaCard) && (
-              <p className="card-badges">
-                {!skeletonReference && <span>{headerCardDifficultyLabel}</span>}
-                {!skeletonReference && (isCoreAlgorithmCard || isMetaCard) && <span aria-hidden="true">•</span>}
-                {isCoreAlgorithmCard && <span className="card-badge-core">core</span>}
-                {isMetaCard && <span className="card-badge-meta">meta</span>}
-              </p>
-                )}
-                {visibleCardTags.length > 0 && (
-              <div className={tagsExpanded ? 'tags expanded' : 'tags'}>
-                <div className={tagsExpanded ? 'tags-list expanded' : 'tags-list'} id={tagsListId} aria-hidden={!tagsExpanded}>
-                  {visibleCardTags.map((tag) => (
-                    <button
-                      key={tag}
-                      type="button"
-                      className={focusedTagSlug === tag ? 'tag tag-button active' : 'tag tag-button'}
-                      onClick={() => handleTagClick(tag)}
-                      aria-pressed={focusedTagSlug === tag}
-                      disabled={!tagsExpanded}
-                    >
-                      {tag}
-                    </button>
-                  ))}
-                </div>
-              </div>
-                )}
                 {currentPracticeMode === 'multiple-choice' ? (
-              <div className="coach-metric-row card-header-metric-row">
-                <span className="coach-metric-chip">
+              <div className="mcq-session-meta">
+                <span className="mcq-session-context">
                   {isFlowActive ? 'Targeted card flow' : 'Current card'}
                 </span>
-                <span className="coach-metric-chip">
+                <span className="mcq-session-separator" aria-hidden="true">/</span>
+                <span className="mcq-session-context">
                   {isFlowActive ? 'Missed-line remediation' : mcqTuning.flowMode === 'progressive' ? 'Socratic chain' : 'Balanced random'}
                 </span>
-                <span className="coach-metric-chip">{isFlowActive ? 1 : multipleChoiceQuestionCount} questions</span>
                 {(focusedPatternSlug || requestedPlaylist) && (
-                  <span className="coach-metric-chip">
+                  <span className="mcq-session-context">
                     {requestedPlaylist ? 'Playlist bias' : `Focus ${focusedPatternLabel}`}
                   </span>
                 )}
+                <span className="mcq-session-progress">Question {multipleChoicePosition} of {multipleChoiceTotal}</span>
               </div>
                 ) : null}
               </>
             )}
           </div>
-          <div className="card-header-aside">
+          <div className={headerControlsOpen ? 'card-header-aside card-header-aside-open' : 'card-header-aside'}>
             <div
               className="card-header-controls-panel"
               id="card-header-controls-panel"
+              inert={!headerControlsOpen}
+              aria-hidden={!headerControlsOpen}
             >
               <div className="card-header-side">
               <div className="practice-mode-control" role="group" aria-label="Practice mode">
@@ -4829,10 +4825,10 @@ function App() {
                     type="button"
                     className={tagsExpanded ? 'card-side-drawer-toggle card-tags-drawer-toggle active' : 'card-side-drawer-toggle card-tags-drawer-toggle'}
                     aria-expanded={tagsExpanded}
-                    aria-controls={visibleCardTags.length > 0 ? tagsListId : undefined}
+                    aria-controls={hasHeaderDetails ? tagsListId : undefined}
                     aria-label={tagsExpanded ? 'Hide tags' : 'Show tags'}
-                    title={visibleCardTags.length ? (tagsExpanded ? 'Hide tags' : 'Show tags') : 'No tags for this card'}
-                    disabled={visibleCardTags.length === 0}
+                    title={hasHeaderDetails ? (tagsExpanded ? 'Hide tags' : 'Show tags') : 'No tags for this card'}
+                    disabled={!hasHeaderDetails}
                     onClick={() => setTagsExpanded((current) => !current)}
                   >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -4843,7 +4839,46 @@ function App() {
               </div>
             </div>
             </div>
+            <button
+              type="button"
+              className="card-header-settings-toggle"
+              aria-controls="card-header-controls-panel"
+              aria-expanded={headerControlsOpen}
+              aria-label={headerControlsOpen ? 'Hide card controls' : 'Show card controls'}
+              title={headerControlsOpen ? 'Hide card controls' : 'Show card controls'}
+              onClick={() => setHeaderControlsOpen((open) => !open)}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125Z" />
+              </svg>
+            </button>
           </div>
+          {hasHeaderDetails && (
+            <div className={tagsExpanded ? 'tags expanded' : 'tags'}>
+              <div className="tags-list" id={tagsListId} aria-label="Card details and tags" aria-hidden={!tagsExpanded}>
+                {headerBadgeLabels.map((label, index) => (
+                  <span className="tag-item" key={`badge-${label}`}>
+                    <span className="tag tag-static">{label.toLowerCase()}</span>
+                    {(index < headerBadgeLabels.length - 1 || visibleCardTags.length > 0) && <span className="tag-separator" aria-hidden="true">,</span>}
+                  </span>
+                ))}
+                {visibleCardTags.map((tag, index) => (
+                  <span className="tag-item" key={tag}>
+                    <button
+                      type="button"
+                      className={focusedTagSlug === tag ? 'tag tag-button active' : 'tag tag-button'}
+                      onClick={() => handleTagClick(tag)}
+                      aria-pressed={focusedTagSlug === tag}
+                      disabled={!tagsExpanded}
+                    >
+                      {tag.replaceAll('-', ' ')}
+                    </button>
+                    {index < visibleCardTags.length - 1 && <span className="tag-separator" aria-hidden="true">,</span>}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {sessionFinished && (
@@ -4870,9 +4905,24 @@ function App() {
           </div>
         )}
 
-        {flowTransition && <FlowCoachTransition transition={flowTransition} />}
+        <div className={flowTransition ? 'flow-stage-stack flow-stage-stack-transitioning' : 'flow-stage-stack'}>
+        {flowTransition && (
+          <FlowCoachTransition
+            transition={flowTransition}
+            settling={flowTransitionSettlingId === flowTransition.id}
+          />
+        )}
         <div
-          className={flowTransition ? 'flow-stage-content flow-stage-content-preparing' : 'flow-stage-content'}
+          ref={flowStageContentRef}
+          className={[
+            'flow-stage-content',
+            practiceFlow ? `flow-stage-content-${practiceFlow.stage}` : '',
+            flowTransition
+              ? flowTransitionSettlingId === flowTransition.id
+                ? 'flow-stage-content-settling'
+                : 'flow-stage-content-preparing'
+              : '',
+          ].filter(Boolean).join(' ')}
           aria-hidden={flowTransition ? true : undefined}
           inert={flowTransition ? true : undefined}
         >
@@ -4931,115 +4981,83 @@ function App() {
             {currentPracticeMode === 'multiple-choice' ? (
               !hasDeck ? (
                 activeLoading ? (
-                  <div className="skeleton-group multiple-choice-question-loading" role="status" aria-label="Generating multiple-choice question">
+                  <div className="prompt-surface-section skeleton-group" role="status" aria-label="Generating multiple-choice question">
+                    <div className="prompt-section-content" aria-hidden="true">
+                      <span className="prompt-section-label">Question</span>
+                    </div>
                     <div className="skeleton-line w95 tall" />
                     <div className="skeleton-line w80" />
                     <div className="skeleton-line w60" />
                   </div>
                 ) : (
-                  <>
-                    <p className="prompt prompt-bar">Multiple choice is unavailable right now.</p>
-                    <p className="hint">{activeError || 'Regenerate to request another LLM question set.'}</p>
+                  <div className="prompt-surface-section">
+                    <span className="prompt-section-label">Question</span>
+                    <p className="prompt prompt-surface-body prompt-bar">Multiple choice is unavailable right now.</p>
+                    <p className="hint">{activeError || 'No question set was returned.'}</p>
                     {isFlowActive && <button type="button" className="secondary" onClick={() => void fetchFlowMultipleChoiceDeck()}>Retry MCQ</button>}
-                  </>
+                  </div>
                 )
               ) : activeMultipleChoiceCard ? (
-                <div className="multiple-choice-question-panel">
-                  <div className="prompt multiple-choice-question">
-                    <MarkdownCodeContent
-                      text={activeMultipleChoiceCard.question}
-                      syntaxTheme={syntaxTheme}
-                      theme={theme}
-                      editorBlocks
-                    />
+                <div className="prompt-surface-section">
+                  <div className="prompt-section-content">
+                    <span className="prompt-section-label">Question</span>
+                    <div className="prompt prompt-surface-body multiple-choice-question">
+                      <MarkdownCodeContent
+                        text={activeMultipleChoiceCard.question}
+                        syntaxTheme={syntaxTheme}
+                        theme={theme}
+                        editorBlocks
+                      />
+                    </div>
                   </div>
                 </div>
               ) : null
             ) : !hasDeck ? (
               activeLoading ? (
-                <div className="skeleton-group">
+                <div className="prompt-surface-section skeleton-group" role="status" aria-label="Loading prompt">
+                  <span className="prompt-section-label" aria-hidden="true">Prompt</span>
                   <div className="skeleton-line w95 tall" />
                   <div className="skeleton-line w80" />
                   <div className="skeleton-line w60" />
                 </div>
               ) : (
-                <>
-                  <p className="prompt prompt-bar">The skill-map deck is unavailable right now.</p>
-                  <p className="hint">{activeError || 'Try restarting the session to request another generated deck.'}</p>
-                </>
+                <div className="prompt-surface-section">
+                  <span className="prompt-section-label">Prompt</span>
+                  <p className="prompt prompt-surface-body prompt-bar">The skill-map deck is unavailable right now.</p>
+                  <p className="hint">{activeError || 'No drills were returned.'}</p>
+                </div>
               )
             ) : (
               <div className="drill-fade-in">
-                <div className={skeletonReference
-                  ? 'prompt-toggle-card prompt-feedback-surface skeleton-reference-surface'
-                  : 'prompt-toggle-card prompt-feedback-surface'}>
-                  <div className="prompt-surface-section">
-                    {!skeletonReference && (
-                      <div className="prompt-toggle-header">
-                        <div className="prompt-section-content">
-                          <span className="prompt-section-label">Prompt</span>
-                          <p className="prompt prompt-toggle-text">{practicePrompt}</p>
-                        </div>
-
-                      </div>
-                    )}
-                    {skeletonReference ? (
-                      <section className="skeleton-reference" aria-label={`${card.title} reference`}>
-                        <div className="skeleton-reference-overview">
-                          <div className="skeleton-reference-fact explanation">
-                            <span className="skeleton-reference-term">Explanation</span>
-                            <p>{skeletonReference.explanation}</p>
-                          </div>
-                          <div className="skeleton-reference-spec" aria-label="Pattern specification">
-                            <dl className="skeleton-reference-spec-grid">
-                              <div
-                                className="skeleton-reference-spec-item"
-                                title="Once the pattern is recognized, how much of the implementation follows the template?"
-                              >
-                                <dt>Template</dt>
-                                <dd><strong>{skeletonReference.templateStrength}</strong><span>/10</span></dd>
-                              </div>
-                              <div
-                                className="skeleton-reference-spec-item"
-                                title="How much reasoning is required to map a problem onto this pattern?"
-                              >
-                                <dt>Abstraction</dt>
-                                <dd><strong>{skeletonReference.applicationAbstraction}</strong><span>/10</span></dd>
-                              </div>
-                              <div className="skeleton-reference-spec-item complexity">
-                                <dt>Time</dt>
-                                <dd>{skeletonReference.timeComplexity}</dd>
-                              </div>
-                            </dl>
-                          </div>
-                        </div>
-                        <div className="skeleton-reference-fact invariant">
-                          <span className="skeleton-reference-term">Invariant</span>
-                          <p>{skeletonReference.invariant}</p>
-                        </div>
-                      </section>
-                    ) : null}
+                <div className="prompt-surface-section">
+                  <div className="prompt-section-content">
+                    <span className="prompt-section-label">{skeletonReference ? 'Explanation' : 'Prompt'}</span>
+                    <p className="prompt prompt-surface-body">{skeletonReference ? skeletonReference.explanation : practicePrompt}</p>
                   </div>
-                  {submissionFeedbackBlock}
                 </div>
               </div>
             )}
           </div>
 
-          <div className="panel">
+          <div className={currentPracticeMode === 'recall' && hasDeck && mainPhase === 'preview' ? 'panel recall-preview-panel' : 'panel'}>
             {currentPracticeMode === 'multiple-choice' ? (
               !hasDeck ? (
                 activeLoading ? (
-                  <div className="multiple-choice-options" role="status" aria-label="Generating answer choices">
-                    {['A', 'B', 'C', 'D'].map((choice) => (
-                      <div className="multiple-choice-option multiple-choice-option-loading" key={choice} aria-hidden="true">
-                        <span className="multiple-choice-option-id">{choice}</span>
-                        <div className="skeleton-group">
-                          <div className="skeleton-line w95" />
-                          <div className="skeleton-line w60" />
+                  <div className="multiple-choice-card" role="status" aria-label="Generating answer choices">
+                    <div className="mcq-section-heading" aria-hidden="true">
+                      <span className="prompt-section-label">Choose one answer</span>
+                    </div>
+                    <div className="multiple-choice-options">
+                      {['A', 'B', 'C', 'D'].map((choice) => (
+                        <div className="multiple-choice-option multiple-choice-option-loading" key={choice} aria-hidden="true">
+                          <span className="multiple-choice-option-id">{choice}</span>
+                          <div className="skeleton-group">
+                            <div className="skeleton-line w95" />
+                            <div className="skeleton-line w60" />
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <div className="hint" style={{ marginTop: 0 }}>
@@ -5048,6 +5066,9 @@ function App() {
                 )
               ) : activeMultipleChoiceCard ? (
                 <div className="multiple-choice-card">
+                  <div className="mcq-section-heading">
+                    <span className="prompt-section-label">Choose one answer</span>
+                  </div>
                   <div className="multiple-choice-options" role="radiogroup" aria-label="Answer choices">
                     {activeMultipleChoiceCard.choices.map((choice) => {
                       const isSelected = (isFlowActive ? flowMultipleChoiceSelectedChoiceId : multipleChoiceSelectedChoiceId) === choice.id
@@ -5081,33 +5102,22 @@ function App() {
                           <span className="multiple-choice-option-id">{choice.id}</span>
                           <span className="multiple-choice-option-text">
                             <MarkdownCodeContent text={choice.text} syntaxTheme={syntaxTheme} compact />
-                            {multipleChoiceSubmitted && isSubmittedChoice && (
-                              <span className="multiple-choice-inline-result">
-                                {multipleChoiceCorrect ? (
-                                  <span className="multiple-choice-inline-result-explanation">
-                                    <MarkdownCodeContent text={activeMultipleChoiceCard.explanation} syntaxTheme={syntaxTheme} compact />
-                                  </span>
-                                ) : (
-                                  <>
-                                    <span className="multiple-choice-inline-result-wrong">Incorrect.</span>
-                                    {correctMultipleChoice && (
-                                      <span className="multiple-choice-inline-result-correct-label">
-                                        Correct answer: <strong>{correctMultipleChoice.id}.</strong>{' '}
-                                        <MarkdownCodeContent text={correctMultipleChoice.text} syntaxTheme={syntaxTheme} compact />
-                                      </span>
-                                    )}
-                                    <span className="multiple-choice-inline-result-explanation">
-                                      <MarkdownCodeContent text={activeMultipleChoiceCard.explanation} syntaxTheme={syntaxTheme} compact />
-                                    </span>
-                                  </>
-                                )}
-                              </span>
-                            )}
                           </span>
                         </button>
                       )
                     })}
                   </div>
+                  {multipleChoiceSubmitted && (
+                    <div className={multipleChoiceCorrect ? 'mcq-feedback mcq-feedback-correct' : 'mcq-feedback mcq-feedback-incorrect'} role="status">
+                      <div className="mcq-feedback-heading">
+                        <span className="mcq-feedback-mark" aria-hidden="true">{multipleChoiceCorrect ? '✓' : '↗'}</span>
+                        <strong>{multipleChoiceCorrect ? 'Correct' : 'Not quite'}</strong>
+                      </div>
+                      <div className="mcq-feedback-explanation">
+                        <MarkdownCodeContent text={activeMultipleChoiceCard.explanation} syntaxTheme={syntaxTheme} compact />
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : null
             ) : !hasDeck ? (
@@ -5149,7 +5159,6 @@ function App() {
                         foldControls={codeEditorTuning.foldControls}
                         showSearchPanel={codeEditorTuning.showSearchPanel}
                         onChange={() => {}}
-                        onSubmitHotkey={startMainRecall}
                       />
                     </div>
                   </div>
@@ -5166,13 +5175,20 @@ function App() {
                   className={[
                     'code-container recall-editor-container',
                     latestSubmittedWasGhostRep ? 'recall-editor-container-ghost-submitted' : '',
+                    totalRecallEvaluationPending ? 'recall-editor-container-recall-evaluating' : '',
                   ].filter(Boolean).join(' ')}
+                  aria-busy={totalRecallEvaluationPending || undefined}
                   style={recallMinHeight ? { minHeight: recallMinHeight } : undefined}
                 >
                   <div className="typing-editor-shell">
                     <div className="recall-editor-code-wrap">
                       <div className="recall-submit-summary-slot" aria-live="polite">
-                        {mainPhase === 'submitted' && latestSubmittedAttempt && (
+                        {totalRecallEvaluationPending ? (
+                          <div className="recall-submit-summary recall-submit-summary-loading" role="status">
+                            <span className="recall-submit-loading-indicator" aria-hidden="true" />
+                            <span>Evaluating recall…</span>
+                          </div>
+                        ) : mainPhase === 'submitted' && latestSubmittedAttempt ? (
                           <div className="recall-submit-summary">
                             <span className="recall-submit-metric">
                               <span className="recall-submit-metric-name">Outcome</span>
@@ -5183,15 +5199,15 @@ function App() {
                               <span className="recall-submit-metric-value">{(latestSubmittedAttempt.elapsedMs / 1000).toFixed(1)}s</span>
                             </span>
                           </div>
-                        )}
+                        ) : null}
                       </div>
                       <RecallCodeEditor
                         ref={mainInputRef}
                         value={mainInput}
                         language={practiceLanguage}
                         theme={theme}
-                        editable={mainPhase === 'typing'}
-                        disabled={hasAnsweredCurrent || sessionFinished}
+                        editable={mainPhase === 'typing' && !totalRecallEvaluationPending}
+                        disabled={hasAnsweredCurrent || sessionFinished || totalRecallEvaluationPending}
                         placeholder={mainPhase === 'typing' && (isGhostRepsEnabled || inlineEnabled) ? '' : supportedPracticePlaceholder}
                         ghostTarget={mainPhase === 'typing' && isGhostRepsEnabled ? ghostTargetCode : undefined}
                         inlineTask={currentInlineTask}
@@ -5203,17 +5219,11 @@ function App() {
                         foldControls={codeEditorTuning.foldControls}
                         showSearchPanel={codeEditorTuning.showSearchPanel}
                         onChange={handleMainInputChange}
-                        onSubmitHotkey={handleRecallEditorSubmitHotkey}
                         onEnterKey={handleGhostRepEnterKey}
                       />
                     </div>
                   </div>
                 </div>
-                <p className="typing-help">
-                  {isGhostRepsEnabled
-                    ? <>Ghost Reps are saved as supported work · trace the faint target as many times as needed · <kbd>{primaryRecallHotkey}</kbd> to log{!isFlowActive && <> · <kbd>{moveCardsHotkey}</kbd> to move cards</>}</>
-                    : <><kbd>{indentOutdentHotkey}</kbd> adjusts indentation · Enter auto-indents · <kbd>{primaryRecallHotkey}</kbd> to submit{!isFlowActive && <> · <kbd>{moveCardsHotkey}</kbd> to move cards</>}</>}
-                </p>
               </>
             )}
           </div>
@@ -5221,24 +5231,17 @@ function App() {
         </div>
         )}
         </div>
+        </div>
 
         {!flowTransition && (flowDrawerOpen ? (
-          <div className="card-control-bar card-flow-footer">
-            <div className="card-control-group">
-              <button
-                type="button"
-                className="secondary card-control-button"
-                onClick={() => setFlowDrawerOpen(false)}
-              >
-                Close
-              </button>
-            </div>
+          <div className="card-control-bar">
             <div className="card-control-group card-control-group-primary">
               <button
                 type="button"
-                 className="card-control-button"
-                 onClick={practiceFlow ? stopPracticeFlow : startPracticeFlow}
-                 disabled={!practiceFlow && (!hasRecallDeck || sessionFinished || flowHistoryLoading)}
+                ref={primaryCardButtonRef}
+                className="card-control-button"
+                onClick={practiceFlow ? stopPracticeFlow : startPracticeFlow}
+                disabled={!practiceFlow && (!hasRecallDeck || sessionFinished || flowHistoryLoading)}
               >
                 {practiceFlow ? 'Stop flow' : 'Start flow'}
               </button>
@@ -5247,41 +5250,44 @@ function App() {
         ) : (
         <div className="card-control-bar">
           <div className="card-control-group">
-            <button className="secondary card-control-button" onClick={goPrev} disabled={!canGoPrev} aria-label="Previous card">
+            <button type="button" className="secondary card-control-button" onClick={goPrev} disabled={!canGoPrev} aria-label="Previous card">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M21 16.811c0 .864-.933 1.406-1.683.977l-7.108-4.061a1.125 1.125 0 0 1 0-1.954l7.108-4.061A1.125 1.125 0 0 1 21 8.689v8.122ZM11.25 16.811c0 .864-.933 1.406-1.683.977l-7.108-4.061a1.125 1.125 0 0 1 0-1.954l7.108-4.061a1.125 1.125 0 0 1 1.683.977v8.122Z" />
               </svg>
               <span>Previous</span>
             </button>
-            <button className="secondary card-control-button" onClick={goNext} disabled={!canGoNext} aria-label="Next card">
+            <button type="button" className="secondary card-control-button" onClick={goNext} disabled={!canGoNext} aria-label="Next card">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061A1.125 1.125 0 0 1 3 16.811V8.69ZM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061a1.125 1.125 0 0 1-1.683-.977V8.69Z" />
               </svg>
               <span>Next</span>
             </button>
-            <button
-              className="secondary card-control-button"
-              onClick={restartSession}
-              aria-label={skeletonReference ? 'Restart static session' : 'Regenerate session'}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-              </svg>
-              <span>{skeletonReference ? 'Restart' : 'Regenerate'}</span>
-            </button>
           </div>
-
-          {primaryCardAction && !(flowDrawerOpen && primaryCardAction.label === 'Start') && (
-            <div className="card-control-group card-control-group-primary">
+          {primaryCardAction && (
+          <div className="card-control-group card-control-group-primary">
               <button
-                className="card-control-button"
+                type="button"
+                ref={primaryCardButtonRef}
+                className={isFlowActive && primaryCardAction.label === 'Next'
+                  ? 'card-control-button card-control-button-flow-next'
+                  : 'card-control-button'}
                 onClick={primaryCardAction.onClick}
                 disabled={primaryCardAction.disabled}
+                aria-label={isFlowActive && primaryCardAction.label === 'Next' ? 'Continue to the next modality' : undefined}
               >
-                {primaryCardAction.icon}
-                <span>{primaryCardAction.label}</span>
+                {isFlowActive && primaryCardAction.label === 'Next' ? (
+                  <>
+                    <span>{primaryCardAction.label}</span>
+                    {primaryCardAction.icon}
+                  </>
+                ) : (
+                  <>
+                    {primaryCardAction.icon}
+                    <span>{primaryCardAction.label}</span>
+                  </>
+                )}
               </button>
-            </div>
+          </div>
           )}
         </div>
         ))}
@@ -5294,6 +5300,7 @@ function App() {
         />
       )}
       </div>
+      )}
     </div>
   )
 }

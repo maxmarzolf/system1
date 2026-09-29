@@ -203,7 +203,6 @@ class SkeletonApplicability(BaseModel):
     applicationAbstraction: int = Field(ge=0, le=10)
     summary: str = Field(min_length=1)
     explanation: str = Field(min_length=1)
-    invariant: str = Field(min_length=1)
     timeComplexity: str = Field(min_length=1)
 
 

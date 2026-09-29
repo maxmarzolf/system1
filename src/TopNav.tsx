@@ -1,17 +1,6 @@
 import { Link } from 'react-router-dom'
-import { type ReactNode, type RefObject, useEffect, useState } from 'react'
+import { type ReactNode, type RefObject } from 'react'
 import { useTheme } from './theme'
-
-const NAVBAR_COUNTER_SCRAMBLE_GLYPHS = ['ｱ', 'ｲ', 'ｳ', 'ｴ', 'ｵ', 'ｶ', 'ｷ', 'ｸ', 'ｹ', 'ｺ', 'ｻ', 'ｼ', 'ｽ', 'ｾ', 'ｿ']
-
-const scrambleCounterText = (text: string, frame: number) =>
-  text
-    .split('')
-    .map((char, index) => {
-      if (!/\d/.test(char)) return char
-      return NAVBAR_COUNTER_SCRAMBLE_GLYPHS[(frame + index * 3) % NAVBAR_COUNTER_SCRAMBLE_GLYPHS.length]
-    })
-    .join('')
 
 type TopNavProps = {
   llmProviderLabel?: string
@@ -19,50 +8,8 @@ type TopNavProps = {
   llmProviderMenuOpen?: boolean
   onToggleLlmProviderMenu?: () => void
   llmProviderMenuRef?: RefObject<HTMLDivElement | null>
-  sessionCounterText?: string
-  sessionCounterLoading?: boolean
   practiceHistoryHref?: string
   rightExtras?: ReactNode
-}
-
-function NavbarCounter({
-  text,
-  loading,
-}: {
-  text: string
-  loading: boolean
-}) {
-  const [frame, setFrame] = useState(0)
-
-  useEffect(() => {
-    if (!loading) return
-
-    const intervalId = window.setInterval(() => {
-      setFrame((current) => current + 1)
-    }, 150)
-
-    return () => window.clearInterval(intervalId)
-  }, [loading])
-
-  const compactText = text.replace(/\s*\/\s*/g, '/')
-  const displayText = loading ? scrambleCounterText(compactText, frame) : compactText
-
-  return (
-    <span
-      className={loading ? 'navbar-counter navbar-counter-loading' : 'navbar-counter'}
-      aria-live="polite"
-      aria-busy={loading}
-    >
-      <span className="navbar-counter-text" aria-hidden="true">
-        {displayText.split('').map((character, index) => (
-          <span className={character === '/' ? 'navbar-counter-separator' : 'navbar-counter-glyph'} key={index}>
-            {character}
-          </span>
-        ))}
-      </span>
-      <span className="sr-only">{loading ? 'Loading session counter' : text}</span>
-    </span>
-  )
 }
 
 export default function TopNav({
@@ -71,8 +18,6 @@ export default function TopNav({
   llmProviderMenuOpen = false,
   onToggleLlmProviderMenu,
   llmProviderMenuRef,
-  sessionCounterText,
-  sessionCounterLoading = false,
   practiceHistoryHref = '/practice-history',
   rightExtras,
 }: TopNavProps) {
@@ -108,7 +53,6 @@ export default function TopNav({
         </div>
       </div>
       <div className="navbar-right">
-        {sessionCounterText && <NavbarCounter text={sessionCounterText} loading={sessionCounterLoading} />}
         <div className="navbar-theme">
           <button
             type="button"

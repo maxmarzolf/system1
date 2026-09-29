@@ -104,7 +104,7 @@ def test_catalog_service_groups_problem_backed_playlist_rows(monkeypatch):
                 "show_on_skill_map": True,
                 "static_deck": True,
                 "item_title": "1. Two Sum",
-                "playlist_metadata": json.dumps({
+                "item_metadata": json.dumps({
                     "coreShape": "Arrays / Hash Maps",
                     "methods": ["pair lookup"],
                 }),

@@ -48,6 +48,7 @@ def test_algorithm_curricula_have_intentionally_sized_unique_taxonomies() -> Non
 
 def test_taxonomy_catalog_is_internally_consistent() -> None:
     assert set(ALGORITHM_SKILLS) <= set(ALGORITHMS)
+    assert "arrays-hash-maps" not in ALGORITHMS
     assert not set(RETIRED_SKILLS) & set(CANONICAL_SKILLS)
     assert "correctness-reasoning" not in RETIRED_SKILLS
     assert "complexity-analysis" not in RETIRED_SKILLS
@@ -327,7 +328,6 @@ def test_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -> None:
         "applicationAbstraction": 2,
         "summary": "Queue → visited → neighbors",
         "explanation": "Breadth-first search expands the graph one distance layer at a time. Mark each node when it enters the queue so it is scheduled exactly once.",
-        "invariant": "Every queued node has been discovered but not yet processed, and every discovered node is already in visited.",
         "timeComplexity": "O(V + E)",
     }
     assert cards["Grid BFS Skeleton"]["skeletonApplicability"] == {
@@ -335,7 +335,6 @@ def test_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -> None:
         "applicationAbstraction": 3,
         "summary": "Queue → visited → four neighbors",
         "explanation": "Grid BFS explores cells in increasing distance from the start. Its queue and four-direction traversal are reusable; the problem-specific work is defining valid cells, the goal condition, and whether traversal begins from one or many sources.",
-        "invariant": "At the start of each outer iteration, the queue contains the current distance layer; every queued cell is already in visited and will be processed once.",
         "timeComplexity": "O(rows · cols)",
     }
     assert cards["Grid DFS Skeleton"]["skeletonApplicability"] == {
@@ -343,11 +342,10 @@ def test_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -> None:
         "applicationAbstraction": 3,
         "summary": "Bounds → visited → four neighbors",
         "explanation": "Grid DFS treats each cell as a graph node and explores its four orthogonal neighbors. The reusable traversal stays fixed; the problem-specific work is defining which cells are eligible to visit.",
-        "invariant": "visited contains every cell discovered from the start, and walk recurses only to in-bounds cells not already in that set.",
         "timeComplexity": "O(rows · cols)",
     }
     assert all(card["skeletonApplicability"]["explanation"] for card in cards.values())
-    assert all(card["skeletonApplicability"]["invariant"] for card in cards.values())
+    assert all("invariant" not in card["skeletonApplicability"] for card in cards.values())
     assert all(card["skeletonApplicability"]["timeComplexity"] for card in cards.values())
     assert cards["Greedy Skeleton"]["skeletonApplicability"]["applicationAbstraction"] == 9
     assert cards["Top-Down DP Skeleton"]["skeletonApplicability"]["templateStrength"] == 3
@@ -427,7 +425,7 @@ def test_skeleton_static_playlist_serves_reusable_algorithm_skeletons() -> None:
     )
     assert variable_window_card["solution"].startswith("def variable_size_window(items):")
     assert "while window_is_invalid(state):" in variable_window_card["solution"]
-    assert "# Shrink from the left until the invariant is restored." in variable_window_card["solution"]
+    assert "# Shrink from the left until the window is valid." in variable_window_card["solution"]
     compile(variable_window_card["solution"], f"<{variable_window_card['id']}>", "exec")
 
     assert top_down_card["id"] == "playlist-skeletons-top-down-dp-skeleton"

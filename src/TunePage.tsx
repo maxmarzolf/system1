@@ -581,7 +581,7 @@ export default function TunePage() {
             <TuneSection
               eyebrow="08"
               title="Hotkeys"
-              copy="Reference the keyboard controls available during recall practice and a Flow."
+              copy="Reference the keyboard controls available whenever a practice card is showing."
             >
               <div className="tune-hotkey-groups" id="hotkeys">
                 {hotkeyGroups.map((group) => (

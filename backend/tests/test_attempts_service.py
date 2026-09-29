@@ -286,8 +286,7 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
 
     overview = build_skill_map_overview(
         algorithm_rows=[
-            {"algorithm_id": 1, "algorithm_name": "Arrays / Hash Maps", "skill_name": None},
-            {"algorithm_id": 2, "algorithm_name": "Sliding Window", "skill_name": "valid window rule"},
+            {"algorithm_id": 1, "algorithm_name": "Sliding Window", "skill_name": "valid window rule"},
         ],
         generated_rows=[
             {"id": "playlist-google-1-two-sum", "title": "1. Two Sum", "tags": ["skill-map", "static-playlist", "google", "arrays-hash-maps"]},
@@ -324,14 +323,11 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
         ],
     )
 
-    arrays = next(item for item in overview["algorithms"] if item["slug"] == "arrays-hash-maps")
     sliding = next(item for item in overview["algorithms"] if item["slug"] == "sliding-window")
     google = next(item for item in overview["algorithms"] if item["slug"] == "google")
     skeletons = next(item for item in overview["algorithms"] if item["slug"] == "skeletons")
 
-    assert arrays["totalCards"] == 0
-    assert arrays["untouchedCards"] == 0
-    assert arrays["overallAttemptCount"] == 1
+    assert all(item["slug"] != "arrays-hash-maps" for item in overview["algorithms"])
     assert sliding["totalCards"] == 0
     assert sliding["untouchedCards"] == 0
     assert google["totalCards"] == 2

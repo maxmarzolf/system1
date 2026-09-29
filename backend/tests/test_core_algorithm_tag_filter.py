@@ -117,7 +117,6 @@ def test_static_playlist_drills_route_serves_skeletons(monkeypatch) -> None:
         'applicationAbstraction': 2,
         'summary': 'Queue → visited → neighbors',
         'explanation': 'Breadth-first search expands the graph one distance layer at a time. Mark each node when it enters the queue so it is scheduled exactly once.',
-        'invariant': 'Every queued node has been discovered but not yet processed, and every discovered node is already in visited.',
         'timeComplexity': 'O(V + E)',
     }
     assert payload['drills'][-2]['title'] == 'Top-Down DP Skeleton'

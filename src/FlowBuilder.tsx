@@ -15,6 +15,33 @@ const tileTiming = (blockIndex: number, tileIndex: number) => ({
   duration: 3.5 + seededRandom(blockIndex, tileIndex, 19) * 2,
 })
 
+function RecallFlagsScene() {
+  return (
+    <div className="flow-recall-scene" aria-hidden="true">
+      <svg className="flow-recall-string" viewBox="0 0 1000 56" preserveAspectRatio="none">
+        <path d="M0 4 Q500 20 1000 4" />
+      </svg>
+      {Array.from({ length: 20 }, (_, index) => {
+        const position = (index + 0.5) / 20
+        return (
+          <svg
+            key={index}
+            className="flow-recall-pennant"
+            viewBox="0 0 16 19"
+            style={{ left: `${position * 100}%`, top: `${4 + 32 * position * (1 - position)}px` }}
+          >
+            <path
+              className="flow-recall-pennant-fabric"
+              d="M1 0h14L8 18Z"
+              style={{ animationDelay: `${-index * 0.18}s` }}
+            />
+          </svg>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function FlowBuilder({ config, onChange, disabled }: {
   config: FlowConfig; onChange: (config: FlowConfig) => void; disabled: boolean
 }) {
@@ -105,17 +132,14 @@ export default function FlowBuilder({ config, onChange, disabled }: {
                 </div>
               )}
               {block.stage === 'recall' && (
-                <div className="flow-recall-scene" aria-hidden="true">
-                  <div className="flow-recall-stickman">
-                    <span className="flow-recall-head" />
-                    <span className="flow-recall-body" />
-                    <span className="flow-recall-arm flow-recall-arm-left" />
-                    <span className="flow-recall-arm flow-recall-arm-right" />
-                    <span className="flow-recall-leg flow-recall-leg-left" />
-                    <span className="flow-recall-leg flow-recall-leg-right" />
-                  </div>
-                  <span className="flow-recall-finish-line" />
-                </div>
+                <RecallFlagsScene />
+              )}
+              {block.stage === 'ghost' && (
+                <svg className="flow-ghost-icon" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M2 12.5V6.5a5 5 0 0 1 10 0v6l-1.5-1.5-1.5 1.5-1.5-1.5-1.5 1.5-1.5-1.5-1.5 1.5Z" />
+                  <circle cx="5.5" cy="6.5" r="0.75" fill="currentColor" stroke="none" />
+                  <circle cx="8.5" cy="6.5" r="0.75" fill="currentColor" stroke="none" />
+                </svg>
               )}
               <div className="flow-block-drag-zone">
                 <button
