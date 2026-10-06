@@ -738,6 +738,10 @@ export default function DashboardPage() {
   const algorithms = (overview?.algorithms ?? []).filter((node) =>
     !isRetiredArraysHashMaps(node.slug, node.algorithm) && !skillMapPlaylistSlugs.has(node.slug)
   )
+  const dashboardCards = [
+    ...skillMapPlaylists.map((playlist) => ({ kind: 'playlist' as const, title: playlist.title, playlist })),
+    ...algorithms.map((node) => ({ kind: 'algorithm' as const, title: node.algorithm, node })),
+  ].sort((left, right) => left.title.localeCompare(right.title, undefined, { sensitivity: 'base' }))
   const playlistPatternCount = (playlist: (typeof skillMapPlaylists)[number]) =>
     new Set(playlist.questions.map((question) => question.coreShape)).size
   const playlistTierCount = (playlist: (typeof skillMapPlaylists)[number]) =>
@@ -798,8 +802,9 @@ export default function DashboardPage() {
         {loading && !error && <p className="skill-map-intro">Loading readiness overview...</p>}
 
         <div className="skill-map-grid">
-          {skillMapPlaylists.filter((playlist) => playlist.slug === 'skeletons').map(renderPlaylistCard)}
-          {algorithms.map((node) => {
+          {dashboardCards.map((card) => {
+            if (card.kind === 'playlist') return renderPlaylistCard(card.playlist)
+            const node = card.node
             const isMeta = node.slug === 'meta'
             return (
               <article key={node.slug} className="skill-map-card">
@@ -827,7 +832,6 @@ export default function DashboardPage() {
               </article>
             )
           })}
-          {skillMapPlaylists.filter((playlist) => playlist.slug !== 'skeletons').map(renderPlaylistCard)}
         </div>
 
       </section>
