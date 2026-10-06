@@ -2007,6 +2007,7 @@ function MarkdownCodeContent({
       {parseMarkdownCodeSegments(text).map((segment, index) => {
         if (segment.type === 'code') {
           const normalizedCode = normalizePythonCodeForDisplay(segment.code, segment.language)
+          if (!normalizedCode) return null
           const lineCount = Math.max(normalizedCode.split('\n').length, 1)
           const snippetMinHeight = Math.min(Math.max(lineCount * 19 + 30, 82), 240)
 
