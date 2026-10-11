@@ -463,8 +463,8 @@
 }
 
 .multiple-choice-option.correct {
-  border-color: var(--hc-status-chip-success-border);
-  background: var(--hc-status-chip-success-bg);
+  border-color: color-mix(in srgb, var(--hc-mcq-correct-fg) 52%, transparent);
+  background: color-mix(in srgb, var(--hc-mcq-correct-fg) 9%, var(--hc-bg));
 }
 
 .multiple-choice-option.incorrect {
@@ -4405,8 +4405,8 @@ button.tune-reset {
 }
 
 .card-shell .multiple-choice-option.correct {
-  border-color: var(--hc-status-chip-success-border);
-  background: color-mix(in srgb, var(--hc-status-chip-success-bg) 76%, var(--workbench-surface-raised));
+  border-color: color-mix(in srgb, var(--hc-mcq-correct-fg) 52%, transparent);
+  background: color-mix(in srgb, var(--hc-mcq-correct-fg) 9%, var(--workbench-surface-raised));
 }
 
 .card-shell .multiple-choice-option.incorrect {
@@ -6225,9 +6225,9 @@ button.tune-reset {
 }
 
 .card-shell-mcq .multiple-choice-option.correct {
-  border-color: var(--hc-status-chip-success-border);
-  background: color-mix(in srgb, var(--hc-status-chip-success-bg) 76%, var(--workbench-surface-raised));
-  box-shadow: inset 3px 0 0 var(--hc-status-chip-success-fg);
+  border-color: color-mix(in srgb, var(--hc-mcq-correct-fg) 52%, transparent);
+  background: color-mix(in srgb, var(--hc-mcq-correct-fg) 9%, var(--workbench-surface-raised));
+  box-shadow: inset 3px 0 0 var(--hc-mcq-correct-fg);
 }
 
 .card-shell-mcq .multiple-choice-option.incorrect {
@@ -6251,7 +6251,7 @@ button.tune-reset {
 }
 
 .card-shell-mcq .multiple-choice-option.correct .multiple-choice-option-id {
-  color: var(--hc-status-chip-success-fg);
+  color: var(--hc-mcq-correct-fg);
 }
 
 .card-shell-mcq .multiple-choice-option.incorrect .multiple-choice-option-id {
@@ -6281,7 +6281,7 @@ button.tune-reset {
   animation: drillFadeIn 0.28s ease-out both;
 }
 
-.mcq-feedback-correct { --mcq-feedback-color: var(--hc-status-chip-success-fg); }
+.mcq-feedback-correct { --mcq-feedback-color: var(--hc-mcq-correct-fg); }
 .mcq-feedback-incorrect { --mcq-feedback-color: var(--hc-status-chip-error-fg); }
 
 .mcq-feedback-heading {
