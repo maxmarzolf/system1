@@ -4856,6 +4856,49 @@ button.tune-reset {
   background: var(--workbench-surface-soft);
 }
 
+.ladder-rung-title {
+  margin: 0.75rem 0 0.3rem;
+  color: var(--hc-fg);
+}
+
+.ladder-progress {
+  margin: 0 0 1rem;
+  color: var(--hc-fg-dim);
+  font-size: 0.78rem;
+}
+
+.ladder-grid .prompt-surface-body {
+  white-space: pre-wrap;
+}
+
+.ladder-answer-card .answer-label {
+  display: block;
+  margin-bottom: 0.8rem;
+}
+
+.ladder-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.ladder-complete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+}
+
+.ladder-grid .submission-feedback-detail pre {
+  overflow-x: auto;
+  padding: 0.8rem;
+  border: 1px solid var(--workbench-edge);
+  border-radius: var(--workbench-radius-sm);
+  background: var(--hc-editor-bg);
+  color: var(--hc-code-fg);
+  white-space: pre;
+}
+
 .micro-drill-instructions {
   display: grid;
   gap: 0.45rem;

@@ -1,6 +1,4 @@
 import { type ReactNode, useEffect, useState } from 'react'
-import { defaultLiveCoachTuning, loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoachTuning'
-import type { LiveCoachTuning } from './liveCoachTuning'
 import {
   defaultSubmissionTuning,
   loadStoredSubmissionTuning,
@@ -168,16 +166,11 @@ function NumberControl({
 export default function TunePage() {
   const configuredProviderLabel = useConfiguredProviderLabel()
   const hotkeyGroups = getHotkeyReferenceGroups(navigator.platform.includes('Mac'))
-  const [liveCoachTuning, setLiveCoachTuning] = useState<LiveCoachTuning>(() => loadStoredLiveCoachTuning())
   const [submissionTuning, setSubmissionTuning] = useState<SubmissionTuning>(() => loadStoredSubmissionTuning())
   const [specimenTuning, setSpecimenTuning] = useState<SpecimenTuning>(() => loadStoredSpecimenTuning())
   const [codeEditorTuning, setCodeEditorTuning] = useState<CodeEditorTuning>(() => loadStoredCodeEditorTuning())
   const [mcqTuning, setMcqTuning] = useState<McqTuning>(() => loadStoredMcqTuning())
   const [googlePlaylistTuning, setGooglePlaylistTuning] = useState<GooglePlaylistTuning>(() => loadStoredGooglePlaylistTuning())
-
-  useEffect(() => {
-    saveStoredLiveCoachTuning(liveCoachTuning)
-  }, [liveCoachTuning])
 
   useEffect(() => {
     saveStoredSubmissionTuning(submissionTuning)
@@ -198,10 +191,6 @@ export default function TunePage() {
   useEffect(() => {
     saveStoredGooglePlaylistTuning(googlePlaylistTuning)
   }, [googlePlaylistTuning])
-
-  const updateLiveCoachTuning = <K extends keyof LiveCoachTuning>(key: K, value: LiveCoachTuning[K]) => {
-    setLiveCoachTuning((prev) => ({ ...prev, [key]: value }))
-  }
 
   const updateSubmissionTuning = <K extends keyof SubmissionTuning>(key: K, value: SubmissionTuning[K]) => {
     setSubmissionTuning((prev) => ({ ...prev, [key]: value }))
@@ -231,7 +220,7 @@ export default function TunePage() {
         <div className="tune-hero">
           <div>
             <h2>Tune</h2>
-            <p>Persistent settings for generated specimens, the code editor, live feedback, and submission grading.</p>
+            <p>Persistent settings for generated specimens, AI code completion, and submission grading.</p>
           </div>
           <div className="tune-hero-meta" aria-label="Tune page behavior">
             <span>Auto-saves</span>
@@ -245,7 +234,7 @@ export default function TunePage() {
             <a href="#code-editor">Code editor</a>
             <a href="#google-playlist">Google</a>
             <a href="#mcq">MCQ</a>
-            <a href="#live-coach">Live coach</a>
+            <a href="#ai-completion">AI completion</a>
             <a href="#submission">Submission</a>
             <a href="#dimensions">Dimensions</a>
             <a href="#hotkeys">Hotkeys</a>
@@ -421,83 +410,15 @@ export default function TunePage() {
 
             <TuneSection
               eyebrow="05"
-              title="Live Coach"
-              copy="Control on-demand coach feedback and how specific it can be while you type."
-              action={(
-                <button className="secondary tune-reset" type="button" onClick={() => setLiveCoachTuning(defaultLiveCoachTuning)}>
-                  Reset
-                </button>
-              )}
+              title="AI Completion"
+              copy="Show short code suggestions inline while you type. Press Tab to accept a suggestion."
             >
-              <div className="tune-split" id="live-coach">
-                <div className="tune-control-grid">
-                  <SelectControl
-                    label="Focus mode"
-                    value={liveCoachTuning.focusMode}
-                    onChange={(value) => updateLiveCoachTuning('focusMode', value)}
-                    options={[
-                      { value: 'memorization', label: 'Memorization trainer' },
-                      { value: 'interview', label: 'Interview coach' },
-                    ]}
-                  />
-                  <SelectControl
-                    label="Tone"
-                    value={liveCoachTuning.tone}
-                    onChange={(value) => updateLiveCoachTuning('tone', value)}
-                    options={[
-                      { value: 'calm', label: 'Calm' },
-                      { value: 'direct', label: 'Direct' },
-                      { value: 'technical', label: 'Technical' },
-                    ]}
-                  />
-                  <SelectControl
-                    label="Specificity"
-                    value={liveCoachTuning.specificitySource}
-                    onChange={(value) => updateLiveCoachTuning('specificitySource', value)}
-                    options={[
-                      { value: 'time-and-quality', label: 'Time + live answer quality' },
-                      { value: 'time-only', label: 'Time only' },
-                    ]}
-                  />
-                  <SelectControl
-                    label="Canonical answer reveal"
-                    value={liveCoachTuning.canonicalAnswerStage}
-                    onChange={(value) => updateLiveCoachTuning('canonicalAnswerStage', value)}
-                    options={[
-                      { value: 'mid', label: 'Mid' },
-                      { value: 'late', label: 'Late' },
-                      { value: 'very-late', label: 'Very late' },
-                    ]}
-                  />
-                </div>
-
-                <div className="tune-toggle-list" aria-label="Live coach toggles">
-                  <ToggleControl
-                    checked={liveCoachTuning.enabled}
-                    onChange={(value) => updateLiveCoachTuning('enabled', value)}
-                    label="Enable on-demand live feedback"
-                  />
-                  <ToggleControl
-                    checked={liveCoachTuning.singleIssue}
-                    onChange={(value) => updateLiveCoachTuning('singleIssue', value)}
-                    label="Keep live feedback to one issue"
-                  />
-                  <ToggleControl
-                    checked={liveCoachTuning.allowExactEditsWhenStuck}
-                    onChange={(value) => updateLiveCoachTuning('allowExactEditsWhenStuck', value)}
-                    label="Allow exact edits only when stalled"
-                  />
-                  <ToggleControl
-                    checked={liveCoachTuning.showPatternNames}
-                    onChange={(value) => updateLiveCoachTuning('showPatternNames', value)}
-                    label="Let the coach name patterns explicitly"
-                  />
-                  <ToggleControl
-                    checked={liveCoachTuning.affirmationMode === 'stable-only'}
-                    onChange={(value) => updateLiveCoachTuning('affirmationMode', value ? 'stable-only' : 'never')}
-                    label="Show affirmation only when stable work is present"
-                  />
-                </div>
+              <div id="ai-completion" className="tune-toggle-list">
+                <ToggleControl
+                  checked={codeEditorTuning.aiCompletion}
+                  onChange={(value) => updateCodeEditorTuning('aiCompletion', value)}
+                  label="Enable Copilot-style inline suggestions"
+                />
               </div>
             </TuneSection>
 
@@ -549,11 +470,6 @@ export default function TunePage() {
                     checked={submissionTuning.allowExtraParameters}
                     onChange={(value) => updateSubmissionTuning('allowExtraParameters', value)}
                     label="Treat added parameters as a minor deviation"
-                  />
-                  <ToggleControl
-                    checked={submissionTuning.microDrillEnabled}
-                    onChange={(value) => updateSubmissionTuning('microDrillEnabled', value)}
-                    label="Generate a reinforcement question after submission"
                   />
                 </div>
               </div>

@@ -30,7 +30,7 @@ Hard rules:
 7. `app/domain/submission_evaluation.py::canonical_submission_evaluation`
 8. `app/services/attempts_service.py::create_attempt` persists the canonical result.
 
-The client sends the attempt once and never supplies its own verdict or evaluation signals. The submission service owns the complete final-evaluation transaction. `POST /api/coach/live-feedback` is a separate, non-persisted assessor-only path for coaching while the user is still typing.
+The client sends the attempt once and never supplies its own verdict or evaluation signals. The submission service owns the complete final-evaluation transaction. While the user types, CodeMirror requests non-persisted code suggestions from `POST /api/coach/inline-completion`. The older `POST /api/coach/live-feedback` route remains available for compatibility but is not used by the web editor.
 
 ### 1b) Coach Variations
 1. `POST /api/coach/adaptive-variation` or `POST /api/coach/sequential-variation`

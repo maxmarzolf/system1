@@ -32,6 +32,19 @@ class SubmissionModality(str, Enum):
 # ─── Request schemas ───
 
 
+class InlineCompletionRequest(BaseModel):
+    prefix: str = Field(max_length=8000)
+    suffix: str = Field(max_length=4000)
+    language: str = Field(default="python", max_length=40)
+    cardTitle: str = Field(default="", max_length=200)
+    prompt: str = Field(default="", max_length=3000)
+    llmProvider: str = ""
+
+
+class InlineCompletionResponse(BaseModel):
+    prediction: str = ""
+
+
 class SubmissionSignals(BaseModel):
     elapsedMs: int = Field(default=0, ge=0)
     evaluation: dict[str, Any] | None = None
@@ -566,3 +579,30 @@ class FlowMicroDrillResponse(BaseModel):
     language: str
     template: str
     solution: str
+
+
+class SlidingWindowLadderAttempt(BaseModel):
+    rungIndex: int = Field(ge=0, le=4)
+    successful: bool
+    strength: str = Field(default="", max_length=400)
+    weakness: str = Field(default="", max_length=400)
+    question: str = Field(default="", max_length=500)
+
+
+class SlidingWindowLadderRequest(BaseModel):
+    cardTitle: str = Field(min_length=1, max_length=200)
+    cardPrompt: str = Field(default="", max_length=3000)
+    cardTarget: str = Field(default="", max_length=8000)
+    technique: Literal["fixed", "variable"]
+    rungIndex: int = Field(ge=0, le=4)
+    rep: int = Field(ge=1, le=10)
+    recentAttempts: list[SlidingWindowLadderAttempt] = Field(default_factory=list, max_length=8)
+    llmProvider: str = ""
+
+
+class SlidingWindowLadderResponse(BaseModel):
+    rungTitle: str
+    question: str
+    starterCode: str
+    solution: str
+    language: str = "python"

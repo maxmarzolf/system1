@@ -13,6 +13,7 @@ export type CodeEditorStyleGuide = 'none' | 'python-pep8'
 export type CodeEditorTuning = {
   language: CodeEditorLanguage
   intellisense: boolean
+  aiCompletion: boolean
   styleGuide: CodeEditorStyleGuide
   commonPatterns: boolean
   foldControls: boolean
@@ -24,6 +25,7 @@ export const CODE_EDITOR_TUNING_STORAGE_KEY = 'system1-code-editor-tuning-v1'
 export const defaultCodeEditorTuning: CodeEditorTuning = {
   language: 'python',
   intellisense: true,
+  aiCompletion: true,
   styleGuide: 'python-pep8',
   commonPatterns: true,
   foldControls: false,
@@ -65,6 +67,9 @@ export const loadStoredCodeEditorTuning = (): CodeEditorTuning => {
       intellisense: typeof parsed.intellisense === 'boolean'
         ? parsed.intellisense
         : defaultCodeEditorTuning.intellisense,
+      aiCompletion: typeof parsed.aiCompletion === 'boolean'
+        ? parsed.aiCompletion
+        : defaultCodeEditorTuning.aiCompletion,
       styleGuide: isCodeEditorStyleGuide(parsed.styleGuide)
         ? parsed.styleGuide
         : defaultCodeEditorTuning.styleGuide,

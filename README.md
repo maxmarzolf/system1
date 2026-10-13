@@ -81,7 +81,8 @@ Core endpoints:
 - `POST /api/attempts`
 - `GET /api/skill-map`
 - `GET /api/skill-map-overview`
-- `POST /api/coach/live-feedback` (non-persisted, in-progress coaching)
+- `POST /api/coach/inline-completion` (non-persisted code suggestions for CodeMirror)
+- `POST /api/coach/live-feedback` (legacy endpoint; the web editor no longer calls it)
 - `POST /api/coach/history`
 - `POST /api/coach/session-plan`
 - `POST /api/coach/skill-map-drills`
@@ -91,6 +92,7 @@ Core endpoints:
 - `GET /api/coach/problem-drills/technique/{technique_slug}`
 - `GET /api/coach/playlist-drills/{playlist_slug}`
 - `POST /api/coach/multiple-choice-drills`
+- `POST /api/coach/sliding-window-ladder`
 - `POST /api/coach/adaptive-variation`
 - `POST /api/coach/sequential-variation`
 - `GET /api/catalog/playlists`
@@ -117,6 +119,8 @@ docker compose ps
 Open the Flow control from the practice card toolbar to replace the card body with the flow configuration view. Custom flows support drag-and-drop block ordering from the hamburger handle, modality and repetition controls, and block removal. The configuration is saved locally and can be started or stopped from the card footer.
 
 Each modality has its own visual cue while configuring a flow: Recall shows a running figure, Ghost shows a bouncing ghost, Multiple Choice uses flashing color sections, and Microdrill fills randomized square tiles.
+
+The Ladder control on fixed and variable sliding window cards opens a five-rung coding sequence. Each rung requires ten successful reps written from a function signature; a miss receives feedback and a new question on the same rung. Progress is saved per card. The Ladder control is disabled for other algorithms while this first curriculum is being developed.
 
 ### Stop Services
 

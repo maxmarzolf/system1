@@ -4,6 +4,10 @@ from fastapi.responses import StreamingResponse
 from app.models import (
     FlowMicroDrillRequest,
     FlowMicroDrillResponse,
+    SlidingWindowLadderRequest,
+    SlidingWindowLadderResponse,
+    InlineCompletionRequest,
+    InlineCompletionResponse,
     AdaptiveVariationRequest,
     AdaptiveVariationResponse,
     CoachAttemptFeedbackRequest,
@@ -20,11 +24,16 @@ from app.models import (
     SkillMapDrillsRequest,
     SkillMapDrillsResponse,
 )
-from app.services import micro_drill_service
+from app.services import inline_completion_service, micro_drill_service, sliding_window_ladder_service
 from app.services import coach_service
 from app.services import problem_practice_service
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])
+
+
+@router.post("/inline-completion", response_model=InlineCompletionResponse)
+async def coach_inline_completion(body: InlineCompletionRequest):
+    return await inline_completion_service.generate_inline_completion(body)
 
 
 @router.get("/provider-default", response_model=CoachProviderDefaultResponse)
@@ -106,4 +115,12 @@ async def coach_micro_drill(body: FlowMicroDrillRequest):
     try:
         return await micro_drill_service.generate_flow_micro_drill(body)
     except micro_drill_service.MicroDrillGenerationError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@router.post("/sliding-window-ladder", response_model=SlidingWindowLadderResponse)
+async def coach_sliding_window_ladder(body: SlidingWindowLadderRequest):
+    try:
+        return await sliding_window_ladder_service.generate_ladder_question(body)
+    except sliding_window_ladder_service.LadderGenerationError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error

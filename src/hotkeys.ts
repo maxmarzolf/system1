@@ -10,8 +10,7 @@ export type HotkeyId =
   | 'toggle-ghost-reps'
   | 'move-cards'
   | 'indent-outdent'
-  | 'stuck-hint'
-  | 'toggle-live-feedback'
+  | 'toggle-ai-completion'
   | 'toggle-inline-feedback'
 
 type HotkeyBinding = {
@@ -119,19 +118,11 @@ const hotkeyDefinitions: HotkeyDefinition[] = [
     editorKey: 'Tab',
   },
   {
-    id: 'stuck-hint',
-    group: 'Editor and coaching',
-    displayKeys: ['Mod', 'Shift', 'H'],
-    label: 'Stuck hint',
-    description: 'Currently unavailable while live feedback is disabled.',
-    bindings: [{ key: 'h', modifier: 'meta', shift: true }],
-  },
-  {
-    id: 'toggle-live-feedback',
+    id: 'toggle-ai-completion',
     group: 'Editor and coaching',
     displayKeys: ['Mod', 'L'],
-    label: 'Toggle live feedback',
-    description: 'Currently disabled in this build.',
+    label: 'Toggle AI completion',
+    description: 'Show or hide inline code suggestions in the recall editor.',
     bindings: [{ key: 'l', modifier: 'mod' }],
   },
   {

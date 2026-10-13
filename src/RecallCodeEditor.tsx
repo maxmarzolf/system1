@@ -47,9 +47,11 @@ import { css } from '@codemirror/lang-css'
 import { json } from '@codemirror/lang-json'
 import { markdown } from '@codemirror/lang-markdown'
 import { rust } from '@codemirror/lang-rust'
+import { clearLocalCache, inlineCopilot } from 'codemirror-copilot'
 import type { AppTheme } from './theme'
 import type { CodeEditorStyleGuide } from './codeEditorTuning'
 import { getEditorHotkeyKey } from './hotkeys'
+import { apiUrl } from './api'
 
 export type RecallEditorLineStatus = 'match' | 'mismatch' | 'missing' | 'extra'
 export type RecallEditorLiveTone = 'positive' | 'negative' | 'neutral'
@@ -82,6 +84,15 @@ type RecallCodeEditorProps = {
   lineMeta: RecallEditorLineMeta[]
   minHeight?: number
   intellisense?: boolean
+  aiCompletion?: {
+    cardId: string
+    cardTitle: string
+    prompt: string
+    provider: string
+  }
+  aiCompletionEnabled?: boolean
+  onAiCompletionShown?: () => void
+  onAiCompletionStatus?: (message: string) => void
   styleGuide?: CodeEditorStyleGuide
   commonPatterns?: boolean
   foldControls?: boolean
@@ -594,6 +605,10 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
     lineMeta,
     minHeight,
     intellisense = true,
+    aiCompletion,
+    aiCompletionEnabled = false,
+    onAiCompletionShown,
+    onAiCompletionStatus,
     commonPatterns = true,
     foldControls = false,
     showSearchPanel = false,
@@ -607,6 +622,12 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
   const viewRef = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
   const onEnterKeyRef = useRef(onEnterKey)
+  const aiCompletionRef = useRef(aiCompletion)
+  const onAiCompletionShownRef = useRef(onAiCompletionShown)
+  const onAiCompletionStatusRef = useRef(onAiCompletionStatus)
+  const aiCompletionContextKeyRef = useRef('')
+  const aiCompletionRequestRef = useRef<AbortController | null>(null)
+  const aiCompletionCompartment = useMemo(() => new Compartment(), [])
   const languageCompartment = useMemo(() => new Compartment(), [])
   const indentationCompartment = useMemo(() => new Compartment(), [])
   const themeCompartment = useMemo(() => new Compartment(), [])
@@ -624,6 +645,54 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
   useEffect(() => {
     onEnterKeyRef.current = onEnterKey
   }, [onEnterKey])
+
+  aiCompletionRef.current = aiCompletion
+  onAiCompletionShownRef.current = onAiCompletionShown
+  onAiCompletionStatusRef.current = onAiCompletionStatus
+
+  const createAiCompletionExtension = () => inlineCopilot(async (prefix, suffix) => {
+    const context = aiCompletionRef.current
+    const requestContextKey = aiCompletionContextKeyRef.current
+    if (!context || !prefix.trim() || !requestContextKey) return ''
+    aiCompletionRequestRef.current?.abort()
+    const controller = new AbortController()
+    aiCompletionRequestRef.current = controller
+    try {
+      const response = await fetch(apiUrl('/api/coach/inline-completion'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          prefix: prefix.slice(-8000),
+          suffix: suffix.slice(0, 4000),
+          language,
+          cardTitle: context.cardTitle.slice(0, 200),
+          prompt: context.prompt.slice(0, 3000),
+          llmProvider: context.provider,
+        }),
+      })
+      if (controller.signal.aborted || requestContextKey !== aiCompletionContextKeyRef.current) return ''
+      if (!response.ok) {
+        onAiCompletionStatusRef.current?.(response.status === 503
+          ? 'Configure a model provider for AI completion.'
+          : 'AI completion is unavailable right now.')
+        return ''
+      }
+      const payload = await response.json() as { prediction?: string }
+      if (controller.signal.aborted || requestContextKey !== aiCompletionContextKeyRef.current) return ''
+      const prediction = typeof payload.prediction === 'string' ? payload.prediction : ''
+      onAiCompletionStatusRef.current?.('')
+      if (prediction) onAiCompletionShownRef.current?.()
+      return prediction
+    } catch {
+      if (!controller.signal.aborted && requestContextKey === aiCompletionContextKeyRef.current) {
+        onAiCompletionStatusRef.current?.('AI completion is unavailable right now.')
+      }
+      return ''
+    } finally {
+      if (aiCompletionRequestRef.current === controller) aiCompletionRequestRef.current = null
+    }
+  }, 700, false)
 
   useImperativeHandle(ref, () => ({
     focus: () => viewRef.current?.focus(),
@@ -662,6 +731,7 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
     const state = EditorState.create({
       doc: value,
       extensions: [
+        aiCompletionCompartment.of(aiCompletionEnabled ? createAiCompletionExtension() : []),
         Prec.highest(keymap.of([
           {
             key: getEditorHotkeyKey('next-targeted-line'),
@@ -689,6 +759,7 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return
+          aiCompletionRequestRef.current?.abort()
           onChangeRef.current(valueFromEditor(update.view), {
             cursorLineNumber: update.state.doc.lineAt(update.state.selection.main.head).number,
           })
@@ -703,6 +774,7 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
     viewRef.current = view
 
     return () => {
+      aiCompletionRequestRef.current?.abort()
       view.destroy()
       viewRef.current = null
     }
@@ -761,6 +833,22 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
       effects: assistanceCompartment.reconfigure(editorAssistanceExtension(language, intellisense, commonPatterns)),
     })
   }, [assistanceCompartment, commonPatterns, intellisense, language])
+
+  useEffect(() => {
+    const contextKey = aiCompletionEnabled && aiCompletion
+      ? JSON.stringify([aiCompletion.cardId, aiCompletion.cardTitle, aiCompletion.prompt, aiCompletion.provider, language])
+      : ''
+    if (contextKey === aiCompletionContextKeyRef.current) return
+    aiCompletionContextKeyRef.current = contextKey
+    aiCompletionRequestRef.current?.abort()
+    onAiCompletionStatusRef.current?.('')
+    clearLocalCache()
+    viewRef.current?.dispatch({
+      effects: aiCompletionCompartment.reconfigure(contextKey ? createAiCompletionExtension() : []),
+    })
+    // The callback reads the latest card context through refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiCompletion?.cardId, aiCompletion?.cardTitle, aiCompletion?.prompt, aiCompletion?.provider, aiCompletionEnabled, aiCompletionCompartment, language])
 
   useEffect(() => {
     viewRef.current?.dispatch({

@@ -24,11 +24,10 @@ import RelatedLeetCodeDrawer from './RelatedLeetCodeDrawer'
 import { skillMap, type SkillMapNode } from './data/skill-map'
 import { playlistQuestionsToSkillMap, practicePlaylists, type PracticePlaylist } from './data/playlists'
 import { resolveRelatedLeetCodeSet } from './data/related-leetcode'
-import { loadStoredLiveCoachTuning, saveStoredLiveCoachTuning } from './liveCoachTuning'
 import { loadStoredSubmissionTuning, saveStoredSubmissionTuning } from './submissionTuning'
 import { loadStoredSpecimenTuning } from './specimenTuning'
 import type { SpecimenTuning } from './specimenTuning'
-import { loadStoredCodeEditorTuning } from './codeEditorTuning'
+import { loadStoredCodeEditorTuning, saveStoredCodeEditorTuning } from './codeEditorTuning'
 import { loadStoredMcqTuning, type McqFlowMode, type McqSourceMode } from './mcqTuning'
 import { loadStoredGooglePlaylistTuning, type GooglePlaylistOrder } from './googlePlaylistTuning'
 import { apiUrl } from './api'
@@ -36,6 +35,8 @@ import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 import { useTheme, type AppTheme } from './theme'
 import RecallCodeEditor, { type RecallCodeEditorHandle, type RecallEditorLineMeta } from './RecallCodeEditor'
+import SlidingWindowLadder from './WindowLadderPanel'
+import { slidingWindowTechnique } from './windowLadderPlan'
 import {
   matchesHotkey,
   type PracticeFlowStage,
@@ -126,7 +127,6 @@ const CARD_MOVE_DOUBLE_TAP_WINDOW_MS = 350
 const FLOW_TRANSITION_MINIMUM_MS = 700
 const FLOW_TRANSITION_SETTLE_MS = 280
 const INLINE_FEEDBACK_ENABLED = true
-const LIVE_FEEDBACK_ENABLED = true
 
 const emptySkillMapCard: Flashcard = {
   id: 'skill-map-loading',
@@ -165,6 +165,7 @@ type AttemptPayload = {
   modality: SubmissionModality
   signals?: AttemptRequestSignals
   liveCoachUsed: boolean
+  outsideFlow?: boolean
 }
 
 type CoachAttemptFeedback = {
@@ -402,60 +403,6 @@ type LineReview = {
 type AnnotatedDisplayLine = {
   text: string
   sourceLineNumber: number | null
-  liveTone?: LiveInlineTone | null
-}
-
-type LiveInlineTone = 'positive' | 'negative' | 'neutral'
-type LiveFeedbackTrigger = 'auto' | 'hotkey-stuck'
-
-type LiveInlineNote = {
-  text: string
-  sourceLineNumber: number | null
-  tone: LiveInlineTone
-  maxWords?: number
-}
-
-type LiveLineAnnotation = {
-  note: string
-  tone: LiveInlineTone
-  maxWords?: number
-}
-
-type LiveFeedbackMeta = {
-  trigger: LiveFeedbackTrigger
-  hintDepth: number
-  cursorLineNumber: number | null
-}
-
-type HotkeyEditContext = {
-  changedSinceLastHint: boolean
-  changedLineNumber: number | null
-  changedLineText: string
-  addedLines: string[]
-  progressSignals: string[]
-}
-
-const findNearestWrittenLineIndex = (lines: string[], preferredIndex: number) => {
-  if (lines.length === 0) return -1
-
-  const boundedIndex = Math.max(0, Math.min(preferredIndex, lines.length - 1))
-  for (let index = boundedIndex; index >= 0; index -= 1) {
-    if (lines[index]?.trim()) return index
-  }
-  for (let index = boundedIndex + 1; index < lines.length; index += 1) {
-    if (lines[index]?.trim()) return index
-  }
-  return -1
-}
-
-const firstChangedLineIndex = (previousText: string, nextText: string) => {
-  const previousLines = previousText.replace(/\r\n/g, '\n').split('\n')
-  const nextLines = nextText.replace(/\r\n/g, '\n').split('\n')
-  const maxLines = Math.max(previousLines.length, nextLines.length)
-  for (let index = 0; index < maxLines; index += 1) {
-    if ((previousLines[index] ?? '') !== (nextLines[index] ?? '')) return index
-  }
-  return -1
 }
 
 type RecallAttemptSnapshot = {
@@ -468,26 +415,6 @@ type RecallAttemptSnapshot = {
   hasBookkeeping: boolean
   hasTraversal: boolean
   hasLoop: boolean
-}
-
-type LiveStructure = {
-  nonEmptyLines: number
-  hasSignature: boolean
-  hasGuard: boolean
-  traversalKind: 'dfs' | 'bfs' | 'queue' | 'stack' | null
-  hasLoop: boolean
-  hasPlaceholder: boolean
-  hasBookkeeping: boolean
-  milestoneKey: string
-}
-
-type LiveCoachSnapshot = {
-  text: string
-  progressKey: string
-  nonEmptyLines: number
-  changedLine: number
-  sameLineEditCount: number
-  lastMeaningfulProgressAt: number
 }
 
 type LlmProvider = 'openai' | 'claude' | 'gemma'
@@ -759,11 +686,6 @@ const patternLabelFromSlug = (slug: string) => {
   return overrides[slug] ?? slug.split('-').filter(Boolean).map((part) => part[0]?.toUpperCase() + part.slice(1)).join(' ')
 }
 
-const ensureTemplateModes = (modes: TemplateMode[]) => {
-  const next = TEMPLATE_MODE_ORDER.filter((mode) => modes.includes(mode))
-  return next.length > 0 ? next : [...DEFAULT_TEMPLATE_MODES]
-}
-
 const getPrimaryPatternTag = (tags: string[]) => {
   for (const tag of [
     'sliding-window',
@@ -806,36 +728,6 @@ const normalizeTyping = (value: string) =>
     .trim()
 
 const INLINE_NOTE_COLUMN = 48
-const LIVE_NOTE_STOP_WORDS = new Set([
-  'a',
-  'an',
-  'and',
-  'are',
-  'as',
-  'be',
-  'before',
-  'by',
-  'for',
-  'from',
-  'if',
-  'in',
-  'into',
-  'is',
-  'it',
-  'of',
-  'on',
-  'or',
-  'that',
-  'the',
-  'then',
-  'to',
-  'use',
-  'we',
-  'when',
-  'with',
-  'your',
-])
-
 const shortenAnnotationNote = (value: string, maxWords = 8) => {
   const cleaned = value
     .replace(/#\s*/g, '')
@@ -845,96 +737,6 @@ const shortenAnnotationNote = (value: string, maxWords = 8) => {
     .trim()
   if (!cleaned) return ''
   return cleaned.split(/\s+/).slice(0, maxWords).join(' ')
-}
-
-const getLiveMatchTokens = (value: string) =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9_[\]:]+/g, ' ')
-    .split(/\s+/)
-    .filter((token) => token.length >= 2 && !LIVE_NOTE_STOP_WORDS.has(token))
-
-const scoreLineAgainstLiveNote = (line: string, note: string) => {
-  const trimmedLine = line.trim()
-  if (!trimmedLine) return Number.NEGATIVE_INFINITY
-
-  const lineLower = trimmedLine.toLowerCase()
-  const noteLower = note.toLowerCase()
-  const noteTokens = getLiveMatchTokens(note)
-  const lineTokens = new Set(getLiveMatchTokens(trimmedLine))
-
-  let score = 0
-  noteTokens.forEach((token) => {
-    if (lineTokens.has(token) || lineLower.includes(token)) score += token.length > 4 ? 3 : 2
-  })
-
-  if (/(sort|sorted|order)/.test(noteLower) && /(\.sort\(|sorted\()/.test(lineLower)) score += 7
-  if (/(lambda|key)/.test(noteLower) && /(lambda|key\s*=)/.test(lineLower)) score += 5
-  if (/(interval|merge|overlap)/.test(noteLower) && /(interval|merge|overlap|out\s*=|s,\s*e|a,\s*b)/.test(lineLower)) score += 3
-  if (/(first|start|left|x\[0\]|\b0\b)/.test(noteLower) && /(\[0\]|x\[0\]|left|start)/.test(lineLower)) score += 4
-  if (/(second|end|right|x\[1\]|\b1\b)/.test(noteLower) && /(\[1\]|x\[1\]|right|end)/.test(lineLower)) score += 4
-  if (/(skip|second|rest|remaining|after first)/.test(noteLower) && /(\[1:\]|\[:1\])/.test(lineLower)) score += 5
-  if (/(loop|iterate|walk|scan|each)/.test(noteLower) && /^for\b/.test(lineLower)) score += 5
-  if (/return/.test(noteLower) && /^return\b/.test(lineLower)) score += 5
-  if (/(append|push|pop|add|remove|update)/.test(noteLower) && /(append|push|pop|add|remove|=|\+=|-=)/.test(lineLower)) score += 3
-
-  return score
-}
-
-const mergeLiveTone = (current: LiveInlineTone | null | undefined, next: LiveInlineTone): LiveInlineTone => {
-  if (current === 'negative' || next === 'negative') return 'negative'
-  if (current === 'positive' || next === 'positive') return 'positive'
-  return 'neutral'
-}
-
-const mergeLiveLineAnnotation = (
-  current: LiveLineAnnotation | undefined,
-  incoming: LiveInlineNote,
-): LiveLineAnnotation => {
-  const maxWords = incoming.maxWords ?? current?.maxWords
-  const compactNote = shortenAnnotationNote(incoming.text, maxWords)
-  if (!compactNote) {
-    return current ?? { note: '', tone: incoming.tone, maxWords }
-  }
-
-  if (!current || !current.note) {
-    return { note: compactNote, tone: incoming.tone, maxWords }
-  }
-
-  const currentParts = current.note.split(' / ').map((part) => part.trim().toLowerCase())
-  if (currentParts.includes(compactNote.toLowerCase())) {
-    return {
-      note: current.note,
-      tone: mergeLiveTone(current.tone, incoming.tone),
-      maxWords,
-    }
-  }
-
-  return {
-    note: `${current.note} / ${compactNote}`,
-    tone: mergeLiveTone(current.tone, incoming.tone),
-    maxWords,
-  }
-}
-
-const findBestLiveNoteAnchorLine = (lines: string[], note: string, preferredIndex: number) => {
-  let bestScore = Number.NEGATIVE_INFINITY
-  let bestIndex = -1
-
-  lines.forEach((line, index) => {
-    const score = scoreLineAgainstLiveNote(line, note)
-    if (score > bestScore) {
-      bestScore = score
-      bestIndex = index
-      return
-    }
-    if (score === bestScore && bestIndex >= 0 && Math.abs(index - preferredIndex) < Math.abs(bestIndex - preferredIndex)) {
-      bestIndex = index
-    }
-  })
-
-  if (bestScore >= 4 && bestIndex >= 0) return bestIndex
-  return findNearestWrittenLineIndex(lines, preferredIndex)
 }
 
 const patternInlineDecisionNoteForPattern = (patternTag: string) => {
@@ -1441,108 +1243,6 @@ const summarizeRecallAttempt = (
   ),
 })
 
-const analyzeLiveStructure = (code: string, templateMode: TemplateMode): LiveStructure => {
-  const lines = code.replace(/\r\n/g, '\n').split('\n')
-  const nonEmptyLines = lines.filter((line) => line.trim().length > 0).length
-  const hasSignature = lines.some((line) =>
-    /^\s*def\s+/.test(line)
-  )
-  const hasGuard = lines.some((line) =>
-    /^\s*if\b/.test(line) && /not|visited|seen|< 0|>=/.test(line)
-  )
-  const traversalKind = lines.some((line) => /\bdfs\b/.test(line))
-    ? 'dfs'
-    : lines.some((line) => /\bbfs\b/.test(line))
-      ? 'bfs'
-      : lines.some((line) => /\bqueue\b|\bdeque\b|\bq\b/.test(line))
-        ? 'queue'
-        : lines.some((line) => /\bstack\b/.test(line))
-          ? 'stack'
-          : null
-  const hasLoop = lines.some((line) =>
-    /^\s*(for|while)\b/.test(line)
-  )
-  const hasPlaceholder = lines.some((line) => isPlaceholderLine(line))
-  const hasBookkeeping = lines.some((line) =>
-    /(graph|visited|seen|indegree|parent|dist|rows|cols|queue|deque|stack|\bm\b|\bn\b|state|window|count)/i.test(line)
-  )
-
-  return {
-    nonEmptyLines,
-    hasSignature,
-    hasGuard,
-    traversalKind,
-    hasLoop,
-    hasPlaceholder,
-    hasBookkeeping,
-    milestoneKey: [
-      hasSignature ? 'sig' : 'no-sig',
-      hasGuard ? 'guard' : 'no-guard',
-      traversalKind ?? 'no-traversal',
-      hasLoop ? 'loop' : 'no-loop',
-      hasPlaceholder ? 'placeholder' : 'no-placeholder',
-      hasBookkeeping ? 'state' : 'no-state',
-      templateMode,
-      `lines-${Math.min(nonEmptyLines, 8)}`,
-    ].join('|'),
-  }
-}
-
-const liveProgressKey = (structure: LiveStructure) =>
-  [
-    structure.hasSignature ? 'sig' : 'no-sig',
-    structure.hasGuard ? 'guard' : 'no-guard',
-    structure.traversalKind ?? 'no-traversal',
-    structure.hasLoop ? 'loop' : 'no-loop',
-    structure.hasPlaceholder ? 'placeholder' : 'no-placeholder',
-    structure.hasBookkeeping ? 'state' : 'no-state',
-  ].join('|')
-
-const hasUsefulLiveStructure = (trimmedInput: string, structure: LiveStructure) =>
-  trimmedInput.length >= 12 && structure.nonEmptyLines >= 2
-
-const codeLines = (value: string) => value.replace(/\r\n/g, '\n').split('\n')
-
-const inferProblemSolvingSignals = (code: string) => {
-  const lines = codeLines(code)
-  const lowerCode = code.toLowerCase()
-  const signals: string[] = []
-  if (/^\s*if\b.*\bnot\b/m.test(code) && /return\s+none/i.test(code)) {
-    signals.push('handled the empty-input guard')
-  }
-  if (/\b(deque|queue|q)\s*=/.test(lowerCode) || /\bdeque\s*\(/.test(lowerCode)) {
-    signals.push('started a traversal frontier')
-  }
-  if (/^\s*while\b.*\b(q|queue|stack|deque)\b/im.test(code)) {
-    signals.push('set up the traversal loop')
-  }
-  if (lines.some((line) => /\b(clone|copy|copies|visited|seen|map|mapping|old_to_new|node_to_clone)\b/i.test(line) && /=/.test(line))) {
-    signals.push('started tracking original-to-created state, even if the shape still needs repair')
-  }
-  if (/\b(node\.val|neighbors|neighbor|graph\.get)\b/i.test(code)) {
-    signals.push('is reasoning about node identity or neighbor expansion')
-  }
-  return signals.slice(0, 4)
-}
-
-const buildHotkeyEditContext = (previousText: string, nextText: string): HotkeyEditContext => {
-  const changedLineIndex = previousText ? firstChangedLineIndex(previousText, nextText) : -1
-  const nextLines = codeLines(nextText)
-  const previousLines = codeLines(previousText)
-  const addedLines = nextLines
-    .filter((line) => line.trim() && !previousLines.includes(line))
-    .slice(-3)
-    .map((line) => line.trim())
-
-  return {
-    changedSinceLastHint: Boolean(previousText && previousText !== nextText),
-    changedLineNumber: changedLineIndex >= 0 ? changedLineIndex + 1 : null,
-    changedLineText: changedLineIndex >= 0 ? (nextLines[changedLineIndex] ?? '').trim() : '',
-    addedLines,
-    progressSignals: inferProblemSolvingSignals(nextText),
-  }
-}
-
 const computeLineReview = (expectedCode: string, actualCode: string) => {
   const expectedLines = expectedCode.replace(/\r\n/g, '\n').split('\n').map((line) => line.trimEnd())
   const actualLines = actualCode.replace(/\r\n/g, '\n').split('\n').map((line) => line.trimEnd())
@@ -1818,30 +1518,10 @@ const parseMarkdownCodeSegments = (text: string): MarkdownCodeSegment[] => {
   return segments.length > 0 ? segments : [{ type: 'text', text }]
 }
 
-type MicroDrillContent = {
-  prompt: string
-  code: string
-  language: string
-}
-
 const focusMicroDrillInput = (container: HTMLElement | null) => {
   container?.querySelector<HTMLElement>(
     '.micro-drill-blank:not(:disabled), .micro-drill-answer-card .cm-content[contenteditable="true"]'
   )?.focus()
-}
-
-const parseMicroDrillContent = (text: string): MicroDrillContent => {
-  const segments = parseMarkdownCodeSegments(text)
-  const codeSegments = segments.filter((segment): segment is Extract<MarkdownCodeSegment, { type: 'code' }> => segment.type === 'code')
-  return {
-    prompt: segments
-      .filter((segment): segment is Extract<MarkdownCodeSegment, { type: 'text' }> => segment.type === 'text')
-      .map((segment) => segment.text)
-      .join('\n\n')
-      .trim(),
-    code: codeSegments.map((segment) => segment.code).join('\n\n').trim(),
-    language: codeSegments[0]?.language ?? 'python',
-  }
 }
 
 function MicroDrillBlankEditor({ template, language, syntaxTheme, theme, onAnswerChange, disabled = false }: {
@@ -2268,7 +1948,6 @@ function App() {
   const [practiceMode, setPracticeMode] = useState<PracticeMode>('recall')
   const [mcqSourceSpecimen, setMcqSourceSpecimen] = useState<MultipleChoiceSpecimenContext | null>(null)
   const [multipleChoiceDifficulty] = useState<MultipleChoiceDifficulty>('Med.')
-  const [enabledTemplateModes, setEnabledTemplateModes] = useState<TemplateMode[]>(() => [...DEFAULT_TEMPLATE_MODES])
   const [supportLayer, setSupportLayer] = useState<SupportLayer>('none')
   const [skillMapDeck, setSkillMapDeck] = useState<Flashcard[]>([])
   const [catalogPlaylists, setCatalogPlaylists] = useState<PracticePlaylist[] | null>(null)
@@ -2320,7 +1999,8 @@ function App() {
   const configuredProviderLabel = useConfiguredProviderLabel()
   const requestLlmProvider = llmProvider === 'auto' ? '' : llmProvider
 
-  const [liveCoachUsedThisAttempt, setLiveCoachUsedThisAttempt] = useState(false)
+  const [aiCompletionShownThisAttempt, setAiCompletionShownThisAttempt] = useState(false)
+  const [aiCompletionStatus, setAiCompletionStatus] = useState('')
 
   const [mainPhase, setMainPhase] = useState<'preview' | 'typing' | 'submitted'>('preview')
   const [mainInput, setMainInput] = useState('')
@@ -2331,16 +2011,11 @@ function App() {
   const [multipleChoiceSubmittedByCard, setMultipleChoiceSubmittedByCard] = useState<Record<string, string>>({})
   const [currentInteractionId, setCurrentInteractionId] = useState('')
   const [mainRecallHistoryByCard, setMainRecallHistoryByCard] = useState<Record<string, RecallAttemptSnapshot[]>>({})
-  const [liveCoachFeedback, setLiveCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
-  const [liveCoachFeedbackMeta, setLiveCoachFeedbackMeta] = useState<LiveFeedbackMeta>({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
-  const [, setLiveCoachLoading] = useState(false)
-  const [liveCoachError, setLiveCoachError] = useState('')
-  const [liveCoachTuning, setLiveCoachTuning] = useState(() => loadStoredLiveCoachTuning())
-  const [submissionTuning, setSubmissionTuning] = useState(() => loadStoredSubmissionTuning())
-  const [codeEditorTuning] = useState(() => loadStoredCodeEditorTuning())
+  const [submissionTuning] = useState(() => loadStoredSubmissionTuning())
+  const [ladderActiveCardId, setLadderActiveCardId] = useState<string | null>(null)
+  const [codeEditorTuning, setCodeEditorTuning] = useState(() => loadStoredCodeEditorTuning())
   const syntaxTheme = theme === 'light-high-contrast' ? vs : vscDarkPlus
-  const liveFeedbackEnabled = LIVE_FEEDBACK_ENABLED && liveCoachTuning.enabled
-  const [coachFeedback, setCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
+  const [, setCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
   const [coachLoading, setCoachLoading] = useState(false)
   const [coachError, setCoachError] = useState('')
   const [submissionFailureModal, setSubmissionFailureModal] = useState<SubmissionFailureModalState | null>(null)
@@ -2357,14 +2032,7 @@ function App() {
   const pendingGhostFocusLineRef = useRef<number | null>(null)
   const previewCodeContainerRef = useRef<HTMLDivElement | null>(null)
   const [recallMinHeight, setRecallMinHeight] = useState<number | undefined>(undefined)
-  const currentCardIdRef = useRef('')
-  const liveCoachRequestVersionRef = useRef(0)
   const recallEvaluationPendingRef = useRef(false)
-  const liveCoachSnapshotRef = useRef<LiveCoachSnapshot | null>(null)
-  const lastLiveCoachDecisionKeyRef = useRef('')
-  const stuckHintDepthRef = useRef(0)
-  const lastStuckHintInputRef = useRef('')
-  const lastMainInputEditAtRef = useRef(0)
   const skillMapDeckRequestVersionRef = useRef(0)
   const multipleChoiceDeckRequestVersionRef = useRef(0)
   const flowMultipleChoiceDeckRequestVersionRef = useRef(0)
@@ -2470,16 +2138,7 @@ function App() {
       : questionType
   const focusedPatternLabel = focusedPatternNode?.algorithm ?? patternLabelFromSlug(focusedPatternSlug)
   const filteredDeck = useMemo(() => skillMapDeck, [skillMapDeck])
-  const activeTemplateModes = useMemo(() => ensureTemplateModes(enabledTemplateModes), [enabledTemplateModes])
   const currentTemplateMode: TemplateMode = 'algorithm'
-
-  useEffect(() => {
-    if (focusedTemplateMode) {
-      setEnabledTemplateModes([focusedTemplateMode])
-      return
-    }
-    setEnabledTemplateModes([...DEFAULT_TEMPLATE_MODES])
-  }, [focusedTemplateMode])
 
   const fetchSkillMapDeck = async () => {
     skillMapDeckRequestVersionRef.current += 1
@@ -2711,16 +2370,7 @@ function App() {
     setMultipleChoiceSubmittedByCard({})
     setCurrentInteractionId('')
     setMainRecallHistoryByCard({})
-    setLiveCoachFeedback(null)
-    setLiveCoachFeedbackMeta({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
-    setLiveCoachLoading(false)
-    setLiveCoachError('')
-    liveCoachRequestVersionRef.current = 0
-    liveCoachSnapshotRef.current = null
-    lastLiveCoachDecisionKeyRef.current = ''
-    stuckHintDepthRef.current = 0
-    lastStuckHintInputRef.current = ''
-    lastMainInputEditAtRef.current = 0
+    setAiCompletionShownThisAttempt(false)
     setCoachFeedback(null)
     setCoachLoading(false)
     setCoachError('')
@@ -2758,12 +2408,12 @@ function App() {
   }, [practiceFlow?.stage, practiceFlow?.step, practiceFlow?.runId, multipleChoiceDifficulty, requestLlmProvider])
 
   useEffect(() => {
-    saveStoredLiveCoachTuning(liveCoachTuning)
-  }, [liveCoachTuning])
-
-  useEffect(() => {
     saveStoredSubmissionTuning(submissionTuning)
   }, [submissionTuning])
+
+  useEffect(() => {
+    saveStoredCodeEditorTuning(codeEditorTuning)
+  }, [codeEditorTuning])
 
   useEffect(() => {
     if (practiceMode !== 'recall') return
@@ -2781,6 +2431,7 @@ function App() {
 
   const currentDeckIndex = sessionOrder[sessionPosition] ?? 0
   const card = (practiceFlow ? filteredDeck.find(item => item.id === practiceFlow.anchorCardId) : filteredDeck[currentDeckIndex]) ?? filteredDeck[0] ?? emptySkillMapCard
+  const ladderTechnique = slidingWindowTechnique(card)
   const currentFlowAttempts = useMemo(
     () => practiceFlow ? flowAttempts.filter((attempt) => attempt.anchorCardId === practiceFlow.anchorCardId) : [],
     [flowAttempts, practiceFlow]
@@ -2790,6 +2441,7 @@ function App() {
   const multipleChoiceCard = multipleChoiceDeck[currentDeckIndex] ?? multipleChoiceDeck[0] ?? null
   const flowMultipleChoiceCard = flowMultipleChoiceDeck[flowMultipleChoicePosition] ?? flowMultipleChoiceDeck[0] ?? null
   const isFlowActive = practiceFlow !== null
+  const ladderActive = ladderActiveCardId === card.id && ladderTechnique !== null
   const currentPracticeMode: PracticeMode = practiceFlow
     ? (practiceFlow.stage === 'multiple-choice' ? 'multiple-choice' : 'recall')
     : practiceMode
@@ -2906,7 +2558,6 @@ function App() {
   ]
   const hasHeaderDetails = headerBadgeLabels.length > 0 || visibleCardTags.length > 0
 
-  currentCardIdRef.current = activeCardId
 
   const handleTagClick = (tag: string) => {
     setTagsExpanded(false)
@@ -3092,7 +2743,7 @@ function App() {
   }
 
   const submitAttemptToServer = async (payload: AttemptPayload) => {
-    const flowSignals = currentFlowSignals()
+    const flowSignals = payload.outsideFlow ? null : currentFlowSignals()
     try {
       const response = await fetch(apiUrl('/api/attempts'), {
         method: 'POST',
@@ -3102,7 +2753,7 @@ function App() {
           cardTitle: card.title,
           question: payload.question ?? practicePrompt,
           questionType: payload.microdrill ? `${currentQuestionType}:microdrill` : currentQuestionType,
-          categoryTags: currentSkillTags,
+          categoryTags: payload.outsideFlow ? card.tags : currentSkillTags,
           correctAnswer: payload.correctAnswer,
           userAnswer: payload.userAnswer,
           mode: payload.mode,
@@ -3123,10 +2774,10 @@ function App() {
             },
           },
           liveCoachUsed: payload.liveCoachUsed,
-          targetSource: isFlowActive ? 'recall-miss' : 'skill-map',
-          targetControl: isFlowActive ? 'system' : 'user',
-          formatControl: isFlowActive ? 'system' : 'user',
-          submissionTuning: isFlowActive ? { ...submissionTuning, microDrillEnabled: false } : submissionTuning,
+          targetSource: isFlowActive && !payload.outsideFlow ? 'recall-miss' : 'skill-map',
+          targetControl: isFlowActive && !payload.outsideFlow ? 'system' : 'user',
+          formatControl: isFlowActive && !payload.outsideFlow ? 'system' : 'user',
+          submissionTuning: { ...submissionTuning, microDrillEnabled: false },
           llmProvider: requestLlmProvider,
         }),
       })
@@ -3236,22 +2887,12 @@ function App() {
     setFlowMultipleChoiceSelectedChoiceId('')
     setFlowMultipleChoiceStartedAt(Date.now())
     setCurrentInteractionId('')
-    setLiveCoachFeedback(null)
-    setLiveCoachFeedbackMeta({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
-    setLiveCoachLoading(false)
-    setLiveCoachError('')
-    setLiveCoachUsedThisAttempt(false)
+    setAiCompletionShownThisAttempt(false)
     setCoachFeedback(null)
     setCoachLoading(false)
     setCoachError('')
     setSubmissionFailureModal(null)
     setTagsExpanded(false)
-    liveCoachRequestVersionRef.current = 0
-    liveCoachSnapshotRef.current = null
-    lastLiveCoachDecisionKeyRef.current = ''
-    stuckHintDepthRef.current = 0
-    lastStuckHintInputRef.current = ''
-    lastMainInputEditAtRef.current = 0
     shouldFocusMainInputRef.current = false
     pendingGhostFocusLineRef.current = null
   }
@@ -3307,6 +2948,7 @@ function App() {
     if (flowInteractionVersionRef.current !== flowInteractionVersion) return
     const first = nextFlowStep(flowConfig, 0, Math.random, history)
     const runId = createInteractionId()
+    setLadderActiveCardId(null)
     setFlowDrawerOpen(false)
     setPracticeMode('recall')
     setSupportLayer('none')
@@ -3428,6 +3070,7 @@ function App() {
       ...structuredClone(flowConfig),
       mode: 'adaptive',
     }
+    setLadderActiveCardId(null)
     setFlowDrawerOpen(false)
     setPracticeMode('recall')
     setSupportLayer('none')
@@ -3562,6 +3205,7 @@ function App() {
 
   const startMainRecall = () => {
     if (!hasDeck || hasAnsweredCurrent || sessionFinished) return
+    setAiCompletionShownThisAttempt(false)
     shouldFocusMainInputRef.current = true
     if (previewCodeContainerRef.current) {
       setRecallMinHeight(previewCodeContainerRef.current.offsetHeight)
@@ -3577,12 +3221,6 @@ function App() {
       pendingGhostFocusLineRef.current = null
     }
     setCurrentInteractionId(createInteractionId())
-    lastMainInputEditAtRef.current = Date.now()
-    liveCoachSnapshotRef.current = null
-    lastLiveCoachDecisionKeyRef.current = ''
-    stuckHintDepthRef.current = 0
-    lastStuckHintInputRef.current = ''
-    setLiveCoachFeedbackMeta({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
   }
 
   const handleMainInputChange = (nextValue: string, context: { cursorLineNumber: number }) => {
@@ -3596,102 +3234,16 @@ function App() {
         .length
       setInlineTaskProgress((current) => Math.max(current, completedLineCount))
     }
-    lastMainInputEditAtRef.current = Date.now()
   }
 
-  const fetchLiveCoachFeedback = async (payload: {
-    interactionId: string
-    expectedAnswer: string
-    userAnswer: string
-    elapsedMs: number
-    exact: boolean
-    previousAttempts: RecallAttemptSnapshot[]
-    liveStructure: LiveStructure
-    trigger?: LiveFeedbackTrigger
-    hintDepth?: number
-    cursorLineNumber?: number | null
-    editContext?: HotkeyEditContext
-  }) => {
-    if (!liveFeedbackEnabled) return
-    const trigger = payload.trigger ?? 'auto'
-    const hintDepth = trigger === 'hotkey-stuck' ? Math.max(1, payload.hintDepth ?? 1) : 0
-    const cursorLineNumber = payload.cursorLineNumber ?? null
-    const requestCardId = card.id
-    liveCoachRequestVersionRef.current += 1
-    const requestVersion = liveCoachRequestVersionRef.current
-    setLiveCoachLoading(true)
-    setLiveCoachError('')
-    try {
-      const response = await fetch(apiUrl('/api/coach/live-feedback'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cardId: card.id,
-          cardTitle: card.title,
-          prompt: practicePrompt,
-          expectedAnswer: payload.expectedAnswer,
-          userAnswer: payload.userAnswer,
-          elapsedMs: payload.elapsedMs,
-          exact: payload.exact,
-          interactionId: payload.interactionId,
-          skillTags: currentSkillTags,
-          previousAttempts: payload.previousAttempts.map((attempt) => ({
-            attemptNumber: attempt.attemptNumber,
-            exact: attempt.exact,
-            elapsedMs: attempt.elapsedMs,
-          })),
-          questionType: currentQuestionType,
-          mode: 'main-recall',
-          templateMode: currentTemplateMode,
-          enabledTemplateModes: activeTemplateModes,
-          liveMode: true,
-          liveMilestones: {
-            nonEmptyLines: payload.liveStructure.nonEmptyLines,
-            hasSignature: payload.liveStructure.hasSignature,
-            hasGuard: payload.liveStructure.hasGuard,
-            traversalKind: payload.liveStructure.traversalKind ?? '',
-            hasLoop: payload.liveStructure.hasLoop,
-            hasPlaceholder: payload.liveStructure.hasPlaceholder,
-            hasBookkeeping: payload.liveStructure.hasBookkeeping,
-            trigger,
-            hintDepth,
-            cursorLineNumber,
-            editContext: payload.editContext ?? null,
-          },
-          liveCoachTuning,
-          submissionTuning,
-          llmProvider: requestLlmProvider,
-        }),
-      })
-      if (!response.ok) throw new Error('Unable to load live coach feedback')
-      const feedback = (await response.json()) as CoachAttemptFeedback
-      if (currentCardIdRef.current !== requestCardId || liveCoachRequestVersionRef.current !== requestVersion) return
-      setLiveCoachFeedback(feedback)
-      setLiveCoachFeedbackMeta({ trigger, hintDepth, cursorLineNumber })
-      setLiveCoachUsedThisAttempt(true)
-    } catch {
-      if (currentCardIdRef.current !== requestCardId || liveCoachRequestVersionRef.current !== requestVersion) return
-      setLiveCoachError('Live coach unavailable right now.')
-      setLiveCoachFeedbackMeta({ trigger, hintDepth, cursorLineNumber })
-      setLiveCoachFeedback(null)
-    } finally {
-      if (currentCardIdRef.current === requestCardId && liveCoachRequestVersionRef.current === requestVersion) {
-        setLiveCoachLoading(false)
-      }
-    }
+  const toggleAiCompletion = () => {
+    setCodeEditorTuning((prev) => ({ ...prev, aiCompletion: !prev.aiCompletion }))
   }
 
-  const requestLiveCoachFeedback = useEffectEvent(fetchLiveCoachFeedback)
-  const toggleLiveFeedback = () => {
-    if (!LIVE_FEEDBACK_ENABLED) return
-    setLiveCoachTuning((prev) => ({ ...prev, enabled: !prev.enabled }))
-  }
-
-  const toggleMicroDrill = () => {
-    setSubmissionTuning((prev) => ({
-      ...prev,
-      microDrillEnabled: !prev.microDrillEnabled,
-    }))
+  const toggleLadder = () => {
+    setFlowDrawerOpen(false)
+    setRelatedDrawerOpen(false)
+    setLadderActiveCardId((current) => current === card.id ? null : card.id)
   }
 
   const fetchSessionPlan = async () => {
@@ -3779,11 +3331,13 @@ function App() {
       interactionId,
       templateMode: currentTemplateMode,
       supportLayer: effectiveSupportLayer,
-      liveCoachUsed: liveCoachUsedThisAttempt,
+      // Persist AI assistance through the existing readiness signal.
+      liveCoachUsed: aiCompletionShownThisAttempt,
       modality: isGhostRep ? 'ghost-rep' : 'total-recall',
       signals: {
         modality: {
           exact: normalizedInput === normalizedTarget,
+          aiCompletionShown: aiCompletionShownThisAttempt,
           targetLineCount: normalizedTarget.split('\n').filter((line) => line.trim().length > 0).length,
           submittedLineCount: normalizedInputLines.filter((line) => line.trim().length > 0).length,
           missedLineCount,
@@ -3913,6 +3467,7 @@ function App() {
   const reviseMainRecall = () => {
     if (practiceFlow) return
     if (!hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'submitted' || mainCloseEnough) return
+    setAiCompletionShownThisAttempt(false)
     shouldFocusMainInputRef.current = true
     setMainPhase('typing')
     setInlineTaskProgress((current) => Math.max(
@@ -3921,13 +3476,11 @@ function App() {
     ))
     setMainStartedAt(Date.now())
     setCurrentInteractionId(createInteractionId())
-    lastMainInputEditAtRef.current = Date.now()
-    liveCoachSnapshotRef.current = null
-    lastLiveCoachDecisionKeyRef.current = ''
   }
 
   const repeatGhostRep = () => {
     if (!hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'submitted') return
+    setAiCompletionShownThisAttempt(false)
     shouldFocusMainInputRef.current = true
     setMainPhase('typing')
     setInlineTaskProgress(0)
@@ -3944,19 +3497,18 @@ function App() {
     setCoachFeedback(null)
     setCoachError('')
     setSubmissionFailureModal(null)
-    lastMainInputEditAtRef.current = Date.now()
-    liveCoachSnapshotRef.current = null
-    lastLiveCoachDecisionKeyRef.current = ''
   }
 
   const goNext = () => {
     if (isFlowActive) return
     if (sessionFinished) return
+    setLadderActiveCardId(null)
     setSessionPosition((prev) => Math.min(prev + 1, Math.max(sessionOrder.length - 1, 0)))
   }
 
   const goPrev = () => {
     if (isFlowActive) return
+    setLadderActiveCardId(null)
     setSessionPosition((prev) => Math.max(prev - 1, 0))
   }
 
@@ -3972,144 +3524,20 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPracticeMode, sessionFinished])
 
-  const liveStructure = useMemo(
-    () => analyzeLiveStructure(mainInput, currentTemplateMode),
-    [currentTemplateMode, mainInput]
-  )
   const currentCardRecallHistory = useMemo(
     () => mainRecallHistoryByCard[currentRecallHistoryKey] ?? [],
     [currentRecallHistoryKey, mainRecallHistoryByCard]
   )
-  const inlineLiveNotes = useMemo(() => {
-    if (mainPhase !== 'typing' || !liveFeedbackEnabled) return []
-    const sourceLines = (mainInput || '').split('\n')
-    const isStuckHint = liveCoachFeedbackMeta.trigger === 'hotkey-stuck'
-    const preferredIndex = isStuckHint && liveCoachFeedbackMeta.cursorLineNumber
-      ? liveCoachFeedbackMeta.cursorLineNumber - 1
-      : liveCoachSnapshotRef.current?.changedLine ?? sourceLines.length - 1
-    const anchoredFallback = findNearestWrittenLineIndex(sourceLines, preferredIndex)
-
-    if (liveCoachError) {
-      return [{
-        text: liveCoachError,
-        sourceLineNumber: anchoredFallback >= 0 ? anchoredFallback + 1 : null,
-        tone: 'negative',
-        maxWords: isStuckHint ? 14 : undefined,
-      }] satisfies LiveInlineNote[]
-    }
-    if (!liveCoachFeedback) return []
-
-    const stuckDepth = Math.max(1, liveCoachFeedbackMeta.hintDepth)
-    const candidateNotes = isStuckHint
-      ? stuckDepth === 1
-        ? [
-            { text: liveCoachFeedback.affirmation ?? '', tone: 'positive' as const },
-            ...liveCoachFeedback.strengths.map((text) => ({ text, tone: 'positive' as const })),
-            { text: liveCoachFeedback.diagnosis, tone: 'neutral' as const },
-          ]
-        : stuckDepth === 2
-          ? [
-              { text: liveCoachFeedback.keepInMind ?? '', tone: 'neutral' as const },
-              { text: liveCoachFeedback.why ?? '', tone: 'neutral' as const },
-              { text: liveCoachFeedback.affirmation ?? '', tone: 'positive' as const },
-              ...liveCoachFeedback.strengths.map((text) => ({ text, tone: 'positive' as const })),
-              { text: liveCoachFeedback.diagnosis, tone: 'neutral' as const },
-            ]
-          : [
-              { text: liveCoachFeedback.why ?? '', tone: 'neutral' as const },
-              { text: liveCoachFeedback.diagnosis, tone: 'neutral' as const },
-              { text: liveCoachFeedback.keepInMind ?? '', tone: 'neutral' as const },
-              ...liveCoachFeedback.strengths.map((text) => ({ text, tone: 'positive' as const })),
-            ]
-      : [
-          { text: liveCoachFeedback.affirmation ?? '', tone: 'positive' as const },
-          ...liveCoachFeedback.strengths.map((text) => ({ text, tone: 'positive' as const })),
-          { text: liveCoachFeedback.why, tone: 'neutral' as const },
-          { text: liveCoachFeedback.diagnosis, tone: 'negative' as const },
-          { text: liveCoachFeedback.primaryFocus, tone: 'negative' as const },
-          { text: liveCoachFeedback.nextMove, tone: 'negative' as const },
-          { text: liveCoachFeedback.immediateCorrection, tone: 'negative' as const },
-        ]
-
-    const seenNotes = new Set<string>()
-    const notes: LiveInlineNote[] = []
-    for (const candidate of candidateNotes) {
-      const maxWords = isStuckHint ? 14 : undefined
-      const note = shortenAnnotationNote(candidate.text ?? '', maxWords)
-      if (!note) continue
-      const noteKey = note.toLowerCase()
-      if (seenNotes.has(noteKey)) continue
-      seenNotes.add(noteKey)
-
-      const anchoredIndex = isStuckHint && candidate.tone !== 'positive'
-        ? anchoredFallback
-        : findBestLiveNoteAnchorLine(sourceLines, note, preferredIndex)
-      notes.push({
-        text: note,
-        sourceLineNumber: anchoredIndex >= 0 ? anchoredIndex + 1 : null,
-        tone: candidate.tone,
-        maxWords,
-      })
-
-      const maxLiveNotes = isStuckHint && stuckDepth === 1 ? 2 : isStuckHint ? 1 : 2
-      if (notes.length >= maxLiveNotes) break
-    }
-
-    return notes
-  }, [liveCoachError, liveCoachFeedback, liveCoachFeedbackMeta, liveFeedbackEnabled, mainInput, mainPhase])
   const displayLines = useMemo(() => {
     const source = mainPhase === 'submitted'
       ? (mainInput || '')
       : (mainInput || (isGhostRepsEnabled ? '' : `# ${practicePlaceholder}`))
-
-    const baseLines = source
-      .split('\n')
-      .map(
-        (line, index): AnnotatedDisplayLine => ({
-          text: line,
-          sourceLineNumber: source.length > 0 ? index + 1 : null,
-          liveTone: null,
-        })
-      )
-
-    if (inlineLiveNotes.length === 0) return baseLines
-
-    const annotationsBySourceLine = new Map<number, LiveLineAnnotation>()
-
-    inlineLiveNotes.forEach((note) => {
-      const sourceIndex = note.sourceLineNumber
-        ? note.sourceLineNumber - 1
-        : findNearestWrittenLineIndex(baseLines.map((line) => line.text), baseLines.length - 1)
-
-      if (sourceIndex < 0 || !baseLines[sourceIndex]) return
-
-      baseLines[sourceIndex].liveTone = mergeLiveTone(baseLines[sourceIndex].liveTone, note.tone)
-      annotationsBySourceLine.set(
-        sourceIndex,
-        mergeLiveLineAnnotation(annotationsBySourceLine.get(sourceIndex), note)
-      )
-    })
-
-    return baseLines.map((line, index) => {
-      const annotation = annotationsBySourceLine.get(index)
-      if (!annotation?.note) return line
-
-      return {
-        ...line,
-        text: appendAlignedNote(line.text, annotation.note, annotation.maxWords),
-        liveTone: annotation.tone,
-      }
-    })
-  }, [inlineLiveNotes, isGhostRepsEnabled, mainInput, mainPhase, practicePlaceholder])
-  const ghostTargetCode = useMemo(() => {
-    if (practiceFlow?.stage === 'ghost') {
-      return practiceTarget
-    }
-    if (inlineEnabled && isGhostRepsEnabled && liveFeedbackEnabled) {
-      return stripInlineAnnotationNotes(practiceTarget)
-    }
-    return practiceTarget
-  }, [inlineEnabled, isGhostRepsEnabled, liveFeedbackEnabled, practiceFlow?.stage, practiceTarget])
+    return source.split('\n').map((line, index): AnnotatedDisplayLine => ({
+      text: line,
+      sourceLineNumber: source.length > 0 ? index + 1 : null,
+    }))
+  }, [isGhostRepsEnabled, mainInput, mainPhase, practicePlaceholder])
+  const ghostTargetCode = practiceTarget
   const previewDisplayLines = useMemo(() => inlineDisplayLines(practiceTarget), [practiceTarget])
   const previewEditorValue = useMemo(
     () => previewDisplayLines
@@ -4118,68 +3546,6 @@ function App() {
       .trimEnd(),
     [previewDisplayLines]
   )
-  const triggerLiveCoachRefresh = useEffectEvent((
-    trimmedInput: string,
-    options?: {
-      trigger?: LiveFeedbackTrigger
-      hintDepth?: number
-      cursorLineNumber?: number | null
-      editContext?: HotkeyEditContext
-    }
-  ) => {
-    const interactionId = currentInteractionId || createInteractionId()
-    if (!currentInteractionId) setCurrentInteractionId(interactionId)
-    const target = activeRecallTarget
-    const focusedInput = practiceFlow?.stage === 'ghost'
-      ? extractFlowGhostFocusedInput(trimmedInput, practiceFlow.focus.missedLines)
-      : trimmedInput
-    void requestLiveCoachFeedback({
-      interactionId,
-      expectedAnswer: target,
-      userAnswer: focusedInput,
-      elapsedMs: Math.max((mainStartedAt ? Date.now() - mainStartedAt : 0), 0),
-      exact: focusedInput === target,
-      previousAttempts: currentCardRecallHistory,
-      liveStructure: liveStructure,
-      trigger: options?.trigger,
-      hintDepth: options?.hintDepth,
-      cursorLineNumber: options?.cursorLineNumber,
-      editContext: options?.editContext,
-    })
-  })
-  const requestStuckHint = useEffectEvent(() => {
-    if (!liveFeedbackEnabled) return
-    if (currentPracticeMode !== 'recall') return
-    if (!hasDeck || mainPhase !== 'typing' || sessionFinished || hasAnsweredCurrent) return
-
-    const trimmedInput = currentRecallSubmissionInput
-    if (!hasUsefulLiveStructure(trimmedInput, liveStructure)) return
-
-    const cursorPosition = mainInputRef.current?.getCursorPosition() ?? mainInput.length
-    const cursorLineNumber = mainInput.slice(0, cursorPosition).split('\n').length
-    const editContext = buildHotkeyEditContext(lastStuckHintInputRef.current, trimmedInput)
-    const nextDepth = editContext.changedSinceLastHint ? 1 : stuckHintDepthRef.current + 1
-    stuckHintDepthRef.current = nextDepth
-    lastStuckHintInputRef.current = trimmedInput
-    liveCoachSnapshotRef.current = {
-      text: trimmedInput,
-      progressKey: liveProgressKey(liveStructure),
-      nonEmptyLines: liveStructure.nonEmptyLines,
-      changedLine: cursorLineNumber - 1,
-      sameLineEditCount: 0,
-      lastMeaningfulProgressAt: Date.now(),
-    }
-    lastLiveCoachDecisionKeyRef.current = `hotkey-stuck|${card.id}|${currentTemplateMode}|${nextDepth}|${cursorLineNumber}|${Math.floor(trimmedInput.length / 20)}`
-    setLiveCoachFeedback(null)
-    setLiveCoachFeedbackMeta({ trigger: 'hotkey-stuck', hintDepth: nextDepth, cursorLineNumber })
-    setLiveCoachError('')
-    triggerLiveCoachRefresh(trimmedInput, {
-      trigger: 'hotkey-stuck',
-      hintDepth: nextDepth,
-      cursorLineNumber,
-      editContext,
-    })
-  })
   const latestSubmittedAttempt =
     mainPhase === 'submitted' ? currentCardRecallHistory[currentCardRecallHistory.length - 1] ?? null : null
   const latestSubmittedWasGhostRep = latestSubmittedAttempt?.supportLayer === 'ghost-reps'
@@ -4203,6 +3569,7 @@ function App() {
     ? `${practiceFlow.runId}-${practiceFlow.step}`
     : ''
   const primaryCardAction = (() => {
+    if (ladderActive) return null
     if (practiceFlow?.stage === 'microdrill') {
       const microDrillActionState = flowMicroDrillPrimaryActionState.interactionKey === flowMicroDrillActionKey
         ? flowMicroDrillPrimaryActionState
@@ -4255,19 +3622,6 @@ function App() {
         icon: (
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="m4.5 12.75 6 6 9-13.5" />
-          </svg>
-        ),
-      }
-    }
-
-    if (!isFlowActive && submissionTuning.microDrillEnabled && coachLoading && effectiveSupportLayer !== 'ghost-reps') {
-      return {
-        label: 'Start',
-        onClick: () => undefined,
-        disabled: true,
-        icon: (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" />
           </svg>
         ),
       }
@@ -4387,19 +3741,15 @@ function App() {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (currentPracticeMode !== 'recall') return
-      if (matchesHotkey(event, 'stuck-hint')) {
+      if (matchesHotkey(event, 'toggle-ai-completion')) {
         event.preventDefault()
-        requestStuckHint()
+        setCodeEditorTuning((prev) => ({ ...prev, aiCompletion: !prev.aiCompletion }))
         return
       }
       if (isFlowActive) return
       if (matchesHotkey(event, 'toggle-ghost-reps')) {
         event.preventDefault()
         setSupportLayer((prev) => (prev === 'ghost-reps' ? 'none' : 'ghost-reps'))
-      }
-      if (LIVE_FEEDBACK_ENABLED && matchesHotkey(event, 'toggle-live-feedback')) {
-        event.preventDefault()
-        setLiveCoachTuning((prev) => ({ ...prev, enabled: !prev.enabled }))
       }
       if (INLINE_FEEDBACK_ENABLED && matchesHotkey(event, 'toggle-inline-feedback')) {
         event.preventDefault()
@@ -4408,7 +3758,7 @@ function App() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [currentPracticeMode, isFlowActive, requestStuckHint, toggleInlineHelper])
+  }, [currentPracticeMode, isFlowActive, toggleInlineHelper])
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -4473,7 +3823,6 @@ function App() {
       return {
         sourceLineNumber,
         status: null,
-        liveTone: null,
         inlineDecision: false,
         inlineNote: undefined,
       }
@@ -4490,84 +3839,18 @@ function App() {
     }))
   ), [plainPracticeTarget])
 
-  useEffect(() => {
-    if (liveFeedbackEnabled) return
-    liveCoachRequestVersionRef.current += 1
-    setLiveCoachLoading(false)
-    setLiveCoachError('')
-    setLiveCoachFeedback(null)
-    setLiveCoachFeedbackMeta({ trigger: 'auto', hintDepth: 0, cursorLineNumber: null })
-  }, [liveFeedbackEnabled])
-
-  const activeMicroDrill = !isFlowActive && submissionTuning.microDrillEnabled
-    ? coachFeedback?.microDrill.trim() ?? ''
-    : ''
-  const microDrillContent = useMemo(
-    () => parseMicroDrillContent(activeMicroDrill),
-    [activeMicroDrill]
-  )
-  const microDrillLoading = Boolean(
-    !isFlowActive && submissionTuning.microDrillEnabled
-    && currentPracticeMode === 'recall'
-    && coachLoading
-    && effectiveSupportLayer !== 'ghost-reps'
-  )
-  const microDrillEditorReady = !flowTransition && !flowDrawerOpen && (
-    practiceFlow?.stage === 'microdrill'
-      ? flowMicroDrillPrimaryActionState.interactionKey === flowMicroDrillActionKey
-        && flowMicroDrillPrimaryActionState.ready
-        && !flowMicroDrillPrimaryActionState.submitted
-      : Boolean(activeMicroDrill && !microDrillLoading)
-  )
+  const microDrillEditorReady = !flowTransition && !flowDrawerOpen
+    && practiceFlow?.stage === 'microdrill'
+    && flowMicroDrillPrimaryActionState.interactionKey === flowMicroDrillActionKey
+    && flowMicroDrillPrimaryActionState.ready
+    && !flowMicroDrillPrimaryActionState.submitted
 
   useEffect(() => {
     if (!microDrillEditorReady) return
     const frame = window.requestAnimationFrame(() => focusMicroDrillInput(flowStageContentRef.current))
     return () => window.cancelAnimationFrame(frame)
-  }, [microDrillEditorReady, flowMicroDrillActionKey, activeMicroDrill])
+  }, [microDrillEditorReady, flowMicroDrillActionKey])
 
-  const microDrillCardGrid = microDrillLoading ? (
-    <div className="card-grid micro-drill-card-grid" aria-live="polite" aria-busy="true">
-      <div className="panel micro-drill-loading-card">
-        <span className="micro-drill-loading-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" />
-          </svg>
-        </span>
-        <div className="micro-drill-loading-copy">
-          <span className="related-problems-eyebrow">Next rep</span>
-          <h3>Preparing your next drill</h3>
-          <p>Keeping what worked. Isolating one decision worth another pass.</p>
-        </div>
-        <div className="micro-drill-loading-line" aria-hidden="true"><span /></div>
-      </div>
-    </div>
-  ) : activeMicroDrill ? (
-    <div className="card-grid micro-drill-card-grid drill-fade-in">
-      <div className="panel prompt-surface-panel">
-        <div className="prompt-surface-section">
-          <div className="prompt-section-content">
-            <span className="prompt-section-label">Next rep</span>
-            <div className="prompt prompt-surface-body micro-drill-prompt">
-              <MicroDrillInstructions
-                text={microDrillContent.prompt || 'Fill the focused blanks without looking back at the original solution.'}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="panel micro-drill-answer-card">
-        <label className="answer-label">Fill only the blanks</label>
-        <MicroDrillBlankEditor
-          key={activeMicroDrill}
-          template={microDrillContent.code || activeMicroDrill}
-          language={microDrillContent.language}
-          syntaxTheme={syntaxTheme}
-          theme={theme}
-        />
-      </div>
-    </div>
-  ) : null
 
   return (
     <div className={[
@@ -4732,18 +4015,15 @@ function App() {
                 </button>
                 <button
                   type="button"
-                  className={[
-                    liveFeedbackEnabled ? 'navbar-toggle active' : 'navbar-toggle',
-                    !LIVE_FEEDBACK_ENABLED ? 'navbar-toggle-crossed' : '',
-                  ].filter(Boolean).join(' ')}
-                  onClick={toggleLiveFeedback}
-                  aria-pressed={liveFeedbackEnabled}
-                  aria-label={LIVE_FEEDBACK_ENABLED ? (liveFeedbackEnabled ? 'Turn live feedback off' : 'Turn live feedback on') : 'Live feedback disabled'}
-                  title={LIVE_FEEDBACK_ENABLED ? 'Live' : 'Live feedback disabled'}
-                  disabled={isFlowActive || currentPracticeMode !== 'recall' || !LIVE_FEEDBACK_ENABLED}
+                  className={codeEditorTuning.aiCompletion ? 'navbar-toggle active' : 'navbar-toggle'}
+                  onClick={toggleAiCompletion}
+                  aria-pressed={codeEditorTuning.aiCompletion}
+                  aria-label={codeEditorTuning.aiCompletion ? 'Turn AI completion off' : 'Turn AI completion on'}
+                  title="AI completion · Tab accepts a suggestion"
+                  disabled={currentPracticeMode !== 'recall'}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                    <path d="M12 2.5 14.1 9.9 21.5 12l-7.4 2.1L12 21.5l-2.1-7.4L2.5 12l7.4-2.1L12 2.5Z" />
                   </svg>
                 </button>
                 </div>
@@ -4772,17 +4052,23 @@ function App() {
                 </button>
                   <button
                     type="button"
-                    className={submissionTuning.microDrillEnabled ? 'card-side-drawer-toggle active' : 'card-side-drawer-toggle'}
-                    aria-pressed={submissionTuning.microDrillEnabled}
-                    aria-label={submissionTuning.microDrillEnabled ? 'Turn reinforcement drill off' : 'Turn reinforcement drill on'}
-                    title={submissionTuning.microDrillEnabled ? 'Reinforcement drill on' : 'Reinforcement drill off'}
-                    onClick={toggleMicroDrill}
-                    disabled={isFlowActive || currentPracticeMode !== 'recall'}
+                    className={ladderActive ? 'card-side-drawer-toggle active' : 'card-side-drawer-toggle'}
+                    aria-pressed={ladderActive}
+                    aria-expanded={ladderActive}
+                    aria-controls="sliding-window-ladder"
+                    aria-label={ladderActive ? 'Close Ladder' : 'Open Sliding Window Ladder'}
+                    title={ladderTechnique
+                      ? currentPracticeMode === 'multiple-choice' && !isFlowActive
+                        ? 'Select Recall to open the Ladder for this card'
+                        : `${ladderActive ? 'Close' : 'Open'} ${ladderTechnique} Sliding Window Ladder`
+                      : 'Ladder available for fixed or variable sliding window cards'}
+                    onClick={toggleLadder}
+                    disabled={!ladderTechnique || (currentPracticeMode === 'multiple-choice' && !isFlowActive)}
                   >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <path d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" />
                     </svg>
-                    <span className="sr-only">Reinforcement drill</span>
+                    <span className="sr-only">Ladder</span>
                   </button>
                 <button
                   type="button"
@@ -4792,6 +4078,7 @@ function App() {
                   aria-label={flowDrawerOpen ? 'Hide Flow menu' : 'Show Flow menu'}
                   title="Flow"
                   onClick={() => {
+                    setLadderActiveCardId(null)
                     setRelatedDrawerOpen(false)
                     setFlowDrawerOpen((open) => {
                       if (open) return false
@@ -4928,7 +4215,27 @@ function App() {
           inert={flowTransition ? true : undefined}
         >
         {isFlowActive && coachError && mainPhase === 'typing' && <p className="flow-submit-error" role="alert">{coachError}</p>}
-        {practiceFlow?.stage === 'microdrill' ? (
+        {ladderActive && ladderTechnique ? (
+          <SlidingWindowLadder
+            key={card.id}
+            cardId={card.id}
+            cardTitle={card.title}
+            cardPrompt={practicePrompt}
+            cardTarget={practiceTarget}
+            technique={ladderTechnique}
+            provider={requestLlmProvider}
+            theme={theme}
+            onClose={() => setLadderActiveCardId(null)}
+            onSave={(question, answer, elapsedMs, interactionId, rungIndex, rep) => submitAttemptToServer({
+              mode: 'main-recall', correctAnswer: question.solution, userAnswer: answer, question: question.question,
+              microdrill: true, elapsedMs, interactionId,
+              templateMode: currentTemplateMode, supportLayer: 'none', liveCoachUsed: false,
+              modality: 'microdrill',
+              signals: { modality: { ladder: true, technique: ladderTechnique, rungIndex, rep, language: 'python' } },
+              outsideFlow: true,
+            })}
+          />
+        ) : practiceFlow?.stage === 'microdrill' ? (
           <FlowMicroDrillCard
             key={flowMicroDrillActionKey}
             title={card.title} prompt={practicePrompt} target={practiceTarget}
@@ -4976,7 +4283,7 @@ function App() {
               )}
             </div>
           </aside>
-        ) : microDrillCardGrid ?? (
+        ) : (
         <div className="card-grid">
           <div className="panel prompt-surface-panel">
             {currentPracticeMode === 'multiple-choice' ? (
@@ -5212,6 +4519,15 @@ function App() {
                         placeholder={mainPhase === 'typing' && (isGhostRepsEnabled || inlineEnabled) ? '' : supportedPracticePlaceholder}
                         ghostTarget={mainPhase === 'typing' && isGhostRepsEnabled ? ghostTargetCode : undefined}
                         inlineTask={currentInlineTask}
+                        aiCompletion={{
+                          cardId: card.id,
+                          cardTitle: card.title,
+                          prompt: practicePrompt,
+                          provider: requestLlmProvider,
+                        }}
+                        aiCompletionEnabled={codeEditorTuning.aiCompletion && mainPhase === 'typing' && !isGhostRepsEnabled && !totalRecallEvaluationPending && !hasAnsweredCurrent && !sessionFinished}
+                        onAiCompletionShown={() => setAiCompletionShownThisAttempt(true)}
+                        onAiCompletionStatus={setAiCompletionStatus}
                         lineMeta={recallEditorLineMeta}
                         minHeight={recallMinHeight}
                         intellisense={codeEditorTuning.intellisense}
@@ -5222,6 +4538,7 @@ function App() {
                         onChange={handleMainInputChange}
                         onEnterKey={handleGhostRepEnterKey}
                       />
+                      {aiCompletionStatus && mainPhase === 'typing' && <p className="hint" role="status">{aiCompletionStatus}</p>}
                     </div>
                   </div>
                 </div>
