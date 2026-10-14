@@ -33,7 +33,12 @@ router = APIRouter(prefix="/api/coach", tags=["coach"])
 
 @router.post("/inline-completion", response_model=InlineCompletionResponse)
 async def coach_inline_completion(body: InlineCompletionRequest):
-    return await inline_completion_service.generate_inline_completion(body)
+    try:
+        return await inline_completion_service.generate_inline_completion(body)
+    except inline_completion_service.InlineCompletionProviderUnavailable as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except inline_completion_service.InlineCompletionGenerationError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
 
 
 @router.get("/provider-default", response_model=CoachProviderDefaultResponse)

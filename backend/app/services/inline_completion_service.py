@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import HTTPException
-
 from app.core.llm import call_llm_json, llm_provider_available, resolve_available_llm_provider
 from app.models import InlineCompletionRequest, InlineCompletionResponse
+
+
+class InlineCompletionProviderUnavailable(Exception):
+    pass
+
+
+class InlineCompletionGenerationError(Exception):
+    pass
 
 
 _SYSTEM_PROMPT = (
@@ -25,7 +31,7 @@ async def generate_inline_completion(body: InlineCompletionRequest) -> InlineCom
 
     provider = resolve_available_llm_provider(body.llmProvider)
     if not llm_provider_available(provider):
-        raise HTTPException(status_code=503, detail="Configure a model provider for AI code completion.")
+        raise InlineCompletionProviderUnavailable("Configure a model provider for AI code completion.")
 
     payload = {
         "language": body.language,
@@ -37,7 +43,7 @@ async def generate_inline_completion(body: InlineCompletionRequest) -> InlineCom
     try:
         result = await asyncio.to_thread(call_llm_json, _SYSTEM_PROMPT, payload, provider, 300, 20, 0.2)
     except Exception as error:
-        raise HTTPException(status_code=502, detail="AI code completion is unavailable right now.") from error
+        raise InlineCompletionGenerationError("AI code completion is unavailable right now.") from error
     if not isinstance(result, dict):
         return InlineCompletionResponse()
     prediction = result.get("completion")

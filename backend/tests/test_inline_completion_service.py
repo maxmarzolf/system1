@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app import main as app_main
@@ -53,9 +52,9 @@ def test_inline_completion_uses_code_context_without_canonical_answer(monkeypatc
 def test_inline_completion_skips_empty_input_and_missing_provider(monkeypatch) -> None:
     monkeypatch.setattr(service, "llm_provider_available", lambda _: False)
     assert asyncio.run(service.generate_inline_completion(InlineCompletionRequest(prefix="  ", suffix=""))).prediction == ""
-    with pytest.raises(HTTPException) as error:
+    with pytest.raises(service.InlineCompletionProviderUnavailable) as error:
         asyncio.run(service.generate_inline_completion(InlineCompletionRequest(prefix="def solve():", suffix="")))
-    assert error.value.status_code == 503
+    assert str(error.value) == "Configure a model provider for AI code completion."
 
 
 def test_inline_completion_endpoint_returns_prediction(monkeypatch) -> None:
@@ -78,3 +77,31 @@ def test_inline_completion_endpoint_returns_prediction(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"prediction": "return 0"}
+
+
+@pytest.mark.parametrize(
+    ("service_error", "expected_status"),
+    [
+        (service.InlineCompletionProviderUnavailable("Configure a model provider for AI code completion."), 503),
+        (service.InlineCompletionGenerationError("AI code completion is unavailable right now."), 502),
+    ],
+)
+def test_inline_completion_endpoint_maps_service_errors(monkeypatch, service_error, expected_status) -> None:
+    async def no_database():
+        return None
+
+    async def fail_completion(_body):
+        raise service_error
+
+    monkeypatch.setattr(app_main, "connect", no_database)
+    monkeypatch.setattr(app_main, "disconnect", no_database)
+    monkeypatch.setattr(service, "generate_inline_completion", fail_completion)
+
+    with TestClient(create_app()) as client:
+        response = client.post("/api/coach/inline-completion", json={
+            "prefix": "def solve():\n    ",
+            "suffix": "",
+        })
+
+    assert response.status_code == expected_status
+    assert response.json() == {"detail": str(service_error)}
