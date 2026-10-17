@@ -42,7 +42,9 @@ Key backend modules:
 - `backend/app/domain/` pure logic modules (profiles, evaluators, resilience, feedback builders).
 - `backend/app/core/` cross-domain engines (assessor, narrator, generator, provider adapters).
 - `backend/app/repositories/` all SQL and row shaping.
-- `backend/app/database.py` startup schema ensures + compatibility migrations.
+- `backend/app/schema.sql` canonical schema, applied idempotently at startup.
+- `backend/app/database.py` startup: applies `schema.sql`, a few in-place upgrades, then seeds the taxonomy.
+- `backend/app/core/signal_catalog.py` per-algorithm signal specs that drive submission assessment.
 
 Detailed architecture and migration notes:
 - `docs/backend-architecture.md`
@@ -55,24 +57,38 @@ Docs navigation:
 - `docs/migration-notes.md` -> migration decisions, moved modules, and compatibility notes.
 - `docs/service-contracts.md` -> service-level TypedDict/TypeAlias ownership and refactor guidance.
 
-Core algorithm taxonomy is canonicalized into `algorithm`, `skill`, `technique`, `problem`, `problem_skill`, and `problem_technique`. Legacy `static_function*` and `core_algorithm_*` structures are migrated at startup when present.
+Core algorithm taxonomy is canonicalized into `algorithm`, `skill`, `technique`, `problem`, `problem_skill`, and `problem_technique`.
 
 ## Data Model (Current)
 
 Primary tables:
+- `algorithm`: catalog groups (sliding window, binary search, …). `algorithm.signal_spec` holds the group's signal spec, seeded from `backend/app/core/signal_catalog.py`.
 - `problem`: canonical practice-content table for core, meta, static-playlist, focused-fallback, and generated LLM cards.
 - `submission`: canonical attempt ledger and signal store; many submissions may reference one `problem` through `problem_slug`.
 - `playlist` and `playlist_problem_order`: organization and ordering only; they do not duplicate problem content.
 - `multiple_choice_problem`: separate MCQ content path retained intentionally for now.
 
-Important migration behavior in `backend/app/database.py`:
-- Backfills legacy `score_attempts` into `multiple_choice_problem` + `submission` when present.
-- Uses fingerprint-based multiple-choice problem reconciliation for idempotency and duplicate tolerance.
-- Drops `score_attempts` after successful backfill.
-- Moves legacy generated-card rows into `problem` and removes `generated_skill_map_cards`.
-- Adds `submission.problem_slug` as a real foreign key and preserves `submission.generated_card` as the historical snapshot.
-- Removes the temporary `practice_*` catalog tables.
-- Preserves non-core problem rows during taxonomy seeding; stale core rows are pruned by source type.
+Startup behavior in `backend/app/database.py`:
+- Applies `backend/app/schema.sql` (every statement is `IF NOT EXISTS`, so it is safe on every boot).
+- Applies in-place upgrades for existing databases: adds `algorithm.signal_spec`, drops the retired `submission.migration_key`, and stamps stored evaluations that have no `signalSpec` with `{"algorithm": "default", "version": 0}`.
+- Seeds algorithms (with their signal specs), techniques, skills, and core problems. Stale core problems and skills that are no longer in the catalog are pruned; generated problems are preserved.
+- `submission.problem_slug` is a real foreign key; `submission.generated_card` is kept as the historical snapshot.
+
+## Signal Specs
+
+Every recall submission is scored by the Signal Assessor against a **signal spec** that belongs to the problem's catalog group (`algorithm`), not to individual problems.
+
+- **Where they live:** `backend/app/core/signal_catalog.py` is the source of truth. Startup copies each spec into `algorithm.signal_spec`.
+- **What a spec holds:** an ordered list of `SignalDefinition`s. Each one has a `key`, a `label`, a `kind` (`score` 0–100 or `boolean` valid/error), a `role` (`dimension` or `modifier`), a `weight` for the overall score, `guidance` sent to the assessor, the `variation_strategy` used by adaptive variations, and an optional `axis` (`fidelity`, `executable`, `fluency`) that feeds the summary score. A spec also lists the group's `structural_elements` flags and a `version`.
+- **Resolution order:** the submission's problem → its `algorithm.signal_spec`. Otherwise the primary skill tag's algorithm. Otherwise `DEFAULT_SIGNAL_SPEC`.
+- **Current specs:** `sliding-window`, `two-pointers`, `binary-search`, `dynamic-programming`. Every other group uses the default spec (`structure`, `completeness`, `patternFidelity`).
+- **Storage:** each stored evaluation records `signalSpec: {algorithm, version}`. Its `dimensions` and `modifiers` are keyed by that spec's signals, in spec order.
+
+To add a spec for another group:
+1. Add a `SignalSpec` built with `_spec(...)` in `signal_catalog.py` and register it in `SIGNAL_SPECS`. Every spec automatically gets the shared `correctness`, `syntax`, and `completionTime` signals; give exactly one of your dimensions `axis="fidelity"`.
+2. Bump `version` whenever an existing spec's signals change, so old evaluations stay interpretable.
+3. Restart the backend; startup reseeds `algorithm.signal_spec`.
+4. `tests/test_signal_catalog.py` checks the new spec automatically.
 
 ## API Endpoints
 
@@ -82,7 +98,6 @@ Core endpoints:
 - `GET /api/skill-map`
 - `GET /api/skill-map-overview`
 - `POST /api/coach/inline-completion` (non-persisted code suggestions for CodeMirror)
-- `POST /api/coach/live-feedback` (legacy endpoint; the web editor no longer calls it)
 - `POST /api/coach/history`
 - `POST /api/coach/session-plan`
 - `POST /api/coach/skill-map-drills`
@@ -130,12 +145,13 @@ docker compose down
 
 ### Reinitialize Database from Seed Scripts
 
+Postgres data is a bind mount at `backend/data/postgres`, so `docker compose down -v` does not clear it. Delete the directory instead:
+
 ```bash
-docker compose down -v
-docker compose up -d --build
+docker compose down && rm -rf backend/data/postgres && docker compose up -d --build
 ```
 
-Initialization scripts create the base PostgreSQL schema. Application startup then applies compatibility migrations and seeds the canonical `problem` taxonomy and playlist projections.
+Backend startup creates the schema from `backend/app/schema.sql` and seeds the canonical `problem` taxonomy, signal specs, and playlist projections. Reinitialize any database that predates the removal of the legacy startup migrations (`answer`/`score_attempts` era).
 
 ## Testing
 
@@ -173,8 +189,9 @@ cd backend && DATABASE_URL=postgresql://flashcard_user:flashcard_password@localh
 
 Recent test hardening includes:
 - API contract parity tests.
-- Migration idempotency guard tests.
-- Fixture-backed integration parity tests for migrated attempt data.
+- Signal spec tests: catalog invariants and prompt contents (`test_signal_catalog.py`), rubric parsing, assessor validation, and variation strategy (`test_signal_rubric.py`), and spec resolution (`test_signal_spec_resolution.py`).
+- Schema idempotency tests (`test_schema_idempotency.py`): startup twice, with `algorithm.signal_spec` seeded and stable.
+- Per-algorithm `signalSpec` persistence and history read-back integration tests.
 - Query-plan performance guard tests using `EXPLAIN (FORMAT JSON)`.
 - Architecture boundary guard tests that enforce no framework coupling in service/core and no repository imports from domain/core.
 - Canonical content architecture tests for `problem`, `submission.problem_slug`, playlist projections, and legacy-table removal.
@@ -206,7 +223,8 @@ Generator tuning:
 
 ## Submission Feedback Behavior
 
-- Submission feedback is LLM-backed.
+- Submission feedback is LLM-backed. The assessor scores the signals of the problem's signal spec (see [Signal Specs](#signal-specs)), and a response missing any spec signal is treated as invalid.
+- When the assessor or narrator is unavailable, the submission falls back to the semantic evaluator (`evaluation_service`) and then to the deterministic AST check (`domain/recall_soundness.py`). The verdict is stored without dimensions.
 - If the selected provider fails (auth, credits, timeout, malformed response), the backend returns a structured failure payload and the frontend surfaces a fallback error state.
 - Recent real-world example: Anthropic can return `invalid_request_error` when account credits are exhausted, which presents as "No response from Claude".
 
@@ -245,14 +263,12 @@ curl -i http://localhost:3001/api/health
 docker compose ps
 ```
 
-3. If startup errors mention legacy table migrations, rebuild with latest backend image and allow startup migration to complete.
-4. Confirm the legacy content tables are gone:
+3. If startup fails on schema or constraint errors, the database likely predates the current schema. Reinitialize it (see [Reinitialize Database from Seed Scripts](#reinitialize-database-from-seed-scripts)).
+4. Confirm every algorithm has a seeded signal spec:
 
 ```bash
-docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT to_regclass('public.generated_skill_map_cards'), to_regclass('public.practice_item');"
+docker compose exec -T postgres psql -U flashcard_user -d flashcard_db -c "SELECT slug, signal_spec->>'algorithm' FROM algorithm ORDER BY display_order;"
 ```
-
-Both values should be empty after migration.
 
 ### Submission feedback unavailable
 

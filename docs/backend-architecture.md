@@ -23,14 +23,24 @@ Hard rules:
 ### 1) Final Submission Evaluation and Persistence
 1. `POST /api/attempts` in `app/endpoints/attempts.py`
 2. `app/services/submission_service.py::create_submission`
-3. `app/services/feedback_service.py::coach_submission_evaluation`
-4. `app/services/history_service.py::load_feedback_context`
-5. `app/core/assessor.py::run_signal_assessor`
-6. `app/core/narrator.py::attempt_feedback_with_narrator`
-7. `app/domain/submission_evaluation.py::canonical_submission_evaluation`
-8. `app/services/attempts_service.py::create_attempt` persists the canonical result.
+3. `app/services/signal_spec_service.py::resolve_signal_spec` picks the signal spec (see below)
+4. `app/services/feedback_service.py::coach_submission_evaluation`
+5. `app/services/history_service.py::load_feedback_context`
+6. `app/core/assessor.py::run_signal_assessor` scores exactly the spec's signals
+7. `app/core/narrator.py::attempt_feedback_with_narrator`
+8. `app/domain/feedback_builder.py::submission_rubric_from_assessment` turns spec signals into the rubric
+9. `app/domain/submission_evaluation.py::canonical_submission_evaluation`
+10. `app/services/attempts_service.py::create_attempt` persists the canonical result.
 
-The client sends the attempt once and never supplies its own verdict or evaluation signals. The submission service owns the complete final-evaluation transaction. While the user types, CodeMirror requests non-persisted code suggestions from `POST /api/coach/inline-completion`. The older `POST /api/coach/live-feedback` route remains available for compatibility but is not used by the web editor.
+The client sends the attempt once and never supplies its own verdict or evaluation signals. The submission service owns the complete final-evaluation transaction. While the user types, CodeMirror requests non-persisted code suggestions from `POST /api/coach/inline-completion`.
+
+### 1a) Signal Specs
+Signals are defined per catalog group (the `algorithm` table), not per problem:
+- `app/core/signal_catalog.py` is the source of truth: a `SignalSpec` per algorithm slug plus `DEFAULT_SIGNAL_SPEC`. Each `SignalDefinition` carries its key, label, kind (`score` or `boolean`), role (`dimension` or `modifier`), weight, assessor guidance, adaptive-variation strategy, and optional score axis (`fidelity`, `executable`, `fluency`).
+- Startup seeds each spec into `algorithm.signal_spec` (JSONB).
+- `signal_spec_repository.fetch_algorithm_signal_spec` resolves the submission's problem slug to its algorithm row, otherwise the primary skill tag's algorithm row. A missing row falls back to `DEFAULT_SIGNAL_SPEC`.
+- The assessor prompt, the required-signal validation, the rubric dimensions/modifiers, weighted scores, labels, and the adaptive-variation strategy all come from the resolved spec.
+- Every stored evaluation records `signalSpec: {algorithm, version}`. Evaluations written before signal specs existed are stamped `{"algorithm": "default", "version": 0}`.
 
 ### 1b) Coach Variations
 1. `POST /api/coach/adaptive-variation` or `POST /api/coach/sequential-variation`
@@ -82,7 +92,7 @@ The canonical `submission.signals` JSONB object has four allowed top-level field
 - `flow` (optional adaptive/custom flow context)
 - `modality` (modality-specific measurements plus canonical `kind`)
 
-`evaluation` contains the versioned verdict, score, primary failure, dimensions, modifiers, recommended action, narrative feedback, and provenance. Narrative feedback does not embed another copy of the evaluation. The ledger's `successful` value is derived from `evaluation.verdict`; it is never accepted from the client.
+`evaluation` contains the versioned verdict, the `signalSpec` reference, score, primary failure, dimensions, modifiers, recommended action, narrative feedback, and provenance. Dimension and modifier keys are the referenced spec's signal keys, in spec order. Narrative feedback does not embed another copy of the evaluation. The ledger's `successful` value is derived from `evaluation.verdict`; it is never accepted from the client.
 
 ## Adaptive Flow Contract
 

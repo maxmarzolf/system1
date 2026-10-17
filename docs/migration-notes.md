@@ -22,17 +22,15 @@ The coach service was split into capability-focused modules:
 ## New Domain Modules
 
 Introduced domain-focused modules:
-- `app/domain/template_evaluator.py`
+- `app/domain/recall_soundness.py`
 - `app/domain/llm_resilience.py`
 - `app/domain/feedback_builder.py`
-- `app/domain/coach_profiles.py`
 - `app/domain/coach_orchestrator.py`
 
 ## Core Coach Changes
 
 - `app/core/coach.py` has been removed.
 - Coach route orchestration now resolves through service modules directly.
-- Feedback rubric and profile constants moved to domain modules.
 - LLM resilience/error taxonomy moved under `app/domain/llm_resilience.py`.
 - Submission provider transport moved to `app/core/submission_llm_client.py`.
 - Adaptive/sequential variation orchestration moved to `app/services/variation_service.py`.
@@ -60,3 +58,15 @@ The migration now includes explicit service/core contract typing without behavio
 - Generator runtime/context payload boundaries in `app/core/generator.py` use named aliases and TypedDicts for lower ambiguity.
 
 These changes are additive: they tighten boundaries and readability, while preserving external API shape and runtime behavior.
+
+## Signal Specs and Legacy Removal
+
+Signals moved from one hardcoded set to per-algorithm specs (`app/core/signal_catalog.py`, stored in `algorithm.signal_spec`). Removed in the same change:
+- The four competing signal vocabularies: the hardcoded assessor signal list, `SUBMISSION_DIMENSION_LABELS` / `ADAPTIVE_VARIATION_STRATEGIES` (`app/domain/coach_profiles.py`, deleted), `CORE_DIMENSION_ORDER` / `MODIFIER_ORDER`, and the unreachable per-pattern template profiles.
+- `app/domain/template_evaluation.py` and its `template_evaluator.py` shim. The deterministic fallback is now `app/domain/recall_soundness.py::evaluate_recall_soundness`.
+- `POST /api/coach/live-feedback`, the assessor live mode, `CoachAttemptFeedbackResponse`, and the `liveMode` / `liveMilestones` / `liveCoachTuning` / `enabledTemplateModes` / `previousAttempts` request fields.
+- All one-time startup migrations in `app/database.py`: `answer` to `submission`, the `score_attempts` backfill, the column folding into `signals`, the `static_function*` / `core_algorithm_*` renames, the legacy taxonomy slug remap, the `arrays-hash-maps` retirement, and the `RETIRED_SKILLS` / `PATTERN_TO_ALGORITHM` constants.
+- `submission.migration_key` and its index.
+- `backend/init-scripts/`. The canonical schema now lives in `backend/app/schema.sql` and is applied idempotently on every startup.
+
+Databases that predate these migrations must be reinitialized (see the README).
