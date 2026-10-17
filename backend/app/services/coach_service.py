@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-from app.core.llm import llm_provider_label as _llm_provider_label
-from app.domain.llm_resilience import SubmissionFeedbackUnavailableError, coach_llm_http_exception
 from app.models import (
     AdaptiveVariationRequest,
-    CoachAttemptFeedbackRequest,
     CoachPracticeHistoryRequest,
     CoachSessionPlanRequest,
     MultipleChoiceDrillsRequest,
@@ -13,20 +10,12 @@ from app.models import (
 )
 from app.services import (
     coach_orchestration_service,
-    feedback_service,
     history_service,
 )
 
 
 async def coach_provider_default():
     return await coach_orchestration_service.coach_provider_default()
-
-
-async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
-    try:
-        return await feedback_service.coach_attempt_feedback(body)
-    except SubmissionFeedbackUnavailableError as error:
-        raise coach_llm_http_exception(error, _llm_provider_label(error.provider)) from error
 
 
 async def coach_session_plan(body: CoachSessionPlanRequest):

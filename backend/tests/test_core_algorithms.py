@@ -13,8 +13,6 @@ from app.core.taxonomy_catalog import (
     ALGORITHM_SKILLS,
     ALGORITHMS,
     CANONICAL_SKILLS,
-    PATTERN_TO_ALGORITHM,
-    RETIRED_SKILLS,
     TECHNIQUES,
 )
 
@@ -49,16 +47,7 @@ def test_algorithm_curricula_have_intentionally_sized_unique_taxonomies() -> Non
 def test_taxonomy_catalog_is_internally_consistent() -> None:
     assert set(ALGORITHM_SKILLS) <= set(ALGORITHMS)
     assert "arrays-hash-maps" not in ALGORITHMS
-    assert not set(RETIRED_SKILLS) & set(CANONICAL_SKILLS)
-    assert "correctness-reasoning" not in RETIRED_SKILLS
-    assert "complexity-analysis" not in RETIRED_SKILLS
-    assert "answer-update-timing" not in RETIRED_SKILLS
-    assert "space-optimization" in RETIRED_SKILLS
-    assert set(PATTERN_TO_ALGORITHM.values()) <= set(ALGORITHMS)
-    assert PATTERN_TO_ALGORITHM["dfs-bfs"] == "graphs"
-    assert PATTERN_TO_ALGORITHM["graph-traversal"] == "graphs"
-    assert PATTERN_TO_ALGORITHM["topological-sort"] == "graphs"
-    assert PATTERN_TO_ALGORITHM["greedy-sorting"] == "sorting"
+    assert len(set(CANONICAL_SKILLS)) == len(CANONICAL_SKILLS)
 
 
 def test_core_algorithm_catalog_references_real_functions() -> None:

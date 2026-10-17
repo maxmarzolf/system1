@@ -10,8 +10,6 @@ from app.models import (
     InlineCompletionResponse,
     AdaptiveVariationRequest,
     AdaptiveVariationResponse,
-    CoachAttemptFeedbackRequest,
-    CoachAttemptFeedbackResponse,
     CoachPracticeHistoryRequest,
     CoachPracticeHistoryResponse,
     CoachProviderDefaultResponse,
@@ -44,11 +42,6 @@ async def coach_inline_completion(body: InlineCompletionRequest):
 @router.get("/provider-default", response_model=CoachProviderDefaultResponse)
 async def coach_provider_default():
     return await coach_service.coach_provider_default()
-
-
-@router.post("/live-feedback", response_model=CoachAttemptFeedbackResponse)
-async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
-    return await coach_service.coach_attempt_feedback(body)
 
 
 @router.post("/session-plan", response_model=CoachSessionPlanResponse)

@@ -8,9 +8,7 @@ BACKEND_APP = Path(__file__).parents[1] / "app"
 
 def _runtime_source() -> str:
     chunks: list[str] = []
-    for path in sorted(BACKEND_APP.rglob("*.py")):
-        if path.name == "database.py":
-            continue
+    for path in sorted([*BACKEND_APP.rglob("*.py"), BACKEND_APP / "schema.sql"]):
         chunks.append(path.read_text())
     return "\n".join(chunks)
 
@@ -42,8 +40,8 @@ def test_runtime_generated_content_targets_problem_repository() -> None:
 
 def test_submission_write_path_populates_problem_slug() -> None:
     repository = (BACKEND_APP / "repositories" / "attempts_repository.py").read_text()
-    migration = (BACKEND_APP / "database.py").read_text()
+    schema = (BACKEND_APP / "schema.sql").read_text()
 
     assert "generated_card_id, problem_slug, generated_card" in repository
     assert "SELECT slug FROM problem WHERE slug = $1" in repository
-    assert "submission_problem_slug_fkey" in migration
+    assert "submission_problem_slug_fkey" in schema

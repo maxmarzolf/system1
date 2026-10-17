@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import pytest
 
+from app.core.signal_catalog import BINARY_SEARCH_SIGNAL_SPEC, DEFAULT_SIGNAL_SPEC
 from app.domain.submission_evaluation import canonical_submission_evaluation
 from app.models import AttemptCreate
-from app.services import attempts_service, feedback_service, submission_service
+from app.services import attempts_service, feedback_service, signal_spec_service, submission_service
 
 
 def test_canonical_evaluation_removes_embedded_rubric_and_feedback_metadata() -> None:
@@ -26,12 +27,14 @@ def test_canonical_evaluation_removes_embedded_rubric_and_feedback_metadata() ->
 
     evaluation = canonical_submission_evaluation(
         rubric,
+        DEFAULT_SIGNAL_SPEC,
         feedback,
         provider="openai",
         llm_used=True,
     )
 
     assert evaluation["verdict"] == "needs-work"
+    assert evaluation["signalSpec"] == {"algorithm": "default", "version": 1}
     assert evaluation["score"]["overall"] == 62.0
     assert evaluation["feedback"] == {"diagnosis": "The bounds check is malformed."}
     assert evaluation["provenance"] == {
@@ -53,9 +56,14 @@ async def test_final_recall_uses_one_evaluation_flow_and_persists_its_result(mon
     }
     captured: dict[str, object] = {}
 
-    async def _evaluate(body):
+    async def _evaluate(body, spec):
         captured["evaluation_request"] = body
+        captured["spec"] = spec
         return canonical
+
+    async def _resolve(card_ids, skill_tags):
+        captured["resolved"] = (card_ids, skill_tags)
+        return BINARY_SEARCH_SIGNAL_SPEC
 
     async def _persist(body, *, successful, evaluation):
         captured["persist_body"] = body
@@ -65,6 +73,7 @@ async def test_final_recall_uses_one_evaluation_flow_and_persists_its_result(mon
 
     monkeypatch.setattr(feedback_service, "coach_submission_evaluation", _evaluate)
     monkeypatch.setattr(attempts_service, "create_attempt", _persist)
+    monkeypatch.setattr(signal_spec_service, "resolve_signal_spec", _resolve)
 
     body = AttemptCreate.model_validate({
         "cardId": "bfs-1",
@@ -73,10 +82,13 @@ async def test_final_recall_uses_one_evaluation_flow_and_persists_its_result(mon
         "correctAnswer": "target",
         "userAnswer": "attempt",
         "elapsedMs": 450262,
+        "categoryTags": ["binary-search"],
     })
     result = await submission_service.create_submission(body)
 
-    assert captured["evaluation_request"].liveMode is False
+    assert captured["resolved"] == ([None, "bfs-1"], ["binary-search"])
+    assert captured["spec"] is BINARY_SEARCH_SIGNAL_SPEC
+    assert captured["evaluation_request"].exact is False
     assert captured["successful"] is True
     assert captured["evaluation"] is canonical
     assert result["evaluation"] is canonical

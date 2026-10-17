@@ -8,7 +8,6 @@ from app.core.assessor import (
     AssessorContext,
     AssessorRuntime,
     AssessorUnavailableError,
-    assessment_to_live_response,
     run_signal_assessor,
 )
 from app.core.generator import _template_mode_value
@@ -24,6 +23,7 @@ from app.core.narrator import (
     NarratorRuntime,
     attempt_feedback_with_narrator,
 )
+from app.core.signal_catalog import SignalSpec
 from app.core.submission_llm_client import call_llm_json_for_submission
 from app.domain.coach_context import algorithmic_template_label as _domain_algorithmic_template_label
 from app.domain.feedback_builder import submission_rubric_from_assessment as _domain_submission_rubric_from_assessment
@@ -31,8 +31,8 @@ from app.domain.submission_evaluation import canonical_submission_evaluation
 from app.domain.llm_resilience import (
     SubmissionFeedbackUnavailableError,
 )
-from app.domain.template_evaluator import merged_submission_tuning as _domain_merged_submission_tuning
-from app.models import CoachAttemptFeedbackRequest, CoachAttemptFeedbackResponse
+from app.domain.recall_soundness import merged_submission_tuning as _domain_merged_submission_tuning
+from app.models import CoachAttemptFeedbackRequest
 from app.services.contracts import FeedbackPayload, HistoryEntry, HistorySummary
 from app.services import history_service
 
@@ -67,6 +67,7 @@ async def _run_assessor_phase(
     body: CoachAttemptFeedbackRequest,
     provider: str,
     template_mode: str,
+    spec: SignalSpec,
 ) -> FeedbackPayload:
     assessor_context = AssessorContext(
         provider=provider,
@@ -74,7 +75,7 @@ async def _run_assessor_phase(
         template_mode=template_mode,
     )
     try:
-        return await run_signal_assessor(body, assessor_context, ASSESSOR_RUNTIME)
+        return await run_signal_assessor(body, assessor_context, ASSESSOR_RUNTIME, spec)
     except AssessorUnavailableError as error:
         raise SubmissionFeedbackUnavailableError(
             code=error.code,
@@ -125,30 +126,13 @@ async def _run_submission_narrator_phase(
     return feedback
 
 
-def _finalize_live_feedback_payload(
-    feedback: FeedbackPayload,
-    provider: str,
-) -> CoachAttemptFeedbackResponse:
-    feedback["llmProvider"] = provider if bool(feedback.get("llmUsed")) else ""
-    feedback.pop("signals", None)
-    return CoachAttemptFeedbackResponse.model_validate(feedback)
-
-
-async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest) -> CoachAttemptFeedbackResponse:
-    provider = _resolve_feedback_provider(body)
-    template_mode = _template_mode_value(body.templateMode)
-    assessment = await _run_assessor_phase(body, provider, template_mode)
-    feedback = assessment_to_live_response(assessment)
-    return _finalize_live_feedback_payload(feedback, provider)
-
-
-async def coach_submission_evaluation(body: CoachAttemptFeedbackRequest) -> dict[str, Any]:
+async def coach_submission_evaluation(body: CoachAttemptFeedbackRequest, spec: SignalSpec) -> dict[str, Any]:
     history, history_summary = await history_service.load_feedback_context(body)
     provider = _resolve_feedback_provider(body)
     template_mode = _template_mode_value(body.templateMode)
-    assessment = await _run_assessor_phase(body, provider, template_mode)
+    assessment = await _run_assessor_phase(body, provider, template_mode, spec)
     sound = str(assessment.get("verdict") or "").strip() == "sound"
-    evaluated_body = body.model_copy(update={"exact": sound, "liveMode": False})
+    evaluated_body = body.model_copy(update={"exact": sound})
     feedback = await _run_submission_narrator_phase(
         evaluated_body,
         assessment,
@@ -157,9 +141,10 @@ async def coach_submission_evaluation(body: CoachAttemptFeedbackRequest) -> dict
         provider,
         template_mode,
     )
-    rubric = _domain_submission_rubric_from_assessment(evaluated_body, assessment)
+    rubric = _domain_submission_rubric_from_assessment(evaluated_body, assessment, spec)
     return canonical_submission_evaluation(
         rubric,
+        spec,
         feedback,
         provider=provider,
         llm_used=bool(feedback.get("llmUsed")),

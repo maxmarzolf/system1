@@ -4,19 +4,6 @@ import json
 from collections import Counter
 from typing import Any
 
-CORE_DIMENSION_ORDER = (
-    "contract",
-    "pattern",
-    "state",
-    "control_flow",
-    "invariant",
-    "state_updates",
-    "ordering",
-    "answer_path",
-    "edge_cases",
-    "recall_fidelity",
-)
-MODIFIER_ORDER = ("executability", "fluency")
 WEAK_DIMENSION_THRESHOLD = 80.0
 
 
@@ -56,14 +43,14 @@ def _compact_dimension(raw: Any) -> dict[str, Any]:
     }
 
 
-def _compact_dimensions(raw_dimensions: Any, order: tuple[str, ...]) -> dict[str, dict[str, Any]]:
+def _compact_dimensions(raw_dimensions: Any) -> dict[str, dict[str, Any]]:
+    """Compact rubric dimensions, preserving the signal-spec order they were stored in."""
     if not isinstance(raw_dimensions, dict):
         return {}
 
     compact: dict[str, dict[str, Any]] = {}
-    ordered_keys = [*order, *[key for key in raw_dimensions if key not in order]]
-    for key in ordered_keys:
-        dimension = _compact_dimension(raw_dimensions.get(key))
+    for key, raw_dimension in raw_dimensions.items():
+        dimension = _compact_dimension(raw_dimension)
         if not dimension:
             continue
         dimension["key"] = dimension["key"] or str(key)
@@ -88,8 +75,13 @@ def compact_submission_rubric(raw_rubric: Any) -> dict[str, Any]:
         else [],
     }
 
+    signal_spec = coerce_json_object(rubric.get("signalSpec"))
     return {
         "verdict": str(rubric.get("verdict", "")).strip(),
+        "signalSpec": {
+            "algorithm": str(signal_spec.get("algorithm", "")).strip(),
+            "version": int(signal_spec.get("version", 0) or 0),
+        },
         "score": {
             "overall": _score_value(score.get("overall")),
             "conceptual": _score_value(score.get("conceptual")),
@@ -98,8 +90,8 @@ def compact_submission_rubric(raw_rubric: Any) -> dict[str, Any]:
             "fluency": _score_value(score.get("fluency")),
         },
         "primaryFailure": compact_primary_failure,
-        "dimensions": _compact_dimensions(rubric.get("dimensions"), CORE_DIMENSION_ORDER),
-        "modifiers": _compact_dimensions(rubric.get("modifiers"), MODIFIER_ORDER),
+        "dimensions": _compact_dimensions(rubric.get("dimensions")),
+        "modifiers": _compact_dimensions(rubric.get("modifiers")),
         "recommendedAction": str(rubric.get("recommendedAction", "")).strip(),
     }
 

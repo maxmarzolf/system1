@@ -102,3 +102,8 @@ class SkillMapOverviewAttemptRow(TypedDict):
     modality: str | None
     live_coach_used: bool
     signals: dict[str, Any] | str | None
+
+
+class AlgorithmSignalSpecRow(TypedDict):
+    slug: str
+    signal_spec: dict[str, Any] | str | None

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.core.signal_catalog import SignalSpec
 from app.submission_rubric import compact_submission_rubric
 
 
@@ -10,6 +11,7 @@ EVALUATION_VERSION = 1
 
 def canonical_submission_evaluation(
     rubric: dict[str, Any],
+    spec: SignalSpec,
     feedback: dict[str, Any] | None = None,
     *,
     provider: str = "",
@@ -25,6 +27,7 @@ def canonical_submission_evaluation(
 
     return {
         "version": EVALUATION_VERSION,
+        "signalSpec": spec.reference(),
         "verdict": str(compact_rubric.get("verdict") or "needs-work"),
         "score": compact_rubric.get("score", {}),
         "primaryFailure": compact_rubric.get("primaryFailure", {}),
@@ -42,6 +45,7 @@ def canonical_submission_evaluation(
 
 def outcome_evaluation(
     successful: bool,
+    spec: SignalSpec,
     *,
     llm_used: bool = False,
     provider: str = "",
@@ -51,6 +55,7 @@ def outcome_evaluation(
     score = 100.0 if successful else 0.0
     return {
         "version": EVALUATION_VERSION,
+        "signalSpec": spec.reference(),
         "verdict": verdict,
         "score": {
             "overall": score,

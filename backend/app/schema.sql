@@ -1,7 +1,4 @@
--- ============================================================================
--- Legacy Score Attempts Table
--- ============================================================================
--- score_attempts has been replaced by submission as the canonical attempt ledger.
+-- Canonical schema. Executed idempotently by app/database.py on every startup.
 
 -- ============================================================================
 -- Multiple Choice Problem Table
@@ -78,7 +75,6 @@ CREATE TABLE IF NOT EXISTS submission (
     target_source VARCHAR(30),
     target_control VARCHAR(20),
     format_control VARCHAR(20),
-    migration_key TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -88,10 +84,6 @@ CREATE INDEX IF NOT EXISTS idx_submission_multiple_choice_problem_id
 
 CREATE INDEX IF NOT EXISTS idx_submission_session_user
     ON submission(session_id, user_id);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_submission_migration_key
-    ON submission(migration_key)
-    WHERE migration_key IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_submission_created_at
     ON submission(created_at DESC);
@@ -131,6 +123,8 @@ CREATE TABLE IF NOT EXISTS algorithm (
     slug VARCHAR(80) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     display_order INTEGER NOT NULL DEFAULT 0,
+    -- Signal spec seeded from app/core/signal_catalog.py.
+    signal_spec JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
