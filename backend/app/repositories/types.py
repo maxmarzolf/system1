@@ -107,3 +107,11 @@ class SkillMapOverviewAttemptRow(TypedDict):
 class AlgorithmSignalSpecRow(TypedDict):
     slug: str
     signal_spec: dict[str, Any] | str | None
+    matched_by: str
+
+
+class AlgorithmSignalSpecListRow(TypedDict):
+    slug: str
+    name: str
+    display_order: int
+    signal_spec: dict[str, Any] | str | None

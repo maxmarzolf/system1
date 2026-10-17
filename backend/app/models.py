@@ -74,6 +74,12 @@ class SubmissionEvaluation(BaseModel):
     provenance: dict[str, Any] = {}
 
 
+class SignalSpecResolveRequest(BaseModel):
+    cardId: str = ""
+    generatedCardId: str | None = None
+    categoryTags: list[str] = []
+
+
 class SubmissionSignals(BaseModel):
     elapsedMs: int = Field(default=0, ge=0)
     evaluation: SubmissionEvaluation | None = None

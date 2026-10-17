@@ -4,6 +4,10 @@ import json
 import re
 from typing import Any
 
+# Practice cards for core/meta catalog problems use this id prefix before the problem slug.
+CORE_ALGORITHM_CARD_ID_PREFIX = "core-algorithm-"
+
+
 def _examples(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value]
@@ -45,7 +49,7 @@ def build_core_algorithm_drill(row: dict[str, Any]) -> dict[str, Any]:
     entry_name = _entry_point_name(code) or slug
     examples = _examples(row.get("leetcode_examples"))
     return {
-        "id": f"core-algorithm-{slug}",
+        "id": f"{CORE_ALGORITHM_CARD_ID_PREFIX}{slug}",
         "title": title,
         "difficulty": str(row["difficulty"]),
         "prompt": prompt,

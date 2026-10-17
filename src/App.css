@@ -4003,26 +4003,6 @@ button.tune-reset {
   accent-color: var(--hc-accent);
 }
 
-.tune-dimension-list {
-  display: grid;
-  gap: 0;
-  border-top: 1px solid var(--hc-border-dim);
-}
-
-.tune-dimension-row {
-  display: grid;
-  grid-template-columns: minmax(9rem, 0.38fr) minmax(0, 1fr);
-  gap: 1rem;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid var(--hc-border-dim);
-}
-
-.tune-dimension-row strong {
-  color: var(--hc-fg);
-  font-size: 0.78rem;
-}
-
-.tune-dimension-row span,
 .tune-footnote {
   color: var(--hc-fg-dim);
   font-size: 0.78rem;
@@ -4136,11 +4116,6 @@ button.tune-reset {
 
   .tune-section {
     padding: 1.1rem 1rem;
-  }
-
-  .tune-dimension-row {
-    grid-template-columns: 1fr;
-    gap: 0.25rem;
   }
 
   .tune-hotkey-row {
@@ -6377,4 +6352,212 @@ button.tune-reset {
 
 @media (prefers-reduced-motion: reduce) {
   .mcq-feedback { animation: none; }
+}
+
+/* Signal specs: read-only Tune viewer and practice troubleshooting panel. */
+.signal-spec-viewer {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.signal-spec-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: start;
+  gap: 0.45rem 0.9rem;
+  color: var(--hc-fg-dim);
+  font-size: 0.76rem;
+}
+
+.signal-spec-warning {
+  color: var(--hc-warning);
+}
+
+.signal-spec {
+  display: grid;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.signal-spec-table-wrap {
+  overflow-x: auto;
+}
+
+.signal-spec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.signal-spec-table th,
+.signal-spec-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--hc-border-dim);
+  color: var(--hc-fg-dim);
+  text-align: left;
+  vertical-align: top;
+}
+
+.signal-spec-table thead th {
+  color: var(--hc-accent);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.signal-spec-table tbody th {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 9rem;
+}
+
+.signal-spec-table tbody th strong {
+  color: var(--hc-fg);
+  font-weight: 650;
+}
+
+.signal-spec-table code,
+.signal-spec-structural code,
+.signal-spec-meta code,
+.signal-trace-facts code {
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.7rem;
+  color: var(--hc-accent);
+}
+
+.signal-spec-structural {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  margin: 0;
+  color: var(--hc-fg-dim);
+  font-size: 0.74rem;
+}
+
+.signal-spec-structural span {
+  color: var(--hc-fg);
+  font-weight: 650;
+}
+
+.signal-trace-panel {
+  margin-top: 1rem;
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-panel-bg);
+}
+
+.signal-trace-panel > summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 1rem;
+  color: var(--hc-fg);
+  font-size: 0.78rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.signal-trace-summary-meta {
+  color: var(--hc-fg-dim);
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.7rem;
+  font-weight: 400;
+}
+
+.signal-trace-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 1.5rem;
+  padding: 0.25rem 1rem 1rem;
+}
+
+.signal-trace-section {
+  display: grid;
+  align-content: start;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.signal-trace-section h4,
+.signal-trace-rubric h5 {
+  margin: 0;
+  color: var(--hc-accent);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.signal-trace-rubric {
+  display: grid;
+  gap: 0.35rem;
+  overflow-x: auto;
+}
+
+.signal-trace-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem 1rem;
+  margin: 0;
+  font-size: 0.74rem;
+}
+
+.signal-trace-facts dt {
+  color: var(--hc-fg-dim);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.signal-trace-facts dd {
+  margin: 0.1rem 0 0;
+  color: var(--hc-fg);
+  overflow-wrap: anywhere;
+}
+
+.signal-trace-scores {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.signal-status-pass { color: var(--hc-success); }
+.signal-status-partial { color: var(--hc-warning); }
+.signal-status-fail { color: var(--hc-error); }
+.signal-status-not_applicable { color: var(--hc-fg-dim); }
+
+.signal-trace-raw summary {
+  color: var(--hc-fg-dim);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.signal-trace-json {
+  max-height: 16rem;
+  margin: 0.4rem 0 0;
+  padding: 0.6rem;
+  overflow: auto;
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-editor-bg);
+  color: var(--hc-fg-dim);
+  font-size: 0.7rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.signal-trace-empty,
+.signal-trace-error {
+  margin: 0;
+  font-size: 0.76rem;
+}
+
+.signal-trace-empty { color: var(--hc-fg-dim); }
+.signal-trace-error { color: var(--hc-error); }
+
+@media (max-width: 900px) {
+  .signal-trace-body,
+  .signal-trace-scores {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

@@ -21,6 +21,8 @@ import {
   type SubmissionModality,
 } from './practiceFlow'
 import RelatedLeetCodeDrawer from './RelatedLeetCodeDrawer'
+import SignalTroubleshootingPanel from './SignalTroubleshootingPanel'
+import type { SignalTrace } from './SignalTroubleshootingPanel'
 import { skillMap, type SkillMapNode } from './data/skill-map'
 import { playlistQuestionsToSkillMap, practicePlaylists, type PracticePlaylist } from './data/playlists'
 import { resolveRelatedLeetCodeSet } from './data/related-leetcode'
@@ -1968,6 +1970,7 @@ function App() {
   const [relatedDrawerOpen, setRelatedDrawerOpen] = useState(false)
   const [flowDrawerOpen, setFlowDrawerOpen] = useState(false)
   const [zenMode, setZenMode] = useState(false)
+  const [lastSignalTrace, setLastSignalTrace] = useState<SignalTrace | null>(null)
   const [headerControlsOpen, setHeaderControlsOpen] = useState(true)
   const flowInteractionVersionRef = useRef(0)
   const [flowConfig, setFlowConfig] = useState(loadFlowConfig)
@@ -2547,6 +2550,16 @@ function App() {
     ],
     [activeMultipleChoiceCard?.tags, isFlowActive, mcqTuning.flowMode, multipleChoiceDifficulty, practiceFlow]
   )
+  const signalPreviewRequest = useMemo(() => {
+    if (currentPracticeMode === 'multiple-choice') {
+      return activeMultipleChoiceCard
+        ? { cardId: activeMultipleChoiceCard.id, generatedCardId: activeMultipleChoiceCard.id, categoryTags: currentMultipleChoiceSkillTags }
+        : null
+    }
+    return card.id === emptySkillMapCard.id
+      ? null
+      : { cardId: card.id, generatedCardId: card.id, categoryTags: currentSkillTags }
+  }, [activeMultipleChoiceCard, card.id, currentMultipleChoiceSkillTags, currentPracticeMode, currentSkillTags])
   const visibleCardTags = useMemo(
     () => headerCardTags.filter((tag) => tag !== 'skill-map' && tag !== 'skill-map-mcq'),
     [headerCardTags]
@@ -2744,6 +2757,22 @@ function App() {
 
   const submitAttemptToServer = async (payload: AttemptPayload) => {
     const flowSignals = payload.outsideFlow ? null : currentFlowSignals()
+    const categoryTags = payload.outsideFlow ? card.tags : currentSkillTags
+    const requestSignals = {
+      ...(payload.signals ?? {}),
+      ...(flowSignals ? { flow: flowSignals } : {}),
+      modality: {
+        ...(payload.signals?.modality ?? {}),
+        kind: payload.modality,
+      },
+    }
+    const trace: SignalTrace = {
+      submittedAt: new Date().toISOString(),
+      cardId: card.id,
+      modality: payload.modality,
+      request: { categoryTags, elapsedMs: payload.elapsedMs, signals: requestSignals },
+      response: null,
+    }
     try {
       const response = await fetch(apiUrl('/api/attempts'), {
         method: 'POST',
@@ -2753,7 +2782,7 @@ function App() {
           cardTitle: card.title,
           question: payload.question ?? practicePrompt,
           questionType: payload.microdrill ? `${currentQuestionType}:microdrill` : currentQuestionType,
-          categoryTags: payload.outsideFlow ? card.tags : currentSkillTags,
+          categoryTags,
           correctAnswer: payload.correctAnswer,
           userAnswer: payload.userAnswer,
           mode: payload.mode,
@@ -2765,14 +2794,7 @@ function App() {
           templateMode: payload.templateMode,
           supportLayer: payload.supportLayer,
           modality: payload.modality,
-          signals: {
-            ...(payload.signals ?? {}),
-            ...(flowSignals ? { flow: flowSignals } : {}),
-            modality: {
-              ...(payload.signals?.modality ?? {}),
-              kind: payload.modality,
-            },
-          },
+          signals: requestSignals,
           liveCoachUsed: payload.liveCoachUsed,
           targetSource: isFlowActive && !payload.outsideFlow ? 'recall-miss' : 'skill-map',
           targetControl: isFlowActive && !payload.outsideFlow ? 'system' : 'user',
@@ -2781,8 +2803,9 @@ function App() {
           llmProvider: requestLlmProvider,
         }),
       })
-      if (!response.ok) throw new Error('Unable to submit attempt')
+      if (!response.ok) throw new Error(`Unable to submit attempt (${response.status})`)
       const saved = (await response.json()) as SubmissionSaveResponse
+      setLastSignalTrace({ ...trace, response: { ...saved, evaluation: saved.evaluation as unknown as Record<string, unknown> } })
       if (flowSignals) {
         recordFlowSubmission({
           response: saved,
@@ -2795,7 +2818,8 @@ function App() {
         })
       }
       return saved
-    } catch {
+    } catch (error) {
+      setLastSignalTrace({ ...trace, error: error instanceof Error ? error.message : 'Unable to submit attempt' })
       return null
     }
   }
@@ -2809,6 +2833,22 @@ function App() {
   }) => {
     if (!activeMultipleChoiceCard) return
     const flowSignals = currentFlowSignals()
+    const requestSignals = {
+      ...(flowSignals ? { flow: flowSignals } : {}),
+      modality: {
+        kind: 'mcq',
+        correct: payload.correct,
+        selectedChoiceId: payload.selectedChoice.id,
+        correctChoiceId: payload.correctChoice.id,
+      },
+    }
+    const trace: SignalTrace = {
+      submittedAt: new Date().toISOString(),
+      cardId: activeMultipleChoiceCard.id,
+      modality: 'mcq',
+      request: { categoryTags: currentMultipleChoiceSkillTags, elapsedMs: payload.elapsedMs, signals: requestSignals },
+      response: null,
+    }
     try {
       const response = await fetch(apiUrl('/api/attempts'), {
         method: 'POST',
@@ -2834,15 +2874,7 @@ function App() {
           templateMode: 'algorithm',
           supportLayer: 'none',
           modality: 'mcq',
-          signals: {
-            ...(flowSignals ? { flow: flowSignals } : {}),
-            modality: {
-              kind: 'mcq',
-              correct: payload.correct,
-              selectedChoiceId: payload.selectedChoice.id,
-              correctChoiceId: payload.correctChoice.id,
-            },
-          },
+          signals: requestSignals,
           liveCoachUsed: false,
           targetSource: 'recall-miss',
           targetControl: isFlowActive ? 'system' : 'user',
@@ -2851,8 +2883,9 @@ function App() {
           llmProvider: requestLlmProvider,
         }),
       })
-      if (!response.ok) throw new Error('Unable to submit attempt')
+      if (!response.ok) throw new Error(`Unable to submit attempt (${response.status})`)
       const saved = (await response.json()) as SubmissionSaveResponse
+      setLastSignalTrace({ ...trace, response: { ...saved, evaluation: saved.evaluation as unknown as Record<string, unknown> } })
       if (flowSignals) {
         recordFlowSubmission({
           response: saved,
@@ -2869,8 +2902,8 @@ function App() {
         })
       }
       return saved
-    } catch {
-      // silently fail
+    } catch (error) {
+      setLastSignalTrace({ ...trace, error: error instanceof Error ? error.message : 'Unable to submit attempt' })
       return null
     }
   }
@@ -4610,6 +4643,16 @@ function App() {
         </div>
         ))}
       </section>
+      {!zenMode && (
+        <SignalTroubleshootingPanel
+          previewRequest={signalPreviewRequest}
+          outgoingSignals={{
+            practiceMode: currentPracticeMode,
+            ...(practiceFlow ? { flow: currentFlowSignals() } : {}),
+          }}
+          lastTrace={lastSignalTrace}
+        />
+      )}
       {relatedLeetCodeSet && (
         <RelatedLeetCodeDrawer
           relatedSet={relatedLeetCodeSet}

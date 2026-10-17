@@ -84,6 +84,10 @@ Every recall submission is scored by the Signal Assessor against a **signal spec
 - **Current specs:** `sliding-window`, `two-pointers`, `binary-search`, `dynamic-programming`. Every other group uses the default spec (`structure`, `completeness`, `patternFidelity`).
 - **Storage:** each stored evaluation records `signalSpec: {algorithm, version}`. Its `dimensions` and `modifiers` are keyed by that spec's signals, in spec order.
 
+Viewing specs and signal values in the UI:
+- **Tune → Signals** shows each algorithm's spec read-only: signals, role, kind, weight, axis, assessor guidance, variation strategy, and structural elements. Algorithms on the default spec are labeled.
+- **Signal troubleshooting** (collapsible panel under the practice card, hidden in zen mode) shows two sides. *Next submission* is the spec the current card resolves to and why (problem, skill tag, or default), the client signals and category tags that will be sent, and the assessor system prompt. *Last submission* is what was actually sent and what came back: the spec used, verdict, score axes, every dimension/modifier status and score with evidence, plus the raw evaluation. The open/closed state is remembered per browser.
+
 To add a spec for another group:
 1. Add a `SignalSpec` built with `_spec(...)` in `signal_catalog.py` and register it in `SIGNAL_SPECS`. Every spec automatically gets the shared `correctness`, `syntax`, and `completionTime` signals; give exactly one of your dimensions `axis="fidelity"`.
 2. Bump `version` whenever an existing spec's signals change, so old evaluations stay interpretable.
@@ -111,6 +115,8 @@ Core endpoints:
 - `POST /api/coach/adaptive-variation`
 - `POST /api/coach/sequential-variation`
 - `GET /api/catalog/playlists`
+- `GET /api/catalog/signal-specs` (every algorithm's stored signal spec, read-only)
+- `POST /api/catalog/signal-specs/resolve` (the spec, resolution source, and assessor prompt the next submission for a card would use)
 - `POST /api/admin/reset-practice-history`
 
 ## Development Workflow
