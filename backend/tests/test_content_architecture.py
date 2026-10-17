@@ -43,5 +43,6 @@ def test_submission_write_path_populates_problem_slug() -> None:
     schema = (BACKEND_APP / "schema.sql").read_text()
 
     assert "generated_card_id, problem_slug, generated_card" in repository
-    assert "SELECT slug FROM problem WHERE slug = $1" in repository
+    assert "SELECT slug FROM problem" in repository
+    assert "problem_slug_candidates([generated_card_id])" in repository
     assert "submission_problem_slug_fkey" in schema

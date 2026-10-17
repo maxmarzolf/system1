@@ -560,3 +560,15 @@ def test_representative_google_static_solutions_behave_correctly() -> None:
     exec(solutions["642. Design Search Autocomplete System"], namespace)
     autocomplete = namespace["AutocompleteSystem"](["i love you", "island", "ironman", "i love leetcode"], [5, 3, 2, 2])
     assert autocomplete.input("i") == ["i love you", "island", "i love leetcode"]
+
+
+def test_problem_slug_candidates_strip_the_core_card_prefix() -> None:
+    from app.core.core_algorithm_practice import CORE_ALGORITHM_CARD_ID_PREFIX, problem_slug_candidates
+
+    assert problem_slug_candidates([f"{CORE_ALGORITHM_CARD_ID_PREFIX}binary_search", None, "plain-card"]) == [
+        "core-algorithm-binary_search",
+        "binary_search",
+        "plain-card",
+    ]
+    assert problem_slug_candidates(["binary_search", "binary_search"]) == ["binary_search"]
+    assert problem_slug_candidates([None, ""]) == []

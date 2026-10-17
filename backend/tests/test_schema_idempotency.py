@@ -82,3 +82,44 @@ def test_startup_is_idempotent_and_seeds_signal_specs() -> None:
         assert json.loads(stored[slug]) == spec_to_json(get_signal_spec(slug))
     assert unstamped == 0
     assert migration_key_columns == 0
+
+
+
+async def _backfill_round_trip() -> tuple[str, str | None]:
+    conn = await asyncpg.connect(settings.database_url)
+    try:
+        slug = await conn.fetchval("SELECT slug FROM problem WHERE source_type = 'core-catalog' ORDER BY display_order LIMIT 1")
+        attempt_id = await conn.fetchval(
+            """
+            INSERT INTO submission (answer, generated_card_id, problem_slug)
+            VALUES ('fx-backfill', $1, NULL)
+            RETURNING id
+            """,
+            f"core-algorithm-{slug}",
+        )
+    finally:
+        await conn.close()
+    try:
+        await database.connect()
+        await database.disconnect()
+        conn = await asyncpg.connect(settings.database_url)
+        try:
+            return slug, await conn.fetchval("SELECT problem_slug FROM submission WHERE id = $1", attempt_id)
+        finally:
+            await conn.close()
+    finally:
+        conn = await asyncpg.connect(settings.database_url)
+        try:
+            await conn.execute("DELETE FROM submission WHERE id = $1", attempt_id)
+        finally:
+            await conn.close()
+
+
+@pytest.mark.integration
+def test_startup_links_core_algorithm_submissions_to_their_problem() -> None:
+    try:
+        slug, linked = asyncio.run(_backfill_round_trip())
+    except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - environment-dependent integration guard
+        pytest.skip(f"Postgres not available for integration test: {exc}")
+
+    assert linked == slug

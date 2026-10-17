@@ -9,6 +9,7 @@ import asyncpg
 from app.config import settings
 from app.core import core_algorithms, core_meta
 from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG, CORE_META_CATALOG
+from app.core.core_algorithm_practice import CORE_ALGORITHM_CARD_ID_PREFIX
 from app.core.signal_catalog import DEFAULT_SIGNAL_SPEC, get_signal_spec, spec_to_json
 from app.core.taxonomy_catalog import ALGORITHMS, CANONICAL_SKILLS, TECHNIQUES
 
@@ -67,6 +68,17 @@ async def _apply_schema_upgrades(db_pool: asyncpg.Pool) -> None:
               AND NOT (signals->'evaluation' ? 'signalSpec')
             """,
             json.dumps({**DEFAULT_SIGNAL_SPEC.reference(), "version": 0}),
+        )
+        # Core catalog cards are submitted as '<prefix><problem slug>'; link them to their problem.
+        await conn.execute(
+            """
+            UPDATE submission s
+            SET problem_slug = p.slug
+            FROM problem p
+            WHERE s.problem_slug IS NULL
+              AND s.generated_card_id = $1 || p.slug
+            """,
+            CORE_ALGORITHM_CARD_ID_PREFIX,
         )
 
 

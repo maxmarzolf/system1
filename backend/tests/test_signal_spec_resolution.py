@@ -123,7 +123,7 @@ def test_resolve_endpoint_previews_the_assessor_payload(monkeypatch) -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert calls == [(["binary_search", "binary_search"], "sliding-window")]
+    assert calls == [(["binary_search"], "sliding-window")]
     assert body["source"] == "problem"
     assert body["primaryPatternTag"] == "sliding-window"
     assert body["spec"]["algorithm"] == "binary-search"

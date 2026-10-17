@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from app.core.assessor import assessor_system_prompt
-from app.core.core_algorithm_practice import CORE_ALGORITHM_CARD_ID_PREFIX
+from app.core.core_algorithm_practice import problem_slug_candidates
 from app.core.signal_catalog import (
     DEFAULT_SIGNAL_SPEC,
     SignalSpec,
@@ -19,18 +19,6 @@ from app.submission_rubric import coerce_json_object
 SpecSource = Literal["problem", "skill-tag", "default"]
 
 
-def _problem_slug_candidates(card_ids: list[str | None]) -> list[str]:
-    """Card ids as problem slugs; core catalog cards carry a prefix before the slug."""
-    candidates: list[str] = []
-    for card_id in card_ids:
-        if not card_id:
-            continue
-        candidates.append(str(card_id))
-        if str(card_id).startswith(CORE_ALGORITHM_CARD_ID_PREFIX):
-            candidates.append(str(card_id).removeprefix(CORE_ALGORITHM_CARD_ID_PREFIX))
-    return candidates
-
-
 async def resolve_signal_spec_with_source(
     card_ids: list[str | None],
     skill_tags: list[str],
@@ -38,7 +26,7 @@ async def resolve_signal_spec_with_source(
     """Resolve the signal spec for a submission: the card's problem algorithm,
     then the primary pattern tag, then the default spec."""
     row = await signal_spec_repository.fetch_algorithm_signal_spec(
-        _problem_slug_candidates(card_ids),
+        problem_slug_candidates(card_ids),
         primary_pattern_tag(skill_tags),
     )
     if row is None:

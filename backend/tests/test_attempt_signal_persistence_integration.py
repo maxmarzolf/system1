@@ -124,3 +124,47 @@ def test_signal_spec_is_stored_per_algorithm_and_read_back_through_history() -> 
     entries = [entry for entry in history.json()["entries"] if entry["attemptId"] == window_attempt]
     assert entries
     assert entries[0]["signals"]["evaluation"]["signalSpec"] == {"algorithm": "sliding-window", "version": 1}
+
+
+
+async def _core_problem_and_submission(attempt_id: int | None, problem_slug: str | None = None):
+    conn = await asyncpg.connect(settings.database_url)
+    try:
+        if attempt_id is None:
+            return await conn.fetchrow(
+                "SELECT slug, code FROM problem WHERE source_type = 'core-catalog' ORDER BY display_order LIMIT 1"
+            )
+        linked = await conn.fetchval("SELECT problem_slug FROM submission WHERE id = $1", attempt_id)
+        await conn.execute("DELETE FROM submission WHERE id = $1", attempt_id)
+        return linked
+    finally:
+        await conn.close()
+
+
+@pytest.mark.integration
+def test_core_algorithm_card_attempt_links_to_its_problem() -> None:
+    try:
+        problem = asyncio.run(_core_problem_and_submission(None))
+        card_id = f"core-algorithm-{problem['slug']}"
+        with TestClient(create_app()) as client:
+            response = client.post(
+                "/api/attempts",
+                json={
+                    "cardId": card_id,
+                    "generatedCardId": card_id,
+                    "question": "Recall the core algorithm.",
+                    "questionType": "skill-map",
+                    "categoryTags": ["skill-map"],
+                    "correctAnswer": problem["code"],
+                    "userAnswer": problem["code"],
+                    "mode": "main-recall",
+                    "modality": "ghost-rep",
+                },
+            )
+    except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - environment-dependent integration guard
+        pytest.skip(f"Postgres not available for integration test: {exc}")
+
+    assert response.status_code == 201, response.text
+    assert response.json()["evaluation"]["provenance"]["llmUsed"] is False
+    linked = asyncio.run(_core_problem_and_submission(int(response.json()["attemptId"])))
+    assert linked == problem["slug"]

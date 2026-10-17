@@ -6,6 +6,7 @@ import re
 from datetime import datetime
 from typing import cast
 
+from app.core.core_algorithm_practice import problem_slug_candidates
 from app.repositories.base import acquire_connection
 from app.repositories.types import (
     AlgorithmSkillRow,
@@ -183,9 +184,15 @@ async def insert_submission_attempt_row(
             category_tags=category_tags,
             modality=modality,
         ):
+            candidates = problem_slug_candidates([generated_card_id])
             problem_slug = await conn.fetchval(
-                "SELECT slug FROM problem WHERE slug = $1",
-                generated_card_id,
+                """
+                SELECT slug FROM problem
+                WHERE slug = ANY($1::text[])
+                ORDER BY array_position($1::text[], slug::text)
+                LIMIT 1
+                """,
+                candidates,
             )
         row = await conn.fetchrow(
             """
