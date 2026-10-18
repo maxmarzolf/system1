@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from app.core.signal_catalog import SignalDefinition, SignalSpec
 from app.models import CoachAttemptFeedbackRequest
 
 
@@ -32,49 +33,34 @@ class AssessorRuntime:
     logger: logging.Logger | None = None
 
 
-def assessor_system_prompt(live_mode: bool) -> str:
-    signals_spec = (
-        "signals: {"
-        "structure: {score: 0-100, note: str}, "
-        "correctness: {score: 0-100, note: str}, "
-        "completeness: {score: 0-100, note: str}, "
-        "patternFidelity: {score: 0-100, note: str}, "
-        "syntax: {valid: bool, error: str|null}, "
-        "completionTime: {score: 0-100, note: str}"
-        "}"
-    )
-    base = (
+def _signal_shape(signal: SignalDefinition) -> str:
+    if signal.kind == "boolean":
+        return f"{signal.key}: {{valid: bool, error: str|null}}"
+    return f"{signal.key}: {{score: 0-100, note: str}}"
+
+
+def assessor_system_prompt(spec: SignalSpec) -> str:
+    signals_shape = "signals: {" + ", ".join(_signal_shape(signal) for signal in spec.signals) + "}"
+    structural_shape = "structuralElements: {" + ", ".join(f"{name}: bool" for name in spec.structural_elements) + "}"
+    blocker_keys = " | ".join(f"'{key}'" for key in spec.keys)
+    return (
         "You are a coding pattern analyst. Analyze the provided answer against the expected answer. "
-        f"Return strict JSON: {{v: 1, patternIdentified: str, {signals_spec}, "
-        "structuralElements: {hasSignature: bool, hasLoop: bool, hasShrinkStep: bool, hasScoreUpdate: bool, hasGuard: bool}, "
-        "primaryBlocker: str, blockerKey: str, verdict: 'sound'|'close'|'needs-work', "
-        "errorTags: str[], strengths: str[]"
+        "Score every signal using signalGuidance as the definition of what that signal measures. "
+        f"Return strict JSON: {{v: 1, patternIdentified: str, {signals_shape}, {structural_shape}, "
+        f"primaryBlocker: str, blockerKey: {blocker_keys}, verdict: 'sound'|'close'|'needs-work', "
+        "errorTags: str[], strengths: str[]}. "
+        "blockerKey names the weakest signal. "
+        "Structural assessment only - no narrative fields. Return only valid JSON. Do not include markdown."
     )
-    if live_mode:
-        return (
-            base
-            + ", diagnosis: str, primaryFocus: str, immediateCorrection: str, "
-            "affirmation: str, nextMove: str, why: str, keepInMind: str, "
-            "microDrill: str, nextRepTarget: str}. "
-            "All narrative string fields must be 20 words or fewer. "
-            "Focus on one structural blocker only. "
-            "Leave affirmation empty unless something concrete is already correct. "
-            "When liveMilestones.trigger is 'hotkey-stuck', lead with concrete problem-solving moves already done right, "
-            "avoid exact edits or explicit next-step instructions, and make higher hintDepth values more conceptually specific without revealing the answer. "
-            "If liveMilestones.editContext.changedSinceLastHint is true, treat addedLines, changedLineText, and progressSignals as fresh evidence. "
-            "Credit a near-miss line that moves toward the missing structure before describing why it is not sufficient yet. "
-            "Return only valid JSON. Do not include markdown."
-        )
-    return base + "}. Structural assessment only - no narrative fields. Return only valid JSON. Do not include markdown."
 
 
 async def run_signal_assessor(
     body: CoachAttemptFeedbackRequest,
     context: AssessorContext,
     runtime: AssessorRuntime,
+    spec: SignalSpec,
 ) -> dict[str, Any]:
-    """Call the Signal Assessor LLM selected by the request."""
-    system_prompt = assessor_system_prompt(body.liveMode)
+    """Call the Signal Assessor LLM selected by the request, scoring the signals in ``spec``."""
     payload = {
         "skillTags": body.skillTags,
         "templateMode": context.template_mode,
@@ -82,13 +68,12 @@ async def run_signal_assessor(
         "expectedAnswer": (body.expectedAnswer or "")[:800],
         "elapsedMs": body.elapsedMs,
         "precomputedSound": body.exact,
-        "liveMilestones": body.liveMilestones if body.liveMode else {},
-        "liveCoachTuning": body.liveCoachTuning if body.liveMode else {},
+        "signalGuidance": {signal.key: signal.guidance for signal in spec.signals},
     }
 
     result = await asyncio.to_thread(
         runtime.call_llm_json,
-        system_prompt,
+        assessor_system_prompt(spec),
         payload,
         context.provider,
         runtime.max_tokens,
@@ -107,12 +92,17 @@ async def run_signal_assessor(
         )
 
     required_keys = {"v", "patternIdentified", "signals", "primaryBlocker", "blockerKey", "verdict", "errorTags", "strengths"}
-    if body.liveMode:
-        required_keys |= {"diagnosis", "primaryFocus", "immediateCorrection", "nextMove", "why", "microDrill", "nextRepTarget"}
     missing = required_keys - result.keys()
-    if missing or not isinstance(result.get("signals"), dict):
+    signals = result.get("signals")
+    missing_signals = set(spec.keys) - signals.keys() if isinstance(signals, dict) else set(spec.keys)
+    if missing or missing_signals:
         if runtime.logger:
-            runtime.logger.warning("Signal assessor response missing keys %s from provider '%s'.", missing, context.provider)
+            runtime.logger.warning(
+                "Signal assessor response missing keys %s and signals %s from provider '%s'.",
+                missing,
+                missing_signals,
+                context.provider,
+            )
         raise AssessorUnavailableError(
             code="signal_assessor_invalid_response",
             message=f"Signal assessment cannot be generated at this time. Invalid response from {context.provider_label}.",
@@ -122,25 +112,3 @@ async def run_signal_assessor(
 
     result["llmUsed"] = True
     return result
-
-
-def assessment_to_live_response(assessment: dict[str, Any]) -> dict[str, Any]:
-    strengths = [str(s) for s in assessment.get("strengths", [])[:3]]
-    primary_blocker = str(assessment.get("primaryBlocker", ""))
-    blocker_key = str(assessment.get("blockerKey", "primary gap"))
-    return {
-        "diagnosis": str(assessment.get("diagnosis", primary_blocker)),
-        "primaryFocus": str(assessment.get("primaryFocus", f"Fix {blocker_key}.")),
-        "immediateCorrection": str(assessment.get("immediateCorrection", primary_blocker)),
-        "affirmation": str(assessment.get("affirmation", strengths[0] if strengths else "")),
-        "nextMove": str(assessment.get("nextMove", primary_blocker)),
-        "why": str(assessment.get("why", "")),
-        "keepInMind": str(assessment.get("keepInMind", "")),
-        "microDrill": str(assessment.get("microDrill", "")),
-        "nextRepTarget": str(assessment.get("nextRepTarget", "")),
-        "strengths": strengths,
-        "errorTags": [str(t) for t in assessment.get("errorTags", [])[:6]],
-        "fullFeedback": "",
-        "correctedVersion": "",
-        "llmUsed": bool(assessment.get("llmUsed", True)),
-    }

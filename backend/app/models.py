@@ -45,9 +45,44 @@ class InlineCompletionResponse(BaseModel):
     prediction: str = ""
 
 
+class RubricDimension(BaseModel):
+    key: str = ""
+    label: str = ""
+    status: str = ""
+    score: float = 0.0
+    evidence: list[str] = []
+    missing: list[str] = []
+
+
+class SignalSpecReference(BaseModel):
+    algorithm: str = ""
+    version: int = 0
+
+
+class SubmissionEvaluation(BaseModel):
+    """Stored evaluation; dimension keys come from the signal spec it references."""
+
+    version: int = 1
+    signalSpec: SignalSpecReference = Field(default_factory=SignalSpecReference)
+    verdict: str = ""
+    score: dict[str, float] = {}
+    primaryFailure: dict[str, Any] = {}
+    dimensions: dict[str, RubricDimension] = {}
+    modifiers: dict[str, RubricDimension] = {}
+    recommendedAction: str = ""
+    feedback: dict[str, Any] = {}
+    provenance: dict[str, Any] = {}
+
+
+class SignalSpecResolveRequest(BaseModel):
+    cardId: str = ""
+    generatedCardId: str | None = None
+    categoryTags: list[str] = []
+
+
 class SubmissionSignals(BaseModel):
     elapsedMs: int = Field(default=0, ge=0)
-    evaluation: dict[str, Any] | None = None
+    evaluation: SubmissionEvaluation | None = None
     flow: dict[str, Any] | None = None
     modality: dict[str, Any] | None = None
 
@@ -118,31 +153,8 @@ class CoachAttemptFeedbackRequest(BaseModel):
     skillTags: list[str] = []
     mode: GameMode = GameMode.main_recall
     templateMode: TemplateMode = TemplateMode.algorithm
-    enabledTemplateModes: list[TemplateMode] = [TemplateMode.algorithm]
-    previousAttempts: list[dict] = []
-    liveMode: bool = False
-    liveMilestones: dict[str, Any] = {}
-    liveCoachTuning: dict[str, Any] = {}
     submissionTuning: dict[str, Any] = {}
     llmProvider: str = "openai"
-
-
-class CoachAttemptFeedbackResponse(BaseModel):
-    diagnosis: str
-    primaryFocus: str
-    immediateCorrection: str
-    keepInMind: str = ""
-    affirmation: str = ""
-    nextMove: str = ""
-    why: str = ""
-    microDrill: str
-    nextRepTarget: str
-    strengths: list[str] = []
-    errorTags: list[str] = []
-    fullFeedback: str = ""
-    correctedVersion: str = ""
-    llmUsed: bool = False
-    llmProvider: str = ""
 
 
 class CoachAttemptEvaluationRequest(BaseModel):

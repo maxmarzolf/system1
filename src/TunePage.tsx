@@ -34,30 +34,8 @@ import {
 import type { GooglePlaylistTuning } from './googlePlaylistTuning'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
+import SignalSpecViewer from './SignalSpecViewer'
 import { getHotkeyReferenceGroups } from './hotkeys'
-
-const trackedDimensions = [
-  {
-    title: 'Inputs and outputs',
-    copy: 'Whether the submission keeps the same overall function purpose and return path.',
-  },
-  {
-    title: 'State management',
-    copy: 'Whether the important tracked state is still named or clearly implied.',
-  },
-  {
-    title: 'Control flow',
-    copy: 'Whether the main loop or branching structure stays intact.',
-  },
-  {
-    title: 'Decision logic',
-    copy: 'Whether the rule that makes the algorithm valid is preserved.',
-  },
-  {
-    title: 'Answer update',
-    copy: 'Whether the submission still says when the answer gets recorded.',
-  },
-]
 
 type TuneSectionProps = {
   eyebrow: string
@@ -236,7 +214,7 @@ export default function TunePage() {
             <a href="#mcq">MCQ</a>
             <a href="#ai-completion">AI completion</a>
             <a href="#submission">Submission</a>
-            <a href="#dimensions">Dimensions</a>
+            <a href="#signals">Signals</a>
             <a href="#hotkeys">Hotkeys</a>
           </aside>
 
@@ -477,21 +455,10 @@ export default function TunePage() {
 
             <TuneSection
               eyebrow="07"
-              title="Tracked Dimensions"
-              copy="Signals the Signal Assessor checks for submitted attempts."
+              title="Signals"
+              copy="What the Signal Assessor scores for each algorithm, and how each signal feeds the rubric."
             >
-              <div className="tune-dimension-list" id="dimensions">
-                {trackedDimensions.map((dimension) => (
-                  <div key={dimension.title} className="tune-dimension-row">
-                    <strong>{dimension.title}</strong>
-                    <span>{dimension.copy}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="tune-footnote">
-                Full-template grading also tracks syntax validity, indentation drift, early line drift, and omitted
-                versus extra lines.
-              </p>
+              <SignalSpecViewer />
             </TuneSection>
 
             <TuneSection

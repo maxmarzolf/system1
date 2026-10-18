@@ -10,7 +10,6 @@ services:
       POSTGRES_PASSWORD: flashcard_password
     volumes:
       - ./backend/data/postgres:/var/lib/postgresql/data
-      - ./backend/init-scripts:/docker-entrypoint-initdb.d:ro
     ports:
       - "5432:5432"
     networks:

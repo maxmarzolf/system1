@@ -4,6 +4,22 @@ import json
 import re
 from typing import Any
 
+# Practice cards for core/meta catalog problems use this id prefix before the problem slug.
+CORE_ALGORITHM_CARD_ID_PREFIX = "core-algorithm-"
+
+
+def problem_slug_candidates(card_ids: list[str | None]) -> list[str]:
+    """Card ids as problem slugs, in priority order; core catalog cards carry a prefix before the slug."""
+    candidates: list[str] = []
+    for card_id in card_ids:
+        if not card_id:
+            continue
+        for candidate in (str(card_id), str(card_id).removeprefix(CORE_ALGORITHM_CARD_ID_PREFIX)):
+            if candidate and candidate not in candidates:
+                candidates.append(candidate)
+    return candidates
+
+
 def _examples(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value]
@@ -45,7 +61,7 @@ def build_core_algorithm_drill(row: dict[str, Any]) -> dict[str, Any]:
     entry_name = _entry_point_name(code) or slug
     examples = _examples(row.get("leetcode_examples"))
     return {
-        "id": f"core-algorithm-{slug}",
+        "id": f"{CORE_ALGORITHM_CARD_ID_PREFIX}{slug}",
         "title": title,
         "difficulty": str(row["difficulty"]),
         "prompt": prompt,

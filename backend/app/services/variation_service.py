@@ -21,8 +21,10 @@ from app.core.llm import (
     resolve_available_llm_provider as _resolve_available_llm_provider,
 )
 from app.domain.coach_context import pattern_display_name as _domain_pattern_display_name
-from app.domain.coach_profiles import ADAPTIVE_VARIATION_STRATEGIES, SUBMISSION_DIMENSION_LABELS
-from app.domain.feedback_builder import adaptive_primary_failure as _domain_adaptive_primary_failure
+from app.domain.feedback_builder import (
+    adaptive_primary_failure as _domain_adaptive_primary_failure,
+    evaluation_signal_spec as _domain_evaluation_signal_spec,
+)
 from app.domain.llm_resilience import SubmissionFeedbackUnavailableError
 from app.models import AdaptiveVariationRequest, AdaptiveVariationResponse, SequentialVariationRequest, SequentialVariationResponse, TemplateMode
 
@@ -97,11 +99,12 @@ async def coach_adaptive_variation(body: AdaptiveVariationRequest) -> AdaptiveVa
         )
 
     template_mode = _template_mode_value(body.templateMode)
-    primary_failure = _domain_adaptive_primary_failure(
-        body.evaluation if isinstance(body.evaluation, dict) else {}
-    )
-    failure_key = str(primary_failure.get("key", "pattern"))
-    failure_label = str(primary_failure.get("label", SUBMISSION_DIMENSION_LABELS.get(failure_key, "Core pattern")))
+    evaluation = body.evaluation if isinstance(body.evaluation, dict) else {}
+    spec = _domain_evaluation_signal_spec(evaluation)
+    primary_failure = _domain_adaptive_primary_failure(evaluation)
+    failure_key = str(primary_failure["key"])
+    failure_label = str(primary_failure["label"])
+    failure_signal = spec.signal(failure_key) or next(signal for signal in spec.signals if signal.role == "dimension")
     pattern_name = _domain_pattern_display_name(body.skillTags) or "algorithm"
     system_prompt = (
         "Generate one adaptive recall variation for a coding interview trainer. "
@@ -117,7 +120,7 @@ async def coach_adaptive_variation(body: AdaptiveVariationRequest) -> AdaptiveVa
         "pattern": pattern_name,
         "templateMode": template_mode,
         "targetDimension": {"key": failure_key, "label": failure_label},
-        "strategy": ADAPTIVE_VARIATION_STRATEGIES.get(failure_key, ADAPTIVE_VARIATION_STRATEGIES["pattern"]),
+        "strategy": failure_signal.variation_strategy,
         "previousPrompt": body.prompt,
         "previousTarget": body.expectedAnswer,
         "userAnswer": body.userAnswer,

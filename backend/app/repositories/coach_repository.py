@@ -159,7 +159,7 @@ async def fetch_practice_history_entries(
             "successful": bool(row["successful"]),
             "signals": {
                 "elapsedMs": int(stored_signals.get("elapsed_ms") or 0),
-                "evaluation": evaluation,
+                "evaluation": evaluation or None,
                 "flow": _parse_json_field(stored_signals.get("flow"), {}),
                 "modality": _parse_json_field(stored_signals.get("modality"), {}),
             },

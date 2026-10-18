@@ -60,7 +60,6 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
             template_mode,
             support_layer,
             live_coach_used,
-            migration_key,
             created_at,
             updated_at
         )
@@ -88,7 +87,6 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
             'algorithm',
             'none',
             FALSE,
-            'fx-perf-migration-' || s::text,
             NOW() - ((s % 720)::text || ' minutes')::interval,
             NOW() - ((s % 720)::text || ' minutes')::interval
         FROM generate_series(1, 800) AS s

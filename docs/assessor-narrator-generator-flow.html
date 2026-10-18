@@ -135,7 +135,13 @@ flowchart TD
     A3["templateMode"]
     A4["skillTags"]
     A5["elapsedMs"]
-    A6["liveMode"]
+  end
+
+  subgraph SPEC["0. Signal spec"]
+    C0["signal_spec_service.resolve_signal_spec"]
+    C1["problem.algorithm_slug<br/>or primary skill tag"]
+    C2["algorithm.signal_spec<br/>(seeded from core/signal_catalog.py)"]
+    C3["DEFAULT_SIGNAL_SPEC fallback"]
   end
 
   subgraph ASSESSOR["1. Signal Assessor"]
@@ -143,10 +149,8 @@ flowchart TD
     S["signals"]
     M["assessment metadata"]
 
-    S1["structure score + note"]
+    S1["algorithm-specific dimensions<br/>e.g. windowRepair, boundUpdate, transition"]
     S2["correctness score + note"]
-    S3["completeness score + note"]
-    S4["patternFidelity score + note"]
     S5["syntax valid + error"]
     S6["completionTime score + note"]
 
@@ -158,17 +162,7 @@ flowchart TD
     M6["strengths"]
   end
 
-  subgraph LIVE["Live feedback path"]
-    L0["liveMode = true"]
-    L1["Assessor only"]
-    L2["nextMove"]
-    L3["why"]
-    L4["affirmation"]
-    L5["microDrill + nextRepTarget"]
-  end
-
   subgraph NARRATOR["2. Feedback Narrator"]
-    N0["liveMode = false"]
     N1["LLM coaching narration"]
     N2["diagnosis"]
     N3["primaryFocus"]
@@ -179,15 +173,15 @@ flowchart TD
   end
 
   subgraph RUBRIC["Signal-derived rubric"]
-    R1["score signals"]
-    R2["pass / partial / fail statuses"]
+    R1["score spec signals<br/>(weighted, axis-mapped)"]
+    R2["pass / partial / fail / not_applicable"]
     R3["primaryFailure"]
     R4["recommendedAction"]
     R5["canonical evaluation"]
   end
 
   subgraph MEMORY["Stored training memory"]
-    P1["submission.signals.evaluation"]
+    P1["submission.signals.evaluation<br/>+ signalSpec {algorithm, version}"]
     P3["practice history"]
     P4["readiness summary"]
     P5["repeated errorTags"]
@@ -222,15 +216,19 @@ flowchart TD
   A3 --> B
   A4 --> B
   A5 --> B
-  A6 --> B
+  A --> C0
+  C0 --> C1
+  C1 --> C2
+  C1 --> C3
+  C2 --> B
+  C3 --> B
+  C2 --> R1
 
   B --> S
   B --> M
 
   S --> S1
   S --> S2
-  S --> S3
-  S --> S4
   S --> S5
   S --> S6
 
@@ -241,18 +239,9 @@ flowchart TD
   M --> M5
   M --> M6
 
-  S --> L0
-  M --> L0
-  L0 --> L1
-  L1 --> L2
-  L1 --> L3
-  L1 --> L4
-  L1 --> L5
-
-  S --> N0
-  M --> N0
-  A --> N0
-  N0 --> N1
+  S --> N1
+  M --> N1
+  A --> N1
   N1 --> N2
   N1 --> N3
   N1 --> N4

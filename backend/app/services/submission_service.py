@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.core.signal_catalog import SignalSpec
 from app.domain.llm_resilience import SubmissionFeedbackUnavailableError
 from app.domain.submission_evaluation import outcome_evaluation
 from app.models import AttemptCreate, CoachAttemptEvaluationRequest, CoachAttemptFeedbackRequest, SubmissionModality
-from app.services import attempts_service, evaluation_service, feedback_service
+from app.services import attempts_service, evaluation_service, feedback_service, signal_spec_service
 
 
 def _feedback_request(body: AttemptCreate) -> CoachAttemptFeedbackRequest:
@@ -22,14 +23,12 @@ def _feedback_request(body: AttemptCreate) -> CoachAttemptFeedbackRequest:
         skillTags=body.categoryTags,
         mode=body.mode,
         templateMode=body.templateMode,
-        enabledTemplateModes=[body.templateMode],
-        liveMode=False,
         submissionTuning=body.submissionTuning,
         llmProvider=body.llmProvider,
     )
 
 
-async def _fallback_recall_evaluation(body: AttemptCreate) -> dict[str, Any]:
+async def _fallback_recall_evaluation(body: AttemptCreate, spec: SignalSpec) -> dict[str, Any]:
     result = await evaluation_service.coach_attempt_evaluation(
         CoachAttemptEvaluationRequest(
             cardTitle=body.cardTitle or "",
@@ -44,6 +43,7 @@ async def _fallback_recall_evaluation(body: AttemptCreate) -> dict[str, Any]:
     )
     return outcome_evaluation(
         bool(result.get("sound")),
+        spec,
         llm_used=bool(result.get("llmUsed")),
         provider=body.llmProvider,
         source="semantic-evaluator",
@@ -53,18 +53,22 @@ async def _fallback_recall_evaluation(body: AttemptCreate) -> dict[str, Any]:
 async def create_submission(body: AttemptCreate) -> dict[str, Any]:
     feedback_unavailable: dict[str, Any] | None = None
     modality = body.resolved_modality()
+    spec = await signal_spec_service.resolve_signal_spec(
+        [body.generatedCardId, body.cardId],
+        body.categoryTags,
+    )
 
     if modality == SubmissionModality.mcq:
         successful = (body.userAnswer or "").strip() == (body.correctAnswer or "").strip()
-        evaluation = outcome_evaluation(successful, source="multiple-choice-answer-key")
+        evaluation = outcome_evaluation(successful, spec, source="multiple-choice-answer-key")
     elif modality == SubmissionModality.ghost_rep:
-        evaluation = await _fallback_recall_evaluation(body)
+        evaluation = await _fallback_recall_evaluation(body, spec)
         successful = evaluation["verdict"] == "sound"
     else:
         try:
-            evaluation = await feedback_service.coach_submission_evaluation(_feedback_request(body))
+            evaluation = await feedback_service.coach_submission_evaluation(_feedback_request(body), spec)
         except SubmissionFeedbackUnavailableError as error:
-            evaluation = await _fallback_recall_evaluation(body)
+            evaluation = await _fallback_recall_evaluation(body, spec)
             feedback_unavailable = {
                 "code": error.code,
                 "message": error.message,

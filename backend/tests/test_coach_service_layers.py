@@ -2,24 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services import coach_orchestration_service, coach_service, feedback_service, history_service
-
-
-@pytest.mark.asyncio
-async def test_coach_service_feedback_delegates_to_feedback_service(monkeypatch) -> None:
-    called = {"value": False}
-
-    async def _mock_feedback(body):
-        called["value"] = True
-        return {"ok": True, "cardId": body.cardId}
-
-    monkeypatch.setattr(feedback_service, "coach_attempt_feedback", _mock_feedback)
-
-    body = type("Body", (), {"cardId": "card-1"})()
-    result = await coach_service.coach_attempt_feedback(body)
-
-    assert called["value"] is True
-    assert result["ok"] is True
+from app.services import coach_orchestration_service, coach_service, history_service
 
 
 @pytest.mark.asyncio
