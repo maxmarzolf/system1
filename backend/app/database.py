@@ -24,9 +24,11 @@ async def connect() -> asyncpg.Pool:
     await _ensure_schema(pool)
     await _apply_schema_upgrades(pool)
     await _seed_taxonomy(pool)
+    from app.services.signal_registry_service import seed_signal_definitions
     from app.services.unified_catalog_service import seed_canonical_catalog
 
     await seed_canonical_catalog()
+    await seed_signal_definitions()
     return pool
 
 

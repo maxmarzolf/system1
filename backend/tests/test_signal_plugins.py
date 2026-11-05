@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.signals import SIGNAL_PLUGINS, SignalContext, applies, register_signal
+from dataclasses import replace
+
+from app.core.signals import SignalContext, applies, definition_to_plugin, register_implementation
 from app.core.signals.base import DeterministicSignal, JevSignal
-from app.core.signals.mcq import COMPLETION_TIME, DEFAULT_MCQ_SIGNAL_SPEC, get_mcq_signal_spec
+from app.core.signals.mcq import COMPLETION_TIME, DEFAULT_MCQ_DEFINITIONS, default_mcq_spec
+from app.domain.coach_context import algorithm_slug_for_tags
 from app.domain.feedback_builder import rubric_from_signal_results
 
 CONTEXT = SignalContext(modality="mcq", state={"question": "q"}, elapsed_ms=10_000)
@@ -67,32 +70,63 @@ def test_applies_when_filters_by_correctness() -> None:
     assert not applies(only_wrong, successful=True)
 
 
-def test_register_signal_rejects_a_different_plugin_with_the_same_key() -> None:
+def test_register_implementation_rejects_a_different_implementation_with_the_same_name() -> None:
     duplicate = DeterministicSignal(key="completionTime", label="x", description="", compute=lambda _c, _s: (0, 0, ""))
 
     with pytest.raises(ValueError):
-        register_signal(duplicate)
+        register_implementation(duplicate)
 
 
-def test_mcq_spec_references_registered_plugins_and_is_stable() -> None:
-    spec = get_mcq_signal_spec("sliding-window")
+def test_definitions_build_jev_and_deterministic_plugins() -> None:
+    definitions = {definition["key"]: definition for definition in DEFAULT_MCQ_DEFINITIONS}
+
+    concept = definition_to_plugin(definitions["conceptRecognition"])
+    near_miss = definition_to_plugin(definitions["nearMiss"])
+    timing = definition_to_plugin({**definitions["completionTime"], "label": "Pace", "weight": 0.2})
+
+    assert isinstance(concept, JevSignal) and concept.primitive == "noul"
+    assert near_miss.question(CONTEXT)["criteria"] == definitions["nearMiss"]["criteria"]
+    assert near_miss.applies_when == "incorrect"
+    assert isinstance(timing, DeterministicSignal)
+    assert timing.label == "Pace"
+    assert timing.interpret(None, CONTEXT, True).score == 100.0
+
+
+def test_noul_criteria_describe_outcomes() -> None:
+    signal = definition_to_plugin(
+        {**DEFAULT_MCQ_DEFINITIONS[0], "criteria": {"true": "Recognized it", "false": None}}
+    )
+
+    assert signal.question(CONTEXT) == {
+        "type": "noul",
+        "instructions": DEFAULT_MCQ_DEFINITIONS[0]["instructions"],
+        "criteria": {"true": "Recognized it"},
+    }
+
+
+def test_default_spec_hash_tracks_content() -> None:
+    spec = default_mcq_spec("sliding-window")
+    reworded = replace(spec, correctness=replace(spec.correctness, instructions="Different wording"))
 
     assert spec.algorithm == "sliding-window"
-    assert spec.signals == DEFAULT_MCQ_SIGNAL_SPEC.signals
-    assert get_mcq_signal_spec(None) is DEFAULT_MCQ_SIGNAL_SPEC
-    assert all(entry.key in SIGNAL_PLUGINS for entry in spec.signals)
-    assert "correctness" not in {entry.key for entry in spec.signals}
-    assert spec.reference()["hash"] == spec.hash() == get_mcq_signal_spec("sliding-window").hash()
-    assert [item["key"] for item in spec.snapshot()["signals"]] == [entry.key for entry in spec.signals]
+    assert [entry.plugin.key for entry in spec.signals] == [d["key"] for d in DEFAULT_MCQ_DEFINITIONS]
+    assert spec.reference()["hash"] == spec.hash() == default_mcq_spec("sliding-window").hash()
+    assert reworded.hash() != spec.hash()
+    assert spec.snapshot()["correctness"]["criteria"].keys() == {"1", "0"}
+    assert {item["scope"] for item in spec.snapshot()["signals"]} == {"general"}
+
+
+def _plugin(key: str):
+    return next(entry.plugin for entry in default_mcq_spec().signals if entry.plugin.key == key)
 
 
 def test_rubric_weights_correctness_and_skips_diagnostic_signals() -> None:
     results = {
-        "conceptRecognition": SIGNAL_PLUGINS["conceptRecognition"].interpret({"type": "noul", "noul": 1.0}, CONTEXT, True),
+        "conceptRecognition": _plugin("conceptRecognition").interpret({"type": "noul", "noul": 1.0}, CONTEXT, True),
         "completionTime": COMPLETION_TIME.interpret(None, CONTEXT, True),
     }
 
-    rubric = rubric_from_signal_results(DEFAULT_MCQ_SIGNAL_SPEC, True, results)
+    rubric = rubric_from_signal_results(default_mcq_spec(), True, results)
 
     assert rubric["verdict"] == "sound"
     assert rubric["dimensions"]["correctness"]["score"] == 100.0
@@ -104,13 +138,20 @@ def test_rubric_weights_correctness_and_skips_diagnostic_signals() -> None:
 
 
 def test_rubric_for_a_wrong_answer_names_the_misconception() -> None:
-    misconception = SIGNAL_PLUGINS["distractorMisconception"].interpret(
+    misconception = _plugin("distractorMisconception").interpret(
         {"type": "choice", "choice": "off_by_one", "confidence": 0.7}, CONTEXT, False
     )
 
-    rubric = rubric_from_signal_results(DEFAULT_MCQ_SIGNAL_SPEC, False, {"distractorMisconception": misconception})
+    rubric = rubric_from_signal_results(default_mcq_spec(), False, {"distractorMisconception": misconception})
 
     assert rubric["verdict"] == "needs-work"
     assert rubric["primaryFailure"]["key"] == "correctness"
     assert rubric["primaryFailure"]["evidence"] == ["Likely misconception: off_by_one"]
     assert rubric["score"]["overall"] == 0.0
+
+
+def test_pattern_tags_resolve_to_algorithm_slugs() -> None:
+    assert algorithm_slug_for_tags(["skill-map", "heap-priority-queue"]) == "heap"
+    assert algorithm_slug_for_tags(["dp"]) == "dynamic-programming"
+    assert algorithm_slug_for_tags(["sliding-window"]) == "sliding-window"
+    assert algorithm_slug_for_tags(["skill-map"]) == ""

@@ -30,8 +30,13 @@ def score(instructions: Any, criteria: list[Any]) -> JevQuestion:
     return {"type": "score", "instructions": instructions, "criteria": list(criteria)}
 
 
-def noul(instructions: Any) -> JevQuestion:
-    return {"type": "noul", "instructions": instructions}
+def noul(instructions: Any, criteria: Mapping[str, Any] | None = None) -> JevQuestion:
+    """A yes/no question; ``criteria`` may describe the ``true`` and ``false`` outcomes."""
+    question: JevQuestion = {"type": "noul", "instructions": instructions}
+    described = {key: value for key, value in (criteria or {}).items() if key in ("true", "false") and value}
+    if described:
+        question["criteria"] = described
+    return question
 
 
 class JevUnavailableError(RuntimeError):

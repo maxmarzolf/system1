@@ -229,3 +229,63 @@ BEGIN
             FOREIGN KEY (problem_slug) REFERENCES problem(slug) ON DELETE RESTRICT;
     END IF;
 END $$;
+
+-- ============================================================================
+-- Jev signal definitions (edited on /admin; seeded once from app/core/signals)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS signal_definition (
+    key VARCHAR(64) PRIMARY KEY,
+    modality VARCHAR(30) NOT NULL CHECK (modality IN ('mcq')),
+    -- 'general' applies to every submission of the modality; otherwise an algorithm slug.
+    scope VARCHAR(80) NOT NULL DEFAULT 'general',
+    label TEXT NOT NULL,
+    source VARCHAR(20) NOT NULL CHECK (source IN ('jev', 'deterministic')),
+    primitive VARCHAR(10) CHECK (primitive IN ('choice', 'score', 'noul')),
+    implementation VARCHAR(64),
+    instructions TEXT NOT NULL DEFAULT '',
+    -- JSON (not JSONB) so Choice labels keep the order they were written in.
+    criteria JSON,
+    score_map JSONB NOT NULL DEFAULT '{}'::jsonb,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('dimension', 'modifier', 'diagnostic')),
+    axis VARCHAR(20) CHECK (axis IN ('fidelity', 'executable', 'fluency')),
+    applies_when VARCHAR(20) NOT NULL DEFAULT 'always' CHECK (applies_when IN ('always', 'correct', 'incorrect')),
+    needs_correctness BOOLEAN NOT NULL DEFAULT FALSE,
+    weight DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (weight >= 0 AND weight <= 1),
+    display_order INTEGER NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+    version INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    archived_at TIMESTAMPTZ,
+    CONSTRAINT signal_definition_source_fields_check CHECK (
+        (source = 'jev' AND primitive IS NOT NULL AND implementation IS NULL)
+        OR (source = 'deterministic' AND primitive IS NULL AND implementation IS NOT NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_signal_definition_active
+    ON signal_definition(modality, status, scope, display_order);
+
+-- The correctness question per modality; its labels are fixed in code ("1"/"0").
+CREATE TABLE IF NOT EXISTS signal_evaluation_directive (
+    modality VARCHAR(30) PRIMARY KEY,
+    instructions TEXT NOT NULL,
+    criteria JSONB NOT NULL,
+    correctness_weight DOUBLE PRECISION NOT NULL DEFAULT 0.6 CHECK (correctness_weight >= 0 AND correctness_weight <= 1),
+    version INTEGER NOT NULL DEFAULT 1,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Append-only history of every change made to signals and directives.
+CREATE TABLE IF NOT EXISTS signal_definition_revision (
+    id BIGSERIAL PRIMARY KEY,
+    -- A signal key, or 'directive:<modality>'.
+    subject VARCHAR(80) NOT NULL,
+    action VARCHAR(20) NOT NULL CHECK (action IN ('seed', 'create', 'update', 'archive', 'restore')),
+    before JSONB,
+    after JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_signal_definition_revision_subject
+    ON signal_definition_revision(subject, id DESC);

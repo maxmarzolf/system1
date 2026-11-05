@@ -14,7 +14,9 @@ from app.core.signal_catalog import (
     SLIDING_WINDOW_SIGNAL_SPEC,
     spec_to_json,
 )
-from app.repositories import signal_spec_repository
+from app.core.signals.mcq import DEFAULT_MCQ_DEFINITIONS, default_mcq_spec
+from app.repositories import signal_definition_repository, signal_spec_repository
+from app.services import signal_registry_service
 from fastapi.testclient import TestClient
 
 from app import main as app_main
@@ -95,7 +97,19 @@ def test_signal_specs_endpoint_lists_stored_specs_and_flags_defaults(monkeypatch
             {"slug": "trees", "name": "Trees", "display_order": 3, "signal_spec": {}},
         ]
 
+    heap_signal = {
+        **DEFAULT_MCQ_DEFINITIONS[0], "key": "heapInvariant", "scope": "heap", "status": "active",
+    }
+
+    async def _definitions(_modality):
+        return [{**definition, "status": "active"} for definition in DEFAULT_MCQ_DEFINITIONS] + [heap_signal]
+
+    async def _load(algorithm):
+        return default_mcq_spec(algorithm or "default")
+
     monkeypatch.setattr(signal_spec_repository, "fetch_algorithm_signal_specs", _rows)
+    monkeypatch.setattr(signal_definition_repository, "fetch_definitions", _definitions)
+    monkeypatch.setattr(signal_registry_service, "load_mcq_spec", _load)
     with _client(monkeypatch) as client:
         response = client.get("/api/catalog/signal-specs")
 
@@ -108,6 +122,8 @@ def test_signal_specs_endpoint_lists_stored_specs_and_flags_defaults(monkeypatch
         ("trees", True, False),
     ]
     assert body["algorithms"][0]["spec"]["signals"][0]["key"] == "windowState"
+    assert body["modalitySpecs"]["mcq"]["default"]["algorithm"] == "default"
+    assert list(body["modalitySpecs"]["mcq"]["overrides"]) == ["heap"]
 
 
 def test_resolve_endpoint_previews_the_assessor_payload(monkeypatch) -> None:

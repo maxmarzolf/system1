@@ -6,12 +6,11 @@ from typing import Any
 import pytest
 
 from app.core.jev import JevResponse, JevUnavailableError
-from app.core.signal_catalog import SLIDING_WINDOW_SIGNAL_SPEC
-from app.core.signals import SIGNAL_PLUGINS, ModalitySignalSpec, SpecEntry
+from app.core.signals import ModalitySignalSpec, SpecEntry
 from app.core.signals.base import JevSignal
-from app.core.signals.mcq import CORRECTNESS_CRITERIA, CORRECTNESS_INSTRUCTIONS, get_mcq_signal_spec
+from app.core.signals.mcq import DEFAULT_MCQ_DIRECTIVE, default_mcq_spec
 from app.models import AttemptCreate, SubmissionModality
-from app.services import attempts_service, signal_spec_service, submission_context_service, submission_service
+from app.services import attempts_service, signal_registry_service, submission_context_service, submission_service
 from app.services.evaluators import EVALUATORS, SubmissionRecord, get_evaluator, jev_mcq
 from app.services.evaluators.jev_mcq import JevMcqEvaluator
 from app.services.evaluators.legacy_recall import AssessorEvaluator, GhostRepEvaluator
@@ -85,11 +84,12 @@ def patched(monkeypatch):
     async def _build(_body):
         return state["context"]
 
-    async def _resolve(_card_ids, _tags):
-        return SLIDING_WINDOW_SIGNAL_SPEC
+    async def _load(algorithm):
+        state["algorithm"] = algorithm
+        return state.get("spec") or default_mcq_spec(algorithm)
 
     monkeypatch.setattr(jev_mcq, "build_mcq_context", _build)
-    monkeypatch.setattr(signal_spec_service, "resolve_signal_spec", _resolve)
+    monkeypatch.setattr(signal_registry_service, "load_mcq_spec", _load)
     return state
 
 
@@ -109,10 +109,11 @@ async def test_one_call_carries_correctness_and_every_signal_question(patched) -
     }
     assert questions["correctness"] == {
         "type": "choice",
-        "instructions": CORRECTNESS_INSTRUCTIONS,
-        "criteria": CORRECTNESS_CRITERIA,
+        "instructions": DEFAULT_MCQ_DIRECTIVE["instructions"],
+        "criteria": DEFAULT_MCQ_DIRECTIVE["criteria"],
     }
-    assert set(CORRECTNESS_CRITERIA) == {"1", "0"}
+    assert set(questions["correctness"]["criteria"]) == {"1", "0"}
+    assert patched["algorithm"] == "sliding-window"
     assert set(questions) == {"correctness", "conceptRecognition", "nearMiss", "distractorMisconception"}
     assert outcome.successful is True
     assert outcome.record == SubmissionRecord(
@@ -122,7 +123,7 @@ async def test_one_call_carries_correctness_and_every_signal_question(patched) -
     )
     evaluation = outcome.evaluation
     assert evaluation["verdict"] == "sound"
-    assert evaluation["signalSpec"] == get_mcq_signal_spec("sliding-window").reference()
+    assert evaluation["signalSpec"] == default_mcq_spec("sliding-window").reference()
     assert evaluation["signalSpec"]["algorithm"] == "sliding-window"
     assert evaluation["provenance"]["engine"] == "jev"
     assert evaluation["provenance"]["model"] == "jev-test"
@@ -189,15 +190,14 @@ async def test_needs_correctness_signals_go_in_a_second_call(patched, monkeypatc
         instructions="Given answeredCorrectly, was the choice confident?",
         needs_correctness=True,
     )
-    monkeypatch.setitem(SIGNAL_PLUGINS, follow_up.key, follow_up)
-    spec = ModalitySignalSpec(
+    base = default_mcq_spec("test")
+    concept = next(entry for entry in base.signals if entry.plugin.key == "conceptRecognition")
+    patched["spec"] = ModalitySignalSpec(
         algorithm="test",
         modality="mcq",
-        version=1,
-        correctness_weight=0.5,
-        signals=(SpecEntry("conceptRecognition", 0.25), SpecEntry("testFollowUp", 0.25)),
+        correctness=base.correctness,
+        signals=(concept, SpecEntry(follow_up, 0.25)),
     )
-    monkeypatch.setattr(jev_mcq, "get_mcq_signal_spec", lambda _algorithm: spec)
     gateway = FakeJevGateway({**_answers("1"), "testFollowUp": {"type": "noul", "noul": 0.5}})
 
     outcome = await JevMcqEvaluator(lambda: gateway).evaluate(_body())

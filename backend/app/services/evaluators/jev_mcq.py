@@ -2,7 +2,9 @@
 
 One ``system_one`` call carries the correctness Choice ("1" = answered
 correctly, "0" = not) and one question per signal plug-in in the MCQ spec, all
-over the same state: question, answers, correctAnswer, submittedAnswer.
+over the same state: question, answers, correctAnswer, submittedAnswer. The
+spec and correctness wording are loaded from the database for every
+submission, so /admin edits apply to the next one.
 Plug-ins marked ``needs_correctness`` go in a second call whose state adds
 ``answeredCorrectly``. If Jev is unavailable, the stored answer key decides.
 """
@@ -14,19 +16,21 @@ from collections.abc import Callable
 from typing import Any
 
 from app.config import settings
-from app.core.jev import HttpJevGateway, JevGateway, JevQuestion, JevResponse, JevUnavailableError, choice
-from app.core.signals import ModalitySignalSpec, SignalContext, SignalPlugin, SignalResult, applies, skipped
-from app.core.signals.mcq import (
-    CORRECTNESS_CRITERIA,
-    CORRECTNESS_INSTRUCTIONS,
+from app.core.jev import HttpJevGateway, JevGateway, JevQuestion, JevResponse, JevUnavailableError
+from app.core.signals import (
     CORRECTNESS_QUESTION_ID,
-    MCQ_MODALITY,
-    get_mcq_signal_spec,
+    ModalitySignalSpec,
+    SignalContext,
+    SignalPlugin,
+    SignalResult,
+    applies,
+    skipped,
 )
+from app.core.signals.mcq import MCQ_MODALITY
 from app.domain.feedback_builder import rubric_from_signal_results
 from app.domain.submission_evaluation import canonical_submission_evaluation
 from app.models import AttemptCreate, SubmissionModality
-from app.services import signal_spec_service
+from app.services import signal_registry_service
 from app.services.evaluators.base import EvaluationOutcome, SubmissionRecord
 from app.services.evaluators.registry import register_evaluator
 from app.services.submission_context_service import McqContext, build_mcq_context
@@ -45,10 +49,6 @@ def default_jev_gateway() -> JevGateway:
         base_url=settings.typesafe_base_url,
         timeout_seconds=settings.jev_timeout_seconds,
     )
-
-
-def correctness_question() -> JevQuestion:
-    return choice(CORRECTNESS_INSTRUCTIONS, CORRECTNESS_CRITERIA)
 
 
 def _choice_text(answer: dict[str, str]) -> str:
@@ -90,17 +90,15 @@ class JevMcqEvaluator:
 
     async def evaluate(self, body: AttemptCreate) -> EvaluationOutcome:
         context = await build_mcq_context(body)
-        recall_spec = await signal_spec_service.resolve_signal_spec(
-            [body.generatedCardId, body.cardId],
-            body.categoryTags,
+        spec = await signal_registry_service.load_mcq_spec(
+            signal_registry_service.mcq_algorithm_for_tags(body.categoryTags)
         )
-        spec = get_mcq_signal_spec(recall_spec.algorithm)
         signal_context = SignalContext(modality=MCQ_MODALITY, state=context.jev_state(), elapsed_ms=context.elapsed_ms)
         plugins = [plugin for plugin, _weight in spec.plugins()]
         first_pass = [plugin for plugin in plugins if not plugin.needs_correctness]
         second_pass = [plugin for plugin in plugins if plugin.needs_correctness]
 
-        questions = {CORRECTNESS_QUESTION_ID: correctness_question(), **_plugin_questions(first_pass, signal_context)}
+        questions = {CORRECTNESS_QUESTION_ID: spec.correctness.question(), **_plugin_questions(first_pass, signal_context)}
         try:
             gateway = self._gateway_factory()
             response = await gateway.system_one(signal_context.state, questions)

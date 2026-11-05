@@ -10,7 +10,6 @@ from fastapi.testclient import TestClient
 
 from app.config import settings
 from app.core.jev import JevResponse
-from app.core.signals.mcq import get_mcq_signal_spec
 from app.main import create_app
 from app.models import SubmissionModality
 from app.services.evaluators import EVALUATORS
@@ -44,6 +43,27 @@ def fake_jev(monkeypatch):
         monkeypatch.setitem(EVALUATORS, SubmissionModality.mcq, evaluator)
 
     return install
+
+
+async def _purge_problems(question_ids: list[str]) -> None:
+    conn = await asyncpg.connect(settings.database_url)
+    try:
+        await conn.execute("DELETE FROM submission WHERE multiple_choice_problem_id = ANY($1::text[])", question_ids)
+        await conn.execute("DELETE FROM multiple_choice_problem WHERE id = ANY($1::text[])", question_ids)
+    finally:
+        await conn.close()
+
+
+@pytest.fixture
+def seeded_problems():
+    """Problem ids a test seeds; they and their submissions are removed even if the test fails."""
+    question_ids: list[str] = []
+    yield question_ids
+    if question_ids:
+        try:
+            asyncio.run(_purge_problems(question_ids))
+        except (OSError, asyncpg.PostgresError):  # pragma: no cover - environment-dependent integration guard
+            pass
 
 
 async def _seed_problem(question_id: str) -> None:
@@ -121,9 +141,10 @@ def _mcq_payload(question_id: str, selected: str, algorithm_tag: str, **override
 
 
 @pytest.mark.integration
-def test_mcq_attempt_is_graded_against_the_stored_answer_key(fake_jev) -> None:
+def test_mcq_attempt_is_graded_against_the_stored_answer_key(fake_jev, seeded_problems) -> None:
     token = uuid4().hex[:12]
     question_id = f"mcq-itest-signal-{token}"
+    seeded_problems.append(question_id)
     fake_jev("0")
     try:
         asyncio.run(_seed_problem(question_id))
@@ -174,9 +195,10 @@ def test_mcq_attempt_is_graded_against_the_stored_answer_key(fake_jev) -> None:
 
 
 @pytest.mark.integration
-def test_mcq_attempt_with_unknown_problem_or_choice_is_rejected(fake_jev) -> None:
+def test_mcq_attempt_with_unknown_problem_or_choice_is_rejected(fake_jev, seeded_problems) -> None:
     token = uuid4().hex[:12]
     question_id = f"mcq-itest-reject-{token}"
+    seeded_problems.append(question_id)
     fake_jev("1")
     try:
         asyncio.run(_seed_problem(question_id))
@@ -195,10 +217,11 @@ def test_mcq_attempt_with_unknown_problem_or_choice_is_rejected(fake_jev) -> Non
 
 
 @pytest.mark.integration
-def test_signal_spec_is_stored_per_algorithm_and_read_back_through_history(fake_jev) -> None:
+def test_signal_spec_is_stored_per_algorithm_and_read_back_through_history(fake_jev, seeded_problems) -> None:
     token = uuid4().hex[:12]
     window_id = f"mcq-itest-window-{token}"
     search_id = f"mcq-itest-search-{token}"
+    seeded_problems.extend([window_id, search_id])
     fake_jev("1")
     try:
         asyncio.run(_seed_problem(window_id))
@@ -224,7 +247,10 @@ def test_signal_spec_is_stored_per_algorithm_and_read_back_through_history(fake_
     assert history.status_code == 200, history.text
     entries = [entry for entry in history.json()["entries"] if entry["attemptId"] == window_attempt]
     assert entries
-    assert entries[0]["signals"]["evaluation"]["signalSpec"] == get_mcq_signal_spec("sliding-window").reference()
+    stored_spec = entries[0]["signals"]["evaluation"]["signalSpec"]
+    assert stored_spec["algorithm"] == "sliding-window"
+    assert stored_spec["modality"] == "mcq"
+    assert len(stored_spec["hash"]) == 16
 
 
 async def _core_problem_and_submission(attempt_id: int | None, problem_slug: str | None = None):

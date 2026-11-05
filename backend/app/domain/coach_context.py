@@ -242,6 +242,23 @@ def primary_pattern_tag(skill_tags: list[str]) -> str:
     return ""
 
 
+# Pattern tags that differ from their ``algorithm`` table slug.
+PATTERN_TAG_ALGORITHM_ALIASES = {
+    "heap-priority-queue": "heap",
+    "dfs-bfs": "graphs",
+    "graph-traversal": "graphs",
+    "dp": "dynamic-programming",
+    "greedy-sorting": "sorting",
+    "stack": "stacks-queues",
+}
+
+
+def algorithm_slug_for_tags(skill_tags: list[str]) -> str:
+    """The ``algorithm`` slug for a card's primary pattern tag, or "" if none."""
+    tag = primary_pattern_tag(skill_tags)
+    return PATTERN_TAG_ALGORITHM_ALIASES.get(tag, tag)
+
+
 def pattern_display_name(skill_tags: list[str]) -> str:
     pattern_tag = primary_pattern_tag(skill_tags)
     return {

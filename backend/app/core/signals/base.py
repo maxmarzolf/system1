@@ -110,7 +110,7 @@ class JevSignal:
             return choice(self.instructions, dict(self.criteria or {}))
         if self.primitive == "score":
             return score(self.instructions, list(self.criteria or ()))
-        return noul(self.instructions)
+        return noul(self.instructions, self.criteria if isinstance(self.criteria, Mapping) else None)
 
     def interpret(self, answer: Mapping[str, Any] | None, context: SignalContext, successful: bool) -> SignalResult:
         del context, successful
@@ -151,7 +151,7 @@ class JevSignal:
             "source": "jev",
             "primitive": self.primitive,
             "instructions": self.instructions,
-            "criteria": dict(criteria) if isinstance(criteria, Mapping) else list(criteria or ()),
+            "criteria": dict(criteria) if isinstance(criteria, Mapping) else (list(criteria) if criteria else None),
             "role": self.role,
             "axis": self.axis,
             "appliesWhen": self.applies_when,

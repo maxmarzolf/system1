@@ -45,8 +45,15 @@ class McqContext:
 
 
 async def build_mcq_context(body: AttemptCreate) -> McqContext:
-    problem_id = (body.multipleChoiceProblemId or body.generatedCardId or "").strip()
-    selected_id = (body.selectedChoiceId or "").strip()
+    return await mcq_context_for(
+        (body.multipleChoiceProblemId or body.generatedCardId or "").strip(),
+        (body.selectedChoiceId or "").strip(),
+        elapsed_ms=body.elapsedMs,
+    )
+
+
+async def mcq_context_for(problem_id: str, selected_id: str, *, elapsed_ms: int = 0) -> McqContext:
+    """Context for answering stored problem ``problem_id`` with choice ``selected_id``."""
     if not problem_id or not selected_id:
         raise SubmissionContextError(
             "mcq_missing_ids",
@@ -68,5 +75,5 @@ async def build_mcq_context(body: AttemptCreate) -> McqContext:
         answers=tuple(problem["choices"]),
         correct_answer=correct,
         submitted_answer=submitted,
-        elapsed_ms=body.elapsedMs,
+        elapsed_ms=elapsed_ms,
     )

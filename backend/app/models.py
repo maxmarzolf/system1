@@ -631,3 +631,47 @@ class SlidingWindowLadderResponse(BaseModel):
     starterCode: str
     solution: str
     language: str = "python"
+
+
+# ─── Signal admin (/admin) ───
+
+
+class SignalDefinitionDraft(BaseModel):
+    """A signal as edited on /admin; the service validates it field by field."""
+
+    key: str = Field(default="", max_length=64)
+    label: str = ""
+    scope: str = "general"
+    source: str = "jev"
+    primitive: str | None = None
+    implementation: str | None = None
+    instructions: str = ""
+    criteria: Any = None
+    scoreMap: dict[str, Any] = Field(default_factory=dict)
+    role: str = "dimension"
+    axis: str | None = None
+    appliesWhen: str = "always"
+    needsCorrectness: bool = False
+    weight: float = 0.0
+    displayOrder: int = 0
+
+
+class SignalDefinitionUpdate(SignalDefinitionDraft):
+    version: int
+
+
+class SignalStatusChange(BaseModel):
+    version: int
+
+
+class SignalDirectiveUpdate(BaseModel):
+    instructions: str = ""
+    criteria: dict[str, str] = Field(default_factory=dict)
+    correctnessWeight: float = 0.6
+    version: int
+
+
+class SignalTryRequest(BaseModel):
+    draft: SignalDefinitionDraft
+    problemId: str = Field(min_length=1, max_length=80)
+    choiceId: str = Field(min_length=1, max_length=8)

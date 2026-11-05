@@ -5,14 +5,7 @@ from typing import Any, Literal
 from app.core.assessor import assessor_system_prompt
 from app.core.core_algorithm_practice import problem_slug_candidates
 from app.core.signals import ModalitySignalSpec
-from app.core.signals.mcq import (
-    CORRECTNESS_CRITERIA,
-    CORRECTNESS_INSTRUCTIONS,
-    CORRECTNESS_QUESTION_ID,
-    DEFAULT_MCQ_SIGNAL_SPEC,
-    MCQ_SIGNAL_SPECS,
-    get_mcq_signal_spec,
-)
+from app.core.signals.mcq import MCQ_MODALITY, MCQ_STATE_FIELDS
 from app.core.signal_catalog import (
     DEFAULT_SIGNAL_SPEC,
     SignalSpec,
@@ -20,9 +13,10 @@ from app.core.signal_catalog import (
     spec_from_json,
     spec_to_json,
 )
-from app.domain.coach_context import primary_pattern_tag
+from app.domain.coach_context import algorithm_slug_for_tags, primary_pattern_tag
 from app.models import SignalSpecResolveRequest, SubmissionModality
-from app.repositories import signal_spec_repository
+from app.repositories import signal_definition_repository, signal_spec_repository
+from app.services import signal_registry_service
 from app.submission_rubric import coerce_json_object
 
 SpecSource = Literal["problem", "skill-tag", "default"]
@@ -36,7 +30,7 @@ async def resolve_signal_spec_with_source(
     then the primary pattern tag, then the default spec."""
     row = await signal_spec_repository.fetch_algorithm_signal_spec(
         problem_slug_candidates(card_ids),
-        primary_pattern_tag(skill_tags),
+        algorithm_slug_for_tags(skill_tags),
     )
     if row is None:
         return DEFAULT_SIGNAL_SPEC, "default"
@@ -64,11 +58,23 @@ async def list_signal_specs() -> dict[str, Any]:
     return {
         "default": spec_to_json(DEFAULT_SIGNAL_SPEC),
         "algorithms": algorithms,
-        "modalitySpecs": {
-            SubmissionModality.mcq.value: {
-                "default": modality_spec_to_json(DEFAULT_MCQ_SIGNAL_SPEC),
-                "overrides": {slug: modality_spec_to_json(spec) for slug, spec in MCQ_SIGNAL_SPECS.items()},
-            }
+        "modalitySpecs": {SubmissionModality.mcq.value: await _mcq_specs()},
+    }
+
+
+async def _mcq_specs() -> dict[str, Any]:
+    """The general MCQ spec, plus the effective spec of every algorithm with its own signals."""
+    scopes = sorted(
+        {
+            definition["scope"]
+            for definition in await signal_definition_repository.fetch_definitions(MCQ_MODALITY)
+            if definition["status"] == "active" and definition["scope"] != "general"
+        }
+    )
+    return {
+        "default": modality_spec_to_json(await signal_registry_service.load_mcq_spec("")),
+        "overrides": {
+            slug: modality_spec_to_json(await signal_registry_service.load_mcq_spec(slug)) for slug in scopes
         },
     }
 
@@ -80,13 +86,8 @@ def modality_spec_to_json(spec: ModalitySignalSpec) -> dict[str, Any]:
 def mcq_jev_payload(spec: ModalitySignalSpec) -> dict[str, Any]:
     """The questions the Jev MCQ evaluator sends, without the per-submission state."""
     return {
-        "stateFields": ["question", "answers", "correctAnswer", "submittedAnswer"],
-        "correctness": {
-            "id": CORRECTNESS_QUESTION_ID,
-            "type": "choice",
-            "instructions": CORRECTNESS_INSTRUCTIONS,
-            "criteria": CORRECTNESS_CRITERIA,
-        },
+        "stateFields": list(MCQ_STATE_FIELDS),
+        "correctness": spec.correctness.describe(),
         "spec": modality_spec_to_json(spec),
     }
 
@@ -95,7 +96,12 @@ async def preview_signal_spec(body: SignalSpecResolveRequest) -> dict[str, Any]:
     """What the next submission for this card would send: the Signal Assessor
     payload for recall, plus the Jev questions when the card is an MCQ."""
     spec, source = await resolve_signal_spec_with_source([body.generatedCardId, body.cardId], body.categoryTags)
-    jev = mcq_jev_payload(get_mcq_signal_spec(spec.algorithm)) if body.modality == SubmissionModality.mcq else None
+    jev = None
+    if body.modality == SubmissionModality.mcq:
+        mcq_spec = await signal_registry_service.load_mcq_spec(
+            signal_registry_service.mcq_algorithm_for_tags(body.categoryTags)
+        )
+        jev = mcq_jev_payload(mcq_spec)
     return {
         "jev": jev,
         "source": source,

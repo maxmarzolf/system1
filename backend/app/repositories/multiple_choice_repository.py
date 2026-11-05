@@ -50,3 +50,18 @@ async def fetch_multiple_choice_problem(problem_id: str) -> StoredMultipleChoice
             problem_id,
         )
     return stored_multiple_choice_problem(dict(row)) if row else None
+
+
+async def fetch_recent_multiple_choice_problems(limit: int = 25) -> list[StoredMultipleChoiceProblem]:
+    """Recent stored MCQs that have a complete answer key."""
+    async with acquire_connection() as conn:
+        rows = await conn.fetch(
+            f"""
+            SELECT {MULTIPLE_CHOICE_PROBLEM_COLUMNS} FROM multiple_choice_problem
+            WHERE multiple_choice_answer_text_4 IS NOT NULL AND multiple_choice_correct_answer_label IS NOT NULL
+            ORDER BY created_date DESC
+            LIMIT $1
+            """,
+            limit,
+        )
+    return [stored_multiple_choice_problem(dict(row)) for row in rows]
