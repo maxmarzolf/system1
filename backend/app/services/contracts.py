@@ -253,4 +253,7 @@ class FeedbackPayload(TypedDict, total=False):
 	signals: dict[str, Any]
 
 PersistSkillMapDrills: TypeAlias = Callable[[list[SkillMapDrillPayload], bool, SkillMapProgressSummary], Awaitable[None]]
-PersistGeneratedQuestions: TypeAlias = Callable[[list[MultipleChoiceQuestionPayload]], Awaitable[None]]
+PersistGeneratedQuestions: TypeAlias = Callable[
+	[list[MultipleChoiceQuestionPayload]],
+	Awaitable[list[MultipleChoiceQuestionPayload | None] | None],
+]

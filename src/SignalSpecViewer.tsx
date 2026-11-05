@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import ModalitySignalSpecTable from './ModalitySignalSpecTable'
 import SignalSpecTable from './SignalSpecTable'
 import { fetchSignalSpecCatalog } from './signalSpecs'
 import type { SignalSpecCatalog } from './signalSpecs'
@@ -26,6 +27,8 @@ export default function SignalSpecViewer() {
 
   const selected = catalog.algorithms.find((item) => item.slug === selectedSlug) ?? catalog.algorithms[0]
   const customCount = catalog.algorithms.filter((item) => !item.usesDefault).length
+  const mcqSpecs = catalog.modalitySpecs?.mcq
+  const mcqSpec = mcqSpecs ? (selected ? mcqSpecs.overrides[selected.slug] : undefined) ?? mcqSpecs.default : null
 
   return (
     <div className="signal-spec-viewer" id="signals">
@@ -54,8 +57,22 @@ export default function SignalSpecViewer() {
       </div>
       {selected ? <SignalSpecTable spec={selected.spec} /> : null}
       <p className="tune-footnote">
-        Read-only. Specs are authored in <code>backend/app/core/signal_catalog.py</code> and reseeded on backend startup.
+        Read-only. Recall specs are authored in <code>backend/app/core/signal_catalog.py</code> and reseeded on backend startup.
       </p>
+      {mcqSpec ? (
+        <>
+          <div className="signal-spec-meta" aria-label="MCQ spec details">
+            <span>MCQ spec (Jev) <code>{mcqSpec.algorithm}</code></span>
+            <span>Version <code>v{mcqSpec.version}</code></span>
+            <span>Hash <code>{mcqSpec.hash}</code></span>
+            <span>{mcqSpec.signals.length + 1} questions in one Jev call</span>
+          </div>
+          <ModalitySignalSpecTable spec={mcqSpec} />
+          <p className="tune-footnote">
+            MCQ signals are plug-ins in <code>backend/app/core/signals/mcq.py</code>. Each Jev question reads the question, answers, correct answer and submitted answer.
+          </p>
+        </>
+      ) : null}
     </div>
   )
 }

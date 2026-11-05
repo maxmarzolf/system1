@@ -26,12 +26,45 @@ export type AlgorithmSignalSpec = {
   spec: SignalSpec
 }
 
+export type PluginSignal = {
+  key: string
+  label: string
+  source: 'jev' | 'deterministic'
+  role: 'dimension' | 'modifier' | 'diagnostic'
+  axis: 'fidelity' | 'executable' | 'fluency' | null
+  appliesWhen: 'always' | 'correct' | 'incorrect'
+  needsCorrectness: boolean
+  weight: number
+  primitive?: 'choice' | 'score' | 'noul'
+  instructions?: unknown
+  criteria?: Record<string, unknown> | unknown[]
+  scoreMap?: Record<string, number>
+  description?: string
+}
+
+export type ModalitySignalSpec = {
+  algorithm: string
+  modality: string
+  version: number
+  hash: string
+  correctnessWeight: number
+  signals: PluginSignal[]
+}
+
 export type SignalSpecCatalog = {
   default: SignalSpec
   algorithms: AlgorithmSignalSpec[]
+  modalitySpecs: Record<string, { default: ModalitySignalSpec; overrides: Record<string, ModalitySignalSpec> }>
+}
+
+export type JevPreview = {
+  stateFields: string[]
+  correctness: { id: string; type: 'choice'; instructions: string; criteria: Record<string, string> }
+  spec: ModalitySignalSpec
 }
 
 export type SignalSpecPreview = {
+  jev: JevPreview | null
   source: 'problem' | 'skill-tag' | 'default'
   primaryPatternTag: string
   spec: SignalSpec
@@ -45,6 +78,7 @@ export type SignalSpecPreviewRequest = {
   cardId: string
   generatedCardId?: string
   categoryTags: string[]
+  modality?: 'mcq'
 }
 
 export async function fetchSignalSpecCatalog(signal?: AbortSignal): Promise<SignalSpecCatalog> {

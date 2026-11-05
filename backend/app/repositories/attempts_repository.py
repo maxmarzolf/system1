@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import json
-import re
 from datetime import datetime
 from typing import cast
 
@@ -15,122 +12,6 @@ from app.repositories.types import (
     SkillMapOverviewAttemptRow,
     SkillMapOverviewGeneratedRow,
 )
-
-
-def _normalize_question_fingerprint_text(value: str) -> str:
-    text = str(value or "").replace("\r\n", "\n").strip()
-    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.split("\n")]
-    return "\n".join(lines).strip()
-
-
-def _attempt_problem_fingerprint(
-    *,
-    question: str,
-    correct_answer: str,
-    question_type: str,
-    generated_card_json: str | None,
-) -> str:
-    payload = json.dumps(
-        {
-            "kind": "attempt-problem",
-            "question": _normalize_question_fingerprint_text(question),
-            "correctAnswer": _normalize_question_fingerprint_text(correct_answer),
-            "questionType": _normalize_question_fingerprint_text(question_type),
-            "generatedCard": generated_card_json or "",
-        },
-        separators=(",", ":"),
-        ensure_ascii=True,
-        sort_keys=True,
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def _is_multiple_choice_attempt(
-    *,
-    generated_card_id: str | None,
-    question_type: str,
-    category_tags: list[str],
-    modality: str | None,
-) -> bool:
-    return (
-        modality == "mcq"
-        or str(question_type or "").startswith("skill-map-mcq")
-        or "skill-map-mcq" in category_tags
-        or str(generated_card_id or "").startswith("mcq-")
-    )
-
-
-async def _resolve_multiple_choice_problem_id(
-    *,
-    generated_card_id: str | None,
-    question: str,
-    question_type: str,
-    correct_answer: str,
-    generated_card_json: str | None,
-    category_tags: list[str],
-    modality: str | None,
-    created_at: datetime,
-    updated_at: datetime,
-) -> str | None:
-    if not _is_multiple_choice_attempt(
-        generated_card_id=generated_card_id,
-        question_type=question_type,
-        category_tags=category_tags,
-        modality=modality,
-    ):
-        return None
-
-    fingerprint = _attempt_problem_fingerprint(
-        question=question,
-        correct_answer=correct_answer,
-        question_type=question_type,
-        generated_card_json=generated_card_json,
-    )
-    default_problem_id = f"mcq-{fingerprint[:24]}"
-    problem_id = (generated_card_id or "").strip() or default_problem_id
-    if not problem_id.startswith("mcq-"):
-        problem_id = default_problem_id
-    created_date = created_at.replace(tzinfo=None) if created_at.tzinfo else created_at
-    modified_date = updated_at.replace(tzinfo=None) if updated_at.tzinfo else updated_at
-
-    async with acquire_connection() as conn:
-        if generated_card_id:
-            existing = await conn.fetchrow("SELECT id FROM multiple_choice_problem WHERE id = $1", generated_card_id)
-            if existing:
-                return str(existing["id"])
-
-        row = await conn.fetchrow(
-            """
-            INSERT INTO multiple_choice_problem (
-                id,
-                user_id,
-                question_text,
-                question_help_text,
-                recall_answer,
-                multiple_choice_correct_answer_text,
-                fingerprint,
-                created_date,
-                modified_date
-            )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-            ON CONFLICT (fingerprint) DO UPDATE
-            SET modified_date = EXCLUDED.modified_date
-            RETURNING id
-            """,
-            problem_id,
-            "0000",
-            question,
-            "",
-            None,
-            correct_answer,
-            fingerprint,
-            created_date,
-            modified_date,
-        )
-
-    if not row:
-        return problem_id
-    return str(row["id"])
 
 
 async def insert_submission_attempt_row(
@@ -158,32 +39,17 @@ async def insert_submission_attempt_row(
     format_control: str | None,
     created_at: datetime,
     updated_at: datetime,
+    multiple_choice_problem_id: str | None = None,
 ) -> SubmissionInsertResult | None:
-    del card_id, card_title, mode
+    """Insert a submission. MCQ rows reference the stored problem the evaluator graded against."""
+    del card_id, card_title, mode, question
 
-    normalized_question = str(question or "")
     normalized_correct_answer = str(correct_answer or "")
     normalized_user_answer = str(user_answer or "")
-    multiple_choice_problem_id = await _resolve_multiple_choice_problem_id(
-        generated_card_id=generated_card_id,
-        question=normalized_question,
-        question_type=question_type,
-        correct_answer=normalized_correct_answer,
-        generated_card_json=generated_card_json,
-        category_tags=category_tags,
-        modality=modality,
-        created_at=created_at,
-        updated_at=updated_at,
-    )
 
     async with acquire_connection() as conn, conn.transaction():
         problem_slug = None
-        if generated_card_id and not _is_multiple_choice_attempt(
-            generated_card_id=generated_card_id,
-            question_type=question_type,
-            category_tags=category_tags,
-            modality=modality,
-        ):
+        if generated_card_id and modality != "mcq":
             candidates = problem_slug_candidates([generated_card_id])
             problem_slug = await conn.fetchval(
                 """

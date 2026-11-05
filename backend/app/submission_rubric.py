@@ -81,6 +81,8 @@ def compact_submission_rubric(raw_rubric: Any) -> dict[str, Any]:
         "signalSpec": {
             "algorithm": str(signal_spec.get("algorithm", "")).strip(),
             "version": int(signal_spec.get("version", 0) or 0),
+            # Plug-in (modality) specs also carry these; recall specs do not.
+            **{key: str(signal_spec[key]) for key in ("modality", "hash") if signal_spec.get(key)},
         },
         "score": {
             "overall": _score_value(score.get("overall")),

@@ -86,14 +86,20 @@ async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
     )
 
 
-async def _persist_generated_questions(drills: list[MultipleChoiceQuestionPayload]) -> None:
+async def _persist_generated_questions(
+    drills: list[MultipleChoiceQuestionPayload],
+) -> list[MultipleChoiceQuestionPayload | None]:
     now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
-    await insert_generated_multiple_choice_question_rows(
+    stored = await insert_generated_multiple_choice_question_rows(
         questions=drills,
         user_id="0000",
         created_date=now,
         modified_date=now,
     )
+    return [
+        {"id": row["id"], "choices": row["choices"], "correctChoiceId": row["correctChoiceId"]} if row else None
+        for row in stored
+    ]
 
 
 async def coach_multiple_choice_drills(body: MultipleChoiceDrillsRequest):

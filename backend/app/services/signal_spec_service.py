@@ -4,6 +4,15 @@ from typing import Any, Literal
 
 from app.core.assessor import assessor_system_prompt
 from app.core.core_algorithm_practice import problem_slug_candidates
+from app.core.signals import ModalitySignalSpec
+from app.core.signals.mcq import (
+    CORRECTNESS_CRITERIA,
+    CORRECTNESS_INSTRUCTIONS,
+    CORRECTNESS_QUESTION_ID,
+    DEFAULT_MCQ_SIGNAL_SPEC,
+    MCQ_SIGNAL_SPECS,
+    get_mcq_signal_spec,
+)
 from app.core.signal_catalog import (
     DEFAULT_SIGNAL_SPEC,
     SignalSpec,
@@ -12,7 +21,7 @@ from app.core.signal_catalog import (
     spec_to_json,
 )
 from app.domain.coach_context import primary_pattern_tag
-from app.models import SignalSpecResolveRequest
+from app.models import SignalSpecResolveRequest, SubmissionModality
 from app.repositories import signal_spec_repository
 from app.submission_rubric import coerce_json_object
 
@@ -52,13 +61,43 @@ async def list_signal_specs() -> dict[str, Any]:
             "seeded": stored is not None,
             "spec": spec_to_json(spec),
         })
-    return {"default": spec_to_json(DEFAULT_SIGNAL_SPEC), "algorithms": algorithms}
+    return {
+        "default": spec_to_json(DEFAULT_SIGNAL_SPEC),
+        "algorithms": algorithms,
+        "modalitySpecs": {
+            SubmissionModality.mcq.value: {
+                "default": modality_spec_to_json(DEFAULT_MCQ_SIGNAL_SPEC),
+                "overrides": {slug: modality_spec_to_json(spec) for slug, spec in MCQ_SIGNAL_SPECS.items()},
+            }
+        },
+    }
+
+
+def modality_spec_to_json(spec: ModalitySignalSpec) -> dict[str, Any]:
+    return {**spec.snapshot(), "hash": spec.hash()}
+
+
+def mcq_jev_payload(spec: ModalitySignalSpec) -> dict[str, Any]:
+    """The questions the Jev MCQ evaluator sends, without the per-submission state."""
+    return {
+        "stateFields": ["question", "answers", "correctAnswer", "submittedAnswer"],
+        "correctness": {
+            "id": CORRECTNESS_QUESTION_ID,
+            "type": "choice",
+            "instructions": CORRECTNESS_INSTRUCTIONS,
+            "criteria": CORRECTNESS_CRITERIA,
+        },
+        "spec": modality_spec_to_json(spec),
+    }
 
 
 async def preview_signal_spec(body: SignalSpecResolveRequest) -> dict[str, Any]:
-    """What the next submission for this card would send to the Signal Assessor."""
+    """What the next submission for this card would send: the Signal Assessor
+    payload for recall, plus the Jev questions when the card is an MCQ."""
     spec, source = await resolve_signal_spec_with_source([body.generatedCardId, body.cardId], body.categoryTags)
+    jev = mcq_jev_payload(get_mcq_signal_spec(spec.algorithm)) if body.modality == SubmissionModality.mcq else None
     return {
+        "jev": jev,
         "source": source,
         "primaryPatternTag": primary_pattern_tag(body.categoryTags),
         "spec": spec_to_json(spec),

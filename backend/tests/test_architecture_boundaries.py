@@ -110,3 +110,13 @@ def test_repositories_do_not_import_services_or_endpoints() -> None:
         violations.extend(_import_violations(file_path, blocked_prefixes))
 
     assert not violations, "Repository layer must not depend on services or endpoints:\n" + "\n".join(violations)
+
+
+def test_jev_and_signal_plugins_stay_framework_free() -> None:
+    blocked_prefixes = ("app.endpoints", "app.services", "app.repositories", "app.domain", "fastapi")
+    violations: list[str] = []
+    for package in ("jev", "signals"):
+        for file_path in sorted((CORE_DIR / package).glob("*.py")):
+            violations.extend(_import_violations(file_path, blocked_prefixes))
+
+    assert not violations, "Jev gateway and signal plug-ins must not depend on outer layers:\n" + "\n".join(violations)

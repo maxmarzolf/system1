@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import ModalitySignalSpecTable from './ModalitySignalSpecTable'
 import SignalSpecTable from './SignalSpecTable'
 import { fetchSignalSpecPreview } from './signalSpecs'
 import type { SignalSpecPreview, SignalSpecPreviewRequest } from './signalSpecs'
@@ -99,6 +100,51 @@ function RubricRows({ title, entries }: { title: string; entries: Record<string,
   )
 }
 
+type SignalResultEntry = {
+  key?: string
+  label?: string
+  role?: string
+  status?: string
+  raw?: unknown
+  score?: number | null
+  confidence?: number | null
+}
+
+function SignalResultRows({ entries }: { entries: Record<string, unknown> }) {
+  const rows = Object.entries(entries).map(([key, raw]) => ({ key, ...(asRecord(raw) as SignalResultEntry) }))
+  if (!rows.length) return null
+  return (
+    <div className="signal-trace-rubric">
+      <h5>Signal results</h5>
+      <table className="signal-spec-table">
+        <thead>
+          <tr>
+            <th scope="col">Signal</th>
+            <th scope="col">Status</th>
+            <th scope="col">Answer</th>
+            <th scope="col">Score</th>
+            <th scope="col">Confidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.key}>
+              <th scope="row">
+                <strong>{row.label || row.key}</strong>
+                <code>{row.key}</code>
+              </th>
+              <td><span className={`signal-status signal-status-${row.status || 'unknown'}`}>{row.status || '—'}</span></td>
+              <td>{row.raw === null || row.raw === undefined ? '—' : String(row.raw)}</td>
+              <td>{typeof row.score === 'number' ? row.score.toFixed(1) : '—'}</td>
+              <td>{typeof row.confidence === 'number' ? row.confidence.toFixed(2) : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function NextSubmission({ previewRequest, outgoingSignals }: Omit<SignalTroubleshootingPanelProps, 'lastTrace'>) {
   const [preview, setPreview] = useState<SignalSpecPreview | null>(null)
   const [error, setError] = useState('')
@@ -131,7 +177,22 @@ function NextSubmission({ previewRequest, outgoingSignals }: Omit<SignalTroubles
             <div><dt>Primary tag</dt><dd><code>{preview.primaryPatternTag || 'none'}</code></dd></div>
             <div><dt>Card</dt><dd><code>{previewRequest?.cardId}</code></dd></div>
           </dl>
-          <SignalSpecTable spec={preview.spec} showStrategy={false} />
+          {preview.jev ? (
+            <>
+              <dl className="signal-trace-facts">
+                <div><dt>Evaluator</dt><dd>Jev (one call)</dd></div>
+                <div><dt>MCQ spec</dt><dd><code>{preview.jev.spec.algorithm}</code> v{preview.jev.spec.version} · <code>{preview.jev.spec.hash}</code></dd></div>
+                <div><dt>State</dt><dd>{preview.jev.stateFields.join(', ')}</dd></div>
+              </dl>
+              <ModalitySignalSpecTable spec={preview.jev.spec} />
+              <details className="signal-trace-raw">
+                <summary>Jev correctness question</summary>
+                <JsonBlock value={preview.jev.correctness} />
+              </details>
+            </>
+          ) : (
+            <SignalSpecTable spec={preview.spec} showStrategy={false} />
+          )}
           <details className="signal-trace-raw">
             <summary>Client signals sent with the attempt</summary>
             <JsonBlock value={outgoingSignals} />
@@ -140,10 +201,12 @@ function NextSubmission({ previewRequest, outgoingSignals }: Omit<SignalTroubles
             <summary>Category tags</summary>
             <JsonBlock value={previewRequest?.categoryTags ?? []} />
           </details>
-          <details className="signal-trace-raw">
-            <summary>Assessor system prompt</summary>
-            <pre className="signal-trace-json">{preview.assessorPayload.systemPrompt}</pre>
-          </details>
+          {!preview.jev ? (
+            <details className="signal-trace-raw">
+              <summary>Assessor system prompt</summary>
+              <pre className="signal-trace-json">{preview.assessorPayload.systemPrompt}</pre>
+            </details>
+          ) : null}
         </>
       ) : null}
     </section>
@@ -164,6 +227,8 @@ function LastSubmission({ trace }: { trace: SignalTrace | null }) {
   const score = asRecord(evaluation.score)
   const primaryFailure = asRecord(evaluation.primaryFailure)
   const provenance = asRecord(evaluation.provenance)
+  const correctness = asRecord(evaluation.correctness)
+  const flags = Array.isArray(provenance.flags) ? provenance.flags.map(String) : []
 
   return (
     <section className="signal-trace-section" aria-label="Last submission">
@@ -179,13 +244,24 @@ function LastSubmission({ trace }: { trace: SignalTrace | null }) {
             <div><dt>Verdict</dt><dd>{String(evaluation.verdict ?? '—')}</dd></div>
             <div><dt>Primary failure</dt><dd>{String(primaryFailure.label ?? primaryFailure.key ?? '—')}</dd></div>
             <div><dt>Source</dt><dd>{String(provenance.source ?? '—')}{provenance.provider ? ` · ${String(provenance.provider)}` : ''}</dd></div>
+            {provenance.model ? <div><dt>Jev model</dt><dd><code>{String(provenance.model)}</code></dd></div> : null}
+            {Object.keys(correctness).length ? (
+              <div>
+                <dt>Jev correctness</dt>
+                <dd>
+                  {String(correctness.label)} · confidence {typeof correctness.confidence === 'number' ? correctness.confidence.toFixed(2) : '—'}
+                  {correctness.answerKeyAgreement === false ? ' · disagrees with answer key' : ''}
+                </dd>
+              </div>
+            ) : null}
+            {flags.length ? <div><dt>Flags</dt><dd>{flags.join(', ')}</dd></div> : null}
           </>
         ) : null}
       </dl>
       {trace.error ? <p className="signal-trace-error" role="alert">{trace.error}</p> : null}
       {trace.response?.feedbackUnavailable ? (
         <p className="signal-trace-error" role="alert">
-          Assessor unavailable ({trace.response.feedbackUnavailable.code}): {trace.response.feedbackUnavailable.message}
+          {trace.response.feedbackUnavailable.provider === 'jev' ? 'Jev' : 'Assessor'} unavailable ({trace.response.feedbackUnavailable.code}): {trace.response.feedbackUnavailable.message}
         </p>
       ) : null}
       {Object.keys(score).length ? (
@@ -197,6 +273,13 @@ function LastSubmission({ trace }: { trace: SignalTrace | null }) {
       ) : null}
       <RubricRows title="Dimensions" entries={asRecord(evaluation.dimensions)} />
       <RubricRows title="Modifiers" entries={asRecord(evaluation.modifiers)} />
+      <SignalResultRows entries={asRecord(evaluation.signalResults)} />
+      {Array.isArray(evaluation.jevTrace) ? (
+        <details className="signal-trace-raw">
+          <summary>Jev answers</summary>
+          <JsonBlock value={evaluation.jevTrace} />
+        </details>
+      ) : null}
       <details className="signal-trace-raw">
         <summary>Client signals sent</summary>
         <JsonBlock value={trace.request.signals} />

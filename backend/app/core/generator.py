@@ -589,7 +589,10 @@ async def generate_multiple_choice_drills_response(
     fallback_providers: list[tuple[str, str, bool]] | None = None,
     provider_timeout_seconds: int = 60,
     retry_delays_seconds: tuple[float, ...] = (0.4, 0.8),
-    persist_generated_questions: Callable[[list[MultipleChoiceQuestionPayload]], Awaitable[None]] | None = None,
+    persist_generated_questions: Callable[
+        [list[MultipleChoiceQuestionPayload]],
+        Awaitable[list[MultipleChoiceQuestionPayload | None] | None],
+    ] | None = None,
     logger: logging.Logger | None = None,
 ) -> MultipleChoiceDrillsResponse:
     provider_candidates = fallback_providers or [(provider, provider_label, provider_available)]
@@ -782,11 +785,21 @@ async def generate_multiple_choice_drills_response(
         )
 
     if persist_generated_questions is not None:
+        # Submissions are graded against the stored row, so a card must be served
+        # with the stored id and choice order; an unsaved card could not be graded.
         try:
-            await persist_generated_questions(drills)
+            stored = await persist_generated_questions(drills)
         except Exception as error:
             if logger is not None:
                 logger.warning("Persisting generated multiple-choice questions failed: %s", error)
+            raise GeneratorUnavailableError(
+                code="mcq_generation_persist_failed",
+                message="Multiple choice questions cannot be saved at this time.",
+                provider=resolved_provider,
+                api_error_code="persist_failed",
+            ) from error
+        if stored is not None:
+            drills = [{**drill, **row} if row else drill for drill, row in zip(drills, stored, strict=True)]
 
     return MultipleChoiceDrillsResponse(drills=drills, llmUsed=True)
 

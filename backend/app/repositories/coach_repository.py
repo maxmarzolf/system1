@@ -7,7 +7,12 @@ from datetime import datetime
 from typing import Any, cast
 
 from app.repositories.base import acquire_connection
-from app.repositories.types import MultipleChoiceProblemInsertResult, PracticeHistoryEntry, PracticeHistoryRow
+from app.repositories.multiple_choice_repository import (
+    MULTIPLE_CHOICE_PROBLEM_COLUMNS,
+    StoredMultipleChoiceProblem,
+    stored_multiple_choice_problem,
+)
+from app.repositories.types import PracticeHistoryEntry, PracticeHistoryRow
 
 _PRACTICE_HISTORY_SELECT = """
     SELECT
@@ -180,12 +185,19 @@ async def insert_generated_multiple_choice_question_rows(
     user_id: str,
     created_date: datetime,
     modified_date: datetime,
-) -> list[str]:
-    saved_ids: list[str] = []
+) -> list[StoredMultipleChoiceProblem | None]:
+    """Upsert generated questions; rows are immutable once stored.
+
+    Returns one entry per input question (``None`` when it was skipped). A
+    question that matches an existing fingerprint returns the *stored* row, so
+    callers serve the stored id and choice order that submissions grade against.
+    """
+    stored: list[StoredMultipleChoiceProblem | None] = []
     async with acquire_connection() as conn:
         for question in questions:
             choices = [choice for choice in question.get("choices", []) if isinstance(choice, dict)]
             if len(choices) < 4:
+                stored.append(None)
                 continue
 
             correct_label = str(question.get("correctChoiceId") or "")
@@ -195,7 +207,7 @@ async def insert_generated_multiple_choice_question_rows(
             )
             fingerprint = _multiple_choice_question_fingerprint(question)
             row = await conn.fetchrow(
-                """
+                f"""
                 INSERT INTO multiple_choice_problem (
                     id, user_id, question_text, question_help_text, recall_answer,
                     multiple_choice_answer_label_1, multiple_choice_answer_text_1,
@@ -216,7 +228,7 @@ async def insert_generated_multiple_choice_question_rows(
                 )
                 ON CONFLICT (fingerprint) DO UPDATE
                 SET modified_date = EXCLUDED.modified_date
-                RETURNING id
+                RETURNING {MULTIPLE_CHOICE_PROBLEM_COLUMNS}
                 """,
                 str(question.get("id") or ""),
                 user_id,
@@ -237,6 +249,5 @@ async def insert_generated_multiple_choice_question_rows(
                 created_date,
                 modified_date,
             )
-            if row:
-                saved_ids.append(cast(MultipleChoiceProblemInsertResult, dict(row))["id"])
-    return saved_ids
+            stored.append(stored_multiple_choice_problem(dict(row)) if row else None)
+    return stored

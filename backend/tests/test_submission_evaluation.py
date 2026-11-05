@@ -65,7 +65,8 @@ async def test_final_recall_uses_one_evaluation_flow_and_persists_its_result(mon
         captured["resolved"] = (card_ids, skill_tags)
         return BINARY_SEARCH_SIGNAL_SPEC
 
-    async def _persist(body, *, successful, evaluation):
+    async def _persist(body, *, successful, evaluation, record=None):
+        assert record is None
         captured["persist_body"] = body
         captured["successful"] = successful
         captured["evaluation"] = evaluation

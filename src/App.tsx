@@ -2012,6 +2012,10 @@ function App() {
   const [multipleChoiceSelectedChoiceId, setMultipleChoiceSelectedChoiceId] = useState('')
   const [multipleChoiceStartedAt, setMultipleChoiceStartedAt] = useState<number | null>(null)
   const [multipleChoiceSubmittedByCard, setMultipleChoiceSubmittedByCard] = useState<Record<string, string>>({})
+  // Server (Jev) grade per card id; the browser never decides correctness.
+  const [multipleChoiceResultByCard, setMultipleChoiceResultByCard] = useState<Record<string, boolean>>({})
+  const [multipleChoiceGrading, setMultipleChoiceGrading] = useState(false)
+  const [multipleChoiceSubmitError, setMultipleChoiceSubmitError] = useState('')
   const [currentInteractionId, setCurrentInteractionId] = useState('')
   const [mainRecallHistoryByCard, setMainRecallHistoryByCard] = useState<Record<string, RecallAttemptSnapshot[]>>({})
   const [submissionTuning] = useState(() => loadStoredSubmissionTuning())
@@ -2371,6 +2375,7 @@ function App() {
     setMultipleChoiceSelectedChoiceId('')
     setMultipleChoiceStartedAt(Date.now())
     setMultipleChoiceSubmittedByCard({})
+    setMultipleChoiceSubmitError('')
     setCurrentInteractionId('')
     setMainRecallHistoryByCard({})
     setAiCompletionShownThisAttempt(false)
@@ -2553,7 +2558,7 @@ function App() {
   const signalPreviewRequest = useMemo(() => {
     if (currentPracticeMode === 'multiple-choice') {
       return activeMultipleChoiceCard
-        ? { cardId: activeMultipleChoiceCard.id, generatedCardId: activeMultipleChoiceCard.id, categoryTags: currentMultipleChoiceSkillTags }
+        ? { cardId: activeMultipleChoiceCard.id, generatedCardId: activeMultipleChoiceCard.id, categoryTags: currentMultipleChoiceSkillTags, modality: 'mcq' as const }
         : null
     }
     return card.id === emptySkillMapCard.id
@@ -2827,19 +2832,15 @@ function App() {
   const submitMultipleChoiceAttemptToServer = async (payload: {
     interactionId: string
     selectedChoice: MultipleChoiceChoice
-    correctChoice: MultipleChoiceChoice
-    correct: boolean
     elapsedMs: number
   }) => {
-    if (!activeMultipleChoiceCard) return
+    if (!activeMultipleChoiceCard) return null
     const flowSignals = currentFlowSignals()
     const requestSignals = {
       ...(flowSignals ? { flow: flowSignals } : {}),
       modality: {
         kind: 'mcq',
-        correct: payload.correct,
         selectedChoiceId: payload.selectedChoice.id,
-        correctChoiceId: payload.correctChoice.id,
       },
     }
     const trace: SignalTrace = {
@@ -2859,8 +2860,8 @@ function App() {
           question: activeMultipleChoiceCard.question,
           questionType: currentMultipleChoiceQuestionType,
           categoryTags: currentMultipleChoiceSkillTags,
-          correctAnswer: `${payload.correctChoice.id}. ${payload.correctChoice.text}`,
-          userAnswer: `${payload.selectedChoice.id}. ${payload.selectedChoice.text}`,
+          multipleChoiceProblemId: activeMultipleChoiceCard.id,
+          selectedChoiceId: payload.selectedChoice.id,
           mode: 'main-recall',
           elapsedMs: payload.elapsedMs,
           sessionId: flowSignals?.runId,
@@ -2892,9 +2893,8 @@ function App() {
           flowSignals,
           modality: 'mcq',
           modalitySignals: {
-            correct: payload.correct,
+            correct: saved.successful,
             selectedChoiceId: payload.selectedChoice.id,
-            correctChoiceId: payload.correctChoice.id,
           },
           elapsedMs: payload.elapsedMs,
           interactionId: payload.interactionId,
@@ -3452,48 +3452,38 @@ function App() {
       !hasDeck ||
       hasAnsweredCurrent ||
       sessionFinished ||
+      multipleChoiceGrading ||
       !selectedChoiceId
     ) {
       return
     }
 
     const selectedChoice = activeMultipleChoiceCard.choices.find((choice) => choice.id === selectedChoiceId)
-    const correctChoice = activeMultipleChoiceCard.choices.find((choice) => choice.id === activeMultipleChoiceCard.correctChoiceId)
-    if (!selectedChoice || !correctChoice) return
+    if (!selectedChoice) return
 
     const interactionId = currentInteractionId || createInteractionId()
     if (!currentInteractionId) setCurrentInteractionId(interactionId)
     const elapsedMs = Math.max(Date.now() - (activeStartedAt ?? Date.now()), 1)
-    const correct = selectedChoice.id === correctChoice.id
+    const cardId = activeMultipleChoiceCard.id
 
-    if (isFlowActive && practiceFlow) {
-      setFlowMultipleChoiceSubmittedByCard((prev) => ({
-        ...prev,
-        [activeMultipleChoiceCard.id]: selectedChoice.id,
-      }))
+    setMultipleChoiceGrading(true)
+    setMultipleChoiceSubmitError('')
+    const saved = await submitMultipleChoiceAttemptToServer({ interactionId, selectedChoice, elapsedMs })
+    setMultipleChoiceGrading(false)
 
-    } else {
-      setMultipleChoiceSubmittedByCard((prev) => ({
-        ...prev,
-        [activeMultipleChoiceCard.id]: selectedChoice.id,
-      }))
-      completeCardInSession(correct, elapsedMs)
+    if (!saved?.saved) {
+      const message = 'Your answer could not be graded. Submit again before continuing.'
+      if (isFlowActive) setFlowMultipleChoiceError(message)
+      else setMultipleChoiceSubmitError(message)
+      return
     }
 
-    const saved = await submitMultipleChoiceAttemptToServer({
-      interactionId,
-      selectedChoice,
-      correctChoice,
-      correct,
-      elapsedMs,
-    })
-    if (isFlowActive && !saved?.saved) {
-      setFlowMultipleChoiceSubmittedByCard((current) => {
-        const next = { ...current }
-        delete next[activeMultipleChoiceCard.id]
-        return next
-      })
-      setFlowMultipleChoiceError('Your answer could not be saved. Submit again before continuing.')
+    setMultipleChoiceResultByCard((prev) => ({ ...prev, [cardId]: saved.successful }))
+    if (isFlowActive && practiceFlow) {
+      setFlowMultipleChoiceSubmittedByCard((prev) => ({ ...prev, [cardId]: selectedChoice.id }))
+    } else {
+      setMultipleChoiceSubmittedByCard((prev) => ({ ...prev, [cardId]: selectedChoice.id }))
+      completeCardInSession(saved.successful, elapsedMs)
     }
   }
 
@@ -3593,7 +3583,7 @@ function App() {
     : ''
   const selectedMultipleChoice = activeMultipleChoiceCard?.choices.find((choice) => choice.id === (isFlowActive ? flowMultipleChoiceSelectedChoiceId : multipleChoiceSelectedChoiceId)) ?? null
   const multipleChoiceSubmitted = Boolean(submittedMultipleChoiceId)
-  const multipleChoiceCorrect = Boolean(submittedMultipleChoiceId && submittedMultipleChoiceId === activeMultipleChoiceCard?.correctChoiceId)
+  const multipleChoiceCorrect = Boolean(submittedMultipleChoiceId && activeMultipleChoiceCard && multipleChoiceResultByCard[activeMultipleChoiceCard.id])
   const multipleChoicePosition = isFlowActive ? flowMultipleChoicePosition + 1 : sessionPosition + 1
   const multipleChoiceTotal = isFlowActive
     ? flowMultipleChoiceDeck.length || 1
@@ -3649,9 +3639,9 @@ function App() {
       }
       if (multipleChoiceSubmitted) return null
       return {
-        label: 'Submit',
+        label: multipleChoiceGrading ? 'Grading…' : 'Submit',
         onClick: submitMultipleChoice,
-        disabled: !selectedMultipleChoice || hasAnsweredCurrent || sessionFinished,
+        disabled: !selectedMultipleChoice || hasAnsweredCurrent || sessionFinished || multipleChoiceGrading,
         icon: (
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="m4.5 12.75 6 6 9-13.5" />
@@ -4448,6 +4438,9 @@ function App() {
                       )
                     })}
                   </div>
+                  {multipleChoiceSubmitError && !multipleChoiceSubmitted ? (
+                    <p className="hint" role="alert">{multipleChoiceSubmitError}</p>
+                  ) : null}
                   {multipleChoiceSubmitted && (
                     <div className={multipleChoiceCorrect ? 'mcq-feedback mcq-feedback-correct' : 'mcq-feedback mcq-feedback-incorrect'} role="status">
                       <div className="mcq-feedback-heading">

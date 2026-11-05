@@ -23,6 +23,7 @@ from app.repositories.types import (
     SkillMapOverviewGeneratedRow,
 )
 from app.submission_rubric import coerce_json_object, compact_submission_rubric, summarize_submission_rubrics
+from app.services.evaluators.base import SubmissionRecord
 from app.services.contracts import (
     AttemptSaveResult,
     SkillMapGhostRepActivity,
@@ -946,6 +947,7 @@ async def create_attempt(
     *,
     successful: bool,
     evaluation: dict[str, Any],
+    record: SubmissionRecord | None = None,
 ) -> AttemptSaveResult:
     now = datetime.now(tz=timezone.utc)
     modality = body.resolved_modality().value
@@ -957,8 +959,9 @@ async def create_attempt(
         question=body.question,
         question_type=body.questionType,
         category_tags=body.categoryTags,
-        correct_answer=body.correctAnswer,
-        user_answer=body.userAnswer,
+        correct_answer=record.correct_answer if record else body.correctAnswer,
+        user_answer=record.user_answer if record else body.userAnswer,
+        multiple_choice_problem_id=record.multiple_choice_problem_id if record else None,
         mode=body.mode.value,
         successful=successful,
         signals_json=_json.dumps({key: value for key, value in signals.items() if value is not None}),

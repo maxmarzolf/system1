@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.generator import _process_multiple_choice_card, generate_multiple_choice_drills_response
+from app.core.generator import (
+    GeneratorUnavailableError,
+    _process_multiple_choice_card,
+    generate_multiple_choice_drills_response,
+)
 from app.models import MultipleChoiceDrillsRequest, SkillMapNode
 from app.repositories.coach_repository import _multiple_choice_question_fingerprint
 
@@ -261,7 +265,7 @@ async def test_generate_multiple_choice_drills_response_sends_card_context(flow_
 
 
 @pytest.mark.asyncio
-async def test_generate_multiple_choice_drills_response_is_fail_open_when_persist_fails() -> None:
+async def test_generate_multiple_choice_drills_response_fails_closed_when_persist_fails() -> None:
     request = MultipleChoiceDrillsRequest(
         count=1,
         skillMap=[SkillMapNode(algorithm="Binary Search", skills=["left / right bounds"])],
@@ -292,6 +296,59 @@ async def test_generate_multiple_choice_drills_response_is_fail_open_when_persis
     async def persist_generated_questions(_drills):
         raise RuntimeError("db unavailable")
 
+    with pytest.raises(GeneratorUnavailableError) as error:
+        await generate_multiple_choice_drills_response(
+            request,
+            provider="openai",
+            provider_label="ChatGPT",
+            provider_available=True,
+            call_llm_json=call_llm_json,
+            persist_generated_questions=persist_generated_questions,
+        )
+
+    assert error.value.code == "mcq_generation_persist_failed"
+
+
+@pytest.mark.asyncio
+async def test_generate_multiple_choice_drills_response_serves_the_stored_card() -> None:
+    request = MultipleChoiceDrillsRequest(
+        count=1,
+        skillMap=[SkillMapNode(algorithm="Binary Search", skills=["left / right bounds"])],
+        difficulty="Hard",
+    )
+
+    def call_llm_json(_system_prompt, _payload, _provider, _max_tokens, _timeout_seconds, _temperature):
+        return {
+            "drills": [
+                {
+                    "id": "mcq-1",
+                    "title": "Binary Search Bounds",
+                    "pattern": "Binary Search",
+                    "difficulty": "Hard",
+                    "question": "What makes binary search safe?",
+                    "choices": [
+                        {"id": "A", "text": "The answer space is monotonic."},
+                        {"id": "B", "text": "The array is always tiny."},
+                        {"id": "C", "text": "Every candidate is visited."},
+                        {"id": "D", "text": "A heap tracks the best midpoint."},
+                    ],
+                    "correctChoiceId": "A",
+                    "explanation": "A monotonic decision lets each midpoint discard one side.",
+                    "tags": ["binary-search"],
+                }
+            ]
+        }
+
+    stored_choices = [
+        {"id": "A", "text": "A heap tracks the best midpoint."},
+        {"id": "B", "text": "The answer space is monotonic."},
+        {"id": "C", "text": "Every candidate is visited."},
+        {"id": "D", "text": "The array is always tiny."},
+    ]
+
+    async def persist_generated_questions(_drills):
+        return [{"id": "mcq-stored", "choices": stored_choices, "correctChoiceId": "B"}]
+
     response = await generate_multiple_choice_drills_response(
         request,
         provider="openai",
@@ -301,8 +358,10 @@ async def test_generate_multiple_choice_drills_response_is_fail_open_when_persis
         persist_generated_questions=persist_generated_questions,
     )
 
-    assert response.llmUsed is True
-    assert len(response.drills) == 1
+    drill = response.drills[0]
+    assert drill.id == "mcq-stored"
+    assert [choice.model_dump() for choice in drill.choices] == stored_choices
+    assert drill.correctChoiceId == "B"
 
 
 @pytest.mark.asyncio

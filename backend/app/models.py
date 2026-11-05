@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ─── Enums ───
@@ -55,12 +55,22 @@ class RubricDimension(BaseModel):
 
 
 class SignalSpecReference(BaseModel):
+    """Recall specs carry algorithm and version; plug-in specs add modality and hash."""
+
+    model_config = ConfigDict(extra="allow")
+
     algorithm: str = ""
     version: int = 0
 
 
 class SubmissionEvaluation(BaseModel):
-    """Stored evaluation; dimension keys come from the signal spec it references."""
+    """Stored evaluation; dimension keys come from the signal spec it references.
+
+    Jev evaluations also carry ``correctness``, ``signalResults``,
+    ``signalSpecSnapshot`` and ``jevTrace``, kept as extra fields.
+    """
+
+    model_config = ConfigDict(extra="allow")
 
     version: int = 1
     signalSpec: SignalSpecReference = Field(default_factory=SignalSpecReference)
@@ -78,6 +88,7 @@ class SignalSpecResolveRequest(BaseModel):
     cardId: str = ""
     generatedCardId: str | None = None
     categoryTags: list[str] = []
+    modality: SubmissionModality | None = None
 
 
 class SubmissionSignals(BaseModel):
@@ -102,6 +113,8 @@ class AttemptCreate(BaseModel):
     interactionId: str | None = None
     generatedCardId: str | None = None
     generatedCard: dict[str, Any] | None = None
+    multipleChoiceProblemId: str | None = Field(default=None, max_length=80)
+    selectedChoiceId: str | None = Field(default=None, max_length=8)
     templateMode: TemplateMode = TemplateMode.algorithm
     supportLayer: SupportLayer = SupportLayer.none
     modality: SubmissionModality | None = None
