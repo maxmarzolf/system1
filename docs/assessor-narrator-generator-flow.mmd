@@ -170,3 +170,24 @@ flowchart TD
   F2 --> F4
   F3 --> F4
   F4 --> F5
+
+  subgraph JEVMCQ["MCQ evaluation (Jev)"]
+    J0["evaluator registry<br/>EVALUATORS[mcq] = JevMcqEvaluator"]
+    J1["submission_context_service<br/>stored multiple_choice_problem"]
+    J2["state: question, answers,<br/>correctAnswer, submittedAnswer"]
+    J3["one system_one call:<br/>correctness Choice 1/0<br/>+ one question per signal plug-in"]
+    J4["signal plug-ins interpret answers<br/>(applies_when filters after the call)"]
+    J5["rubric_from_signal_results"]
+    J6["answer-key fallback<br/>(Jev unavailable)"]
+  end
+
+  A --> J0
+  J0 --> J1
+  J1 --> J2
+  J2 --> J3
+  J3 --> J4
+  J4 --> J5
+  J5 --> P1
+  J3 -. can fail .-> J6
+  J6 --> J5
+

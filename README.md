@@ -44,7 +44,10 @@ Key backend modules:
 - `backend/app/repositories/` all SQL and row shaping.
 - `backend/app/schema.sql` canonical schema, applied idempotently at startup.
 - `backend/app/database.py` startup: applies `schema.sql`, a few in-place upgrades, then seeds the taxonomy.
-- `backend/app/core/signal_catalog.py` per-algorithm signal specs that drive submission assessment.
+- `backend/app/core/signal_catalog.py` per-algorithm signal specs that drive recall assessment.
+- `backend/app/core/jev/` Jev (TypeSafe System One) REST client.
+- `backend/app/core/signals/` plug-in signals and modality specs for Jev-evaluated submissions (MCQ today).
+- `backend/app/services/evaluators/` one submission evaluator per modality; `submission_service` only dispatches and persists.
 
 Detailed architecture and migration notes:
 - `docs/backend-architecture.md`
@@ -66,7 +69,7 @@ Primary tables:
 - `problem`: canonical practice-content table for core, meta, static-playlist, focused-fallback, and generated LLM cards.
 - `submission`: canonical attempt ledger and signal store; many submissions may reference one `problem` through `problem_slug`.
 - `playlist` and `playlist_problem_order`: organization and ordering only; they do not duplicate problem content.
-- `multiple_choice_problem`: separate MCQ content path retained intentionally for now.
+- `multiple_choice_problem`: generated MCQs, stored at generation time and immutable; MCQ submissions are graded against this row, never against client-sent text.
 
 Startup behavior in `backend/app/database.py`:
 - Applies `backend/app/schema.sql` (every statement is `IF NOT EXISTS`, so it is safe on every boot).
@@ -88,7 +91,17 @@ Viewing specs and signal values in the UI:
 - **Tune → Signals** shows each algorithm's spec read-only: signals, role, kind, weight, axis, assessor guidance, variation strategy, and structural elements. Algorithms on the default spec are labeled.
 - **Signal troubleshooting** (collapsible panel under the practice card, hidden in zen mode) shows two sides. *Next submission* is the spec the current card resolves to and why (problem, skill tag, or default), the client signals and category tags that will be sent, and the assessor system prompt. *Last submission* is what was actually sent and what came back: the spec used, verdict, score axes, every dimension/modifier status and score with evidence, plus the raw evaluation. The open/closed state is remembered per browser.
 
-To add a spec for another group:
+### MCQ signals (Jev)
+
+MCQ submissions are evaluated by Jev, not the Signal Assessor. One Jev call asks whether the person chose the correct answer (a `Choice` answering `1` or `0`) plus one question per signal plug-in, all over the state `{question, answers, correctAnswer, submittedAnswer}`.
+
+- **Where they live:** `backend/app/core/signals/mcq.py` (plug-ins and `DEFAULT_MCQ_SIGNAL_SPEC`); per-algorithm overrides go in `MCQ_SIGNAL_SPECS`.
+- **Current signals:** `conceptRecognition` (Noul), `nearMiss` (Score, wrong answers only), `distractorMisconception` (Choice, diagnostic, wrong answers only), `completionTime` (computed locally).
+- **To add a signal:** `register_signal(JevSignal(key=..., primitive="choice" | "score" | "noul", instructions=..., criteria=...))` and add its key with a weight to a spec. Use `applies_when` to limit it to correct or incorrect answers, and `needs_correctness=True` only if the question must see the correctness result (it then costs a second Jev call). Bump the spec's `version` when signals change.
+- **Storage:** evaluations store `signalResults`, the Jev `correctness` answer, a `signalSpecSnapshot`, and provenance (`engine`, `model`, `requestIds`, `flags`).
+- **Viewing:** Tune → Signals shows the MCQ spec under the recall spec; Signal troubleshooting shows the Jev questions for the next MCQ and each signal's answer for the last one.
+
+To add a recall spec for another group:
 1. Add a `SignalSpec` built with `_spec(...)` in `signal_catalog.py` and register it in `SIGNAL_SPECS`. Every spec automatically gets the shared `correctness`, `syntax`, and `completionTime` signals; give exactly one of your dimensions `axis="fidelity"`.
 2. Bump `version` whenever an existing spec's signals change, so old evaluations stay interpretable.
 3. Restart the backend; startup reseeds `algorithm.signal_spec`.
@@ -198,6 +211,7 @@ Recent test hardening includes:
 - Signal spec tests: catalog invariants and prompt contents (`test_signal_catalog.py`), rubric parsing, assessor validation, and variation strategy (`test_signal_rubric.py`), and spec resolution (`test_signal_spec_resolution.py`).
 - Schema idempotency tests (`test_schema_idempotency.py`): startup twice, with `algorithm.signal_spec` seeded and stable.
 - Per-algorithm `signalSpec` persistence and history read-back integration tests.
+- Jev MCQ tests: REST client (`test_jev_client.py`), signal plug-ins and rubric (`test_signal_plugins.py`), evaluator, registry and MCQ context (`test_jev_mcq_evaluator.py`), plus an opt-in live call (`-m jev_live`, needs `TYPESAFE_API_KEY`).
 - Query-plan performance guard tests using `EXPLAIN (FORMAT JSON)`.
 - Architecture boundary guard tests that enforce no framework coupling in service/core and no repository imports from domain/core.
 - Canonical content architecture tests for `problem`, `submission.problem_slug`, playlist projections, and legacy-table removal.
@@ -215,6 +229,7 @@ Key variables:
 - `COACH_OPENAI_API_KEY` or `OPENAI_API_KEY`
 - `COACH_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY`
 - `COACH_OPENAI_MODEL`, `COACH_ANTHROPIC_MODEL`
+- `TYPESAFE_API_KEY` (Jev MCQ evaluation), `JEV_MODEL` (pinned, default `jev-1.13.0`), `TYPESAFE_BASE_URL`, `JEV_TIMEOUT_SECONDS`, `JEV_ENABLED`
 - `COACH_OPENAI_BASE_URL`, `COACH_ANTHROPIC_BASE_URL`
 - `COACH_GEMMA_API_KEY`, `COACH_GEMMA_MODEL`, `COACH_GEMMA_BASE_URL`
 
@@ -229,7 +244,8 @@ Generator tuning:
 
 ## Submission Feedback Behavior
 
-- Submission feedback is LLM-backed. The assessor scores the signals of the problem's signal spec (see [Signal Specs](#signal-specs)), and a response missing any spec signal is treated as invalid.
+- MCQ submissions are graded by Jev using the stored question and answer key (see [MCQ signals](#mcq-signals-jev)). Without `TYPESAFE_API_KEY`, or when Jev fails, the stored answer key decides and Jev signals are marked unavailable.
+- Recall submission feedback is LLM-backed. The assessor scores the signals of the problem's signal spec (see [Signal Specs](#signal-specs)), and a response missing any spec signal is treated as invalid.
 - When the assessor or narrator is unavailable, the submission falls back to the semantic evaluator (`evaluation_service`) and then to the deterministic AST check (`domain/recall_soundness.py`). The verdict is stored without dimensions.
 - If the selected provider fails (auth, credits, timeout, malformed response), the backend returns a structured failure payload and the frontend surfaces a fallback error state.
 - Recent real-world example: Anthropic can return `invalid_request_error` when account credits are exhausted, which presents as "No response from Claude".

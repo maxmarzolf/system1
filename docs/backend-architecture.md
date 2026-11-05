@@ -22,17 +22,21 @@ Hard rules:
 
 ### 1) Final Submission Evaluation and Persistence
 1. `POST /api/attempts` in `app/endpoints/attempts.py`
-2. `app/services/submission_service.py::create_submission`
-3. `app/services/signal_spec_service.py::resolve_signal_spec` picks the signal spec (see below)
-4. `app/services/feedback_service.py::coach_submission_evaluation`
-5. `app/services/history_service.py::load_feedback_context`
-6. `app/core/assessor.py::run_signal_assessor` scores exactly the spec's signals
-7. `app/core/narrator.py::attempt_feedback_with_narrator`
-8. `app/domain/feedback_builder.py::submission_rubric_from_assessment` turns spec signals into the rubric
-9. `app/domain/submission_evaluation.py::canonical_submission_evaluation`
-10. `app/services/attempts_service.py::create_attempt` persists the canonical result.
+2. `app/services/submission_service.py::create_submission` looks up the evaluator for the submission's modality
+3. `app/services/evaluators/registry.py::get_evaluator` returns the registered `SubmissionEvaluator`:
+   - `mcq` → `evaluators/jev_mcq.py::JevMcqEvaluator` (see 1b)
+   - `total-recall`, `microdrill` → `evaluators/legacy_recall.py::AssessorEvaluator` (steps 4–10)
+   - `ghost-rep` → `evaluators/legacy_recall.py::GhostRepEvaluator` (semantic grader only)
+4. `app/services/signal_spec_service.py::resolve_signal_spec` picks the signal spec (see 1a)
+5. `app/services/feedback_service.py::coach_submission_evaluation`
+6. `app/services/history_service.py::load_feedback_context`
+7. `app/core/assessor.py::run_signal_assessor` scores exactly the spec's signals
+8. `app/core/narrator.py::attempt_feedback_with_narrator`
+9. `app/domain/feedback_builder.py::submission_rubric_from_assessment` turns spec signals into the rubric
+10. `app/domain/submission_evaluation.py::canonical_submission_evaluation`
+11. `app/services/attempts_service.py::create_attempt` persists the canonical result, plus the evaluator's `SubmissionRecord` (server-trusted answer text and MCQ problem id) when it returns one.
 
-The client sends the attempt once and never supplies its own verdict or evaluation signals. The submission service owns the complete final-evaluation transaction. While the user types, CodeMirror requests non-persisted code suggestions from `POST /api/coach/inline-completion`.
+The client sends the attempt once and never supplies its own verdict or evaluation signals. The evaluator is the single place that decides `successful` and produces the evaluation; moving a modality to Jev means registering a different evaluator, with no endpoint, persistence, or UI change. While the user types, CodeMirror requests non-persisted code suggestions from `POST /api/coach/inline-completion`.
 
 ### 1a) Signal Specs
 Signals are defined per catalog group (the `algorithm` table), not per problem:
@@ -42,7 +46,29 @@ Signals are defined per catalog group (the `algorithm` table), not per problem:
 - The assessor prompt, the required-signal validation, the rubric dimensions/modifiers, weighted scores, labels, and the adaptive-variation strategy all come from the resolved spec.
 - Every stored evaluation records `signalSpec: {algorithm, version}`. Evaluations written before signal specs existed are stamped `{"algorithm": "default", "version": 0}`.
 
-### 1b) Coach Variations
+### 1b) MCQ Evaluation Through Jev
+1. `app/services/submission_context_service.py::build_mcq_context` loads the stored `multiple_choice_problem` row named by `multipleChoiceProblemId` and the client's `selectedChoiceId`. Unknown problems or choices are a 422; client-sent question or answer text is ignored.
+2. The MCQ spec comes from `app/core/signals/mcq.py::get_mcq_signal_spec`, keyed by the algorithm the recall spec resolver picks.
+3. One Jev `system_one` call (`app/core/jev/client.py::HttpJevGateway`, REST `POST /v1/systemone`) carries:
+   - `correctness`: a `Choice` with labels `"1"` (answered correctly) and `"0"`, over the state `{question, answers, correctAnswer, submittedAnswer}`;
+   - one question per signal plug-in in the spec, over the same state.
+4. `successful` is Jev's correctness label. It is compared with the stored answer key; disagreement or confidence below 0.6 adds a `provenance.flags` entry.
+5. Plug-ins marked `needs_correctness` are asked in a second call whose state adds `answeredCorrectly`.
+6. Each plug-in interprets its own answer; `applies_when` (`always`/`correct`/`incorrect`) is applied after the call.
+7. `app/domain/feedback_builder.py::rubric_from_signal_results` builds the rubric (correctness plus weighted, scored signals; diagnostic signals are stored but not scored).
+8. If Jev is unavailable, the stored answer key decides, Jev signals are `unavailable`, deterministic signals still score, and `feedbackUnavailable` names Jev.
+
+Generated MCQs are stored when generated (`coach_repository.insert_generated_multiple_choice_question_rows`); rows are immutable and the served card always takes the stored id and choice order, so a submission is graded against exactly what was shown.
+
+### 1c) Signal Plug-ins
+`app/core/signals/` holds signal plug-ins for modalities evaluated by Jev:
+- `base.py`: the `SignalPlugin` contract (`question(context)` → a Jev question or `None`; `interpret(answer, context, successful)` → `SignalResult`), `JevSignal` (declarative: primitive `choice`/`score`/`noul`, instructions, criteria, optional `score_map`), and `DeterministicSignal` (computed locally).
+- `registry.py`: `register_signal`; plug-in modules register on import from `core/signals/__init__.py`.
+- `spec.py`: `ModalitySignalSpec` references plug-ins by key with per-spec weights; `snapshot()` and `hash()` make stored evaluations reproducible.
+
+Adding a signal is a `register_signal(JevSignal(...))` entry plus its key in a spec. `core/jev` and `core/signals` must not import services, repositories, domain, or FastAPI.
+
+### 1d) Coach Variations
 1. `POST /api/coach/adaptive-variation` or `POST /api/coach/sequential-variation`
 2. `app/services/coach_service.py` facade delegates to orchestration layer
 3. `app/services/coach_orchestration_service.py` handles transport translation
@@ -92,7 +118,7 @@ The canonical `submission.signals` JSONB object has four allowed top-level field
 - `flow` (optional adaptive/custom flow context)
 - `modality` (modality-specific measurements plus canonical `kind`)
 
-`evaluation` contains the versioned verdict, the `signalSpec` reference, score, primary failure, dimensions, modifiers, recommended action, narrative feedback, and provenance. Dimension and modifier keys are the referenced spec's signal keys, in spec order. Narrative feedback does not embed another copy of the evaluation. The ledger's `successful` value is derived from `evaluation.verdict`; it is never accepted from the client.
+`evaluation` contains the versioned verdict, the `signalSpec` reference, score, primary failure, dimensions, modifiers, recommended action, narrative feedback, and provenance. Jev evaluations also store `correctness` (label, confidence, probabilities, `answerKeyAgreement`), `signalResults` (every plug-in's raw answer, score, and status), `signalSpecSnapshot`, and `jevTrace` (model, request ids, question ids, answers); their `signalSpec` adds `modality` and `hash`. Dimension and modifier keys are the referenced spec's signal keys, in spec order. Narrative feedback does not embed another copy of the evaluation. The ledger's `successful` value is derived from `evaluation.verdict`; it is never accepted from the client.
 
 ## Adaptive Flow Contract
 
