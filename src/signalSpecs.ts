@@ -35,6 +35,7 @@ export type PluginSignal = {
   appliesWhen: 'always' | 'correct' | 'incorrect'
   needsCorrectness: boolean
   weight: number
+  scope?: string
   primitive?: 'choice' | 'score' | 'noul'
   instructions?: unknown
   criteria?: Record<string, unknown> | unknown[]
@@ -48,6 +49,7 @@ export type ModalitySignalSpec = {
   version: number
   hash: string
   correctnessWeight: number
+  correctness?: { instructions: string; criteria: Record<string, string> }
   signals: PluginSignal[]
 }
 

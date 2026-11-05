@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import ModalitySignalSpecTable from './ModalitySignalSpecTable'
 import SignalSpecTable from './SignalSpecTable'
 import { fetchSignalSpecCatalog } from './signalSpecs'
@@ -69,7 +70,7 @@ export default function SignalSpecViewer() {
           </div>
           <ModalitySignalSpecTable spec={mcqSpec} />
           <p className="tune-footnote">
-            MCQ signals are plug-ins in <code>backend/app/core/signals/mcq.py</code>. Each Jev question reads the question, answers, correct answer and submitted answer.
+            MCQ signals are edited on <Link to="/admin">Admin</Link> and apply to the next evaluation. Each Jev question reads the question, answers, correct answer and submitted answer.
           </p>
         </>
       ) : null}

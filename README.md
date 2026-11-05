@@ -46,7 +46,7 @@ Key backend modules:
 - `backend/app/database.py` startup: applies `schema.sql`, a few in-place upgrades, then seeds the taxonomy.
 - `backend/app/core/signal_catalog.py` per-algorithm signal specs that drive recall assessment.
 - `backend/app/core/jev/` Jev (TypeSafe System One) REST client.
-- `backend/app/core/signals/` plug-in signals and modality specs for Jev-evaluated submissions (MCQ today).
+- `backend/app/core/signals/` signal plug-ins: Jev signals are built from `signal_definition` rows (edited on `/admin`); deterministic logic is registered in code.
 - `backend/app/services/evaluators/` one submission evaluator per modality; `submission_service` only dispatches and persists.
 
 Detailed architecture and migration notes:
@@ -93,13 +93,16 @@ Viewing specs and signal values in the UI:
 
 ### MCQ signals (Jev)
 
-MCQ submissions are evaluated by Jev, not the Signal Assessor. One Jev call asks whether the person chose the correct answer (a `Choice` answering `1` or `0`) plus one question per signal plug-in, all over the state `{question, answers, correctAnswer, submittedAnswer}`.
+MCQ submissions are evaluated by Jev, not the Signal Assessor. One Jev call asks whether the person chose the correct answer (a `Choice` answering `1` or `0`) plus one question per active signal, all over the state `{question, answers, correctAnswer, submittedAnswer}`.
 
-- **Where they live:** `backend/app/core/signals/mcq.py` (plug-ins and `DEFAULT_MCQ_SIGNAL_SPEC`); per-algorithm overrides go in `MCQ_SIGNAL_SPECS`.
-- **Current signals:** `conceptRecognition` (Noul), `nearMiss` (Score, wrong answers only), `distractorMisconception` (Choice, diagnostic, wrong answers only), `completionTime` (computed locally).
-- **To add a signal:** `register_signal(JevSignal(key=..., primitive="choice" | "score" | "noul", instructions=..., criteria=...))` and add its key with a weight to a spec. Use `applies_when` to limit it to correct or incorrect answers, and `needs_correctness=True` only if the question must see the correctness result (it then costs a second Jev call). Bump the spec's `version` when signals change.
-- **Storage:** evaluations store `signalResults`, the Jev `correctness` answer, a `signalSpecSnapshot`, and provenance (`engine`, `model`, `requestIds`, `flags`).
-- **Viewing:** Tune → Signals shows the MCQ spec under the recall spec; Signal troubleshooting shows the Jev questions for the next MCQ and each signal's answer for the last one.
+- **Where they live:** the database (`signal_definition`, `signal_evaluation_directive`), edited on **`/admin`**. `backend/app/core/signals/mcq.py` only seeds an empty database (insert-if-missing; edits are never overwritten) and registers deterministic implementations such as `completionTime`.
+- **Applies immediately:** the evaluator loads the active signals for every submission, so a save on `/admin` applies to the next MCQ evaluation with no restart.
+- **Scope:** an MCQ gets every `general` signal plus the signals scoped to its algorithm (resolved from its pattern tag, e.g. `heap-priority-queue` → `heap`).
+- **What `/admin` edits:** the correctness wording (labels `1`/`0` are fixed), and per signal: Jev primitive (Choice/Score/Noul), instructions, criteria, Choice score map, role, weight, axis, `appliesWhen`, `needsCorrectness` (costs a second Jev call), scope and order. Signals are archived, never deleted; keys are permanent. Every change is versioned (stale saves get a 409) and recorded in `signal_definition_revision`.
+- **Try it:** runs an unsaved draft against Jev on a stored MCQ and shows the answer and score. Nothing is stored.
+- **Access:** reads are open; writes and Try it need `ADMIN_TOKEN` on the backend, entered once per browser session.
+- **Storage:** evaluations store `signalResults`, the Jev `correctness` answer, a `signalSpecSnapshot` (including the correctness wording), and provenance (`engine`, `model`, `requestIds`, `flags`).
+- **Viewing:** Tune → Signals shows the effective MCQ specs read-only; Signal troubleshooting shows the Jev questions for the next MCQ and each signal's answer for the last one.
 
 To add a recall spec for another group:
 1. Add a `SignalSpec` built with `_spec(...)` in `signal_catalog.py` and register it in `SIGNAL_SPECS`. Every spec automatically gets the shared `correctness`, `syntax`, and `completionTime` signals; give exactly one of your dimensions `axis="fidelity"`.
@@ -211,7 +214,7 @@ Recent test hardening includes:
 - Signal spec tests: catalog invariants and prompt contents (`test_signal_catalog.py`), rubric parsing, assessor validation, and variation strategy (`test_signal_rubric.py`), and spec resolution (`test_signal_spec_resolution.py`).
 - Schema idempotency tests (`test_schema_idempotency.py`): startup twice, with `algorithm.signal_spec` seeded and stable.
 - Per-algorithm `signalSpec` persistence and history read-back integration tests.
-- Jev MCQ tests: REST client (`test_jev_client.py`), signal plug-ins and rubric (`test_signal_plugins.py`), evaluator, registry and MCQ context (`test_jev_mcq_evaluator.py`), plus an opt-in live call (`-m jev_live`, needs `TYPESAFE_API_KEY`).
+- Jev MCQ tests: REST client (`test_jev_client.py`), signal plug-ins and rubric (`test_signal_plugins.py`), evaluator, registry and MCQ context (`test_jev_mcq_evaluator.py`), signal validation rules (`test_signal_definition_rules.py`), `/admin` API integration incl. edits reaching the next Jev payload (`test_signal_admin_integration.py`), plus a live call (`-m jev_live`, uses `TYPESAFE_API_KEY`).
 - Query-plan performance guard tests using `EXPLAIN (FORMAT JSON)`.
 - Architecture boundary guard tests that enforce no framework coupling in service/core and no repository imports from domain/core.
 - Canonical content architecture tests for `problem`, `submission.problem_slug`, playlist projections, and legacy-table removal.
@@ -230,6 +233,7 @@ Key variables:
 - `COACH_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY`
 - `COACH_OPENAI_MODEL`, `COACH_ANTHROPIC_MODEL`
 - `TYPESAFE_API_KEY` (Jev MCQ evaluation), `JEV_MODEL` (pinned, default `jev-1.13.0`), `TYPESAFE_BASE_URL`, `JEV_TIMEOUT_SECONDS`, `JEV_ENABLED`
+- `ADMIN_TOKEN` (enables edits on `/admin`; empty keeps it read-only). The backend container reads `backend/.env` only when created, so run `docker compose up -d backend` (not `restart`) after changing it.
 - `COACH_OPENAI_BASE_URL`, `COACH_ANTHROPIC_BASE_URL`
 - `COACH_GEMMA_API_KEY`, `COACH_GEMMA_MODEL`, `COACH_GEMMA_BASE_URL`
 

@@ -48,7 +48,7 @@ Signals are defined per catalog group (the `algorithm` table), not per problem:
 
 ### 1b) MCQ Evaluation Through Jev
 1. `app/services/submission_context_service.py::build_mcq_context` loads the stored `multiple_choice_problem` row named by `multipleChoiceProblemId` and the client's `selectedChoiceId`. Unknown problems or choices are a 422; client-sent question or answer text is ignored.
-2. The MCQ spec comes from `app/core/signals/mcq.py::get_mcq_signal_spec`, keyed by the algorithm the recall spec resolver picks.
+2. `app/services/signal_registry_service.py::load_mcq_spec` reads the active `signal_definition` rows (general plus those scoped to the algorithm from `domain/coach_context.py::algorithm_slug_for_tags`) and the correctness wording from `signal_evaluation_directive`, on every submission.
 3. One Jev `system_one` call (`app/core/jev/client.py::HttpJevGateway`, REST `POST /v1/systemone`) carries:
    - `correctness`: a `Choice` with labels `"1"` (answered correctly) and `"0"`, over the state `{question, answers, correctAnswer, submittedAnswer}`;
    - one question per signal plug-in in the spec, over the same state.
@@ -60,13 +60,14 @@ Signals are defined per catalog group (the `algorithm` table), not per problem:
 
 Generated MCQs are stored when generated (`coach_repository.insert_generated_multiple_choice_question_rows`); rows are immutable and the served card always takes the stored id and choice order, so a submission is graded against exactly what was shown.
 
-### 1c) Signal Plug-ins
-`app/core/signals/` holds signal plug-ins for modalities evaluated by Jev:
-- `base.py`: the `SignalPlugin` contract (`question(context)` → a Jev question or `None`; `interpret(answer, context, successful)` → `SignalResult`), `JevSignal` (declarative: primitive `choice`/`score`/`noul`, instructions, criteria, optional `score_map`), and `DeterministicSignal` (computed locally).
-- `registry.py`: `register_signal`; plug-in modules register on import from `core/signals/__init__.py`.
-- `spec.py`: `ModalitySignalSpec` references plug-ins by key with per-spec weights; `snapshot()` and `hash()` make stored evaluations reproducible.
-
-Adding a signal is a `register_signal(JevSignal(...))` entry plus its key in a spec. `core/jev` and `core/signals` must not import services, repositories, domain, or FastAPI.
+### 1c) Signal Definitions and `/admin`
+Jev signals are data; deterministic signal logic is code.
+- `app/schema.sql`: `signal_definition` (key, scope, primitive, instructions, criteria, score map, role, weight, axis, applicability, status, version), `signal_evaluation_directive` (correctness wording and weight; labels fixed to `"1"`/`"0"`), and the append-only `signal_definition_revision`.
+- `app/core/signals/`: `definitions.py::definition_to_plugin` builds a `JevSignal` from a row or wraps a registered `DeterministicSignal`; `spec.py::ModalitySignalSpec` snapshots and hashes the effective spec, correctness wording included; `mcq.py` holds the seed defaults (inserted once by `signal_registry_service.seed_signal_definitions` at startup, never overwriting).
+- `app/domain/signal_definition_rules.py`: field-level validation mirroring Jev's limits plus key, scope and weight rules.
+- `app/repositories/signal_definition_repository.py`: reads, version-checked writes and revisions.
+- `app/services/signal_admin_service.py` + `app/endpoints/admin.py` (`/api/admin/signals…`): list, create, update, archive, restore, correctness wording, revisions, stored-MCQ samples, and Try it (one Jev call on a stored MCQ, nothing saved). Writes need the `X-Admin-Token` header matching `ADMIN_TOKEN`; validation errors are 422 with per-field messages, stale versions 409.
+- Frontend: `src/AdminPage.tsx` (route `/admin`), API client `src/signalAdmin.ts`, shared Tune controls in `src/tuneControls.tsx`.
 
 ### 1d) Coach Variations
 1. `POST /api/coach/adaptive-variation` or `POST /api/coach/sequential-variation`

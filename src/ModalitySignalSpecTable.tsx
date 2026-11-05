@@ -50,7 +50,7 @@ export default function ModalitySignalSpecTable({ spec }: ModalitySignalSpecTabl
               <td>Choice: 1, 0</td>
               <td>{formatWeight(spec.correctnessWeight)}</td>
               <td>always</td>
-              <td>Did the person choose the correct answer? (1 = answered correctly)</td>
+              <td>{spec.correctness?.instructions ?? 'Did the person choose the correct answer? (1 = answered correctly)'}</td>
             </tr>
             {spec.signals.map((signal) => (
               <tr key={signal.key}>
@@ -61,7 +61,10 @@ export default function ModalitySignalSpecTable({ spec }: ModalitySignalSpecTabl
                 <td>{signal.role}</td>
                 <td>{describeResponse(signal)}</td>
                 <td>{signal.role === 'diagnostic' ? '—' : formatWeight(signal.weight)}</td>
-                <td>{APPLIES_LABELS[signal.appliesWhen]}{signal.needsCorrectness ? ' · second call' : ''}</td>
+                <td>
+                  {APPLIES_LABELS[signal.appliesWhen]}{signal.needsCorrectness ? ' · second call' : ''}
+                  {signal.scope && signal.scope !== 'general' ? ` · ${signal.scope} only` : ''}
+                </td>
                 <td>{describeQuestion(signal)}</td>
               </tr>
             ))}
