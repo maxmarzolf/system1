@@ -199,18 +199,6 @@ def summarize_skill_map_progress(
     }
 
 
-def progress_focus_note(progress: PatternProgressSummary | dict[str, Any]) -> str:
-    if not progress or int(progress.get("attemptCount", 0)) == 0:
-        return ""
-    repeated = [str(tag) for tag in progress.get("repeatedErrorTags", []) if str(tag).strip()]
-    if repeated:
-        return f"Recent weak spot: {', '.join(repeated[:2])}."
-    latest_focus = str(progress.get("latestPrimaryFocus", "")).strip()
-    if latest_focus:
-        return latest_focus
-    return ""
-
-
 def primary_pattern_tag(skill_tags: list[str]) -> str:
     for tag in (
         "sliding-window",

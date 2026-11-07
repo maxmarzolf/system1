@@ -277,3 +277,42 @@ async def test_mcq_context_comes_from_the_stored_problem(monkeypatch) -> None:
         with pytest.raises(submission_context_service.SubmissionContextError) as error:
             await submission_context_service.build_mcq_context(body)
         assert error.value.code == code
+
+
+class SecondCallFailsGateway(FakeJevGateway):
+    async def system_one(self, state, questions):
+        if self.calls:
+            self.calls.append((state, dict(questions)))
+            raise JevUnavailableError("jev_timeout", "Jev did not respond in time.")
+        return await super().system_one(state, questions)
+
+
+async def test_second_call_failure_marks_only_its_signals_unavailable(patched) -> None:
+    follow_up = JevSignal(key="testFollowUp", label="Follow-up", primitive="noul", instructions="?", needs_correctness=True)
+    base = default_mcq_spec("test")
+    concept = next(entry for entry in base.signals if entry.plugin.key == "conceptRecognition")
+    patched["spec"] = ModalitySignalSpec(
+        algorithm="test", modality="mcq", correctness=base.correctness, signals=(concept, SpecEntry(follow_up, 0.25))
+    )
+    gateway = SecondCallFailsGateway(_answers("1"))
+
+    outcome = await JevMcqEvaluator(lambda: gateway).evaluate(_body())
+
+    results = outcome.evaluation["signalResults"]
+    assert results["testFollowUp"]["status"] == "unavailable"
+    assert results["conceptRecognition"]["status"] != "unavailable"
+
+
+def test_default_gateway_respects_jev_enabled(monkeypatch) -> None:
+    monkeypatch.setattr(jev_mcq.settings, "jev_enabled", False)
+    with pytest.raises(JevUnavailableError) as error:
+        jev_mcq.default_jev_gateway()
+    assert error.value.code == "jev_disabled"
+    monkeypatch.setattr(jev_mcq.settings, "jev_enabled", True)
+    assert jev_mcq.default_jev_gateway() is not None
+
+
+def test_unknown_modality_has_no_evaluator(monkeypatch) -> None:
+    monkeypatch.delitem(EVALUATORS, SubmissionModality.mcq)
+    with pytest.raises(LookupError):
+        get_evaluator(SubmissionModality.mcq)

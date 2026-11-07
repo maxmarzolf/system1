@@ -63,6 +63,15 @@ def test_every_seed_definition_is_valid(definition) -> None:
         ({"applies_when": "sometimes"}, "applies_when"),
         ({"weight": 1.5}, "weight"),
         ({"source": "deterministic", "implementation": "nope"}, "implementation"),
+        ({"source": "magic"}, "source"),
+        ({"weight": "heavy"}, "weight"),
+        ({"instructions": "x" * 5001}, "instructions"),
+        ({"criteria": {"": "blank label"}, "score_map": {}}, "criteria"),
+        ({"score_map": ["not", "a", "map"]}, "score_map"),
+        ({"primitive": "score", "criteria": ["a", ""], "score_map": {}}, "criteria"),
+        ({"primitive": "score", "criteria": "not a list", "score_map": {}}, "criteria"),
+        ({"primitive": "noul", "criteria": ["true"], "score_map": {}}, "criteria"),
+        ({"primitive": "noul", "criteria": None}, "score_map"),
     ],
 )
 def test_invalid_fields_are_reported_by_name(overrides, field) -> None:
@@ -112,3 +121,12 @@ def test_directive_labels_are_fixed() -> None:
     assert validate_directive(good) == {}
     assert "criteria" in validate_directive(extra)
     assert set(validate_directive(blank)) == {"instructions", "criteria", "correctness_weight"}
+
+
+def test_noul_criteria_keep_only_described_outcomes() -> None:
+    normalized = normalize_definition(
+        {"key": "k", "label": "l", "primitive": "noul", "criteria": {"true": " yes ", "false": "", "maybe": "x"}}
+    )
+    assert normalized["criteria"] == {"true": "yes", "false": None}
+    empty = normalize_definition({"key": "k", "label": "l", "primitive": "noul", "criteria": {"true": " "}})
+    assert empty["criteria"] is None

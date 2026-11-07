@@ -89,21 +89,3 @@ def build_core_algorithm_drill(row: dict[str, Any]) -> dict[str, Any]:
             "leetcodeExamples": examples,
         },
     }
-
-
-async def problem_drills_for_algorithm(algorithm_slug: str) -> dict[str, Any]:
-    from app.services import problem_practice_service
-
-    return await problem_practice_service.problem_drills_for_algorithm(algorithm_slug)
-
-
-async def problem_drills_for_tag(tag_slug: str, count: int = 10) -> dict[str, Any]:
-    from app.services import problem_practice_service
-
-    return await problem_practice_service.problem_drills_for_tag(tag_slug, count)
-
-
-async def random_problem_drills(count: int = 10) -> dict[str, Any]:
-    from app.services import problem_practice_service
-
-    return await problem_practice_service.random_problem_drills(count)

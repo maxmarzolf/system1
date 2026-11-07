@@ -1,307 +1,190 @@
-# System1 Recall Trainer
+# System 1
 
-System1 is a React + FastAPI learning app for deliberate recall practice, live coaching, and skill-map readiness tracking.
+System 1 is a practice app for coding-interview algorithms. You recall code from memory, get graded, and track where you're weak over time.
 
-## Agent Guide
+- **Practice** (`/`): recall a card's code from memory, or answer multiple-choice questions (MCQs). Optional supports: Ghost Reps (type over the target), Inline notes, AI completion, a Sliding Window Ladder, and adaptive or custom **flows** that mix all four modalities.
+- **Dashboard** (`/dashboard`): readiness per algorithm and playlist; start focused practice from any card.
+- **Journey** (`/practice-history`): a 3D *Signal Score Terrain* of every graded signal over time, a daily work grid, and the full stored evaluation of each submission on any day.
+- **Tune** (`/tune`): local preferences: specimen style, editor, MCQ set size, grading strictness, hotkeys.
+- **Admin** (`/admin`): edit the signals Jev uses to grade MCQs, try a draft against a stored question, and view the read-only recall specs.
 
-Quick-reference for coding agents and contributors.
+Grading:
 
-### Stack
+- **MCQs** are graded by **Jev** ([TypeSafe System One](https://docs.typesafe.ai)). One call asks whether the answer was correct, plus one question per signal defined in `/admin`.
+- **Recall** answers are graded by an LLM assessor and narrator against per-algorithm signal specs.
+
+## Stack
 
 | Layer | Technology | Port |
 |---|---|---|
-| Frontend | React + Vite + TypeScript | 5173 |
-| Backend API | Python 3.12 + FastAPI + asyncpg | 3001 |
+| Frontend | React 19, Vite, TypeScript, react-router, CodeMirror, three.js | 5173 |
+| Backend | Python 3.12, FastAPI, asyncpg (raw SQL) | 3001 |
 | Database | PostgreSQL 16 | 5432 |
-| Runtime | Docker Compose | n/a |
+| Runtime | Docker Compose (`flashcard-postgres`, `flashcard-backend`, `flashcard-frontend`) | n/a |
 
-Default container names:
-- `flashcard-frontend`
-- `flashcard-backend`
-- `flashcard-postgres`
-
-### Non-Negotiable Layering Rules
-
-- SQL only in `backend/app/repositories/`.
-- `backend/app/services/` contains pure Python only.
-- Endpoint handlers in `backend/app/endpoints/` stay thin.
-- Database row contracts live in `backend/app/repositories/types.py`.
-- Service payload contracts live in `backend/app/services/contracts.py`.
-- `backend/app/core/` stays framework-agnostic and does not import FastAPI/Starlette.
-
-## Current Architecture
-
-Backend architecture is:
-
-`endpoints -> services -> domain/core -> repositories -> database`
-
-Key backend modules:
-- `backend/app/endpoints/` FastAPI routes.
-- `backend/app/services/` use-case orchestration and persistence wiring.
-- `backend/app/services/contracts.py` TypedDict/TypeAlias contracts for service payloads and callbacks.
-- `backend/app/domain/` pure logic modules (profiles, evaluators, resilience, feedback builders).
-- `backend/app/core/` cross-domain engines (assessor, narrator, generator, provider adapters).
-- `backend/app/repositories/` all SQL and row shaping.
-- `backend/app/schema.sql` canonical schema, applied idempotently at startup.
-- `backend/app/database.py` startup: applies `schema.sql`, a few in-place upgrades, then seeds the taxonomy.
-- `backend/app/core/signal_catalog.py` per-algorithm signal specs that drive recall assessment.
-- `backend/app/core/jev/` Jev (TypeSafe System One) REST client.
-- `backend/app/core/signals/` signal plug-ins: Jev signals are built from `signal_definition` rows (edited on `/admin`); deterministic logic is registered in code.
-- `backend/app/services/evaluators/` one submission evaluator per modality; `submission_service` only dispatches and persists.
-
-Detailed architecture and migration notes:
-- `docs/backend-architecture.md`
-- `docs/migration-notes.md`
-- `docs/service-contracts.md`
-- `docs/content-architecture.md`
-
-Docs navigation:
-- `docs/backend-architecture.md` -> dependency flow, boundary rules, and layer responsibilities.
-- `docs/migration-notes.md` -> migration decisions, moved modules, and compatibility notes.
-- `docs/service-contracts.md` -> service-level TypedDict/TypeAlias ownership and refactor guidance.
-
-Core algorithm taxonomy is canonicalized into `algorithm`, `skill`, `technique`, `problem`, `problem_skill`, and `problem_technique`.
-
-## Data Model (Current)
-
-Primary tables:
-- `algorithm`: catalog groups (sliding window, binary search, …). `algorithm.signal_spec` holds the group's signal spec, seeded from `backend/app/core/signal_catalog.py`.
-- `problem`: canonical practice-content table for core, meta, static-playlist, focused-fallback, and generated LLM cards.
-- `submission`: canonical attempt ledger and signal store; many submissions may reference one `problem` through `problem_slug`.
-- `playlist` and `playlist_problem_order`: organization and ordering only; they do not duplicate problem content.
-- `multiple_choice_problem`: generated MCQs, stored at generation time and immutable; MCQ submissions are graded against this row, never against client-sent text.
-
-Startup behavior in `backend/app/database.py`:
-- Applies `backend/app/schema.sql` (every statement is `IF NOT EXISTS`, so it is safe on every boot).
-- Applies in-place upgrades for existing databases: adds `algorithm.signal_spec`, drops the retired `submission.migration_key`, and stamps stored evaluations that have no `signalSpec` with `{"algorithm": "default", "version": 0}`.
-- Seeds algorithms (with their signal specs), techniques, skills, and core problems. Stale core problems and skills that are no longer in the catalog are pruned; generated problems are preserved.
-- `submission.problem_slug` is a real foreign key; `submission.generated_card` is kept as the historical snapshot.
-
-## Signal Specs
-
-Every recall submission is scored by the Signal Assessor against a **signal spec** that belongs to the problem's catalog group (`algorithm`), not to individual problems.
-
-- **Where they live:** `backend/app/core/signal_catalog.py` is the source of truth. Startup copies each spec into `algorithm.signal_spec`.
-- **What a spec holds:** an ordered list of `SignalDefinition`s. Each one has a `key`, a `label`, a `kind` (`score` 0–100 or `boolean` valid/error), a `role` (`dimension` or `modifier`), a `weight` for the overall score, `guidance` sent to the assessor, the `variation_strategy` used by adaptive variations, and an optional `axis` (`fidelity`, `executable`, `fluency`) that feeds the summary score. A spec also lists the group's `structural_elements` flags and a `version`.
-- **Resolution order:** the submission's problem → its `algorithm.signal_spec`. Otherwise the primary skill tag's algorithm. Otherwise `DEFAULT_SIGNAL_SPEC`.
-- **Current specs:** `sliding-window`, `two-pointers`, `binary-search`, `dynamic-programming`. Every other group uses the default spec (`structure`, `completeness`, `patternFidelity`).
-- **Storage:** each stored evaluation records `signalSpec: {algorithm, version}`. Its `dimensions` and `modifiers` are keyed by that spec's signals, in spec order.
-
-Viewing specs and signal values in the UI:
-- **Admin → Recall** shows each algorithm's recall spec read-only: signals, role, kind, weight, axis, assessor guidance, variation strategy, and structural elements. Algorithms on the default spec are labeled.
-- **Journey** (`/practice-history`, the History page) shows a daily work grid per algorithm with **Week / Month / All-Time** ranges and the dates as a selectable x axis underneath. Hovering a date highlights its column; clicking an algorithm name filters the day card to that algorithm. Clicking the selected date or algorithm again clears just that filter. Clicking a date (or a highlighted square) opens a card listing every submission from that day: the question, choices or answer, result, timing, and the full stored evaluation (spec, verdict, scores, dimensions, modifiers, signal results, Jev answers, raw JSON). Days follow the viewer's timezone. At the top of the page, a **Signal Score Terrain** (three.js, loaded lazily, drawn straight on the page with a canvas the size of the browser window; drag to rotate, pinch or Ctrl/⌘ + scroll to zoom, plain scrolling scrolls the page) plots every scored signal all time: X is the signal, Y is time, and height is the shortfall from a perfect score (100 − score), smoothed over time per signal, so peaks are weak spots. Each answer is a hoverable dot; a `?` next to the title explains how each kind of signal is scored. Over it, at the bottom of the screen, **/do** opens the main screen to start working and **/build** opens the main screen's Flow configuration (`/?panel=flow`). The terrain stops spinning while a dot's details are showing. Data: `GET /api/skill-map-overview?historyDays=&tz=`, `GET /api/history/day?date=&tz=` and `GET /api/history/signals?tz=`.
-
-### MCQ signals (Jev)
-
-MCQ submissions are evaluated by Jev, not the Signal Assessor. One Jev call asks whether the person chose the correct answer (a `Choice` answering `1` or `0`) plus one question per active signal, all over the state `{question, answers, correctAnswer, submittedAnswer}`.
-
-- **Where they live:** the database (`signal_definition`, `signal_evaluation_directive`), edited on **`/admin`**. `backend/app/core/signals/mcq.py` only seeds an empty database (insert-if-missing; edits are never overwritten) and registers deterministic implementations such as `completionTime`.
-- **Applies immediately:** the evaluator loads the active signals for every submission, so a save on `/admin` applies to the next MCQ evaluation with no restart.
-- **Scope:** an MCQ gets every `general` signal plus the signals scoped to its algorithm (resolved from its pattern tag, e.g. `heap-priority-queue` → `heap`).
-- **What `/admin` edits:** the correctness wording (labels `1`/`0` are fixed), and per signal: an admin-only description (never sent to Jev), Jev primitive (Choice/Score/Noul), instructions, criteria, Choice score map, role, weight, axis, `appliesWhen`, `needsCorrectness` (costs a second Jev call), scope and order. Signals are archived, never deleted; keys are permanent. Every change is versioned (stale saves get a 409) and recorded in `signal_definition_revision`.
-- **Field help:** every field has a clickable `?` tooltip explaining what it does (`src/signalFieldHelp.tsx`).
-- **Try it:** runs an unsaved draft against Jev on a stored MCQ and shows the answer and score. Nothing is stored.
-- **Access:** open for now; there is no admin token (it can be added back later).
-- **Storage:** evaluations store `signalResults`, the Jev `correctness` answer, a `signalSpecSnapshot` (including the correctness wording), and provenance (`engine`, `model`, `requestIds`, `flags`).
-- **Layout:** the left rail is question type > scope: **MCQ** (All, General, each algorithm; editable) and **Recall** (All, each algorithm; read-only). The correctness question sits under MCQ's All and General scopes. Collapsed signals show label, key and the Jev primitive, the instructions, and Applies / Weight / Role / Version. The Journey page shows each submission's Jev correctness and signal answers.
-
-To add a recall spec for another group:
-1. Add a `SignalSpec` built with `_spec(...)` in `signal_catalog.py` and register it in `SIGNAL_SPECS`. Every spec automatically gets the shared `correctness`, `syntax`, and `completionTime` signals; give exactly one of your dimensions `axis="fidelity"`.
-2. Bump `version` whenever an existing spec's signals change, so old evaluations stay interpretable.
-3. Restart the backend; startup reseeds `algorithm.signal_spec`.
-4. `tests/test_signal_catalog.py` checks the new spec automatically.
-
-## API Endpoints
-
-Core endpoints:
-- `GET /api/health`
-- `POST /api/attempts`
-- `GET /api/skill-map`
-- `GET /api/skill-map-overview`
-- `POST /api/coach/inline-completion` (non-persisted code suggestions for CodeMirror)
-- `POST /api/coach/history`
-- `POST /api/coach/session-plan`
-- `POST /api/coach/skill-map-drills`
-- `POST /api/coach/skill-map-drills-stream`
-- `GET /api/coach/problem-drills`
-- `GET /api/coach/problem-drills/{algorithm_slug}`
-- `GET /api/coach/problem-drills/technique/{technique_slug}`
-- `GET /api/coach/playlist-drills/{playlist_slug}`
-- `POST /api/coach/multiple-choice-drills`
-- `POST /api/coach/sliding-window-ladder`
-- `POST /api/coach/adaptive-variation`
-- `POST /api/coach/sequential-variation`
-- `GET /api/catalog/playlists`
-- `GET /api/catalog/signal-specs` (every algorithm's stored signal spec, read-only)
-- `POST /api/admin/reset-practice-history`
-
-## Development Workflow
-
-### Local Setup
+## Getting started
 
 ```bash
 npm install
-backend/.venv/bin/pip install -r backend/requirements.txt
 ```
-
-### Start Services
 
 ```bash
 docker compose up -d --build
-docker compose ps
 ```
 
-### Configure Practice Flows
+Open http://localhost:5173. Or run the Vite dev server yourself (`npm run dev:client`) against the containers.
 
-Open the Flow control from the practice card toolbar to replace the card body with the flow configuration view. Custom flows support drag-and-drop block ordering from the hamburger handle, modality and repetition controls, and block removal. The configuration is saved locally and can be started or stopped from the card footer.
+Configuration lives in `backend/.env` (gitignored). The backend reads it only when the container is **created**, so after editing it run `docker compose up -d backend`, not `restart`.
 
-Each modality has its own visual cue while configuring a flow: Recall shows a running figure, Ghost shows a bouncing ghost, Multiple Choice uses flashing color sections, and Microdrill fills randomized square tiles.
+| Variable | Purpose |
+|---|---|
+| `TYPESAFE_API_KEY` | Jev, for MCQ grading. Without it, MCQs fall back to the stored answer key. |
+| `JEV_MODEL` | Pinned Jev model (default `jev-1.13.0`). Also `TYPESAFE_BASE_URL`, `JEV_TIMEOUT_SECONDS`, `JEV_ENABLED`. |
+| `LLM_DEFAULT` | Default coach provider: `openai`, `claude` or `gemma`. |
+| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `COACH_GEMMA_API_KEY` | Provider keys (each also has a `COACH_*` alias). |
+| `COACH_OPENAI_MODEL`, `COACH_ANTHROPIC_MODEL`, `COACH_GEMMA_MODEL` | Provider models; `*_BASE_URL` overrides exist too. |
+| `COACH_GENERATOR_*` | Drill generator tuning: tokens, timeout, temperature, readiness threshold, prompt length. |
+| `ADMIN_RESET_TOKEN` | Confirmation token for `npm run reset:practice-history`. |
 
-The Ladder control on fixed and variable sliding window cards opens a five-rung coding sequence. Each rung requires ten successful reps written from a function signature; a miss receives feedback and a new question on the same rung. Progress is saved per card. The Ladder control is disabled for other algorithms while this first curriculum is being developed.
+## How it fits together
 
-### Stop Services
-
-```bash
-docker compose down
+```
+React pages ──► FastAPI endpoints ──► services ──► domain / core ──► repositories ──► Postgres
+                                         │
+                                         ├──► Jev (MCQ grading, /admin "Try it")
+                                         └──► LLM providers (drill generation, recall grading)
 ```
 
-### Reinitialize Database from Seed Scripts
+- Every answer goes to `POST /api/attempts`. An **evaluator registry** picks the grader by modality: `mcq` goes to Jev; `total-recall`, `microdrill` and `ghost-rep` go to the LLM graders. The result is stored as one `submission` row.
+- **MCQ signals live in the database** and are read on every submission, so a save in `/admin` applies to the next answer with no restart. Signals are archived, never deleted; every change is versioned and logged.
+- **Recall signal specs** live in `backend/app/core/signal_catalog.py` and are reseeded at startup.
+- The schema is `backend/app/schema.sql`, applied idempotently at startup along with small upgrades and seeding in `backend/app/database.py`. There is no migration tool.
 
-Postgres data is a bind mount at `backend/data/postgres`, so `docker compose down -v` does not clear it. Delete the directory instead:
+Docs:
 
-```bash
-docker compose down && rm -rf backend/data/postgres && docker compose up -d --build
-```
+| Doc | What it covers |
+|---|---|
+| [docs/data-flow.md](docs/data-flow.md) | Diagrams of every flow: practice, MCQ grading with Jev, review, `/admin` |
+| [docs/database-schema.md](docs/database-schema.md) | ER diagram and what each table holds |
+| [docs/backend-architecture.md](docs/backend-architecture.md) | Layer rules and request traces, module by module |
+| [docs/service-contracts.md](docs/service-contracts.md) | Typed service payload contracts |
+| [docs/content-architecture.md](docs/content-architecture.md) | How catalog content (problems, playlists) is modeled |
+| [docs/migration-notes.md](docs/migration-notes.md) | History of moved and removed modules |
 
-Backend startup creates the schema from `backend/app/schema.sql` and seeds the canonical `problem` taxonomy, signal specs, and playlist projections. Reinitialize any database that predates the removal of the legacy startup migrations (`answer`/`score_attempts` era).
+### Backend layering rules
+
+A boundary test enforces these:
+
+- SQL only in `backend/app/repositories/`; row types in `repositories/types.py`.
+- Endpoints in `backend/app/endpoints/` stay thin and call services.
+- Service payload contracts live in `backend/app/services/contracts.py`.
+- `backend/app/core/` and `backend/app/domain/` stay framework-agnostic and never import repositories.
+
+### Key modules
+
+| Path | Role |
+|---|---|
+| `backend/app/core/jev/` | Jev REST client (`POST /v1/systemone`) |
+| `backend/app/core/signals/` | Signal plug-ins: Jev questions built from DB rows; deterministic signals (e.g. `completionTime`) registered in code |
+| `backend/app/services/evaluators/` | One evaluator per modality |
+| `backend/app/services/signal_registry_service.py` | Loads the active MCQ spec for an algorithm; seeds defaults (insert-if-missing) |
+| `backend/app/services/signal_admin_service.py` | `/admin`: list, create, edit, archive, restore, try |
+| `backend/app/services/attempts_service.py` | Readiness, daily activity, day detail and signal history |
+| `src/App.tsx` | The practice screen |
+| `src/PracticeHistoryPage.tsx`, `src/SignalHologram.tsx` | Journey and the score terrain |
+| `src/AdminPage.tsx`, `src/signalAdmin.ts` | `/admin` and its API client |
+
+## API
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/health` | Health check |
+| POST | `/api/attempts` | Submit an answer; returns the evaluation |
+| GET | `/api/skill-map`, `/api/skill-map-overview?historyDays=&tz=` | Taxonomy; readiness and daily activity |
+| GET | `/api/history/day?date=&tz=`, `/api/history/signals?tz=` | One day's submissions; every scored signal over time |
+| GET | `/api/catalog/playlists`, `/api/catalog/signal-specs` | Playlists; recall signal specs |
+| GET | `/api/coach/problem-drills[/{algorithm} \| /technique/{t}]`, `/api/coach/playlist-drills/{slug}` | Catalog drills |
+| POST | `/api/coach/skill-map-drills[-stream]`, `/api/coach/multiple-choice-drills`, `/api/coach/micro-drill` | Generated drills |
+| POST | `/api/coach/adaptive-variation`, `/api/coach/sequential-variation`, `/api/coach/sliding-window-ladder` | Follow-up drills |
+| POST | `/api/coach/inline-completion`, `/api/coach/session-plan`, `/api/coach/history` | Editor suggestions, session plan, practice history |
+| GET | `/api/coach/provider-default` | Configured coach provider |
+| GET, POST | `/api/admin/signals` | List or create MCQ signals |
+| PUT | `/api/admin/signals/{key}`, `/api/admin/signals/directive/mcq` | Edit a signal; edit the correctness question |
+| POST | `/api/admin/signals/{key}/archive`, `/restore` | Archive or restore |
+| POST, GET | `/api/admin/signals/try`, `/samples`, `/revisions/{subject}` | Try a draft; sample MCQs; change history |
+| POST | `/api/admin/reset-practice-history` | Clear submissions and generated problems |
 
 ## Testing
 
-Run all backend tests:
+Both suites run in CI (`.github/workflows/tests.yml`) and fail if coverage drops below its floor: **90%** for the backend and **93% of statements** for the frontend. Run them before every commit, and add or update a test with every change.
+
+### Frontend: Vitest, React Testing Library, jsdom
 
 ```bash
-cd backend && ../.venv/bin/python -m pytest -v
+npm test
 ```
-
-Run the coverage gate:
 
 ```bash
-cd backend && ../.venv/bin/python -m coverage run -m pytest -q && ../.venv/bin/python -m coverage report
+npm run test:coverage
 ```
 
-Coverage is measured for `app/` with branches enabled and must remain at or above 50% until the existing low-coverage LLM/infrastructure paths are expanded. Every code change must include a test-impact decision: add or update a focused test, or explicitly remove a test whose behavior no longer exists. Do not preserve tests for deleted tables, routes, or runtime paths.
+`npm run test:watch` reruns on save. Tests sit next to the code (`src/*.test.ts[x]`); shared helpers are in `src/test/`:
 
-When running tests from the host while Docker Postgres is running, override the Docker-only hostname:
+- `mockFetch` stubs the API by route.
+- `test/app.ts` has practice-screen helpers: drill fixtures, typing into CodeMirror, hotkeys.
+
+WebGL is replaced with a fake renderer, so the terrain's scene, camera and hover logic run for real without a GPU. The HTML coverage report is written to `coverage/index.html`.
+
+### Backend: pytest
+
+Run from `backend/`. With the Docker Postgres running, point tests at it with `DATABASE_URL`:
 
 ```bash
-cd backend && DATABASE_URL=postgresql://flashcard_user:flashcard_password@localhost:5432/flashcard_db ../.venv/bin/python -m pytest -q
+cd backend && DATABASE_URL=postgresql://flashcard_user:flashcard_password@localhost:5432/flashcard_db ../.venv/bin/python -m coverage run -m pytest -q && ../.venv/bin/python -m coverage report
 ```
 
-Run unit-only tests:
+Unit tests only (no database):
 
 ```bash
-cd backend && ../.venv/bin/python -m pytest -v -m "not integration"
+cd backend && ../.venv/bin/python -m pytest -q -m "not integration"
 ```
 
-Run integration-only tests:
+A live call to Jev (uses `TYPESAFE_API_KEY`):
 
 ```bash
-cd backend && DATABASE_URL=postgresql://flashcard_user:flashcard_password@localhost:5432/flashcard_db ../.venv/bin/python -m pytest -v -m integration
+cd backend && ../.venv/bin/python -m pytest -q -m jev_live
 ```
 
-Recent test hardening includes:
-- API contract parity tests.
-- Signal spec tests: catalog invariants and prompt contents (`test_signal_catalog.py`), rubric parsing, assessor validation, and variation strategy (`test_signal_rubric.py`), and spec resolution (`test_signal_spec_resolution.py`).
-- Schema idempotency tests (`test_schema_idempotency.py`): startup twice, with `algorithm.signal_spec` seeded and stable.
-- Per-algorithm `signalSpec` persistence and history read-back integration tests.
-- Jev MCQ tests: REST client (`test_jev_client.py`), signal plug-ins and rubric (`test_signal_plugins.py`), evaluator, registry and MCQ context (`test_jev_mcq_evaluator.py`), signal validation rules (`test_signal_definition_rules.py`), `/admin` API integration incl. edits reaching the next Jev payload (`test_signal_admin_integration.py`), plus a live call (`-m jev_live`, uses `TYPESAFE_API_KEY`).
-- Query-plan performance guard tests using `EXPLAIN (FORMAT JSON)`.
-- Architecture boundary guard tests that enforce no framework coupling in service/core and no repository imports from domain/core.
-- Canonical content architecture tests for `problem`, `submission.problem_slug`, playlist projections, and legacy-table removal.
+Notes:
 
-Integration tests may skip when infrastructure is unavailable during local development. CI provides Postgres and explicitly fails if integration tests skip.
+- LLM and Jev calls are always faked in tests; nothing reaches a provider except `-m jev_live`.
+- Integration tests use your local database and restore what they change. They skip when Postgres isn't reachable; CI provides Postgres and fails if any integration test skips.
+- `app/core/core_algorithms.py` and `core_meta.py` are excluded from coverage: they are the practice answer bank, read as source text.
 
-## LLM Provider Configuration
+## Operations
 
-Environment defaults are loaded by `backend/app/config.py` from:
-- `backend/.env`
-- `.env`
+### Reset practice history
 
-Key variables:
-- `LLM_DEFAULT` (alias supported: `COACH_LLM_PROVIDER`)
-- `COACH_OPENAI_API_KEY` or `OPENAI_API_KEY`
-- `COACH_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY`
-- `COACH_OPENAI_MODEL`, `COACH_ANTHROPIC_MODEL`
-- `TYPESAFE_API_KEY` (Jev MCQ evaluation), `JEV_MODEL` (pinned, default `jev-1.13.0`), `TYPESAFE_BASE_URL`, `JEV_TIMEOUT_SECONDS`, `JEV_ENABLED`
-- The backend container reads `backend/.env` only when created, so run `docker compose up -d backend` (not `restart`) after changing it.
-- `COACH_OPENAI_BASE_URL`, `COACH_ANTHROPIC_BASE_URL`
-- `COACH_GEMMA_API_KEY`, `COACH_GEMMA_MODEL`, `COACH_GEMMA_BASE_URL`
-
-Generator tuning:
-- `COACH_GENERATOR_MAX_TOKENS`
-- `COACH_GENERATOR_TIMEOUT_SECONDS`
-- `COACH_GENERATOR_TEMPERATURE`
-- `COACH_GENERATOR_READINESS_THRESHOLD`
-- `COACH_GENERATOR_PROMPT_WORDS`
-- `COACH_GENERATOR_PROMPT_MAX_CHARS`
-- `COACH_GENERATOR_PATTERN_HISTORY_LIMIT`
-
-## Submission Feedback Behavior
-
-- MCQ submissions are graded by Jev using the stored question and answer key (see [MCQ signals](#mcq-signals-jev)). Without `TYPESAFE_API_KEY`, or when Jev fails, the stored answer key decides and Jev signals are marked unavailable.
-- Recall submission feedback is LLM-backed. The assessor scores the signals of the problem's signal spec (see [Signal Specs](#signal-specs)), and a response missing any spec signal is treated as invalid.
-- When the assessor or narrator is unavailable, the submission falls back to the semantic evaluator (`evaluation_service`) and then to the deterministic AST check (`domain/recall_soundness.py`). The verdict is stored without dimensions.
-- If the selected provider fails (auth, credits, timeout, malformed response), the backend returns a structured failure payload and the frontend surfaces a fallback error state.
-- Recent real-world example: Anthropic can return `invalid_request_error` when account credits are exhausted, which presents as "No response from Claude".
-
-## Reset Practice History
-
-Reset only generated practice artifacts (without wiping seeded taxonomy):
+Clears `submission` and generated problems; the seeded catalog stays:
 
 ```bash
 npm run reset:practice-history
 ```
 
-Equivalent API call:
-- `POST /api/admin/reset-practice-history`
+### Reinitialize the database
 
-Current reset scope:
-- `submission`
-- generated `problem` rows where `source_type = 'generated-llm'`
-- canonical static/core problem rows are preserved
-
-The request requires the token configured via `ADMIN_RESET_TOKEN`.
-
-## Common Troubleshooting
-
-### Backend unhealthy after restart
-
-1. Check logs:
+Postgres data is a bind mount at `backend/data/postgres`, so `docker compose down -v` doesn't clear it:
 
 ```bash
-docker compose logs backend --tail=300
+docker compose down && rm -rf backend/data/postgres && docker compose up -d --build
 ```
 
-2. Confirm health:
+### Troubleshooting
 
-```bash
-curl -i http://localhost:3001/api/health
-docker compose ps
-```
+- **Backend unhealthy:** check `docker compose logs backend --tail=300` and `curl -i http://localhost:3001/api/health`. Schema errors on startup usually mean a database that predates the current schema; reinitialize it.
+- **MCQ feedback says Jev is unavailable:** check `TYPESAFE_API_KEY` in `backend/.env`, then `docker compose up -d backend`.
+- **Recall feedback unavailable:** check the provider key for `LLM_DEFAULT` and the provider's billing. Anthropic reports exhausted credits as `invalid_request_error`.
 
-3. If startup fails on schema or constraint errors, the database likely predates the current schema. Reinitialize it (see [Reinitialize Database from Seed Scripts](#reinitialize-database-from-seed-scripts)).
-4. Confirm every algorithm has a seeded signal spec:
+## Commits
 
-```bash
-docker compose exec -T postgres psql -U flashcard_user -d flashcard_db -c "SELECT slug, signal_spec->>'algorithm' FROM algorithm ORDER BY display_order;"
-```
-
-### Submission feedback unavailable
-
-1. Check backend logs for provider errors (credits, auth, rate limits).
-2. Verify `LLM_DEFAULT` and corresponding API key variables.
-3. If using Anthropic, confirm billing/credits are active.
-
-### FastAPI import warning in editor
-
-`Import "fastapi" could not be resolved` can be a local interpreter path mismatch in the editor; verify with `pytest` and runtime logs before treating it as code failure.
+Claude Code is configured (`.claude/settings.json`) not to add attribution trailers to commits or pull requests.

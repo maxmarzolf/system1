@@ -174,12 +174,6 @@ class CoachAttemptEvaluationRequest(BaseModel):
     llmProvider: str = "openai"
 
 
-class CoachAttemptEvaluationResponse(BaseModel):
-    sound: bool = False
-    syntaxValid: bool = False
-    llmUsed: bool = False
-
-
 class SessionWeakCard(BaseModel):
     cardId: str = Field(min_length=1)
     cardTitle: str = ""

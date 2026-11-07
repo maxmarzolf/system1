@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 from app.core.llm import (
     call_llm_json as _call_llm_json,

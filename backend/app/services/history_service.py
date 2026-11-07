@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
 from app.domain.coach_context import summarize_attempt_history, summarize_skill_map_progress
 from app.models import CoachAttemptFeedbackRequest, CoachPracticeHistoryRequest, CoachPracticeHistoryResponse, SkillMapDrillsRequest

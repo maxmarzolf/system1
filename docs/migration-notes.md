@@ -25,7 +25,6 @@ Introduced domain-focused modules:
 - `app/domain/recall_soundness.py`
 - `app/domain/llm_resilience.py`
 - `app/domain/feedback_builder.py`
-- `app/domain/coach_orchestrator.py`
 
 ## Core Coach Changes
 

@@ -2,6 +2,8 @@
 
 Related docs:
 - `../README.md`
+- `./data-flow.md` (diagrams of every flow)
+- `./database-schema.md` (ER diagram)
 - `./migration-notes.md`
 - `./service-contracts.md`
 

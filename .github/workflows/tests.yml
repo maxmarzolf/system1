@@ -1,4 +1,4 @@
-name: Backend tests
+name: Tests
 
 on:
   push:
@@ -44,7 +44,7 @@ jobs:
           pytest -q -m integration | tee /tmp/integration-tests.txt
           ! grep -q " skipped" /tmp/integration-tests.txt
 
-  frontend-build:
+  frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,4 +53,9 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - run: npm run build
+      - name: Lint
+        run: npm run lint
+      - name: Unit and component tests with the coverage gate
+        run: npm run test:coverage
+      - name: Type-check and build
+        run: npm run build

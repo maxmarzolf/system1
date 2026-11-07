@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 import { type ReactNode, type RefObject } from 'react'
 import { useTheme } from './theme'
 
@@ -59,10 +59,10 @@ export default function TopNav({
         </div>
       </div>
       <div className="navbar-right">
-        <Link to="/dashboard" className="navbar-dashboard">Dashboard</Link>
-        <Link to={practiceHistoryHref} className="navbar-dashboard">Journey</Link>
-        <Link to="/tune" className="navbar-dashboard">Tune</Link>
-        <Link to="/admin" className="navbar-dashboard">Admin</Link>
+        <NavLink to="/dashboard" className="navbar-dashboard">Dashboard</NavLink>
+        <NavLink to={practiceHistoryHref} className="navbar-dashboard">Journey</NavLink>
+        <NavLink to="/tune" className="navbar-dashboard">Tune</NavLink>
+        <NavLink to="/admin" className="navbar-dashboard">Admin</NavLink>
         <div className="navbar-theme">
           <button
             type="button"

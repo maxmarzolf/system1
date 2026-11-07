@@ -19,7 +19,7 @@ type SignalResultEntry = {
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 
-export function JsonBlock({ value }: { value: unknown }) {
+function JsonBlock({ value }: { value: unknown }) {
   return <pre className="signal-trace-json">{JSON.stringify(value, null, 2)}</pre>
 }
 

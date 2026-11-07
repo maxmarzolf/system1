@@ -3,11 +3,14 @@ branch = True
 source = app
 omit =
     app/__init__.py
+    # Practice content: solutions read as source text with inspect.getsource, not app logic.
+    app/core/core_algorithms.py
+    app/core/core_meta.py
 
 [report]
 show_missing = True
 skip_covered = True
-fail_under = 50
+fail_under = 90
 exclude_also =
     pragma: no cover
     if TYPE_CHECKING:

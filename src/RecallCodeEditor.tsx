@@ -1,5 +1,5 @@
 import { forwardRef, type CSSProperties, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
-import { Compartment, EditorSelection, EditorState, Prec, RangeSetBuilder, type Extension } from '@codemirror/state'
+import { Compartment, EditorSelection, EditorState, Prec, type Extension, type Range } from '@codemirror/state'
 import {
   crosshairCursor,
   Decoration,
@@ -352,7 +352,10 @@ const buildRecallDecorations = (
   ghostTarget: string | undefined,
   inlineTask: string | undefined
 ): DecorationSet => {
-  const builder = new RangeSetBuilder<Decoration>()
+  // Collected, then sorted by Decoration.set: widgets at the same position (an inline task and the
+  // ghost block on an empty last line) are not added in side order.
+  const ranges: Range<Decoration>[] = []
+  const builder = { add: (from: number, to: number, decoration: Decoration) => ranges.push(decoration.range(from, to)) }
   const doc = view.state.doc
   const documentText = doc.toString()
   const inputLines = documentText.split('\n')
@@ -407,7 +410,7 @@ const buildRecallDecorations = (
     )
   }
 
-  return builder.finish()
+  return Decoration.set(ranges, true)
 }
 
 const recallDecorations = (lineMeta: RecallEditorLineMeta[], ghostTarget?: string, inlineTask?: string) =>
