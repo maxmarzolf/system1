@@ -423,8 +423,8 @@ export default function SignalHologram() {
     : ''
 
   return (
-    <section className="daily-work-history signal-hologram" aria-label="Signal loss landscape">
-      <div className="daily-work-history-header">
+    <section className="signal-hologram" aria-label="Signal loss landscape">
+      <div className="signal-hologram-header">
         <div>
           <p className="dashboard-activity-eyebrow">Signal Loss Landscape</p>
           {summary ? <p className="history-day-summary">{summary} · all time</p> : null}

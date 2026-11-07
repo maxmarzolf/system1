@@ -70,6 +70,16 @@ export default function PracticeHistoryPage() {
   return (
     <div className="app">
       <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} />
+      <Suspense
+        fallback={(
+          <section className="signal-hologram" aria-label="Signal loss landscape">
+            <p className="dashboard-activity-eyebrow">Signal Loss Landscape</p>
+            <p className="dashboard-mode-meta">Projecting signal history…</p>
+          </section>
+        )}
+      >
+        <SignalHologram />
+      </Suspense>
       <DailyWorkHistory
         activity={skillMapOverview?.ghostRepActivity}
         algorithmOrder={skillMapOverview?.algorithms ?? []}
@@ -89,16 +99,6 @@ export default function PracticeHistoryPage() {
           algorithmNames={Object.fromEntries(skillMapOverview.algorithms.map(algorithm => [algorithm.slug, algorithm.algorithm]))}
         />
       ) : null}
-      <Suspense
-        fallback={(
-          <section className="daily-work-history signal-hologram" aria-label="Signal loss landscape">
-            <p className="dashboard-activity-eyebrow">Signal Loss Landscape</p>
-            <p className="dashboard-mode-meta">Projecting signal history…</p>
-          </section>
-        )}
-      >
-        <SignalHologram />
-      </Suspense>
     </div>
   )
 }

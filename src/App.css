@@ -7329,15 +7329,29 @@ button.daily-work-history-x-day-selected:hover {
 }
 
 /* Signal loss landscape (History): a holographic three.js scene in the shared card. */
+/* No card: the landscape sits directly on the page. */
+.signal-hologram {
+  margin: 0 0 1rem;
+}
+
+.signal-hologram-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem 1rem;
+  padding: 0 0.25rem;
+}
+
 .signal-hologram-stage {
   position: relative;
   height: clamp(20rem, 52vw, 30rem);
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--hc-accent) 28%, transparent);
-  border-radius: var(--workbench-radius-sm);
-  background:
-    radial-gradient(ellipse at 50% 85%, color-mix(in srgb, var(--hc-accent) 16%, transparent), transparent 62%),
-    radial-gradient(ellipse at 50% 30%, color-mix(in srgb, var(--hc-accent) 6%, transparent), transparent 70%);
+  /* A soft projector glow that fades out well before the edges, so no box shows. */
+  background: radial-gradient(
+    closest-side ellipse at 50% 58%,
+    color-mix(in srgb, var(--hc-accent) 12%, transparent),
+    transparent
+  );
   cursor: grab;
 }
 
@@ -7363,6 +7377,8 @@ button.daily-work-history-x-day-selected:hover {
     transparent 1px 3px
   );
   mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(closest-side ellipse at 50% 55%, black 55%, transparent);
+  mask-image: radial-gradient(closest-side ellipse at 50% 55%, black 55%, transparent);
   animation: signal-hologram-scan 9s linear infinite;
 }
 
