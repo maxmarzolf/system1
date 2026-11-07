@@ -887,14 +887,31 @@
   border-bottom: 1px solid var(--workbench-edge);
 }
 
+/* Two columns: fixed algorithm labels, then the day grid, which scrolls on its own. */
 .daily-work-history-swimlane {
   display: grid;
-  grid-template-columns: 9.75rem max-content;
-  gap: 0.3rem 0.65rem;
+  grid-template-columns: 9.75rem minmax(0, 1fr);
+  column-gap: 0.65rem;
+  align-items: start;
+}
+
+.daily-work-history-labels,
+.daily-work-history-grid {
+  display: grid;
+  grid-auto-rows: var(--daily-work-history-cell-size);
+  row-gap: 0.3rem;
+  padding-top: 0.1rem;
+}
+
+.daily-work-history-grid {
+  grid-auto-rows: auto;
   width: max-content;
-  max-width: 100%;
+}
+
+.daily-work-history-scroll {
+  min-width: 0;
   overflow-x: auto;
-  padding: 0.1rem 0.1rem 0.65rem;
+  padding: 0 0.1rem 0.65rem;
   scrollbar-color: color-mix(in srgb, var(--hc-accent) 42%, transparent) transparent;
   scrollbar-width: thin;
 }
@@ -947,29 +964,41 @@
   box-shadow: 0 0 0.45rem color-mix(in srgb, var(--hc-accent) 52%, transparent);
 }
 
-.daily-work-history-lane {
-  display: contents;
-}
-
-.daily-work-history-lane-label {
-  display: flex;
-  align-items: center;
+button.daily-work-history-lane-label {
+  display: block;
+  width: 100%;
   min-width: 0;
+  min-height: 0;
   height: var(--daily-work-history-cell-size);
-  padding-right: 0.35rem;
-}
-
-.daily-work-history-lane-label strong {
-  min-width: 0;
-  max-width: 100%;
+  padding: 0 0.35rem;
   overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  background: transparent;
   color: color-mix(in srgb, var(--hc-fg) 90%, var(--hc-fg-dim));
+  font: inherit;
   font-size: 0.66rem;
   font-weight: 650;
-  line-height: 1.15;
+  letter-spacing: normal;
+  line-height: calc(var(--daily-work-history-cell-size) - 2px);
   text-align: left;
   text-overflow: ellipsis;
+  text-transform: none;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+button.daily-work-history-lane-label:hover,
+button.daily-work-history-lane-label:focus-visible {
+  border-color: var(--workbench-edge-strong);
+  color: var(--hc-fg);
+}
+
+button.daily-work-history-lane-label-selected,
+button.daily-work-history-lane-label-selected:hover {
+  border-color: var(--hc-accent);
+  background: color-mix(in srgb, var(--hc-accent) 12%, transparent);
+  color: var(--hc-accent);
 }
 
 .daily-work-history-cell {
@@ -7232,15 +7261,6 @@ button.daily-work-history-cell:focus-visible {
   }
 }
 
-/* Keep algorithm labels visible while the day columns scroll. */
-.daily-work-history-lane-label,
-.daily-work-history-corner {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  background: var(--workbench-surface-raised);
-}
-
 .daily-work-history-cell-selected:not(.daily-work-history-cell-active) {
   outline: none;
   border-color: color-mix(in srgb, var(--hc-fg) 35%, transparent);
@@ -7248,7 +7268,7 @@ button.daily-work-history-cell:focus-visible {
 
 
 /* Dates form the x axis under the grid; each is a button that opens that day. */
-.daily-work-history-swimlane .daily-work-history-x-axis {
+.daily-work-history-grid .daily-work-history-x-axis {
   margin-top: 0.35rem;
   padding-top: 0.4rem;
   border-top: 1px solid var(--workbench-edge);
@@ -7283,4 +7303,27 @@ button.daily-work-history-x-day-selected,
 button.daily-work-history-x-day-selected:hover {
   border-color: var(--hc-fg);
   background: color-mix(in srgb, var(--hc-fg) 8%, transparent);
+}
+
+
+/* Hovering (or focusing) a date lights up its whole column. */
+.daily-work-history-cell-column-hover {
+  border-color: color-mix(in srgb, var(--hc-fg) 55%, transparent);
+  background: color-mix(in srgb, var(--hc-fg) 10%, var(--workbench-surface));
+}
+
+.daily-work-history-cell-active.daily-work-history-cell-column-hover {
+  outline: 2px solid color-mix(in srgb, var(--daily-work-history-glow) 70%, white);
+  outline-offset: 1px;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--daily-work-history-glow) 82%, white),
+    color-mix(in srgb, var(--daily-work-history-glow) 84%, var(--hc-bg))
+  );
+}
+
+/* The selected algorithm's row stays readable; the others step back. */
+.daily-work-history-grid:has(.daily-work-history-lane-cells-selected)
+  .daily-work-history-lane-cells:not(.daily-work-history-lane-cells-selected) {
+  opacity: 0.45;
 }

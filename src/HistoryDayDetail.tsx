@@ -131,10 +131,20 @@ function SubmissionCard({ submission }: { submission: HistorySubmission }) {
   )
 }
 
-export default function HistoryDayDetail({ date }: { date: string | null }) {
+export default function HistoryDayDetail({
+  date,
+  algorithmFilter,
+  onAlgorithmFilterChange,
+  algorithmNames,
+}: {
+  date: string | null
+  /** Algorithm slug to show; '' shows every algorithm. Shared with the grid's algorithm labels. */
+  algorithmFilter: string
+  onAlgorithmFilterChange: (slug: string) => void
+  algorithmNames: Record<string, string>
+}) {
   const [day, setDay] = useState<HistoryDay | null>(null)
   const [error, setError] = useState('')
-  const [algorithmFilter, setAlgorithmFilter] = useState('')
 
   useEffect(() => {
     if (!date) return
@@ -146,7 +156,6 @@ export default function HistoryDayDetail({ date }: { date: string | null }) {
         if (!response.ok) throw new Error(`Unable to load this day (${response.status})`)
         setDay((await response.json()) as HistoryDay)
         setError('')
-        setAlgorithmFilter('')
       })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Unable to load this day')
@@ -160,8 +169,10 @@ export default function HistoryDayDetail({ date }: { date: string | null }) {
     for (const submission of loaded?.submissions ?? []) {
       for (const algorithm of submission.algorithms) seen.set(algorithm.slug, algorithm.algorithm)
     }
+    // Keep the active filter selectable even on a day without that algorithm, so it can be cleared here too.
+    if (algorithmFilter && !seen.has(algorithmFilter)) seen.set(algorithmFilter, algorithmNames[algorithmFilter] ?? algorithmFilter)
     return [...seen.entries()]
-  }, [loaded])
+  }, [algorithmFilter, algorithmNames, loaded])
   const submissions = (loaded?.submissions ?? []).filter(
     (submission) => !algorithmFilter || submission.algorithms.some((algorithm) => algorithm.slug === algorithmFilter),
   )
@@ -179,16 +190,16 @@ export default function HistoryDayDetail({ date }: { date: string | null }) {
             </p>
           ) : null}
         </div>
-        {algorithms.length > 1 ? (
+        {algorithms.length > 1 || algorithmFilter ? (
           <div className="daily-work-history-ranges" role="group" aria-label="Filter by algorithm">
             <button type="button" className={`daily-work-history-range${algorithmFilter ? '' : ' daily-work-history-range-active'}`}
-              aria-pressed={!algorithmFilter} onClick={() => setAlgorithmFilter('')}>
+              aria-pressed={!algorithmFilter} onClick={() => onAlgorithmFilterChange('')}>
               All
             </button>
             {algorithms.map(([slug, name]) => (
               <button key={slug} type="button"
                 className={`daily-work-history-range${algorithmFilter === slug ? ' daily-work-history-range-active' : ''}`}
-                aria-pressed={algorithmFilter === slug} onClick={() => setAlgorithmFilter(slug)}>
+                aria-pressed={algorithmFilter === slug} onClick={() => onAlgorithmFilterChange(slug)}>
                 {name}
               </button>
             ))}
@@ -199,6 +210,11 @@ export default function HistoryDayDetail({ date }: { date: string | null }) {
       {error ? <p className="coach-error" role="alert">{error}</p> : null}
       {date && !loaded && !error ? <p className="dashboard-mode-meta">Loading the day&rsquo;s work…</p> : null}
       {loaded && !loaded.submissions.length ? <p className="dashboard-mode-meta">No submissions recorded on this day.</p> : null}
+      {loaded && loaded.submissions.length && !submissions.length ? (
+        <p className="dashboard-mode-meta">
+          No {algorithmNames[algorithmFilter] ?? algorithmFilter} submissions on this day.
+        </p>
+      ) : null}
       {loaded ? (
         <div className="history-day-list">
           {submissions.map((submission) => <SubmissionCard key={submission.id} submission={submission} />)}

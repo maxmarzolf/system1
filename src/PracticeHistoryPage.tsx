@@ -24,6 +24,8 @@ export default function PracticeHistoryPage() {
   const [skillMapOverviewError, setSkillMapOverviewError] = useState('')
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  // Algorithm slug the day detail shows; '' shows every algorithm.
+  const [selectedAlgorithm, setSelectedAlgorithm] = useState('')
 
   useEffect(() => {
     const controller = new AbortController()
@@ -68,10 +70,19 @@ export default function PracticeHistoryPage() {
         onRangeChange={setRange}
         selectedDate={selectedDate}
         onSelectDate={setSelectedDate}
+        selectedAlgorithm={selectedAlgorithm}
+        onSelectAlgorithm={setSelectedAlgorithm}
         loading={loading}
       />
       {skillMapOverviewError && <p className="coach-error">{skillMapOverviewError}</p>}
-      {skillMapOverview ? <HistoryDayDetail date={selectedDate} /> : null}
+      {skillMapOverview ? (
+        <HistoryDayDetail
+          date={selectedDate}
+          algorithmFilter={selectedAlgorithm}
+          onAlgorithmFilterChange={setSelectedAlgorithm}
+          algorithmNames={Object.fromEntries(skillMapOverview.algorithms.map(algorithm => [algorithm.slug, algorithm.algorithm]))}
+        />
+      ) : null}
     </div>
   )
 }
