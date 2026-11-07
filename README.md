@@ -133,7 +133,6 @@ Core endpoints:
 - `POST /api/coach/sequential-variation`
 - `GET /api/catalog/playlists`
 - `GET /api/catalog/signal-specs` (every algorithm's stored signal spec, read-only)
-- `POST /api/catalog/signal-specs/resolve` (the spec, resolution source, and assessor prompt the next submission for a card would use)
 - `POST /api/admin/reset-practice-history`
 
 ## Development Workflow

@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from app.core.assessor import assessor_system_prompt
 from app.core.core_algorithm_practice import problem_slug_candidates
 from app.core.signals import ModalitySignalSpec
-from app.core.signals.mcq import MCQ_MODALITY, MCQ_STATE_FIELDS
+from app.core.signals.mcq import MCQ_MODALITY
 from app.core.signal_catalog import (
     DEFAULT_SIGNAL_SPEC,
     SignalSpec,
@@ -13,8 +12,8 @@ from app.core.signal_catalog import (
     spec_from_json,
     spec_to_json,
 )
-from app.domain.coach_context import algorithm_slug_for_tags, primary_pattern_tag
-from app.models import SignalSpecResolveRequest, SubmissionModality
+from app.domain.coach_context import algorithm_slug_for_tags
+from app.models import SubmissionModality
 from app.repositories import signal_definition_repository, signal_spec_repository
 from app.services import signal_registry_service
 from app.submission_rubric import coerce_json_object
@@ -81,34 +80,3 @@ async def _mcq_specs() -> dict[str, Any]:
 
 def modality_spec_to_json(spec: ModalitySignalSpec) -> dict[str, Any]:
     return {**spec.snapshot(), "hash": spec.hash()}
-
-
-def mcq_jev_payload(spec: ModalitySignalSpec) -> dict[str, Any]:
-    """The questions the Jev MCQ evaluator sends, without the per-submission state."""
-    return {
-        "stateFields": list(MCQ_STATE_FIELDS),
-        "correctness": spec.correctness.describe(),
-        "spec": modality_spec_to_json(spec),
-    }
-
-
-async def preview_signal_spec(body: SignalSpecResolveRequest) -> dict[str, Any]:
-    """What the next submission for this card would send: the Signal Assessor
-    payload for recall, plus the Jev questions when the card is an MCQ."""
-    spec, source = await resolve_signal_spec_with_source([body.generatedCardId, body.cardId], body.categoryTags)
-    jev = None
-    if body.modality == SubmissionModality.mcq:
-        mcq_spec = await signal_registry_service.load_mcq_spec(
-            signal_registry_service.mcq_algorithm_for_tags(body.categoryTags)
-        )
-        jev = mcq_jev_payload(mcq_spec)
-    return {
-        "jev": jev,
-        "source": source,
-        "primaryPatternTag": primary_pattern_tag(body.categoryTags),
-        "spec": spec_to_json(spec),
-        "assessorPayload": {
-            "signalGuidance": {signal.key: signal.guidance for signal in spec.signals},
-            "systemPrompt": assessor_system_prompt(spec),
-        },
-    }

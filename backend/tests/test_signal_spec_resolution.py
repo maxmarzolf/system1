@@ -126,27 +126,6 @@ def test_signal_specs_endpoint_lists_stored_specs_and_flags_defaults(monkeypatch
     assert list(body["modalitySpecs"]["mcq"]["overrides"]) == ["heap"]
 
 
-def test_resolve_endpoint_previews_the_assessor_payload(monkeypatch) -> None:
-    calls = _fake_row(
-        monkeypatch,
-        {"slug": "binary-search", "signal_spec": spec_to_json(BINARY_SEARCH_SIGNAL_SPEC), "matched_by": "problem"},
-    )
-    with _client(monkeypatch) as client:
-        response = client.post(
-            "/api/catalog/signal-specs/resolve",
-            json={"cardId": "binary_search", "generatedCardId": "binary_search", "categoryTags": ["skill-map", "sliding-window"]},
-        )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert calls == [(["binary_search"], "sliding-window")]
-    assert body["source"] == "problem"
-    assert body["primaryPatternTag"] == "sliding-window"
-    assert body["spec"]["algorithm"] == "binary-search"
-    assert set(body["assessorPayload"]["signalGuidance"]) == set(BINARY_SEARCH_SIGNAL_SPEC.keys)
-    assert "boundUpdate" in body["assessorPayload"]["systemPrompt"]
-
-
 async def _with_database(callback):
     await database.connect()
     try:
