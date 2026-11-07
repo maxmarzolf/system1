@@ -206,7 +206,7 @@ export default function HistoryDayDetail({
           </div>
         ) : null}
       </div>
-      {!date ? <p className="dashboard-mode-meta">Select a highlighted day in the grid to see the work completed that day.</p> : null}
+      {!date ? <p className="dashboard-mode-meta">Select a date on the grid, or a highlighted square, to see the work completed that day.</p> : null}
       {error ? <p className="coach-error" role="alert">{error}</p> : null}
       {date && !loaded && !error ? <p className="dashboard-mode-meta">Loading the day&rsquo;s work…</p> : null}
       {loaded && !loaded.submissions.length ? <p className="dashboard-mode-meta">No submissions recorded on this day.</p> : null}

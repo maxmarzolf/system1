@@ -27,6 +27,14 @@ export default function PracticeHistoryPage() {
   // Algorithm slug the day detail shows; '' shows every algorithm.
   const [selectedAlgorithm, setSelectedAlgorithm] = useState('')
 
+  const clearFilters = () => {
+    setSelectedDate(null)
+    setSelectedAlgorithm('')
+  }
+  // Clicking the date or algorithm that is already selected clears every filter.
+  const selectDate = (date: string) => (date === selectedDate ? clearFilters() : setSelectedDate(date))
+  const selectAlgorithm = (slug: string) => (slug === selectedAlgorithm ? clearFilters() : setSelectedAlgorithm(slug))
+
   useEffect(() => {
     const controller = new AbortController()
     const historyDays = DAILY_WORK_RANGES.find(option => option.value === range)?.days ?? 30
@@ -69,9 +77,9 @@ export default function PracticeHistoryPage() {
         range={range}
         onRangeChange={setRange}
         selectedDate={selectedDate}
-        onSelectDate={setSelectedDate}
+        onSelectDate={selectDate}
         selectedAlgorithm={selectedAlgorithm}
-        onSelectAlgorithm={setSelectedAlgorithm}
+        onSelectAlgorithm={selectAlgorithm}
         loading={loading}
       />
       {skillMapOverviewError && <p className="coach-error">{skillMapOverviewError}</p>}

@@ -55,7 +55,7 @@ export default function DailyWorkHistory({
   onRangeChange: (range: DailyWorkRange) => void
   selectedDate: string | null
   onSelectDate: (date: string) => void
-  /** Algorithm slug the day detail is filtered to; '' for all. */
+  /** Algorithm slug the day detail is filtered to; '' for all. Clicking the selected one again is reported too. */
   selectedAlgorithm: string
   onSelectAlgorithm: (slug: string) => void
   loading?: boolean
@@ -121,9 +121,9 @@ export default function DailyWorkHistory({
                   key={row.slug}
                   type="button"
                   className={`daily-work-history-lane-label${selected ? ' daily-work-history-lane-label-selected' : ''}`}
-                  title={selected ? `Show every algorithm` : `Show only ${row.label}`}
+                  title={selected ? 'Clear the day and algorithm filters' : `Show only ${row.label}`}
                   aria-pressed={selected}
-                  onClick={() => onSelectAlgorithm(selected ? '' : row.slug)}
+                  onClick={() => onSelectAlgorithm(row.slug)}
                 >
                   {compactAlgorithmLabel(row.label)}
                 </button>
@@ -171,9 +171,11 @@ export default function DailyWorkHistory({
                 {chartDates.map(date => {
                   const total = dayTotals.get(date) ?? 0
                   const selected = date === selectedDate
-                  const label = `${formatCalendarWeekday(date)} ${formatCalendarDate(date)}: ${
-                    total ? `${total} submission${total === 1 ? '' : 's'}` : 'no work'
-                  }`
+                  const label = selected
+                    ? `${formatCalendarWeekday(date)} ${formatCalendarDate(date)} is selected: clear the day and algorithm filters`
+                    : `${formatCalendarWeekday(date)} ${formatCalendarDate(date)}: ${
+                      total ? `${total} submission${total === 1 ? '' : 's'}` : 'no work'
+                    }`
                   return (
                     <button
                       key={date}
