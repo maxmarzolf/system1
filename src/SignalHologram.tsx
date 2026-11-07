@@ -502,7 +502,6 @@ export default function SignalHologram() {
           role="img"
           aria-label={`3D loss landscape of signals over time (loss is 100 minus score): ${summary}. Drag to rotate; pinch or hold Ctrl or Command and scroll to zoom.`}
         >
-          <div className="signal-hologram-scanlines" aria-hidden="true" />
           {tooltip ? (
             <div className="signal-hologram-tooltip" style={{ left: tooltip.x, top: tooltip.y }} role="status">
               <strong>{tooltip.label}</strong>
