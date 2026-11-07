@@ -68,7 +68,7 @@ export default function PracticeHistoryPage() {
   }, [range])
 
   return (
-    <div className="app">
+    <div className="app app-history">
       <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} />
       <Suspense
         fallback={(

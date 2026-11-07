@@ -7329,9 +7329,19 @@ button.daily-work-history-x-day-selected:hover {
 }
 
 /* Signal loss landscape (History): a holographic three.js scene in the shared card. */
-/* No card: the landscape sits directly on the page. */
+/* No card: the landscape sits directly on the page, and its canvas spans the whole browser window
+   (placed by SignalHologram), so zooming in runs to the window's edges, not a box's. */
 .signal-hologram {
+  position: relative;
   margin: 0 0 1rem;
+}
+
+/* Page chrome stays above the full-window canvas and clickable. */
+.app-history .navbar,
+.signal-hologram-header,
+.signal-hologram-hint {
+  position: relative;
+  z-index: 2;
 }
 
 .signal-hologram-header {
@@ -7341,11 +7351,16 @@ button.daily-work-history-x-day-selected:hover {
   justify-content: space-between;
   gap: 0.6rem 1rem;
   padding: 0 0.25rem;
+  pointer-events: none;
+}
+
+.signal-hologram-header > * {
+  pointer-events: auto;
 }
 
 .signal-hologram-stage {
-  position: relative;
-  height: clamp(20rem, 52vw, 30rem);
+  position: absolute;
+  z-index: 0;
   /* A soft projector glow that fades out well before the edges, so no box shows. */
   background: radial-gradient(
     closest-side ellipse at 50% 58%,
@@ -7398,9 +7413,8 @@ button.daily-work-history-x-day-selected:hover {
 
 .signal-hologram-hint {
   position: absolute;
-  top: 0.55rem;
-  right: 0.75rem;
-  z-index: 2;
+  right: 0.25rem;
+  bottom: 0.75rem;
   margin: 0;
   color: color-mix(in srgb, var(--hc-accent) 70%, var(--hc-fg-dim));
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;

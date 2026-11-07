@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { apiUrl } from './api'
@@ -297,8 +297,15 @@ function mountHologram(
   }
 
   const target = new THREE.Vector3(0, SCORE_HEIGHT * 0.22, 0.6)
-  camera.position.set(width * 0.5 + 4, SCORE_HEIGHT * 1.5, TIME_DEPTH * 0.78 + 3.5)
+  // Default view direction; the distance is fitted to the window in resize().
+  const viewDirection = new THREE.Vector3(width * 0.5 + 4, SCORE_HEIGHT * 1.5, TIME_DEPTH * 0.78 + 3.5).sub(target).normalize()
+  const sceneRadius = Math.hypot(width / 2 + 1.5, SCORE_HEIGHT / 2, TIME_DEPTH / 2 + 1)
+  let userMoved = false
   const controls = new OrbitControls(camera, renderer.domElement)
+  const stopRotating = () => {
+    controls.autoRotate = false
+    userMoved = true
+  }
   controls.target.copy(target)
   controls.enableDamping = true
   controls.minDistance = 4
@@ -306,9 +313,20 @@ function mountHologram(
   controls.maxPolarAngle = Math.PI * 0.49
   controls.autoRotate = !reduceMotion
   controls.autoRotateSpeed = 0.5
-  const stopRotating = () => {
-    controls.autoRotate = false
+  // The canvas fills the window, so plain wheel/trackpad scrolling must keep scrolling the page:
+  // zoom only on pinch (sent as ctrl+wheel) or Ctrl/Cmd + scroll, and let vertical swipes scroll on touch.
+  controls.enableZoom = false
+  renderer.domElement.style.touchAction = 'pan-y'
+  const offset = new THREE.Vector3()
+  const onWheel = (event: WheelEvent) => {
+    if (!event.ctrlKey && !event.metaKey) return
+    event.preventDefault()
+    stopRotating()
+    offset.subVectors(camera.position, controls.target)
+    const distance = THREE.MathUtils.clamp(offset.length() * Math.exp(event.deltaY * 0.0025), controls.minDistance, controls.maxDistance)
+    camera.position.copy(controls.target).add(offset.setLength(distance))
   }
+  renderer.domElement.addEventListener('wheel', onWheel, { passive: false })
   controls.addEventListener('start', stopRotating)
 
   const resize = () => {
@@ -317,6 +335,13 @@ function mountHologram(
     renderer.setSize(clientWidth, clientHeight, false)
     camera.aspect = clientWidth / clientHeight
     camera.updateProjectionMatrix()
+    if (!userMoved) {
+      // Frame the whole landscape in whichever of the window's dimensions is tighter.
+      const verticalHalfFov = THREE.MathUtils.degToRad(camera.fov / 2)
+      const horizontalHalfFov = Math.atan(Math.tan(verticalHalfFov) * camera.aspect)
+      const distance = (sceneRadius / Math.sin(Math.min(verticalHalfFov, horizontalHalfFov))) * 0.8
+      camera.position.copy(target).addScaledVector(viewDirection, distance)
+    }
   }
   resize()
   const resizeObserver = new ResizeObserver(resize)
@@ -372,6 +397,7 @@ function mountHologram(
     renderer.domElement.removeEventListener('pointermove', onPointerMove)
     renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
     controls.removeEventListener('start', stopRotating)
+    renderer.domElement.removeEventListener('wheel', onWheel)
     controls.dispose()
     disposeScene(scene)
     renderer.dispose()
@@ -383,6 +409,7 @@ function mountHologram(
 export default function SignalHologram() {
   const { theme } = useTheme()
   const containerRef = useRef<HTMLDivElement>(null)
+  const sectionRef = useRef<HTMLElement>(null)
   const [history, setHistory] = useState<SignalHistory | null>(null)
   const [error, setError] = useState('')
   const [tooltip, setTooltip] = useState<Tooltip | null>(null)
@@ -415,6 +442,34 @@ export default function SignalHologram() {
     }
   }, [history, theme, webgl])
 
+  // Stretch the stage to the whole browser window: from the window's top and left edges,
+  // as wide and as tall as the window. The section reserves the rest of the first screen.
+  useLayoutEffect(() => {
+    const section = sectionRef.current
+    const stage = containerRef.current
+    if (!section || !stage) return
+    const place = () => {
+      const rect = section.getBoundingClientRect()
+      const pageTop = rect.top + window.scrollY
+      const viewportWidth = document.documentElement.clientWidth
+      const viewportHeight = window.innerHeight
+      stage.style.top = `${-pageTop}px`
+      stage.style.left = `${-rect.left}px`
+      stage.style.width = `${viewportWidth}px`
+      stage.style.height = `${viewportHeight}px`
+      section.style.minHeight = `${Math.max(viewportHeight - pageTop, 320)}px`
+    }
+    place()
+    const observer = new ResizeObserver(place)
+    observer.observe(document.documentElement)
+    window.addEventListener('resize', place)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', place)
+      section.style.minHeight = ''
+    }
+  }, [history, webgl])
+
   const points = history?.points ?? []
   const first = points[0]?.date
   const last = points.at(-1)?.date
@@ -423,7 +478,7 @@ export default function SignalHologram() {
     : ''
 
   return (
-    <section className="signal-hologram" aria-label="Signal loss landscape">
+    <section ref={sectionRef} className="signal-hologram" aria-label="Signal loss landscape">
       <div className="signal-hologram-header">
         <div>
           <p className="dashboard-activity-eyebrow">Signal Loss Landscape</p>
@@ -447,7 +502,7 @@ export default function SignalHologram() {
           ref={containerRef}
           className="signal-hologram-stage"
           role="img"
-          aria-label={`3D loss landscape of signals over time (loss is 100 minus score): ${summary}. Drag to rotate, scroll to zoom.`}
+          aria-label={`3D loss landscape of signals over time (loss is 100 minus score): ${summary}. Drag to rotate; pinch or hold Ctrl or Command and scroll to zoom.`}
         >
           <div className="signal-hologram-scanlines" aria-hidden="true" />
           {tooltip ? (
@@ -459,8 +514,10 @@ export default function SignalHologram() {
               {tooltip.point.title ? <span className="signal-hologram-tooltip-title">{tooltip.point.title}</span> : null}
             </div>
           ) : null}
-          <p className="signal-hologram-hint" aria-hidden="true">Drag to rotate · scroll to zoom · hover a point</p>
         </div>
+      ) : null}
+      {points.length && webgl ? (
+        <p className="signal-hologram-hint" aria-hidden="true">Drag to rotate · pinch or ⌘/Ctrl + scroll to zoom · hover a point</p>
       ) : null}
     </section>
   )
