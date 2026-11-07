@@ -1966,7 +1966,8 @@ function App() {
   const [inlineTaskProgress, setInlineTaskProgress] = useState(0)
   const [tagsExpanded, setTagsExpanded] = useState(false)
   const [relatedDrawerOpen, setRelatedDrawerOpen] = useState(false)
-  const [flowDrawerOpen, setFlowDrawerOpen] = useState(false)
+  // /?panel=flow (the Journey page's /build button) opens the Flow configuration on arrival.
+  const [flowDrawerOpen, setFlowDrawerOpen] = useState(() => searchParams.get('panel') === 'flow')
   const [zenMode, setZenMode] = useState(false)
   const [headerControlsOpen, setHeaderControlsOpen] = useState(true)
   const flowInteractionVersionRef = useRef(0)

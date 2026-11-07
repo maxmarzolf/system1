@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { apiUrl } from './api'
 import { formatCalendarDate, viewerTimeZone } from './dailyWork'
 import InfoTip from './InfoTip'
+import { Link } from 'react-router-dom'
 import { useTheme } from './theme'
 
 type SignalPoint = {
@@ -368,8 +369,12 @@ function mountHologram(
     const hit = raycaster.intersectObject(pointCloud)[0]
     if (hit?.index === undefined) {
       setTooltip(null)
+      // Resume spinning once off a dot, unless the user has taken over the camera.
+      controls.autoRotate = !reduceMotion && !userMoved
       return
     }
+    // Hold still while a dot's details are showing.
+    controls.autoRotate = false
     const point = history.points[hit.index]
     setTooltip({
       x: event.clientX - rect.left,
@@ -378,7 +383,10 @@ function mountHologram(
       label: signalLabels.get(point.signal) ?? point.signal,
     })
   }
-  const onPointerLeave = () => setTooltip(null)
+  const onPointerLeave = () => {
+    setTooltip(null)
+    controls.autoRotate = !reduceMotion && !userMoved
+  }
   renderer.domElement.addEventListener('pointermove', onPointerMove)
   renderer.domElement.addEventListener('pointerleave', onPointerLeave)
 
@@ -529,7 +537,11 @@ export default function SignalHologram() {
               {tooltip.point.title ? <span className="signal-hologram-tooltip-title">{tooltip.point.title}</span> : null}
             </div>
           ) : null}
-          {/* Inside the full-window stage, so it sits in the screen's bottom-right corner. */}
+          {/* Inside the full-window stage, so these sit at the bottom of the screen. */}
+          <nav className="signal-hologram-actions" aria-label="Start working">
+            <Link to="/" className="signal-hologram-action">/do</Link>
+            <Link to="/?panel=flow" className="signal-hologram-action">/build</Link>
+          </nav>
           <p className="signal-hologram-hint" aria-hidden="true">Drag to rotate · pinch or ⌘/Ctrl + scroll to zoom · hover a dot</p>
         </div>
       ) : null}

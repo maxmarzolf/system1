@@ -7448,3 +7448,41 @@ button.daily-work-history-x-day-selected:hover {
   font-size: 0.74rem;
   line-height: 1.45;
 }
+
+
+/* /do and /build: overlaid at the bottom of the screen on the Journey page's terrain. */
+.signal-hologram-actions {
+  position: absolute;
+  bottom: 2.6rem;
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  gap: 0.75rem;
+  transform: translateX(-50%);
+}
+
+/* Same as the app's buttons (light border, dark fill), but roomier and see-through. */
+.signal-hologram-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.8rem 1.8rem;
+  border: 1px solid var(--hc-border);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--hc-button-bg) 60%, transparent);
+  color: var(--hc-button-fg);
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.signal-hologram-action:hover {
+  border-color: var(--hc-button-hover-border);
+  background: color-mix(in srgb, var(--hc-button-hover-bg) 70%, transparent);
+  color: var(--hc-button-fg);
+}
+
+.signal-hologram-action:focus-visible {
+  outline: 2px solid var(--hc-accent);
+  outline-offset: 1px;
+}
