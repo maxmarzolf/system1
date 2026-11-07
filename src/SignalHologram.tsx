@@ -425,6 +425,36 @@ function mountHologram(
   }
 }
 
+/** Hover card for a dot: placed beside the pointer, flipped and clamped to stay inside the window. */
+function DotTooltip({ tooltip }: { tooltip: Tooltip }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const card = ref.current
+    if (!card) return
+    const gap = 12
+    const margin = 8
+    const { width, height } = card.getBoundingClientRect()
+    const viewportWidth = document.documentElement.clientWidth
+    const viewportHeight = document.documentElement.clientHeight
+    // Prefer above-right of the pointer; flip below / to the left when there isn't room.
+    let left = tooltip.x + gap
+    if (left + width > viewportWidth - margin) left = tooltip.x - gap - width
+    let top = tooltip.y - gap - height
+    if (top < margin) top = tooltip.y + gap
+    card.style.left = `${Math.min(Math.max(left, margin), Math.max(viewportWidth - width - margin, margin))}px`
+    card.style.top = `${Math.min(Math.max(top, margin), Math.max(viewportHeight - height - margin, margin))}px`
+  }, [tooltip])
+  return (
+    <div ref={ref} className="signal-hologram-tooltip" role="status">
+      <strong>{tooltip.label}</strong>
+      <span>score {tooltip.point.score.toFixed(1)} / 100</span>
+      <span>{formatCalendarDate(tooltip.point.date)}</span>
+      <span>{tooltip.point.algorithm}</span>
+      {tooltip.point.title ? <span className="signal-hologram-tooltip-title">{tooltip.point.title}</span> : null}
+    </div>
+  )
+}
+
 export default function SignalHologram() {
   const { theme } = useTheme()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -476,9 +506,14 @@ export default function SignalHologram() {
       stage.style.left = `${-rect.left}px`
       stage.style.width = `${viewportWidth}px`
       stage.style.height = `${viewportHeight}px`
-      // A full screen tall, so when the next section snaps in below the nav the stage (and its
-      // /do and /build buttons) has scrolled entirely out of view.
-      section.style.minHeight = `${viewportHeight}px`
+      // Exactly as tall as the snap area (window minus the snap offset): a taller section lets the
+      // browser scroll freely inside it instead of snapping. The bottom margin then pushes the next
+      // section far enough down that, snapped, the stage and its /do and /build buttons are off screen.
+      section.style.minHeight = `${Math.floor(viewportHeight - pageTop)}px`
+      section.style.marginBottom = `${Math.ceil(pageTop)}px`
+      // Journey snaps every section to where this first one starts, so the top snap point is
+      // exactly the unscrolled page (measured, since the nav's size and margin vary by page).
+      document.documentElement.style.setProperty('--journey-snap-padding', `${pageTop}px`)
     }
     place()
     const observer = new ResizeObserver(place)
@@ -488,6 +523,8 @@ export default function SignalHologram() {
       observer.disconnect()
       window.removeEventListener('resize', place)
       section.style.minHeight = ''
+      section.style.marginBottom = ''
+      document.documentElement.style.removeProperty('--journey-snap-padding')
     }
   }, [history, webgl])
 
@@ -532,16 +569,7 @@ export default function SignalHologram() {
           aria-label={`3D terrain of signal scores over time; height is 100 minus the score, so peaks are weak spots: ${summary}. Drag to rotate; pinch or hold Ctrl or Command and scroll to zoom.`}
         >
           {/* Portaled to <body> so it draws above the pinned nav and the page header. */}
-          {tooltip ? createPortal(
-            <div className="signal-hologram-tooltip" style={{ left: tooltip.x, top: tooltip.y }} role="status">
-              <strong>{tooltip.label}</strong>
-              <span>score {tooltip.point.score.toFixed(1)} / 100</span>
-              <span>{formatCalendarDate(tooltip.point.date)}</span>
-              <span>{tooltip.point.algorithm}</span>
-              {tooltip.point.title ? <span className="signal-hologram-tooltip-title">{tooltip.point.title}</span> : null}
-            </div>,
-            document.body,
-          ) : null}
+          {tooltip ? createPortal(<DotTooltip tooltip={tooltip} />, document.body) : null}
           {/* Inside the full-window stage, so these sit at the bottom of the screen. */}
           <nav className="signal-hologram-actions" aria-label="Start working">
             <Link to="/" className="signal-hologram-action">/do</Link>

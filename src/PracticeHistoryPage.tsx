@@ -40,6 +40,69 @@ export default function PracticeHistoryPage() {
     return () => document.documentElement.classList.remove('journey-snap')
   }, [])
 
+  // Wheel scrolling moves a whole section at a time from a snapped position: CSS mandatory snapping
+  // alone sends a short trackpad scroll back to the nearest (current) section. A section taller than
+  // the window, like a long day detail, still scrolls normally until its end.
+  useEffect(() => {
+    const ANIMATION_MS = 750
+    const MOMENTUM_GAP_MS = 120
+    let animatingUntil = 0
+    let lastWheel = 0
+    const snapTops = () => {
+      const padding = Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0
+      return [...document.querySelectorAll<HTMLElement>('.app-history > section')].map(section => ({
+        top: Math.max(0, Math.round(section.getBoundingClientRect().top + window.scrollY - padding)),
+        bottom: section.getBoundingClientRect().bottom + window.scrollY,
+      }))
+    }
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || event.metaKey || event.defaultPrevented) return // terrain zoom
+      if (Math.abs(event.deltaY) < Math.abs(event.deltaX)) return
+      const now = performance.now()
+      const momentum = now - lastWheel < MOMENTUM_GAP_MS
+      lastWheel = now
+      // Swallow the rest of a swipe (and its momentum) while and just after a section move.
+      if (now < animatingUntil || (momentum && now < animatingUntil + 400)) {
+        event.preventDefault()
+        return
+      }
+      const sections = snapTops()
+      const current = sections.findIndex(section => Math.abs(section.top - window.scrollY) <= 2)
+      if (current < 0) return // between snap points: inside a long section
+      const down = event.deltaY > 0
+      if (down && sections[current].bottom > window.scrollY + window.innerHeight + 2) return // more to read
+      const target = sections[current + (down ? 1 : -1)]
+      if (!target) return
+      event.preventDefault()
+      animatingUntil = now + ANIMATION_MS
+      window.scrollTo({ top: target.top, behavior: 'smooth' })
+    }
+    const onScrollEnd = () => {
+      if (performance.now() < animatingUntil) animatingUntil = performance.now()
+    }
+    window.addEventListener('wheel', onWheel, { passive: false })
+    window.addEventListener('scrollend', onScrollEnd)
+    return () => {
+      window.removeEventListener('wheel', onWheel)
+      window.removeEventListener('scrollend', onScrollEnd)
+    }
+  }, [])
+
+  // The nav turns solid only once scrolling has settled on a section below the top one.
+  const [navSolid, setNavSolid] = useState(false)
+  useEffect(() => {
+    let settle = 0
+    const onScroll = () => {
+      window.clearTimeout(settle)
+      settle = window.setTimeout(() => setNavSolid(window.scrollY > 1), 120)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.clearTimeout(settle)
+      window.removeEventListener('scroll', onScroll)
+    }
+  }, [])
+
   useEffect(() => {
     const controller = new AbortController()
     const historyDays = DAILY_WORK_RANGES.find(option => option.value === range)?.days ?? 30
@@ -75,7 +138,7 @@ export default function PracticeHistoryPage() {
 
   return (
     <div className="app app-history">
-      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} pinned />
+      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} pinned solid={navSolid} />
       <Suspense
         fallback={(
           <section className="signal-hologram" aria-label="Signal score terrain">

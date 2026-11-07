@@ -12,6 +12,8 @@ type TopNavProps = {
   rightExtras?: ReactNode
   /** Keep the bar fixed to the top of the window while the page scrolls. */
   pinned?: boolean
+  /** Give the pinned bar a mostly opaque, full-width background. */
+  solid?: boolean
 }
 
 export default function TopNav({
@@ -23,6 +25,7 @@ export default function TopNav({
   practiceHistoryHref = '/practice-history',
   rightExtras,
   pinned = false,
+  solid = false,
 }: TopNavProps) {
   const { theme, setTheme } = useTheme()
   const lightModeEnabled = theme === 'light-high-contrast'
@@ -30,7 +33,7 @@ export default function TopNav({
   const toggleTheme = () => setTheme(lightModeEnabled ? 'dark-high-contrast' : 'light-high-contrast')
 
   return (
-    <nav className={pinned ? 'navbar navbar-pinned' : 'navbar'}>
+    <nav className={['navbar', pinned ? 'navbar-pinned' : '', pinned && solid ? 'navbar-solid' : ''].filter(Boolean).join(' ')}>
       <div className="navbar-left">
         <Link to="/" className="navbar-brand">System 1</Link>
         <span className="navbar-divider" />

@@ -7400,7 +7400,6 @@ button.daily-work-history-x-day-selected:hover {
   font-size: 0.72rem;
   line-height: 1.35;
   pointer-events: none;
-  transform: translate(0.75rem, -110%);
 }
 
 .signal-hologram-tooltip strong {
@@ -7501,13 +7500,38 @@ button.daily-work-history-x-day-selected:hover {
   border-bottom: none;
 }
 
+/* Journey, after settling on a lower section: a 95% opaque backdrop the width of the window,
+   covering the gap above the bar too. */
+.navbar-pinned::before {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--page-top-gap)) calc(50% - 50vw) -0.6rem;
+  z-index: -1;
+  background: color-mix(in srgb, var(--hc-bg) 95%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.navbar-solid::before {
+  opacity: 1;
+}
+
 /* Journey: whole sections snap into place below the pinned nav. A section taller than the
    window (a long day detail) still scrolls freely inside before snapping to the next. */
 html.journey-snap {
   scroll-snap-type: y mandatory;
-  /* Gap + nav + the nav's 2rem bottom margin: sections land where the first one starts,
-     so the page opens unscrolled with the nav at the main page's height. */
-  scroll-padding-top: calc(var(--page-top-gap) + var(--pinned-nav-height) + 2rem);
+  /* Sections land where the first one starts (measured by SignalHologram), so the page opens
+     unscrolled with the nav at the main page's height. */
+  scroll-padding-top: var(--journey-snap-padding, calc(var(--page-top-gap) + var(--pinned-nav-height) + 1rem));
+  /* Ease the snap a little instead of jumping. */
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.journey-snap {
+    scroll-behavior: auto;
+  }
 }
 
 .app-history > section {
