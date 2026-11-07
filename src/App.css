@@ -7327,3 +7327,131 @@ button.daily-work-history-x-day-selected:hover {
   .daily-work-history-lane-cells:not(.daily-work-history-lane-cells-selected) {
   opacity: 0.45;
 }
+
+/* Signal loss landscape (History): a holographic three.js scene in the shared card. */
+.signal-hologram-stage {
+  position: relative;
+  height: clamp(20rem, 52vw, 30rem);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--hc-accent) 28%, transparent);
+  border-radius: var(--workbench-radius-sm);
+  background:
+    radial-gradient(ellipse at 50% 85%, color-mix(in srgb, var(--hc-accent) 16%, transparent), transparent 62%),
+    radial-gradient(ellipse at 50% 30%, color-mix(in srgb, var(--hc-accent) 6%, transparent), transparent 70%);
+  cursor: grab;
+}
+
+.signal-hologram-stage:active {
+  cursor: grabbing;
+}
+
+.signal-hologram-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: signal-hologram-flicker 7s infinite;
+}
+
+.signal-hologram-scanlines {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--hc-accent) 7%, transparent) 0 1px,
+    transparent 1px 3px
+  );
+  mix-blend-mode: screen;
+  animation: signal-hologram-scan 9s linear infinite;
+}
+
+@keyframes signal-hologram-flicker {
+  0%, 100% { opacity: 1; }
+  46% { opacity: 1; }
+  47% { opacity: 0.82; }
+  48% { opacity: 1; }
+  73% { opacity: 0.93; }
+  74% { opacity: 1; }
+}
+
+@keyframes signal-hologram-scan {
+  from { background-position: 0 0; }
+  to { background-position: 0 6rem; }
+}
+
+.signal-hologram-hint {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.75rem;
+  z-index: 2;
+  margin: 0;
+  color: color-mix(in srgb, var(--hc-accent) 70%, var(--hc-fg-dim));
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+.signal-hologram-tooltip {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  gap: 0.15rem;
+  max-width: 16rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--hc-accent);
+  border-radius: 0.3rem;
+  background: color-mix(in srgb, var(--hc-bg) 88%, transparent);
+  box-shadow: 0 0 1rem color-mix(in srgb, var(--hc-accent) 30%, transparent);
+  color: var(--hc-fg-dim);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  pointer-events: none;
+  transform: translate(0.75rem, -110%);
+}
+
+.signal-hologram-tooltip strong {
+  color: var(--hc-accent);
+}
+
+.signal-hologram-tooltip-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signal-hologram-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  color: var(--hc-fg-dim);
+  font-size: 0.68rem;
+  list-style: none;
+}
+
+.signal-hologram-legend {
+  align-items: center;
+}
+
+.signal-hologram-gradient {
+  width: 6rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--hc-accent), var(--hc-warning), var(--hc-error));
+  box-shadow: 0 0 0.6rem color-mix(in srgb, var(--hc-accent) 45%, transparent);
+}
+
+.signal-hologram-legend-note {
+  color: color-mix(in srgb, var(--hc-fg-dim) 80%, transparent);
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signal-hologram-canvas,
+  .signal-hologram-scanlines {
+    animation: none;
+  }
+}

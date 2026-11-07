@@ -532,3 +532,52 @@ def test_unknown_timezones_fall_back_to_utc() -> None:
     assert attempts_service.resolve_timezone("Not/AZone") is timezone.utc
     assert attempts_service.resolve_timezone(None) is timezone.utc
     assert str(attempts_service.resolve_timezone("Europe/Paris")) == "Europe/Paris"
+
+
+def test_signal_history_lists_scored_signals_from_counted_submissions(monkeypatch) -> None:
+    def _row(created_at: datetime, tags: list[str], dimensions: dict, modifiers: dict | None = None) -> dict[str, object]:
+        return {
+            "created_at": created_at,
+            "category_tags": tags,
+            "question_type": "skill-map-mcq:card:random",
+            "modality": "mcq",
+            "card_title": "Window question",
+            "signals": {"evaluation": {"dimensions": dimensions, "modifiers": modifiers or {}}},
+        }
+
+    late_evening = datetime(2026, 1, 15, 3, 30, tzinfo=timezone.utc)  # Jan 14 in New York
+    rows = [
+        _row(late_evening, ["skill-map", "sliding-window"], {
+            "correctness": {"label": "Correct choice", "status": "pass", "score": 100.0},
+            "nearMiss": {"label": "Near miss", "status": "not_applicable", "score": 0.0},
+        }, {"completionTime": {"label": "Speed and fluency", "status": "partial", "score": 140}}),
+        _row(late_evening - timedelta(days=1), ["skill-map", "sliding-window"], {
+            "correctness": {"label": "Correct choice", "status": "fail", "score": 0.0},
+        }),
+        _row(late_evening, ["skill-map", "no-such-algorithm"], {
+            "correctness": {"label": "Correct choice", "status": "pass", "score": 100.0},
+        }),
+    ]
+
+    async def _attempt_rows():
+        return rows
+
+    async def _algorithm_rows():
+        return [{"algorithm_slug": "sliding-window", "algorithm_name": "Sliding Window"}]
+
+    monkeypatch.setattr(attempts_service, "fetch_skill_map_overview_attempt_rows", _attempt_rows)
+    monkeypatch.setattr(attempts_service, "fetch_skill_map_overview_algorithm_rows", _algorithm_rows)
+
+    history = asyncio.run(attempts_service.get_signal_history("America/New_York"))
+
+    assert history["signals"] == [
+        {"key": "correctness", "label": "Correct choice", "count": 2},
+        {"key": "completionTime", "label": "Speed and fluency", "count": 1},
+    ]
+    assert [(point["signal"], point["score"], point["date"]) for point in history["points"]] == [
+        ("correctness", 0.0, "2026-01-13"),
+        ("correctness", 100.0, "2026-01-14"),
+        ("completionTime", 100.0, "2026-01-14"),
+    ]
+    assert history["points"][0]["algorithm"] == "Sliding Window"
+    assert history["points"][0]["title"] == "Window question"

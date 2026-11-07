@@ -1072,3 +1072,63 @@ async def get_history_day(day: date, timezone_name: str | None = None) -> dict[s
             "flow": coerce_json_object(signals.get("flow")),
         })
     return {"date": day.isoformat(), "submissions": submissions}
+
+
+SCORED_SIGNAL_STATUSES = frozenset({"pass", "partial", "fail"})
+
+
+async def get_signal_history(timezone_name: str | None = None) -> dict[str, Any]:
+    """Every scored signal from every submission the daily work grid counts, all time, oldest first.
+
+    Signals are the evaluation's rubric dimensions and modifiers (recall and Jev MCQ alike);
+    entries that were not applicable or unavailable are left out.
+    """
+    tz = resolve_timezone(timezone_name)
+    algorithm_names = {
+        str(row["algorithm_slug"]): str(row["algorithm_name"]) for row in await fetch_skill_map_overview_algorithm_rows()
+    }
+    algorithm_names.update({str(item["slug"]): str(item["algorithm"]) for item in static_playlist_activity_rows()})
+    rows = sorted(
+        await fetch_skill_map_overview_attempt_rows(),
+        key=lambda row: _coerce_utc_datetime(row["created_at"]) or datetime.min.replace(tzinfo=timezone.utc),
+    )
+    labels: dict[str, str] = {}
+    counts: Counter[str] = Counter()
+    points: list[dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        created_at = _coerce_utc_datetime(row["created_at"])
+        slugs = _matched_algorithm_slugs([str(tag) for tag in (row["category_tags"] or [])], set(algorithm_names))
+        if created_at is None or not slugs:
+            continue  # The grid does not count it either.
+        evaluation = coerce_json_object(coerce_json_object(row["signals"]).get("evaluation"))
+        entries = {
+            **coerce_json_object(evaluation.get("dimensions")),
+            **coerce_json_object(evaluation.get("modifiers")),
+        }
+        for key, entry in entries.items():
+            if not isinstance(entry, dict) or entry.get("status") not in SCORED_SIGNAL_STATUSES:
+                continue
+            try:
+                score = float(entry.get("score"))
+            except (TypeError, ValueError):
+                continue
+            labels.setdefault(str(key), str(entry.get("label") or key))
+            counts[str(key)] += 1
+            points.append({
+                "submission": index,
+                "createdAt": created_at.isoformat(),
+                "date": created_at.astimezone(tz).date().isoformat(),
+                "signal": str(key),
+                "score": round(min(max(score, 0.0), 100.0), 1),
+                "title": str(row.get("card_title") or ""),
+                "modality": _submission_modality(row),
+                "algorithm": algorithm_names[slugs[0]],
+            })
+    return {
+        # Most-used signals first, so the busiest columns sit together.
+        "signals": [
+            {"key": key, "label": labels[key], "count": counts[key]}
+            for key in sorted(counts, key=lambda key: (-counts[key], labels[key].lower()))
+        ],
+        "points": points,
+    }

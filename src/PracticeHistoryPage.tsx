@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { apiUrl } from './api'
 import DailyWorkHistory, {
   type DailyWorkActivity,
@@ -8,6 +8,9 @@ import { DAILY_WORK_RANGES, type DailyWorkRange, viewerTimeZone } from './dailyW
 import HistoryDayDetail from './HistoryDayDetail'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
+
+// three.js is large; load the loss landscape only when this page renders it.
+const SignalHologram = lazy(() => import('./SignalHologram'))
 
 type SkillMapOverview = {
   algorithms: DailyWorkAlgorithm[]
@@ -86,6 +89,16 @@ export default function PracticeHistoryPage() {
           algorithmNames={Object.fromEntries(skillMapOverview.algorithms.map(algorithm => [algorithm.slug, algorithm.algorithm]))}
         />
       ) : null}
+      <Suspense
+        fallback={(
+          <section className="daily-work-history signal-hologram" aria-label="Signal loss landscape">
+            <p className="dashboard-activity-eyebrow">Signal Loss Landscape</p>
+            <p className="dashboard-mode-meta">Projecting signal history…</p>
+          </section>
+        )}
+      >
+        <SignalHologram />
+      </Suspense>
     </div>
   )
 }

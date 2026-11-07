@@ -37,3 +37,11 @@ async def get_history_day(
 ):
     """Every submission counted in the daily work grid on ``date`` in ``tz``, with its stored evaluation."""
     return await attempts_service.get_history_day(day, timezone_name=tz)
+
+
+@router.get("/history/signals")
+async def get_signal_history(
+    tz: str = Query(default="UTC", max_length=64, description="IANA timezone for each point's calendar date."),
+):
+    """Every scored signal from every counted submission, all time, for the signal hologram."""
+    return await attempts_service.get_signal_history(timezone_name=tz)
