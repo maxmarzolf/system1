@@ -89,7 +89,7 @@ Every recall submission is scored by the Signal Assessor against a **signal spec
 
 Viewing specs and signal values in the UI:
 - **Tune → Signals** shows each algorithm's spec read-only: signals, role, kind, weight, axis, assessor guidance, variation strategy, and structural elements. Algorithms on the default spec are labeled.
-- **Signal troubleshooting** (collapsible panel under the practice card, hidden in zen mode) shows two sides. *Next submission* is the spec the current card resolves to and why (problem, skill tag, or default), the client signals and category tags that will be sent, and the assessor system prompt. *Last submission* is what was actually sent and what came back: the spec used, verdict, score axes, every dimension/modifier status and score with evidence, plus the raw evaluation. The open/closed state is remembered per browser.
+- **History** (`/practice-history`) shows a daily work grid per algorithm with **Day / Week / Month / All-Time** ranges. Clicking a highlighted day opens a card listing every submission from that day: the question, choices or answer, result, timing, and the full stored evaluation (spec, verdict, scores, dimensions, modifiers, signal results, Jev answers, raw JSON). Days follow the viewer's timezone. Data: `GET /api/skill-map-overview?historyDays=&tz=` and `GET /api/history/day?date=&tz=`.
 
 ### MCQ signals (Jev)
 
@@ -103,7 +103,7 @@ MCQ submissions are evaluated by Jev, not the Signal Assessor. One Jev call asks
 - **Try it:** runs an unsaved draft against Jev on a stored MCQ and shows the answer and score. Nothing is stored.
 - **Access:** reads are open; writes and Try it need `ADMIN_TOKEN` on the backend, entered once per browser session.
 - **Storage:** evaluations store `signalResults`, the Jev `correctness` answer, a `signalSpecSnapshot` (including the correctness wording), and provenance (`engine`, `model`, `requestIds`, `flags`).
-- **Viewing:** Tune → Signals shows the effective MCQ specs read-only; Signal troubleshooting shows the Jev questions for the next MCQ and each signal's answer for the last one.
+- **Viewing:** Tune → Signals shows the effective MCQ specs read-only; the History page shows each submission's Jev correctness and signal answers.
 
 To add a recall spec for another group:
 1. Add a `SignalSpec` built with `_spec(...)` in `signal_catalog.py` and register it in `SIGNAL_SPECS`. Every spec automatically gets the shared `correctness`, `syntax`, and `completionTime` signals; give exactly one of your dimensions `axis="fidelity"`.

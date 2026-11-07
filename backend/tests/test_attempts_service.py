@@ -485,3 +485,50 @@ def test_spaced_repetition_schedules_algorithm_and_method_tracks_after_ghost_rep
     assert fixed_window["status"] == "scheduled"
     assert fixed_window["completedSessions"] == 1
     assert not spaced_repetition["queue"]
+
+
+def _activity_row(created_at: datetime) -> dict[str, object]:
+    return {
+        "created_at": created_at,
+        "category_tags": ["skill-map", "sliding-window"],
+        "question_type": "skill-map-mcq:card:random",
+        "modality": "mcq",
+        "successful": True,
+    }
+
+
+def test_daily_activity_groups_by_the_viewers_calendar_day() -> None:
+    now = datetime.now(timezone.utc)
+    # 01:00 UTC today is the previous evening in New York (UTC-4 or UTC-5).
+    late_evening = now.replace(hour=1, minute=0, second=0, microsecond=0)
+    rows = [_activity_row(late_evening)]
+    slugs = {"sliding-window": "Sliding Window"}
+
+    utc = attempts_service._build_ghost_rep_activity(rows, slugs, {}, window_days=7)
+    new_york = attempts_service._build_ghost_rep_activity(
+        rows, slugs, {}, window_days=7, tz=attempts_service.resolve_timezone("America/New_York"),
+    )
+
+    def active(activity):
+        return [day["date"] for day in activity["days"] if day["total"]]
+
+    assert active(utc) == [late_evening.date().isoformat()]
+    assert active(new_york) == [(late_evening.date() - timedelta(days=1)).isoformat()]
+
+
+def test_all_time_activity_starts_at_the_first_attempt() -> None:
+    now = datetime.now(timezone.utc)
+    first = now - timedelta(days=90)
+    rows = [_activity_row(first), _activity_row(now)]
+
+    activity = attempts_service._build_ghost_rep_activity(rows, {"sliding-window": "Sliding Window"}, {}, window_days=None)
+
+    assert activity["windowStart"] == first.date().isoformat()
+    assert len(activity["days"]) == 91
+    assert sum(day["total"] for day in activity["days"]) == 2
+
+
+def test_unknown_timezones_fall_back_to_utc() -> None:
+    assert attempts_service.resolve_timezone("Not/AZone") is timezone.utc
+    assert attempts_service.resolve_timezone(None) is timezone.utc
+    assert str(attempts_service.resolve_timezone("Europe/Paris")) == "Europe/Paris"

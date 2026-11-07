@@ -59,46 +59,8 @@ export type SignalSpecCatalog = {
   modalitySpecs: Record<string, { default: ModalitySignalSpec; overrides: Record<string, ModalitySignalSpec> }>
 }
 
-export type JevPreview = {
-  stateFields: string[]
-  correctness: { id: string; type: 'choice'; instructions: string; criteria: Record<string, string> }
-  spec: ModalitySignalSpec
-}
-
-export type SignalSpecPreview = {
-  jev: JevPreview | null
-  source: 'problem' | 'skill-tag' | 'default'
-  primaryPatternTag: string
-  spec: SignalSpec
-  assessorPayload: {
-    signalGuidance: Record<string, string>
-    systemPrompt: string
-  }
-}
-
-export type SignalSpecPreviewRequest = {
-  cardId: string
-  generatedCardId?: string
-  categoryTags: string[]
-  modality?: 'mcq'
-}
-
 export async function fetchSignalSpecCatalog(signal?: AbortSignal): Promise<SignalSpecCatalog> {
   const response = await fetch(apiUrl('/api/catalog/signal-specs'), { signal })
   if (!response.ok) throw new Error(`Signal specs unavailable (${response.status})`)
   return (await response.json()) as SignalSpecCatalog
-}
-
-export async function fetchSignalSpecPreview(
-  request: SignalSpecPreviewRequest,
-  signal?: AbortSignal,
-): Promise<SignalSpecPreview> {
-  const response = await fetch(apiUrl('/api/catalog/signal-specs/resolve'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
-    signal,
-  })
-  if (!response.ok) throw new Error(`Signal spec preview unavailable (${response.status})`)
-  return (await response.json()) as SignalSpecPreview
 }

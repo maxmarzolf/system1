@@ -6354,7 +6354,7 @@ button.tune-reset {
   .mcq-feedback { animation: none; }
 }
 
-/* Signal specs: read-only Tune viewer and practice troubleshooting panel. */
+/* Signal specs (Tune viewer) and submission signal details (history, admin). */
 .signal-spec-viewer {
   display: grid;
   gap: 0.9rem;
@@ -6443,45 +6443,6 @@ button.tune-reset {
   font-weight: 650;
 }
 
-.signal-trace-panel {
-  margin-top: 1rem;
-  border: 1px solid var(--hc-border-dim);
-  background: var(--hc-panel-bg);
-}
-
-.signal-trace-panel > summary {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.7rem 1rem;
-  color: var(--hc-fg);
-  font-size: 0.78rem;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.signal-trace-summary-meta {
-  color: var(--hc-fg-dim);
-  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-  font-size: 0.7rem;
-  font-weight: 400;
-}
-
-.signal-trace-body {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem 1.5rem;
-  padding: 0.25rem 1rem 1rem;
-}
-
-.signal-trace-section {
-  display: grid;
-  align-content: start;
-  gap: 0.7rem;
-  min-width: 0;
-}
-
-.signal-trace-section h4,
 .signal-trace-rubric h5 {
   margin: 0;
   color: var(--hc-accent);
@@ -6546,19 +6507,15 @@ button.tune-reset {
   overflow-wrap: anywhere;
 }
 
-.signal-trace-empty,
-.signal-trace-error {
+.signal-trace-empty {
   margin: 0;
+  color: var(--hc-fg-dim);
   font-size: 0.76rem;
 }
 
-.signal-trace-empty { color: var(--hc-fg-dim); }
-.signal-trace-error { color: var(--hc-error); }
-
 @media (max-width: 900px) {
-  .signal-trace-body,
   .signal-trace-scores {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -7010,4 +6967,281 @@ button.info-tip-button[aria-expanded='true'] {
   color: var(--hc-fg-dim);
   font-size: 0.76rem;
   line-height: 1.45;
+}
+
+/* History page: range buttons, selected day, and the day detail card (shares .daily-work-history). */
+.daily-work-history-ranges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--workbench-edge);
+  border-radius: var(--workbench-radius-sm);
+  overflow: hidden;
+}
+
+button.daily-work-history-range {
+  min-height: 1.85rem;
+  padding: 0.3rem 0.75rem;
+  border: 0;
+  border-right: 1px solid var(--workbench-edge);
+  border-radius: 0;
+  background: transparent;
+  color: var(--hc-fg-dim);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+button.daily-work-history-range:last-child {
+  border-right: 0;
+}
+
+button.daily-work-history-range:hover {
+  background: var(--hc-option-hover-bg);
+  color: var(--hc-fg);
+}
+
+button.daily-work-history-range-active,
+button.daily-work-history-range-active:hover {
+  background: color-mix(in srgb, var(--hc-accent) 16%, transparent);
+  color: var(--hc-accent);
+}
+
+button.daily-work-history-cell {
+  cursor: pointer;
+}
+
+button.daily-work-history-cell:hover,
+button.daily-work-history-cell:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--daily-work-history-glow) 70%, white);
+  outline-offset: 1px;
+}
+
+.daily-work-history-cell-selected {
+  outline: 2px solid var(--hc-fg);
+  outline-offset: 1px;
+}
+
+.daily-work-history-x-day-selected strong,
+.daily-work-history-x-day-selected span {
+  color: var(--hc-fg);
+}
+
+.history-day-heading {
+  margin: 0.3rem 0 0;
+  color: var(--hc-fg);
+  font-size: 1.05rem;
+  font-weight: 650;
+}
+
+.history-day-summary {
+  margin: 0.2rem 0 0;
+  color: var(--hc-fg-dim);
+  font-size: 0.76rem;
+}
+
+.history-day-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.history-day-submission {
+  display: grid;
+  gap: 0.6rem;
+  min-width: 0;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--workbench-edge);
+  border-left: 3px solid var(--hc-success);
+  border-radius: var(--workbench-radius-sm);
+  background: var(--workbench-surface);
+}
+
+.history-day-submission-missed {
+  border-left-color: var(--hc-error);
+}
+
+.history-day-submission-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+  font-size: 0.72rem;
+}
+
+.history-day-result {
+  font-weight: 700;
+}
+
+.history-day-result-pass { color: var(--hc-success); }
+.history-day-result-fail { color: var(--hc-error); }
+
+.history-day-badge {
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--workbench-edge);
+  border-radius: 999px;
+  color: var(--hc-accent);
+  font-size: 0.66rem;
+  font-weight: 650;
+}
+
+.history-day-badge-dim {
+  color: var(--hc-fg-dim);
+}
+
+.history-day-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-left: auto;
+  color: var(--hc-fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.history-day-title {
+  margin: 0;
+  color: var(--hc-fg);
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+
+.history-day-question {
+  display: grid;
+  gap: 0.45rem;
+  color: var(--hc-fg);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.history-day-question p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.history-day-code {
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  overflow-x: auto;
+  border: 1px solid var(--workbench-edge);
+  border-radius: 0.3rem;
+  background: var(--hc-editor-bg);
+  color: var(--hc-fg);
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.history-day-choices {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-day-choice {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: start;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--workbench-edge);
+  border-radius: 0.3rem;
+  color: var(--hc-fg-dim);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.history-day-choice-id {
+  color: var(--hc-fg);
+  font-weight: 700;
+}
+
+.history-day-choice-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.history-day-choice-tags {
+  display: inline-flex;
+  gap: 0.3rem;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.history-day-choice-correct {
+  border-color: color-mix(in srgb, var(--hc-success) 60%, transparent);
+  color: var(--hc-fg);
+}
+
+.history-day-choice-correct .history-day-choice-tags {
+  color: var(--hc-success);
+}
+
+.history-day-choice-wrong {
+  border-color: color-mix(in srgb, var(--hc-error) 60%, transparent);
+  color: var(--hc-fg);
+}
+
+.history-day-choice-wrong .history-day-choice-tags {
+  color: var(--hc-error);
+}
+
+.history-day-recall {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.history-day-recall summary,
+.history-day-signals > summary {
+  color: var(--hc-fg-dim);
+  font-size: 0.72rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.history-day-signals > summary {
+  color: var(--hc-accent);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.submission-signal-details {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 0.55rem;
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .daily-work-history-header {
+    flex-direction: column;
+  }
+
+  .history-day-meta {
+    margin-left: 0;
+  }
+
+  .history-day-choice {
+    grid-template-columns: 1.5rem minmax(0, 1fr);
+  }
+
+  .history-day-choice-tags {
+    grid-column: 2;
+  }
+}
+
+/* Keep algorithm labels visible while the day columns scroll. */
+.daily-work-history-lane-label,
+.daily-work-history-swimlane > div:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--workbench-surface-raised);
+}
+
+.daily-work-history-cell-selected:not(.daily-work-history-cell-active) {
+  outline: none;
+  border-color: color-mix(in srgb, var(--hc-fg) 35%, transparent);
 }

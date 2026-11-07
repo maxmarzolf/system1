@@ -3,13 +3,15 @@ from __future__ import annotations
 import json as _json
 import re
 from collections import Counter
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone, tzinfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Any, TypedDict
 
 from app.models import AttemptCreate, SkillMapNode
 from app.readiness import READINESS_MODE_ORDER, summarize_readiness
 from app.repositories.attempts_repository import (
     fetch_algorithms_with_skills_rows,
+    fetch_history_day_rows,
     fetch_skill_map_overview_algorithm_rows,
     fetch_skill_map_overview_attempt_rows,
     fetch_skill_map_overview_generated_rows,
@@ -153,6 +155,14 @@ def _matched_algorithm_slugs(tags: list[str], known_slugs: set[str]) -> list[str
     ))
 
 
+def resolve_timezone(name: str | None) -> tzinfo:
+    """The viewer's IANA timezone for calendar-day bucketing; UTC when missing or unknown."""
+    try:
+        return ZoneInfo(name) if name else timezone.utc
+    except (ZoneInfoNotFoundError, ValueError):
+        return timezone.utc
+
+
 def _coerce_utc_datetime(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
@@ -253,10 +263,20 @@ def _build_ghost_rep_activity(
     methods_by_pattern_slug: dict[str, list[str]],
     core_card_counts: dict[str, int] | None = None,
     primary_activity_slugs: set[str] | None = None,
-    window_days: int = 42,
+    window_days: int | None = 42,
+    tz: tzinfo = timezone.utc,
 ) -> SkillMapGhostRepActivity:
-    today = datetime.now(timezone.utc).date()
-    window_start = today - timedelta(days=max(window_days - 1, 0))
+    """Daily work per algorithm for the last ``window_days`` calendar days in ``tz``, or since the first attempt when None."""
+    today = datetime.now(tz).date()
+    if window_days is None:
+        attempt_dates = [
+            created_at.astimezone(tz).date()
+            for row in attempt_rows
+            if (created_at := _coerce_utc_datetime(row["created_at"])) is not None
+        ]
+        window_start = min([*attempt_dates, today])
+    else:
+        window_start = today - timedelta(days=max(window_days - 1, 0))
     slug_to_algorithm = slug_to_pattern
     skills_by_algorithm_slug = methods_by_pattern_slug
     known_algorithm_slugs = set(slug_to_algorithm)
@@ -305,7 +325,7 @@ def _build_ghost_rep_activity(
             if is_microdrill
             else "total-recall"
         )
-        attempt_date = created_at.date()
+        attempt_date = created_at.astimezone(tz).date()
         iso_date = attempt_date.isoformat()
         for slug in matched_algorithm_slugs:
             known_skills = skills_by_algorithm_slug.get(slug, [])
@@ -664,6 +684,8 @@ def build_skill_map_overview(
     algorithm_rows: list[SkillMapOverviewAlgorithmRow],
     generated_rows: list[SkillMapOverviewGeneratedRow],
     attempt_rows: list[SkillMapOverviewAttemptRow],
+    history_days: int | None = 42,
+    history_tz: tzinfo = timezone.utc,
 ) -> SkillMapOverviewPayload:
     grouped: dict[int, dict[str, Any]] = {}
     for row in algorithm_rows:
@@ -915,6 +937,8 @@ def build_skill_map_overview(
             methods_by_pattern_slug,
             {slug: len(card_ids_by_pattern.get(slug, set())) for slug in known_pattern_slugs},
             {str(item["slug"]) for item in static_playlist_algorithms},
+            window_days=history_days,
+            tz=history_tz,
         ),
         "spacedRepetition": _build_spaced_repetition(
             attempt_rows,
@@ -988,8 +1012,63 @@ async def get_skill_map() -> list[SkillMapNode]:
     return build_skill_map_nodes(rows)
 
 
-async def get_skill_map_overview() -> SkillMapOverviewPayload:
+async def get_skill_map_overview(history_days: int | None = 42, timezone_name: str | None = None) -> SkillMapOverviewPayload:
+    """``history_days`` sizes the daily activity window (None = all time); days follow ``timezone_name``."""
     algorithm_rows = await fetch_skill_map_overview_algorithm_rows()
     generated_rows = await fetch_skill_map_overview_generated_rows()
     attempt_rows = await fetch_skill_map_overview_attempt_rows()
-    return build_skill_map_overview(algorithm_rows, generated_rows, attempt_rows)
+    return build_skill_map_overview(
+        algorithm_rows,
+        generated_rows,
+        attempt_rows,
+        history_days=history_days,
+        history_tz=resolve_timezone(timezone_name),
+    )
+
+
+def _history_day_choices(row: dict[str, Any]) -> list[dict[str, Any]]:
+    correct = str(row.get("multiple_choice_correct_answer_label") or "")
+    return [
+        {"id": label, "text": text, "correct": label == correct}
+        for index in range(1, 5)
+        if (label := str(row.get(f"multiple_choice_answer_label_{index}") or ""))
+        and (text := str(row.get(f"multiple_choice_answer_text_{index}") or ""))
+    ]
+
+
+async def get_history_day(day: date, timezone_name: str | None = None) -> dict[str, Any]:
+    """Every submission the daily work grid counted on calendar ``day`` in ``timezone_name``, oldest first."""
+    tz = resolve_timezone(timezone_name)
+    next_day = day + timedelta(days=1)
+    rows = await fetch_history_day_rows(
+        datetime(day.year, day.month, day.day, tzinfo=tz),
+        datetime(next_day.year, next_day.month, next_day.day, tzinfo=tz),
+    )
+    algorithm_names = {
+        str(row["algorithm_slug"]): str(row["algorithm_name"]) for row in await fetch_skill_map_overview_algorithm_rows()
+    }
+    algorithm_names.update({str(item["slug"]): str(item["algorithm"]) for item in static_playlist_activity_rows()})
+    submissions: list[dict[str, Any]] = []
+    for row in rows:
+        tags = [str(tag) for tag in (row["category_tags"] or [])]
+        slugs = _matched_algorithm_slugs(tags, set(algorithm_names))
+        if not slugs:
+            continue  # The grid does not count it either.
+        signals = coerce_json_object(row["signals"])
+        created_at = _coerce_utc_datetime(row["created_at"])
+        submissions.append({
+            "id": int(row["id"]),
+            "createdAt": created_at.isoformat() if created_at else "",
+            "modality": _submission_modality(row),
+            "title": str(row.get("title") or ""),
+            "question": str(row.get("question") or ""),
+            "choices": _history_day_choices(row),
+            "userAnswer": str(row.get("answer") or ""),
+            "correctAnswer": str(row.get("correct_answer") or ""),
+            "successful": bool(row.get("successful")),
+            "elapsedMs": int(signals.get("elapsed_ms") or 0),
+            "algorithms": [{"slug": slug, "algorithm": algorithm_names[slug]} for slug in slugs],
+            "evaluation": coerce_json_object(signals.get("evaluation")),
+            "flow": coerce_json_object(signals.get("flow")),
+        })
+    return {"date": day.isoformat(), "submissions": submissions}

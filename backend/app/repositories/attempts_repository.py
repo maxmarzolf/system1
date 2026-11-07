@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import cast
+from typing import Any, cast
 
 from app.core.core_algorithm_practice import problem_slug_candidates
 from app.repositories.base import acquire_connection
@@ -181,10 +181,18 @@ async def fetch_skill_map_overview_generated_rows() -> list[SkillMapOverviewGene
     return [cast(SkillMapOverviewGeneratedRow, dict(row)) for row in rows]
 
 
+# Submissions the daily work grid counts and the history day view show.
+_DAILY_WORK_SUBMISSION_FILTER = """
+    (a.question_type LIKE 'skill-map%'
+     OR a.question_type LIKE 'playlist:%'
+     OR a.category_tags && ARRAY['skill-map']::text[])
+"""
+
+
 async def fetch_skill_map_overview_attempt_rows() -> list[SkillMapOverviewAttemptRow]:
     async with acquire_connection() as conn:
         rows = await conn.fetch(
-            """
+            f"""
             SELECT
                 COALESCE(a.generated_card_id, a.multiple_choice_problem_id) AS tracked_card_id,
                 COALESCE(NULLIF(a.generated_card->>'title', ''), q.question_text, a.multiple_choice_problem_id) AS card_title,
@@ -199,10 +207,44 @@ async def fetch_skill_map_overview_attempt_rows() -> list[SkillMapOverviewAttemp
                 a.signals
             FROM submission a
             LEFT JOIN multiple_choice_problem q ON q.id = a.multiple_choice_problem_id
-            WHERE a.question_type LIKE 'skill-map%'
-               OR a.question_type LIKE 'playlist:%'
-               OR a.category_tags && ARRAY['skill-map']::text[]
+            WHERE {_DAILY_WORK_SUBMISSION_FILTER}
             ORDER BY a.created_at DESC
             """
         )
     return [cast(SkillMapOverviewAttemptRow, dict(row)) for row in rows]
+
+
+async def fetch_history_day_rows(day_start: datetime, day_end: datetime) -> list[dict[str, Any]]:
+    """Every daily-work submission created in [day_start, day_end), oldest first, with MCQ choices."""
+    async with acquire_connection() as conn:
+        rows = await conn.fetch(
+            f"""
+            SELECT
+                a.id,
+                a.created_at,
+                a.modality,
+                a.question_type,
+                a.category_tags,
+                a.successful,
+                a.answer,
+                a.correct_answer,
+                a.signals,
+                a.multiple_choice_problem_id,
+                a.problem_slug,
+                COALESCE(NULLIF(a.generated_card->>'title', ''), a.generated_card_id, a.multiple_choice_problem_id) AS title,
+                COALESCE(q.question_text, NULLIF(a.generated_card->>'question', ''), NULLIF(a.generated_card->>'prompt', ''), '') AS question,
+                q.multiple_choice_answer_label_1, q.multiple_choice_answer_text_1,
+                q.multiple_choice_answer_label_2, q.multiple_choice_answer_text_2,
+                q.multiple_choice_answer_label_3, q.multiple_choice_answer_text_3,
+                q.multiple_choice_answer_label_4, q.multiple_choice_answer_text_4,
+                q.multiple_choice_correct_answer_label
+            FROM submission a
+            LEFT JOIN multiple_choice_problem q ON q.id = a.multiple_choice_problem_id
+            WHERE {_DAILY_WORK_SUBMISSION_FILTER}
+              AND a.created_at >= $1 AND a.created_at < $2
+            ORDER BY a.created_at ASC, a.id ASC
+            """,
+            day_start,
+            day_end,
+        )
+    return [dict(row) for row in rows]

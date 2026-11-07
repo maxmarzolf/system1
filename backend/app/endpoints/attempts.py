@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from datetime import date
+
+from fastapi import APIRouter, HTTPException, Query
 
 from app.models import AttemptCreate, SkillMapNode, SkillMapOverviewResponse
 from app.services import attempts_service, submission_service
@@ -21,5 +23,17 @@ async def get_skill_map():
 
 
 @router.get("/skill-map-overview", response_model=SkillMapOverviewResponse)
-async def get_skill_map_overview():
-    return await attempts_service.get_skill_map_overview()
+async def get_skill_map_overview(
+    historyDays: int = Query(default=42, ge=0, le=3650, description="Daily activity window in days; 0 = all time."),
+    tz: str = Query(default="UTC", max_length=64, description="IANA timezone whose calendar days the activity uses."),
+):
+    return await attempts_service.get_skill_map_overview(history_days=historyDays or None, timezone_name=tz)
+
+
+@router.get("/history/day")
+async def get_history_day(
+    day: date = Query(alias="date"),
+    tz: str = Query(default="UTC", max_length=64, description="IANA timezone the calendar day is in."),
+):
+    """Every submission counted in the daily work grid on ``date`` in ``tz``, with its stored evaluation."""
+    return await attempts_service.get_history_day(day, timezone_name=tz)

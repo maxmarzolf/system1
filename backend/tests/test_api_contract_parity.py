@@ -117,7 +117,7 @@ def test_coach_history_endpoint_contract(monkeypatch) -> None:
 
 
 def test_skill_map_overview_endpoint_contract(monkeypatch) -> None:
-    async def _mock_overview():
+    async def _mock_overview(**_kwargs):
         return {
             "summary": {"workCount": 1},
             "algorithms": [
