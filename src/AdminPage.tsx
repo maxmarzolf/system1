@@ -603,12 +603,17 @@ function SignalCard({
         <span className="admin-signal-title">
           <strong>{signal.label}</strong>
           <code>{signal.key}</code>
+          {archived ? <span className="admin-badge admin-badge-archived">Archived</span> : null}
           {dirty ? <span className="admin-badge admin-badge-warning">Unsaved</span> : null}
         </span>
         <span className="admin-signal-meta">
           <span>{describeResponse(signal)}</span>
           <span>{signal.role}</span>
-          <span>{signal.role === 'diagnostic' ? 'not scored' : `weight ${signal.weight} · ${formatShare(signal.effectiveShare)}`}</span>
+          <span>
+            {archived
+              ? 'not sent to Jev'
+              : signal.role === 'diagnostic' ? 'not scored' : `weight ${signal.weight} · ${formatShare(signal.effectiveShare)}`}
+          </span>
           <span>{APPLIES_LABELS[signal.appliesWhen].toLowerCase()}</span>
           <span>v{signal.version}</span>
         </span>
@@ -735,7 +740,18 @@ function DirectiveEditor({
 
 // ─── New signal ───
 
-function NewSignal({ catalog, token, onSaved }: { catalog: SignalAdminCatalog; token: string; onSaved: () => void }) {
+function NewSignal({
+  catalog,
+  token,
+  defaultScope,
+  onSaved,
+}: {
+  catalog: SignalAdminCatalog
+  token: string
+  defaultScope: string
+  onSaved: () => void
+}) {
+  const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<SignalDraft>(emptySignalDraft)
   const [errors, setErrors] = useState<FieldErrors>({})
   const [message, setMessage] = useState('')
@@ -749,6 +765,7 @@ function NewSignal({ catalog, token, onSaved }: { catalog: SignalAdminCatalog; t
       const created = await createSignal(draft, token)
       setMessage(`Created ${created.key}. Applies to the next MCQ evaluation.`)
       setDraft(emptySignalDraft())
+      setOpen(false)
       onSaved()
     } catch (reason) {
       if (reason instanceof SignalAdminError) setErrors(reason.fieldErrors)
@@ -758,18 +775,40 @@ function NewSignal({ catalog, token, onSaved }: { catalog: SignalAdminCatalog; t
     }
   }
 
+  const toggle = () => {
+    if (!open) {
+      setMessage('')
+      setDraft((current) => (current.key || current.label ? current : { ...emptySignalDraft(), scope: defaultScope }))
+    }
+    setOpen((value) => !value)
+  }
+
   return (
-    <div className="admin-editor">
-      <SignalEditor draft={draft} onChange={setDraft} errors={errors} catalog={catalog} isNew />
-      {message ? <p className={Object.keys(errors).length ? 'admin-field-error' : 'admin-success'} role="status">{message}</p> : null}
-      <div className="admin-actions">
-        <button type="button" disabled={busy || !catalog.writesEnabled || !token} onClick={create}>Create signal</button>
-        <button type="button" className="secondary" disabled={busy} onClick={() => { setDraft(emptySignalDraft()); setErrors({}) }}>
-          Clear
-        </button>
-      </div>
-      {draft.source === 'jev' ? <TryPanel draft={draft} token={token} writesEnabled={catalog.writesEnabled} /> : null}
-    </div>
+    <article className="admin-signal admin-signal-new">
+      <button type="button" className="admin-signal-summary" aria-expanded={open} onClick={toggle}>
+        <span className="admin-signal-title">
+          <strong>+ New signal</strong>
+        </span>
+        <span className="admin-signal-meta">
+          <span>Define a Jev question, try it on a stored MCQ, then create it.</span>
+        </span>
+      </button>
+      {message && !open ? <p className="admin-success admin-signal-new-message" role="status">{message}</p> : null}
+      {open ? (
+        <div className="admin-signal-body">
+          <SignalEditor draft={draft} onChange={setDraft} errors={errors} catalog={catalog} isNew />
+          {message ? <p className={Object.keys(errors).length ? 'admin-field-error' : 'admin-success'} role="status">{message}</p> : null}
+          <div className="admin-actions">
+            <button type="button" disabled={busy || !catalog.writesEnabled || !token} onClick={create}>Create signal</button>
+            <button type="button" className="secondary" disabled={busy}
+              onClick={() => { setDraft({ ...emptySignalDraft(), scope: defaultScope }); setErrors({}); setOpen(false) }}>
+              Cancel
+            </button>
+          </div>
+          {draft.source === 'jev' ? <TryPanel draft={draft} token={token} writesEnabled={catalog.writesEnabled} /> : null}
+        </div>
+      ) : null}
+    </article>
   )
 }
 
@@ -799,7 +838,7 @@ export default function AdminPage() {
   const [catalog, setCatalog] = useState<SignalAdminCatalog | null>(null)
   const [error, setError] = useState('')
   const [token, setToken] = useState(readAdminToken)
-  const [algorithmFilter, setAlgorithmFilter] = useState('')
+  const [scopeFilter, setScopeFilter] = useState('')
 
   const load = useCallback(() => {
     fetchSignalAdminCatalog()
@@ -817,12 +856,18 @@ export default function AdminPage() {
     writeAdminToken(next)
   }
 
-  const active = catalog?.signals.filter((signal) => signal.status === 'active') ?? []
-  const general = active.filter((signal) => signal.scope === 'general')
-  const scoped = active.filter((signal) => signal.scope !== 'general' && (!algorithmFilter || signal.scope === algorithmFilter))
-  const archived = catalog?.signals.filter((signal) => signal.status === 'archived') ?? []
+  // One list: general first, then each algorithm; archived signals stay in their group, after the active ones.
+  const visible = (catalog?.signals ?? [])
+    .filter((signal) => !scopeFilter || signal.scope === scopeFilter)
+    .sort((a, b) => Number(a.status === 'archived') - Number(b.status === 'archived'))
   const algorithmName = (slug: string) => catalog?.algorithms.find((algorithm) => algorithm.slug === slug)?.name ?? slug
-  const scopedGroups = [...new Set(scoped.map((signal) => signal.scope))]
+  const groups = [...new Set(visible.map((signal) => signal.scope))].sort(
+    (a, b) => Number(a !== 'general') - Number(b !== 'general'),
+  )
+  const groupCopy = (scope: string) => (scope === 'general'
+    ? 'Asked for every MCQ, in one Jev call with the correctness question.'
+    : `Asked in addition to the general signals when the MCQ's algorithm is ${algorithmName(scope)}.`)
+  const archivedCount = catalog?.signals.filter((signal) => signal.status === 'archived').length ?? 0
 
   return (
     <div className="app app-tune">
@@ -850,11 +895,11 @@ export default function AdminPage() {
 
         <div className="tune-layout">
           <aside className="tune-rail" aria-label="Admin sections">
-            <a href="#correctness">Correctness</a>
-            <a href="#general">General</a>
-            <a href="#algorithm">Algorithm</a>
-            <a href="#archived">Archived</a>
-            <a href="#new-signal">New signal</a>
+            <div className="admin-rail-group">
+              <a href="#mcq" className="admin-rail-group-label">MCQ</a>
+              <a href="#correctness">Correctness</a>
+              <a href="#signals">Signals</a>
+            </div>
           </aside>
 
           <div className="tune-content">
@@ -862,6 +907,7 @@ export default function AdminPage() {
             {!catalog && !error ? <p className="tune-footnote admin-page-error" aria-busy="true">Loading signals…</p> : null}
             {catalog ? (
               <>
+                <div id="mcq" className="admin-anchor" aria-hidden="true" />
                 <TuneSection eyebrow="01" title="Correctness question"
                   copy={'Decides whether the answer was correct. Jev answers "1" (correct) or "0"; the labels are fixed and this question cannot be archived.'}>
                   <div id="correctness">
@@ -869,48 +915,33 @@ export default function AdminPage() {
                   </div>
                 </TuneSection>
 
-                <TuneSection eyebrow="02" title="General signals" copy="Asked for every MCQ, in one Jev call with the correctness question.">
-                  <div id="general" className="admin-signal-list">
-                    {general.map((signal) => <SignalCard key={signal.key} signal={signal} catalog={catalog} token={token} onSaved={load} />)}
-                    {!general.length ? <p className="tune-footnote">No general signals.</p> : null}
-                  </div>
-                </TuneSection>
-
                 <TuneSection
-                  eyebrow="03"
-                  title="Algorithm signals"
-                  copy="Asked in addition to the general signals when the MCQ's algorithm matches."
+                  eyebrow="02"
+                  title="Signals"
+                  copy={`Every MCQ signal, including archived ones${archivedCount ? ` (${archivedCount})` : ''}. Archived signals are not sent to Jev and can be restored; keys are permanent.`}
                   action={(
-                    <select className="admin-filter" aria-label="Filter by algorithm" value={algorithmFilter}
-                      onChange={(event) => setAlgorithmFilter(event.target.value)}>
-                      <option value="">All algorithms</option>
+                    <select className="admin-filter" aria-label="Filter by scope" value={scopeFilter}
+                      onChange={(event) => setScopeFilter(event.target.value)}>
+                      <option value="">All scopes</option>
+                      <option value="general">General</option>
                       {catalog.algorithms.map((algorithm) => <option key={algorithm.slug} value={algorithm.slug}>{algorithm.name}</option>)}
                     </select>
                   )}
                 >
-                  <div id="algorithm" className="admin-signal-list">
-                    {scopedGroups.map((scope) => (
+                  <div id="signals" className="admin-signal-list">
+                    {groups.map((scope) => (
                       <div key={scope} className="admin-signal-group">
-                        <h4>{algorithmName(scope)}</h4>
-                        {scoped.filter((signal) => signal.scope === scope).map((signal) => (
+                        <h4>{scope === 'general' ? 'General' : algorithmName(scope)}</h4>
+                        <p className="admin-signal-group-copy">{groupCopy(scope)}</p>
+                        {visible.filter((signal) => signal.scope === scope).map((signal) => (
                           <SignalCard key={signal.key} signal={signal} catalog={catalog} token={token} onSaved={load} />
                         ))}
                       </div>
                     ))}
-                    {!scoped.length ? <p className="tune-footnote">No algorithm-specific signals{algorithmFilter ? ' for this algorithm' : ''} yet.</p> : null}
-                  </div>
-                </TuneSection>
-
-                <TuneSection eyebrow="04" title="Archived" copy="Not sent to Jev. Keys are permanent, so archived signals can be restored but not deleted.">
-                  <div id="archived" className="admin-signal-list">
-                    {archived.map((signal) => <SignalCard key={signal.key} signal={signal} catalog={catalog} token={token} onSaved={load} />)}
-                    {!archived.length ? <p className="tune-footnote">Nothing archived.</p> : null}
-                  </div>
-                </TuneSection>
-
-                <TuneSection eyebrow="05" title="New signal" copy="Define a Jev question, try it on a stored MCQ, then create it.">
-                  <div id="new-signal">
-                    <NewSignal catalog={catalog} token={token} onSaved={load} />
+                    {!groups.length ? (
+                      <p className="tune-footnote">No signals{scopeFilter ? ` for ${scopeFilter === 'general' ? 'general' : algorithmName(scopeFilter)}` : ''} yet.</p>
+                    ) : null}
+                    <NewSignal catalog={catalog} token={token} defaultScope={scopeFilter || 'general'} onSaved={load} />
                   </div>
                 </TuneSection>
               </>

@@ -6664,10 +6664,6 @@ button.admin-icon-button {
   background: var(--hc-panel-bg);
 }
 
-.admin-signal-archived {
-  opacity: 0.75;
-}
-
 button.admin-signal-summary {
   display: grid;
   width: 100%;
@@ -6868,5 +6864,82 @@ p.admin-success {
 
   .admin-token input {
     width: 7rem;
+  }
+}
+
+/* Admin: modality groups in the rail, one signal list with archived signals deprecated in place. */
+.admin-rail-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.tune-rail a.admin-rail-group-label {
+  color: var(--hc-accent);
+}
+
+.tune-rail .admin-rail-group a:not(.admin-rail-group-label) {
+  padding-left: 1.2rem;
+}
+
+.admin-anchor {
+  scroll-margin-top: 1rem;
+}
+
+.admin-signal-group-copy {
+  margin: -0.35rem 0 0.1rem;
+  color: var(--hc-fg-dim);
+  font-size: 0.74rem;
+}
+
+.admin-signal.admin-signal-archived {
+  border-style: dashed;
+  border-color: var(--hc-border-dim);
+  background: transparent;
+}
+
+/* Only the summary is grayed out, so an opened archived signal stays readable and restorable. */
+.admin-signal-archived .admin-signal-summary {
+  filter: grayscale(1);
+  opacity: 0.7;
+}
+
+.admin-signal-archived .admin-signal-summary,
+.admin-signal-archived .admin-signal-title code,
+.admin-signal-archived .admin-signal-meta {
+  color: var(--faded-ink);
+}
+
+.admin-signal-archived .admin-signal-title strong {
+  color: var(--faded-ink);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.admin-badge-archived {
+  color: var(--faded-ink);
+}
+
+.admin-signal-new {
+  border-style: dashed;
+  background: transparent;
+}
+
+.admin-signal-new .admin-signal-title strong {
+  color: var(--hc-accent);
+}
+
+.admin-signal-new-message {
+  padding: 0 0.85rem 0.7rem;
+}
+
+@media (max-width: 760px) {
+  .tune-rail .admin-rail-group {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .tune-rail .admin-rail-group a:not(.admin-rail-group-label) {
+    padding-left: 0.6rem;
   }
 }
