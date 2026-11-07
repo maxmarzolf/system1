@@ -12,6 +12,8 @@ export type SignalCriteria = Record<string, string | null> | string[] | null
 export type SignalDraft = {
   key: string
   label: string
+  // For admins only; never sent to Jev.
+  description: string
   scope: string
   source: SignalSource
   primitive: SignalPrimitive | null
@@ -185,6 +187,7 @@ export const trySignal = (draft: SignalDraft, problemId: string, choiceId: strin
 export const emptySignalDraft = (): SignalDraft => ({
   key: '',
   label: '',
+  description: '',
   scope: 'general',
   source: 'jev',
   primitive: 'noul',
@@ -203,6 +206,7 @@ export const emptySignalDraft = (): SignalDraft => ({
 export const draftFromSignal = (signal: AdminSignal): SignalDraft => ({
   key: signal.key,
   label: signal.label,
+  description: signal.description ?? '',
   scope: signal.scope,
   source: signal.source,
   primitive: signal.primitive,

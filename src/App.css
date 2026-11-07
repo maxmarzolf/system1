@@ -6943,3 +6943,71 @@ p.admin-success {
     padding-left: 0.6rem;
   }
 }
+
+/* Clickable field help (InfoTip). */
+.info-tip {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+button.info-tip-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05rem;
+  min-width: 0;
+  height: 1.05rem;
+  min-height: 0;
+  margin-left: 0.2rem;
+  padding: 0;
+  border: 1px solid var(--hc-border-dim);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--hc-fg-dim);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: help;
+}
+
+button.info-tip-button:hover,
+button.info-tip-button[aria-expanded='true'] {
+  border-color: var(--hc-accent);
+  color: var(--hc-accent);
+}
+
+.info-tip-bubble {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  z-index: 30;
+  width: max-content;
+  max-width: min(20rem, calc(100vw - 2rem));
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--hc-accent);
+  background: var(--hc-panel-bg);
+  box-shadow: var(--hc-menu-shadow);
+  color: var(--hc-fg);
+  font-size: 0.76rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.5;
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+}
+
+.info-tip-bubble code {
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.7rem;
+  color: var(--hc-accent);
+}
+
+.admin-signal-description {
+  color: var(--hc-fg-dim);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}

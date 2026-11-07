@@ -641,6 +641,7 @@ class SignalDefinitionDraft(BaseModel):
 
     key: str = Field(default="", max_length=64)
     label: str = ""
+    description: str = ""
     scope: str = "general"
     source: str = "jev"
     primitive: str | None = None

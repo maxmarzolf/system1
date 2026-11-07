@@ -23,6 +23,7 @@ APPLIES_WHEN = ("always", "correct", "incorrect")
 MAX_CHOICE_LABELS = 255
 MAX_LABEL_LENGTH = 120
 MAX_INSTRUCTIONS_LENGTH = 4000
+MAX_DESCRIPTION_LENGTH = 2000
 
 SignalErrors = dict[str, str]
 
@@ -60,6 +61,7 @@ def normalize_definition(draft: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "key": _text(draft.get("key")),
         "label": _text(draft.get("label")),
+        "description": _text(draft.get("description")),
         "scope": _text(draft.get("scope")) or GENERAL_SCOPE,
         "source": source,
         "primitive": primitive,
@@ -129,6 +131,8 @@ def validate_definition(
         errors["key"] = f"{CORRECTNESS_QUESTION_ID!r} is reserved for the correctness question."
     if not definition["label"] or len(definition["label"]) > MAX_LABEL_LENGTH:
         errors["label"] = f"Label must be 1-{MAX_LABEL_LENGTH} characters."
+    if len(definition["description"]) > MAX_DESCRIPTION_LENGTH:
+        errors["description"] = f"Description is limited to {MAX_DESCRIPTION_LENGTH} characters."
     if definition["scope"] != GENERAL_SCOPE and definition["scope"] not in algorithm_slugs:
         errors["scope"] = "Scope must be general or an existing algorithm."
     if definition["source"] not in SOURCES:

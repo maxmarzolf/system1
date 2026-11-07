@@ -47,6 +47,7 @@ def test_every_seed_definition_is_valid(definition) -> None:
         ({"key": "Bad Key"}, "key"),
         ({"key": "correctness"}, "key"),
         ({"label": ""}, "label"),
+        ({"description": "x" * 2001}, "description"),
         ({"scope": "astrology"}, "scope"),
         ({"primitive": "ranking"}, "primitive"),
         ({"instructions": ""}, "instructions"),

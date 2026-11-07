@@ -62,6 +62,7 @@ def _jev(key: str, label: str, primitive: str, instructions: str, **fields: Any)
         "modality": MCQ_MODALITY,
         "scope": GENERAL_SCOPE,
         "label": label,
+        "description": "",
         "source": "jev",
         "primitive": primitive,
         "implementation": None,
@@ -86,6 +87,7 @@ DEFAULT_MCQ_DEFINITIONS: tuple[dict[str, Any], ...] = (
         f"or invariant the question is testing? {STATE_IS_DATA}",
         axis="fidelity",
         weight=0.25,
+        description="Whether the chosen answer shows the person recognized the core concept the question tests, even when the pick is wrong. Feeds the fidelity axis.",
     ),
     _jev(
         "nearMiss",
@@ -99,6 +101,7 @@ DEFAULT_MCQ_DEFINITIONS: tuple[dict[str, Any], ...] = (
         ],
         applies_when="incorrect",
         weight=0.1,
+        description="For wrong answers only: how close the pick was to the right reasoning, so near misses score above unrelated picks.",
     ),
     _jev(
         "distractorMisconception",
@@ -117,12 +120,14 @@ DEFAULT_MCQ_DEFINITIONS: tuple[dict[str, Any], ...] = (
         },
         role="diagnostic",
         applies_when="incorrect",
+        description="For wrong answers only: the most likely misconception behind the pick. Recorded for coaching and analytics; never scored.",
     ),
     {
         **_jev("completionTime", "Speed and fluency", "noul", ""),
         "source": "deterministic",
         "primitive": None,
         "implementation": "completionTime",
+        "description": "Answer time: 100 at 10s or faster, falling linearly to 0 at 90s. Computed locally; no Jev call.",
         "role": "modifier",
         "axis": "fluency",
         "weight": 0.05,

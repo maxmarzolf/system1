@@ -239,6 +239,8 @@ CREATE TABLE IF NOT EXISTS signal_definition (
     -- 'general' applies to every submission of the modality; otherwise an algorithm slug.
     scope VARCHAR(80) NOT NULL DEFAULT 'general',
     label TEXT NOT NULL,
+    -- For admins only; never sent to Jev (that is what instructions and criteria are for).
+    description TEXT NOT NULL DEFAULT '',
     source VARCHAR(20) NOT NULL CHECK (source IN ('jev', 'deterministic')),
     primitive VARCHAR(10) CHECK (primitive IN ('choice', 'score', 'noul')),
     implementation VARCHAR(64),

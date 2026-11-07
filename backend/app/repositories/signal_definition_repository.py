@@ -6,12 +6,12 @@ from typing import Any
 from app.repositories.base import acquire_connection
 
 DEFINITION_COLUMNS = """
-    key, modality, scope, label, source, primitive, implementation, instructions, criteria, score_map,
+    key, modality, scope, label, description, source, primitive, implementation, instructions, criteria, score_map,
     role, axis, applies_when, needs_correctness, weight, display_order, status, version,
     created_at, updated_at, archived_at
 """
 WRITABLE_COLUMNS = (
-    "scope", "label", "source", "primitive", "implementation", "instructions", "criteria", "score_map",
+    "scope", "label", "description", "source", "primitive", "implementation", "instructions", "criteria", "score_map",
     "role", "axis", "applies_when", "needs_correctness", "weight", "display_order",
 )
 JSON_COLUMN_TYPES = {"criteria": "json", "score_map": "jsonb"}

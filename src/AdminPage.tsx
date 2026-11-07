@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import TopNav from './TopNav'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import { TuneSection } from './tuneControls'
+import InfoTip from './InfoTip'
+import { SIGNAL_FIELD_HELP } from './signalFieldHelp'
 import {
   SignalAdminError,
   createSignal,
@@ -123,7 +125,7 @@ function ChoiceCriteriaEditor({
       <div className={showScores ? 'admin-criteria-head admin-criteria-head-scored' : 'admin-criteria-head'}>
         <span>Label</span>
         <span>Description sent to Jev</span>
-        {showScores ? <span>Score 0–100</span> : null}
+        {showScores ? <span>Score 0–100 <InfoTip label="score map">{SIGNAL_FIELD_HELP.scoreMap}</InfoTip></span> : null}
         <span aria-hidden="true" />
       </div>
       {rows.map((row, index) => (
@@ -217,11 +219,11 @@ function NoulCriteriaEditor({
   return (
     <div className="admin-control-pair">
       <label className="tune-control">
-        <span className="tune-control-label">Yes means (optional)</span>
+        <span className="tune-control-label">Yes means (optional) <InfoTip label="yes outcome">{SIGNAL_FIELD_HELP.criteria.noul}</InfoTip></span>
         <input value={criteria.true ?? ''} onChange={(event) => update('true', event.target.value)} />
       </label>
       <label className="tune-control">
-        <span className="tune-control-label">No means (optional)</span>
+        <span className="tune-control-label">No means (optional) <InfoTip label="no outcome">{SIGNAL_FIELD_HELP.criteria.noul}</InfoTip></span>
         <input value={criteria.false ?? ''} onChange={(event) => update('false', event.target.value)} />
       </label>
     </div>
@@ -254,20 +256,34 @@ function SignalEditor({
     <div className="admin-editor">
       <div className="admin-control-pair">
         <label className="tune-control">
-          <span className="tune-control-label">Key {isNew ? '' : '(permanent)'}</span>
+          <span className="tune-control-label">Key {isNew ? '' : '(permanent)'} <InfoTip label="key">{SIGNAL_FIELD_HELP.key}</InfoTip></span>
           <input value={draft.key} disabled={!isNew} placeholder="heapInvariant" onChange={(event) => set('key', event.target.value)} />
           <FieldError errors={errors} field="key" />
         </label>
         <label className="tune-control">
-          <span className="tune-control-label">Label</span>
+          <span className="tune-control-label">Label <InfoTip label="label">{SIGNAL_FIELD_HELP.label}</InfoTip></span>
           <input value={draft.label} onChange={(event) => set('label', event.target.value)} />
           <FieldError errors={errors} field="label" />
         </label>
       </div>
 
+      <label className="tune-control">
+        <span className="tune-control-label">
+          Description (admins only, not sent to Jev) <InfoTip label="description">{SIGNAL_FIELD_HELP.description}</InfoTip>
+        </span>
+        <textarea
+          className="admin-textarea"
+          rows={2}
+          value={draft.description}
+          placeholder="What this signal is for and how to read it."
+          onChange={(event) => set('description', event.target.value)}
+        />
+        <FieldError errors={errors} field="description" />
+      </label>
+
       <div className="admin-control-pair">
         <label className="tune-control">
-          <span className="tune-control-label">Scope</span>
+          <span className="tune-control-label">Scope <InfoTip label="scope">{SIGNAL_FIELD_HELP.scope}</InfoTip></span>
           <select value={draft.scope} onChange={(event) => set('scope', event.target.value)}>
             <option value="general">General — every MCQ</option>
             {catalog.algorithms.map((algorithm) => (
@@ -277,7 +293,7 @@ function SignalEditor({
           <FieldError errors={errors} field="scope" />
         </label>
         <label className="tune-control">
-          <span className="tune-control-label">Source</span>
+          <span className="tune-control-label">Source <InfoTip label="source">{SIGNAL_FIELD_HELP.source}</InfoTip></span>
           <select
             value={draft.source}
             disabled={!isNew}
@@ -297,7 +313,7 @@ function SignalEditor({
 
       {draft.source === 'deterministic' ? (
         <label className="tune-control">
-          <span className="tune-control-label">Implementation</span>
+          <span className="tune-control-label">Implementation <InfoTip label="implementation">{SIGNAL_FIELD_HELP.implementation}</InfoTip></span>
           <select value={draft.implementation ?? ''} disabled={!isNew} onChange={(event) => set('implementation', event.target.value)}>
             {catalog.implementations.map((implementation) => (
               <option key={implementation.name} value={implementation.name}>{implementation.name}</option>
@@ -311,7 +327,7 @@ function SignalEditor({
       ) : (
         <>
           <label className="tune-control">
-            <span className="tune-control-label">Jev primitive</span>
+            <span className="tune-control-label">Jev primitive <InfoTip label="Jev primitive">{SIGNAL_FIELD_HELP.primitive}</InfoTip></span>
             <select value={draft.primitive ?? 'noul'} onChange={(event) => setPrimitive(event.target.value as SignalPrimitive)}>
               {(Object.keys(PRIMITIVE_LABELS) as SignalPrimitive[]).map((primitive) => (
                 <option key={primitive} value={primitive}>{PRIMITIVE_LABELS[primitive]}</option>
@@ -320,7 +336,7 @@ function SignalEditor({
             <FieldError errors={errors} field="primitive" />
           </label>
           <label className="tune-control">
-            <span className="tune-control-label">Instructions (the question Jev answers)</span>
+            <span className="tune-control-label">Instructions (the question Jev answers) <InfoTip label="instructions">{SIGNAL_FIELD_HELP.instructions}</InfoTip></span>
             <textarea
               className="admin-textarea"
               rows={3}
@@ -336,7 +352,7 @@ function SignalEditor({
             <FieldError errors={errors} field="instructions" />
           </label>
           <div className="tune-control">
-            <span className="tune-control-label">Criteria</span>
+            <span className="tune-control-label">Criteria <InfoTip label="criteria">{SIGNAL_FIELD_HELP.criteria[draft.primitive ?? 'noul']}</InfoTip></span>
             {draft.primitive === 'choice' ? (
               <ChoiceCriteriaEditor
                 key={`${draft.key}-choice`}
@@ -361,14 +377,14 @@ function SignalEditor({
 
       <div className="admin-control-grid">
         <label className="tune-control">
-          <span className="tune-control-label">Role</span>
+          <span className="tune-control-label">Role <InfoTip label="role">{SIGNAL_FIELD_HELP.role}</InfoTip></span>
           <select value={draft.role} onChange={(event) => set('role', event.target.value as SignalRole)}>
             {(Object.keys(ROLE_LABELS) as SignalRole[]).map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
           </select>
           <FieldError errors={errors} field="role" />
         </label>
         <label className="tune-control">
-          <span className="tune-control-label">Weight</span>
+          <span className="tune-control-label">Weight <InfoTip label="weight">{SIGNAL_FIELD_HELP.weight}</InfoTip></span>
           <input
             type="number"
             min={0}
@@ -381,7 +397,7 @@ function SignalEditor({
           <FieldError errors={errors} field="weight" />
         </label>
         <label className="tune-control">
-          <span className="tune-control-label">Applies</span>
+          <span className="tune-control-label">Applies <InfoTip label="applies">{SIGNAL_FIELD_HELP.appliesWhen}</InfoTip></span>
           <select value={draft.appliesWhen} onChange={(event) => set('appliesWhen', event.target.value as SignalAppliesWhen)}>
             {(Object.keys(APPLIES_LABELS) as SignalAppliesWhen[]).map((value) => (
               <option key={value} value={value}>{APPLIES_LABELS[value]}</option>
@@ -390,7 +406,7 @@ function SignalEditor({
           <FieldError errors={errors} field="appliesWhen" />
         </label>
         <label className="tune-control">
-          <span className="tune-control-label">Axis</span>
+          <span className="tune-control-label">Axis <InfoTip label="axis">{SIGNAL_FIELD_HELP.axis}</InfoTip></span>
           <select value={draft.axis ?? ''} onChange={(event) => set('axis', (event.target.value || null) as SignalAxis | null)}>
             <option value="">None</option>
             <option value="fidelity">Fidelity</option>
@@ -400,7 +416,7 @@ function SignalEditor({
           <FieldError errors={errors} field="axis" />
         </label>
         <label className="tune-control">
-          <span className="tune-control-label">Display order</span>
+          <span className="tune-control-label">Display order <InfoTip label="display order">{SIGNAL_FIELD_HELP.displayOrder}</InfoTip></span>
           <input type="number" step={10} value={draft.displayOrder}
             onChange={(event) => set('displayOrder', Number.parseInt(event.target.value, 10) || 0)} />
         </label>
@@ -408,7 +424,10 @@ function SignalEditor({
       {draft.source === 'jev' ? (
         <label className="tune-toggle">
           <input type="checkbox" checked={draft.needsCorrectness} onChange={(event) => set('needsCorrectness', event.target.checked)} />
-          <span>Needs the correctness result (adds <code>answeredCorrectly</code>; costs a second Jev call)</span>
+          <span>
+            Needs the correctness result (adds <code>answeredCorrectly</code>; costs a second Jev call){' '}
+            <InfoTip label="needs the correctness result">{SIGNAL_FIELD_HELP.needsCorrectness}</InfoTip>
+          </span>
         </label>
       ) : null}
 
@@ -471,7 +490,7 @@ function TryPanel({ draft, token, writesEnabled }: { draft: SignalDraft; token: 
         {samples?.length ? (
           <>
             <label className="tune-control">
-              <span className="tune-control-label">Stored question</span>
+              <span className="tune-control-label">Stored question <InfoTip label="stored question">{SIGNAL_FIELD_HELP.tryQuestion}</InfoTip></span>
               <select value={problemId} onChange={(event) => {
                 const next = samples.find((item) => item.id === event.target.value)
                 setProblemId(event.target.value)
@@ -481,7 +500,7 @@ function TryPanel({ draft, token, writesEnabled }: { draft: SignalDraft; token: 
               </select>
             </label>
             <label className="tune-control">
-              <span className="tune-control-label">Submitted answer</span>
+              <span className="tune-control-label">Submitted answer <InfoTip label="submitted answer">{SIGNAL_FIELD_HELP.tryAnswer}</InfoTip></span>
               <select value={choiceId} onChange={(event) => setChoiceId(event.target.value)}>
                 {sample?.choices.map((choice) => (
                   <option key={choice.id} value={choice.id}>
@@ -606,6 +625,7 @@ function SignalCard({
           {archived ? <span className="admin-badge admin-badge-archived">Archived</span> : null}
           {dirty ? <span className="admin-badge admin-badge-warning">Unsaved</span> : null}
         </span>
+        {signal.description ? <span className="admin-signal-description">{signal.description}</span> : null}
         <span className="admin-signal-meta">
           <span>{describeResponse(signal)}</span>
           <span>{signal.role}</span>
@@ -698,7 +718,7 @@ function DirectiveEditor({
   return (
     <div className="admin-editor">
       <label className="tune-control">
-        <span className="tune-control-label">Instructions</span>
+        <span className="tune-control-label">Instructions <InfoTip label="correctness instructions">{SIGNAL_FIELD_HELP.directiveInstructions}</InfoTip></span>
         <textarea className="admin-textarea" rows={3} value={draft.instructions}
           onChange={(event) => setDraft({ ...draft, instructions: event.target.value })} />
         <FieldError errors={errors} field="instructions" />
@@ -707,7 +727,10 @@ function DirectiveEditor({
         {(['1', '0'] as const).map((label) => (
           <label key={label} className="tune-control">
             <span className="tune-control-label">
-              Label <code>{label}</code> {label === '1' ? '— answered correctly' : '— answered incorrectly'} (fixed)
+              Label <code>{label}</code> {label === '1' ? '— answered correctly' : '— answered incorrectly'} (fixed){' '}
+              <InfoTip label={`label ${label}`}>
+                {label === '1' ? SIGNAL_FIELD_HELP.directiveCorrect : SIGNAL_FIELD_HELP.directiveIncorrect}
+              </InfoTip>
             </span>
             <input value={draft.criteria[label]}
               onChange={(event) => setDraft({ ...draft, criteria: { ...draft.criteria, [label]: event.target.value } })} />
@@ -717,7 +740,7 @@ function DirectiveEditor({
       <FieldError errors={errors} field="criteria" />
       <div className="admin-control-pair">
         <label className="tune-control">
-          <span className="tune-control-label">Weight</span>
+          <span className="tune-control-label">Weight <InfoTip label="correctness weight">{SIGNAL_FIELD_HELP.directiveWeight}</InfoTip></span>
           <input type="number" min={0} max={1} step={0.05} value={draft.correctnessWeight}
             onChange={(event) => setDraft({ ...draft, correctnessWeight: Number.parseFloat(event.target.value) || 0 })} />
           <span className="tune-control-description">{formatShare(directive.weightShare)} of a general MCQ's overall score.</span>

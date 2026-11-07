@@ -11,6 +11,7 @@ from app.core import core_algorithms, core_meta
 from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG, CORE_META_CATALOG
 from app.core.core_algorithm_practice import CORE_ALGORITHM_CARD_ID_PREFIX
 from app.core.signal_catalog import DEFAULT_SIGNAL_SPEC, get_signal_spec, spec_to_json
+from app.core.signals.mcq import DEFAULT_MCQ_DEFINITIONS
 from app.core.taxonomy_catalog import ALGORITHMS, CANONICAL_SKILLS, TECHNIQUES
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
@@ -71,6 +72,7 @@ async def _apply_schema_upgrades(db_pool: asyncpg.Pool) -> None:
             """,
             json.dumps({**DEFAULT_SIGNAL_SPEC.reference(), "version": 0}),
         )
+        await _add_signal_descriptions(conn)
         # Core catalog cards are submitted as '<prefix><problem slug>'; link them to their problem.
         await conn.execute(
             """
@@ -81,6 +83,25 @@ async def _apply_schema_upgrades(db_pool: asyncpg.Pool) -> None:
               AND s.generated_card_id = $1 || p.slug
             """,
             CORE_ALGORITHM_CARD_ID_PREFIX,
+        )
+
+
+async def _add_signal_descriptions(conn: asyncpg.Connection) -> None:
+    """Add signal_definition.description; when the column is new, describe the seeded signals."""
+    exists = await conn.fetchval(
+        """
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'signal_definition' AND column_name = 'description'
+        """
+    )
+    if exists:
+        return
+    await conn.execute("ALTER TABLE signal_definition ADD COLUMN description TEXT NOT NULL DEFAULT ''")
+    for definition in DEFAULT_MCQ_DEFINITIONS:
+        await conn.execute(
+            "UPDATE signal_definition SET description = $2 WHERE key = $1 AND description = ''",
+            definition["key"],
+            definition["description"],
         )
 
 

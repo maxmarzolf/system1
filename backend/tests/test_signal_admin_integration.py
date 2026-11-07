@@ -308,3 +308,29 @@ def test_try_runs_a_draft_against_a_stored_question_without_saving(admin) -> Non
     assert "draftSignal" not in {signal["key"] for signal in _signals(client)["signals"]}
     assert any(sample["id"] == problem_id for sample in samples)
     assert json.dumps(samples)  # serializable for the picker
+
+
+@pytest.mark.integration
+def test_descriptions_are_for_admins_only(admin) -> None:
+    client, gateway, problem_id = admin
+    concept = _signal(_signals(client), "conceptRecognition")
+    assert concept["description"]  # seeded signals come with a description
+
+    before = _submit(client, problem_id, "sliding-window")["evaluation"]["signalSpec"]["hash"]
+    updated = client.put(
+        "/api/admin/signals/conceptRecognition",
+        json={**concept, "description": "ITEST: admin-only note"},
+        headers=HEADERS,
+    )
+    after_result = _submit(client, problem_id, "sliding-window")
+    _state, questions = gateway.calls[-1]
+
+    assert updated.status_code == 200 and updated.json()["description"] == "ITEST: admin-only note"
+    assert "ITEST" not in json.dumps(questions)
+    assert after_result["evaluation"]["signalSpec"]["hash"] == before
+    too_long = client.put(
+        "/api/admin/signals/conceptRecognition",
+        json={**updated.json(), "description": "x" * 2001},
+        headers=HEADERS,
+    )
+    assert too_long.status_code == 422 and "description" in too_long.json()["detail"]["errors"]
