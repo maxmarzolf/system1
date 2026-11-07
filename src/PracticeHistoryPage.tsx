@@ -27,13 +27,9 @@ export default function PracticeHistoryPage() {
   // Algorithm slug the day detail shows; '' shows every algorithm.
   const [selectedAlgorithm, setSelectedAlgorithm] = useState('')
 
-  const clearFilters = () => {
-    setSelectedDate(null)
-    setSelectedAlgorithm('')
-  }
-  // Clicking the date or algorithm that is already selected clears every filter.
-  const selectDate = (date: string) => (date === selectedDate ? clearFilters() : setSelectedDate(date))
-  const selectAlgorithm = (slug: string) => (slug === selectedAlgorithm ? clearFilters() : setSelectedAlgorithm(slug))
+  // Clicking the date or algorithm that is already selected clears just that filter.
+  const selectDate = (date: string) => setSelectedDate(current => (current === date ? null : date))
+  const selectAlgorithm = (slug: string) => setSelectedAlgorithm(current => (current === slug ? '' : slug))
 
   useEffect(() => {
     const controller = new AbortController()
@@ -87,7 +83,6 @@ export default function PracticeHistoryPage() {
         <HistoryDayDetail
           date={selectedDate}
           algorithmFilter={selectedAlgorithm}
-          onAlgorithmFilterChange={setSelectedAlgorithm}
           algorithmNames={Object.fromEntries(skillMapOverview.algorithms.map(algorithm => [algorithm.slug, algorithm.algorithm]))}
         />
       ) : null}

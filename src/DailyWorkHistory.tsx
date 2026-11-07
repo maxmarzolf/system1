@@ -121,7 +121,7 @@ export default function DailyWorkHistory({
                   key={row.slug}
                   type="button"
                   className={`daily-work-history-lane-label${selected ? ' daily-work-history-lane-label-selected' : ''}`}
-                  title={selected ? 'Clear the day and algorithm filters' : `Show only ${row.label}`}
+                  title={selected ? 'Show every algorithm' : `Show only ${row.label}`}
                   aria-pressed={selected}
                   onClick={() => onSelectAlgorithm(row.slug)}
                 >
@@ -172,7 +172,7 @@ export default function DailyWorkHistory({
                   const total = dayTotals.get(date) ?? 0
                   const selected = date === selectedDate
                   const label = selected
-                    ? `${formatCalendarWeekday(date)} ${formatCalendarDate(date)} is selected: clear the day and algorithm filters`
+                    ? `${formatCalendarWeekday(date)} ${formatCalendarDate(date)} is selected: click to clear the day`
                     : `${formatCalendarWeekday(date)} ${formatCalendarDate(date)}: ${
                       total ? `${total} submission${total === 1 ? '' : 's'}` : 'no work'
                     }`

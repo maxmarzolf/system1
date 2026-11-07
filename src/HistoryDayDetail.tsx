@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { apiUrl } from './api'
 import { formatLongCalendarDate, viewerTimeZone } from './dailyWork'
 import SubmissionSignalDetails from './SubmissionSignalDetails'
@@ -134,13 +134,11 @@ function SubmissionCard({ submission }: { submission: HistorySubmission }) {
 export default function HistoryDayDetail({
   date,
   algorithmFilter,
-  onAlgorithmFilterChange,
   algorithmNames,
 }: {
   date: string | null
-  /** Algorithm slug to show; '' shows every algorithm. Shared with the grid's algorithm labels. */
+  /** Algorithm slug to show; '' shows every algorithm. Set from the grid's algorithm labels. */
   algorithmFilter: string
-  onAlgorithmFilterChange: (slug: string) => void
   algorithmNames: Record<string, string>
 }) {
   const [day, setDay] = useState<HistoryDay | null>(null)
@@ -164,15 +162,6 @@ export default function HistoryDayDetail({
   }, [date])
 
   const loaded = day && day.date === date ? day : null
-  const algorithms = useMemo(() => {
-    const seen = new Map<string, string>()
-    for (const submission of loaded?.submissions ?? []) {
-      for (const algorithm of submission.algorithms) seen.set(algorithm.slug, algorithm.algorithm)
-    }
-    // Keep the active filter selectable even on a day without that algorithm, so it can be cleared here too.
-    if (algorithmFilter && !seen.has(algorithmFilter)) seen.set(algorithmFilter, algorithmNames[algorithmFilter] ?? algorithmFilter)
-    return [...seen.entries()]
-  }, [algorithmFilter, algorithmNames, loaded])
   const submissions = (loaded?.submissions ?? []).filter(
     (submission) => !algorithmFilter || submission.algorithms.some((algorithm) => algorithm.slug === algorithmFilter),
   )
@@ -187,24 +176,10 @@ export default function HistoryDayDetail({
           {loaded ? (
             <p className="history-day-summary">
               {submissions.length} submission{submissions.length === 1 ? '' : 's'} · {correct} correct
+              {algorithmFilter ? ` · ${algorithmNames[algorithmFilter] ?? algorithmFilter} only` : ''}
             </p>
           ) : null}
         </div>
-        {algorithms.length > 1 || algorithmFilter ? (
-          <div className="daily-work-history-ranges" role="group" aria-label="Filter by algorithm">
-            <button type="button" className={`daily-work-history-range${algorithmFilter ? '' : ' daily-work-history-range-active'}`}
-              aria-pressed={!algorithmFilter} onClick={() => onAlgorithmFilterChange('')}>
-              All
-            </button>
-            {algorithms.map(([slug, name]) => (
-              <button key={slug} type="button"
-                className={`daily-work-history-range${algorithmFilter === slug ? ' daily-work-history-range-active' : ''}`}
-                aria-pressed={algorithmFilter === slug} onClick={() => onAlgorithmFilterChange(slug)}>
-                {name}
-              </button>
-            ))}
-          </div>
-        ) : null}
       </div>
       {!date ? <p className="dashboard-mode-meta">Select a date on the grid, or a highlighted square, to see the work completed that day.</p> : null}
       {error ? <p className="coach-error" role="alert">{error}</p> : null}
