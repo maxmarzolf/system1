@@ -7328,7 +7328,7 @@ button.daily-work-history-x-day-selected:hover {
   opacity: 0.45;
 }
 
-/* Signal loss landscape (History): a holographic three.js scene in the shared card. */
+/* Signal score terrain (History): a three.js scene drawn straight on the page. */
 /* No card: the landscape sits directly on the page, and its canvas spans the whole browser window
    (placed by SignalHologram), so zooming in runs to the window's edges, not a box's. */
 .signal-hologram {
@@ -7338,8 +7338,7 @@ button.daily-work-history-x-day-selected:hover {
 
 /* Page chrome stays above the full-window canvas and clickable. */
 .app-history .navbar,
-.signal-hologram-header,
-.signal-hologram-hint {
+.signal-hologram-header {
   position: relative;
   z-index: 2;
 }
@@ -7374,10 +7373,12 @@ button.daily-work-history-x-day-selected:hover {
   height: 100%;
 }
 
+/* Lives inside the full-window stage: the bottom-right corner of the screen. */
 .signal-hologram-hint {
   position: absolute;
-  right: 0.25rem;
-  bottom: 0.75rem;
+  right: 1rem;
+  bottom: 0.9rem;
+  z-index: 2;
   margin: 0;
   color: color-mix(in srgb, var(--hc-accent) 70%, var(--hc-fg-dim));
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
@@ -7437,7 +7438,13 @@ button.daily-work-history-x-day-selected:hover {
   background: linear-gradient(90deg, var(--hc-accent), var(--hc-warning), var(--hc-error));
 }
 
-.signal-hologram-legend-note {
-  color: color-mix(in srgb, var(--hc-fg-dim) 80%, transparent);
-  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+.signal-hologram-title {
+  max-width: 34rem;
+}
+
+.signal-hologram-explainer {
+  margin: 0.35rem 0 0;
+  color: var(--hc-fg-dim);
+  font-size: 0.74rem;
+  line-height: 1.45;
 }

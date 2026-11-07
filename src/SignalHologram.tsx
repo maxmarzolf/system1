@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { apiUrl } from './api'
 import { formatCalendarDate, viewerTimeZone } from './dailyWork'
+import InfoTip from './InfoTip'
 import { useTheme } from './theme'
 
 type SignalPoint = {
@@ -33,7 +34,7 @@ const POINT_SIZE = 0.32
 const LANDSCAPE_ROWS = 48 // samples along time, front to back
 const LANDSCAPE_SUBDIVISIONS = 6 // samples between neighbouring signals
 const TIME_BANDWIDTH = 0.07 // smoothing kernel width, as a fraction of the whole time span
-const PRIOR_WEIGHT = 0.2 // pull toward a signal's mean loss where it has no nearby answers
+const PRIOR_WEIGHT = 0.2 // pull toward a signal's mean shortfall where it has no nearby answers
 
 const cssColor = (name: string, fallback: string) => {
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -43,6 +44,17 @@ const cssColor = (name: string, fallback: string) => {
     return new THREE.Color(fallback)
   }
 }
+
+const SCORE_EXPLANATION = (
+  <>
+    Every graded answer gives each signal a score from 0 to 100. <strong>Correct choice</strong>: 100 if the answer
+    was right, 0 if not. <strong>Yes/no signals</strong> (e.g. concept recognition): how likely Jev judged the answer
+    to be a yes, times 100. <strong>Scale signals</strong> (e.g. near miss): where the answer landed on the scale,
+    e.g. the middle of three levels is 50. <strong>Recall signals</strong>: the assessor&rsquo;s 0&ndash;100 rating of
+    that part of your code. <strong>Speed</strong>: 100 at 10 seconds or faster, falling to 0 at 90 seconds. Signals
+    that didn&rsquo;t apply to an answer, like near miss on a correct one, aren&rsquo;t plotted.
+  </>
+)
 
 const LABEL_FONT = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace"
 
@@ -90,19 +102,19 @@ const webglAvailable = () => {
   }
 }
 
-const lossOf = (score: number) => 100 - score
+const shortfallOf = (score: number) => 100 - score
 
 /**
- * Loss (100 - score) for each signal at each time row, Gaussian-smoothed over time.
- * Rows with no nearby answers relax toward that signal's mean loss.
+ * Shortfall (100 - score) for each signal at each time row, Gaussian-smoothed over time.
+ * Rows with no nearby answers relax toward that signal's mean shortfall.
  */
-function signalLossRows(history: SignalHistory, tMin: number, tMax: number): number[][] {
+function signalShortfallRows(history: SignalHistory, tMin: number, tMax: number): number[][] {
   const fractionOf = (time: number) => (tMax === tMin ? 0.5 : (time - tMin) / (tMax - tMin))
   return history.signals.map((signal) => {
     const samples = history.points
       .filter((point) => point.signal === signal.key)
-      .map((point) => ({ at: fractionOf(Date.parse(point.createdAt)), loss: lossOf(point.score) }))
-    const mean = samples.reduce((total, sample) => total + sample.loss, 0) / Math.max(samples.length, 1)
+      .map((point) => ({ at: fractionOf(Date.parse(point.createdAt)), shortfall: shortfallOf(point.score) }))
+    const mean = samples.reduce((total, sample) => total + sample.shortfall, 0) / Math.max(samples.length, 1)
     return Array.from({ length: LANDSCAPE_ROWS }, (_, row) => {
       const at = row / (LANDSCAPE_ROWS - 1)
       let weights = PRIOR_WEIGHT
@@ -110,7 +122,7 @@ function signalLossRows(history: SignalHistory, tMin: number, tMax: number): num
       for (const sample of samples) {
         const weight = Math.exp(-((at - sample.at) ** 2) / (2 * TIME_BANDWIDTH ** 2))
         weights += weight
-        total += weight * sample.loss
+        total += weight * sample.shortfall
       }
       return total / weights
     })
@@ -151,9 +163,9 @@ function mountHologram(
   const accent = cssColor('--hc-accent', '#6fc3df')
   const partial = cssColor('--hc-warning', '#cca700')
   const failing = cssColor('--hc-error', '#f48771')
-  // Valleys (low loss) glow in the accent color, rising through warning to error at the peaks.
-  const lossColor = (loss: number) => {
-    const t = Math.min(Math.max(loss / 100, 0), 1)
+  // Valleys (low shortfall) glow in the accent color, rising through warning to error at the peaks.
+  const shortfallColor = (shortfall: number) => {
+    const t = Math.min(Math.max(shortfall / 100, 0), 1)
     return t < 0.5 ? accent.clone().lerp(partial, t / 0.5) : partial.clone().lerp(failing, (t - 0.5) / 0.5)
   }
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -175,28 +187,28 @@ function mountHologram(
   const xOf = (key: string) => (signalIndex.get(key) ?? 0) * SIGNAL_SPACING - width / 2
   // Newest answers sit at the front, nearest the viewer.
   const zOf = (time: number) => (tMax === tMin ? 0 : ((time - tMin) / (tMax - tMin) - 0.5) * TIME_DEPTH)
-  const yOf = (loss: number) => (loss / 100) * SCORE_HEIGHT
+  const yOf = (shortfall: number) => (shortfall / 100) * SCORE_HEIGHT
 
   const hologram = new THREE.Group()
   scene.add(hologram)
 
-  // The landscape: one surface over signals (x) and time (depth), height = smoothed loss.
-  const lossRows = signalLossRows(history, tMin, tMax)
+  // The landscape: one surface over signals (x) and time (depth), height = smoothed shortfall.
+  const shortfallRows = signalShortfallRows(history, tMin, tMax)
   const columnCount = Math.max(signals.length - 1, 1) * LANDSCAPE_SUBDIVISIONS + 1
-  const columnLoss = (column: number, row: number) => {
+  const columnShortfall = (column: number, row: number) => {
     const at = signals.length > 1 ? column / LANDSCAPE_SUBDIVISIONS : 0
     const left = Math.min(Math.floor(at), signals.length - 1)
     const right = Math.min(left + 1, signals.length - 1)
     const blend = (1 - Math.cos((at - left) * Math.PI)) / 2 // cosine ease between neighbouring signals
-    return lossRows[left][row] * (1 - blend) + lossRows[right][row] * blend
+    return shortfallRows[left][row] * (1 - blend) + shortfallRows[right][row] * blend
   }
   const vertexAt = (column: number, row: number) => {
-    const loss = columnLoss(column, row)
+    const shortfall = columnShortfall(column, row)
     return {
       x: (column / (columnCount - 1)) * width - width / 2,
-      y: yOf(loss),
+      y: yOf(shortfall),
       z: (row / (LANDSCAPE_ROWS - 1) - 0.5) * TIME_DEPTH,
-      color: lossColor(loss),
+      color: shortfallColor(shortfall),
     }
   }
   const surfacePositions: number[] = []
@@ -254,13 +266,13 @@ function mountHologram(
     new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: light ? 0.8 : 0.7, blending, depthWrite: false }),
   ))
 
-  // Each actual answer, as a marker at its own loss.
+  // Each actual answer, as a marker at its own shortfall.
   const positions: number[] = []
   const colors: number[] = []
   for (const point of history.points) {
-    const loss = lossOf(point.score)
-    const color = lossColor(loss)
-    positions.push(xOf(point.signal), yOf(loss), zOf(Date.parse(point.createdAt)))
+    const shortfall = shortfallOf(point.score)
+    const color = shortfallColor(shortfall)
+    positions.push(xOf(point.signal), yOf(shortfall), zOf(Date.parse(point.createdAt)))
     colors.push(color.r, color.g, color.b)
   }
   const pointGeometry = new THREE.BufferGeometry()
@@ -476,22 +488,28 @@ export default function SignalHologram() {
     : ''
 
   return (
-    <section ref={sectionRef} className="signal-hologram" aria-label="Signal loss landscape">
+    <section ref={sectionRef} className="signal-hologram" aria-label="Signal score terrain">
       <div className="signal-hologram-header">
-        <div>
-          <p className="dashboard-activity-eyebrow">Signal Loss Landscape</p>
+        <div className="signal-hologram-title">
+          <p className="dashboard-activity-eyebrow">
+            Signal Score Terrain{' '}
+            <InfoTip label="what a signal score is">{SCORE_EXPLANATION}</InfoTip>
+          </p>
           {summary ? <p className="history-day-summary">{summary} · all time</p> : null}
+          <p className="signal-hologram-explainer">
+            Height is how far each signal fell short of a perfect 100, smoothed over time: peaks are weak spots,
+            flat ground is where you scored well. Dots are individual answers.
+          </p>
         </div>
-        <div className="signal-hologram-legend" aria-label="Loss colors: low loss to high loss">
-          <span>low loss</span>
+        <div className="signal-hologram-legend" aria-label="Colors: strong scores to weak scores">
+          <span>strong · 100</span>
           <span className="signal-hologram-gradient" aria-hidden="true" />
-          <span>high loss</span>
-          <span className="signal-hologram-legend-note">loss = 100 − score</span>
+          <span>weak · 0</span>
         </div>
       </div>
       {error ? <p className="coach-error" role="alert">{error}</p> : null}
-      {!history && !error ? <p className="dashboard-mode-meta">Projecting signal history…</p> : null}
-      {history && !points.length ? <p className="dashboard-mode-meta">No scored signals yet. Answer a few questions to shape the landscape.</p> : null}
+      {!history && !error ? <p className="dashboard-mode-meta">Mapping signal scores…</p> : null}
+      {history && !points.length ? <p className="dashboard-mode-meta">No scored signals yet. Answer a few questions to shape the terrain.</p> : null}
       {points.length && !webgl ? (
         <p className="dashboard-mode-meta">The 3D view needs WebGL, which this browser has turned off.</p>
       ) : null}
@@ -500,21 +518,20 @@ export default function SignalHologram() {
           ref={containerRef}
           className="signal-hologram-stage"
           role="img"
-          aria-label={`3D loss landscape of signals over time (loss is 100 minus score): ${summary}. Drag to rotate; pinch or hold Ctrl or Command and scroll to zoom.`}
+          aria-label={`3D terrain of signal scores over time; height is 100 minus the score, so peaks are weak spots: ${summary}. Drag to rotate; pinch or hold Ctrl or Command and scroll to zoom.`}
         >
           {tooltip ? (
             <div className="signal-hologram-tooltip" style={{ left: tooltip.x, top: tooltip.y }} role="status">
               <strong>{tooltip.label}</strong>
-              <span>loss {lossOf(tooltip.point.score).toFixed(1)} · score {tooltip.point.score.toFixed(1)}</span>
+              <span>score {tooltip.point.score.toFixed(1)} / 100</span>
               <span>{formatCalendarDate(tooltip.point.date)}</span>
               <span>{tooltip.point.algorithm}</span>
               {tooltip.point.title ? <span className="signal-hologram-tooltip-title">{tooltip.point.title}</span> : null}
             </div>
           ) : null}
+          {/* Inside the full-window stage, so it sits in the screen's bottom-right corner. */}
+          <p className="signal-hologram-hint" aria-hidden="true">Drag to rotate · pinch or ⌘/Ctrl + scroll to zoom · hover a dot</p>
         </div>
-      ) : null}
-      {points.length && webgl ? (
-        <p className="signal-hologram-hint" aria-hidden="true">Drag to rotate · pinch or ⌘/Ctrl + scroll to zoom · hover a point</p>
       ) : null}
     </section>
   )

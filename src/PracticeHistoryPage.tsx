@@ -9,7 +9,7 @@ import HistoryDayDetail from './HistoryDayDetail'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 
-// three.js is large; load the loss landscape only when this page renders it.
+// three.js is large; load the score terrain only when this page renders it.
 const SignalHologram = lazy(() => import('./SignalHologram'))
 
 type SkillMapOverview = {
@@ -72,9 +72,9 @@ export default function PracticeHistoryPage() {
       <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} />
       <Suspense
         fallback={(
-          <section className="signal-hologram" aria-label="Signal loss landscape">
-            <p className="dashboard-activity-eyebrow">Signal Loss Landscape</p>
-            <p className="dashboard-mode-meta">Projecting signal history…</p>
+          <section className="signal-hologram" aria-label="Signal score terrain">
+            <p className="dashboard-activity-eyebrow">Signal Score Terrain</p>
+            <p className="dashboard-mode-meta">Mapping signal scores…</p>
           </section>
         )}
       >
