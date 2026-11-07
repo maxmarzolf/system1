@@ -7361,12 +7361,6 @@ button.daily-work-history-x-day-selected:hover {
 .signal-hologram-stage {
   position: absolute;
   z-index: 0;
-  /* A soft projector glow that fades out well before the edges, so no box shows. */
-  background: radial-gradient(
-    closest-side ellipse at 50% 58%,
-    color-mix(in srgb, var(--hc-accent) 12%, transparent),
-    transparent
-  );
   cursor: grab;
 }
 
@@ -7433,7 +7427,6 @@ button.daily-work-history-x-day-selected:hover {
   border: 1px solid var(--hc-accent);
   border-radius: 0.3rem;
   background: color-mix(in srgb, var(--hc-bg) 88%, transparent);
-  box-shadow: 0 0 1rem color-mix(in srgb, var(--hc-accent) 30%, transparent);
   color: var(--hc-fg-dim);
   font-size: 0.72rem;
   line-height: 1.35;
@@ -7464,6 +7457,8 @@ button.daily-work-history-x-day-selected:hover {
 
 .signal-hologram-legend {
   align-items: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: 0.64rem;
 }
 
 .signal-hologram-gradient {
@@ -7471,7 +7466,6 @@ button.daily-work-history-x-day-selected:hover {
   height: 0.45rem;
   border-radius: 999px;
   background: linear-gradient(90deg, var(--hc-accent), var(--hc-warning), var(--hc-error));
-  box-shadow: 0 0 0.6rem color-mix(in srgb, var(--hc-accent) 45%, transparent);
 }
 
 .signal-hologram-legend-note {

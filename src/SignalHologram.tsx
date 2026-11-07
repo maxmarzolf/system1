@@ -44,36 +44,34 @@ const cssColor = (name: string, fallback: string) => {
   }
 }
 
-/** A soft round glow used for every point. */
-const glowTexture = () => {
+const LABEL_FONT = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace"
+
+/** A crisp round dot used for every point (no halo). */
+const dotTexture = () => {
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = 64
   const context = canvas.getContext('2d')!
-  const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 32)
-  gradient.addColorStop(0, 'rgba(255,255,255,1)')
-  gradient.addColorStop(0.25, 'rgba(255,255,255,0.85)')
-  gradient.addColorStop(1, 'rgba(255,255,255,0)')
-  context.fillStyle = gradient
-  context.fillRect(0, 0, 64, 64)
+  context.fillStyle = '#ffffff'
+  context.beginPath()
+  context.arc(32, 32, 26, 0, Math.PI * 2)
+  context.fill()
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
   return texture
 }
 
-/** Camera-facing text, glowing like the rest of the hologram. */
-const textSprite = (text: string, color: THREE.Color, worldHeight = 0.3, weight = 500) => {
+/** Camera-facing monospace text. */
+const textSprite = (text: string, color: THREE.Color, worldHeight = 0.2, weight = 400) => {
   const fontSize = 48
   const canvas = document.createElement('canvas')
   const context = canvas.getContext('2d')!
-  const font = `${weight} ${fontSize}px Menlo, Monaco, 'Courier New', monospace`
+  const font = `${weight} ${fontSize}px ${LABEL_FONT}`
   context.font = font
   const width = Math.ceil(context.measureText(text).width) + 24
   canvas.width = width
   canvas.height = fontSize + 24
   context.font = font
   context.textBaseline = 'middle'
-  context.shadowColor = `#${color.getHexString()}`
-  context.shadowBlur = 14
   context.fillStyle = `#${color.getHexString()}`
   context.fillText(text, 12, canvas.height / 2)
   const texture = new THREE.CanvasTexture(canvas)
@@ -149,7 +147,7 @@ function mountHologram(
   } catch {
     return () => {}
   }
-  const blending = light ? THREE.NormalBlending : THREE.AdditiveBlending
+  const blending = THREE.NormalBlending
   const accent = cssColor('--hc-accent', '#6fc3df')
   const partial = cssColor('--hc-warning', '#cca700')
   const failing = cssColor('--hc-error', '#f48771')
@@ -268,10 +266,10 @@ function mountHologram(
   const pointGeometry = new THREE.BufferGeometry()
   pointGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
   pointGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-  const glow = glowTexture()
+  const dot = dotTexture()
   const pointMaterial = new THREE.PointsMaterial({
     size: POINT_SIZE,
-    map: glow,
+    map: dot,
     vertexColors: true,
     transparent: true,
     depthWrite: false,
@@ -283,7 +281,7 @@ function mountHologram(
 
   // Labels: signals along the front, dates down the side.
   for (const signal of signals) {
-    const label = textSprite(compact(signal.label), accent, 0.34)
+    const label = textSprite(compact(signal.label), accent, 0.22)
     label.position.set(xOf(signal.key), -0.05, TIME_DEPTH / 2 + 0.55)
     hologram.add(label)
   }
@@ -291,7 +289,7 @@ function mountHologram(
     const fraction = tick / (TIME_TICKS - 1)
     const date = new Date(tMin + fraction * (tMax - tMin))
     const localDate = `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}`
-    const label = textSprite(formatCalendarDate(localDate), accent, 0.32)
+    const label = textSprite(formatCalendarDate(localDate), accent, 0.2)
     label.position.set(-width / 2 - 1.25, 0, (fraction - 0.5) * TIME_DEPTH)
     hologram.add(label)
   }
