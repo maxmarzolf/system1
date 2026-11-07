@@ -7487,33 +7487,27 @@ button.daily-work-history-x-day-selected:hover {
 }
 
 
-/* Top nav pinned to the window (Journey, Tune, Admin, Dashboard). Its background spans the
-   full window width, since content (like the Journey terrain) scrolls underneath. */
+/* Top nav pinned to the window (Journey, Tune, Admin, Dashboard): no background or rule, and
+   the same 1.25rem gap from the window top as the main page, scrolled or not. */
+:root {
+  --page-top-gap: 1.25rem;
+  --pinned-nav-height: 3.375rem;
+}
+
 .navbar-pinned {
   position: sticky;
-  top: 0;
+  top: var(--page-top-gap);
   z-index: 20;
-  min-height: var(--pinned-nav-height);
-}
-
-.navbar-pinned::before {
-  content: '';
-  position: absolute;
-  inset: 0 calc(50% - 50vw);
-  z-index: -1;
-  border-bottom: 1px solid var(--hc-border);
-  background: color-mix(in srgb, var(--hc-bg) 94%, transparent);
-}
-
-:root {
-  --pinned-nav-height: 3.25rem;
+  border-bottom: none;
 }
 
 /* Journey: whole sections snap into place below the pinned nav. A section taller than the
    window (a long day detail) still scrolls freely inside before snapping to the next. */
 html.journey-snap {
   scroll-snap-type: y mandatory;
-  scroll-padding-top: calc(var(--pinned-nav-height) + 0.75rem);
+  /* Gap + nav + the nav's 2rem bottom margin: sections land where the first one starts,
+     so the page opens unscrolled with the nav at the main page's height. */
+  scroll-padding-top: calc(var(--page-top-gap) + var(--pinned-nav-height) + 2rem);
 }
 
 .app-history > section {

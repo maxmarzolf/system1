@@ -462,7 +462,7 @@ export default function SignalHologram() {
   }, [history, theme, webgl])
 
   // Stretch the stage to the whole browser window: from the window's top and left edges,
-  // as wide and as tall as the window. The section reserves the rest of the first screen.
+  // as wide and as tall as the window.
   useLayoutEffect(() => {
     const section = sectionRef.current
     const stage = containerRef.current
@@ -476,7 +476,9 @@ export default function SignalHologram() {
       stage.style.left = `${-rect.left}px`
       stage.style.width = `${viewportWidth}px`
       stage.style.height = `${viewportHeight}px`
-      section.style.minHeight = `${Math.max(viewportHeight - pageTop, 320)}px`
+      // A full screen tall, so when the next section snaps in below the nav the stage (and its
+      // /do and /build buttons) has scrolled entirely out of view.
+      section.style.minHeight = `${viewportHeight}px`
     }
     place()
     const observer = new ResizeObserver(place)
