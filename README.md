@@ -88,7 +88,7 @@ Every recall submission is scored by the Signal Assessor against a **signal spec
 - **Storage:** each stored evaluation records `signalSpec: {algorithm, version}`. Its `dimensions` and `modifiers` are keyed by that spec's signals, in spec order.
 
 Viewing specs and signal values in the UI:
-- **Tune → Signals** shows each algorithm's spec read-only: signals, role, kind, weight, axis, assessor guidance, variation strategy, and structural elements. Algorithms on the default spec are labeled.
+- **Admin → Recall** shows each algorithm's recall spec read-only: signals, role, kind, weight, axis, assessor guidance, variation strategy, and structural elements. Algorithms on the default spec are labeled.
 - **Journey** (`/practice-history`, the History page) shows a daily work grid per algorithm with **Week / Month / All-Time** ranges and the dates as a selectable x axis underneath. Hovering a date highlights its column; clicking an algorithm name filters the day card to that algorithm. Clicking the selected date or algorithm again clears just that filter. Clicking a date (or a highlighted square) opens a card listing every submission from that day: the question, choices or answer, result, timing, and the full stored evaluation (spec, verdict, scores, dimensions, modifiers, signal results, Jev answers, raw JSON). Days follow the viewer's timezone. At the top of the page, a **Signal Score Terrain** (three.js, loaded lazily, drawn straight on the page with a canvas the size of the browser window; drag to rotate, pinch or Ctrl/⌘ + scroll to zoom, plain scrolling scrolls the page) plots every scored signal all time: X is the signal, Y is time, and height is the shortfall from a perfect score (100 − score), smoothed over time per signal, so peaks are weak spots. Each answer is a hoverable dot; a `?` next to the title explains how each kind of signal is scored. Over it, at the bottom of the screen, **/do** opens the main screen to start working and **/build** opens the main screen's Flow configuration (`/?panel=flow`). The terrain stops spinning while a dot's details are showing. Data: `GET /api/skill-map-overview?historyDays=&tz=`, `GET /api/history/day?date=&tz=` and `GET /api/history/signals?tz=`.
 
 ### MCQ signals (Jev)
@@ -101,9 +101,9 @@ MCQ submissions are evaluated by Jev, not the Signal Assessor. One Jev call asks
 - **What `/admin` edits:** the correctness wording (labels `1`/`0` are fixed), and per signal: an admin-only description (never sent to Jev), Jev primitive (Choice/Score/Noul), instructions, criteria, Choice score map, role, weight, axis, `appliesWhen`, `needsCorrectness` (costs a second Jev call), scope and order. Signals are archived, never deleted; keys are permanent. Every change is versioned (stale saves get a 409) and recorded in `signal_definition_revision`.
 - **Field help:** every field has a clickable `?` tooltip explaining what it does (`src/signalFieldHelp.tsx`).
 - **Try it:** runs an unsaved draft against Jev on a stored MCQ and shows the answer and score. Nothing is stored.
-- **Access:** reads are open; writes and Try it need `ADMIN_TOKEN` on the backend, entered once per browser session.
+- **Access:** open for now; there is no admin token (it can be added back later).
 - **Storage:** evaluations store `signalResults`, the Jev `correctness` answer, a `signalSpecSnapshot` (including the correctness wording), and provenance (`engine`, `model`, `requestIds`, `flags`).
-- **Viewing:** Tune → Signals shows the effective MCQ specs read-only; the Journey page shows each submission's Jev correctness and signal answers.
+- **Layout:** the left rail is question type > scope: **MCQ** (All, General, each algorithm; editable) and **Recall** (All, each algorithm; read-only). The correctness question sits under MCQ's All and General scopes. Collapsed signals show label, key and the Jev primitive, the instructions, and Applies / Weight / Role / Version. The Journey page shows each submission's Jev correctness and signal answers.
 
 To add a recall spec for another group:
 1. Add a `SignalSpec` built with `_spec(...)` in `signal_catalog.py` and register it in `SIGNAL_SPECS`. Every spec automatically gets the shared `correctness`, `syntax`, and `completionTime` signals; give exactly one of your dimensions `axis="fidelity"`.
@@ -233,7 +233,7 @@ Key variables:
 - `COACH_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY`
 - `COACH_OPENAI_MODEL`, `COACH_ANTHROPIC_MODEL`
 - `TYPESAFE_API_KEY` (Jev MCQ evaluation), `JEV_MODEL` (pinned, default `jev-1.13.0`), `TYPESAFE_BASE_URL`, `JEV_TIMEOUT_SECONDS`, `JEV_ENABLED`
-- `ADMIN_TOKEN` (enables edits on `/admin`; empty keeps it read-only). The backend container reads `backend/.env` only when created, so run `docker compose up -d backend` (not `restart`) after changing it.
+- The backend container reads `backend/.env` only when created, so run `docker compose up -d backend` (not `restart`) after changing it.
 - `COACH_OPENAI_BASE_URL`, `COACH_ANTHROPIC_BASE_URL`
 - `COACH_GEMMA_API_KEY`, `COACH_GEMMA_MODEL`, `COACH_GEMMA_BASE_URL`
 

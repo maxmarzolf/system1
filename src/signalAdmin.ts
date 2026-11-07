@@ -54,7 +54,6 @@ export type CorrectnessDirective = {
 export type SignalAdminCatalog = {
   modality: string
   stateFields: string[]
-  writesEnabled: boolean
   directive: CorrectnessDirective
   signals: AdminSignal[]
   algorithms: { slug: string; name: string }[]
@@ -101,31 +100,11 @@ export class SignalAdminError extends Error {
   }
 }
 
-const TOKEN_STORAGE_KEY = 'system1.adminToken'
-
-export const readAdminToken = () => {
-  try {
-    return window.sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? ''
-  } catch {
-    return ''
-  }
-}
-
-export const writeAdminToken = (token: string) => {
-  try {
-    if (token) window.sessionStorage.setItem(TOKEN_STORAGE_KEY, token)
-    else window.sessionStorage.removeItem(TOKEN_STORAGE_KEY)
-  } catch {
-    // The token is then only kept in memory for this page.
-  }
-}
-
-async function request<T>(path: string, init: RequestInit = {}, token = ''): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(apiUrl(path), {
     ...init,
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { 'X-Admin-Token': token } : {}),
       ...(init.headers ?? {}),
     },
   })
@@ -150,38 +129,34 @@ async function request<T>(path: string, init: RequestInit = {}, token = ''): Pro
 export const fetchSignalAdminCatalog = (signal?: AbortSignal) =>
   request<SignalAdminCatalog>('/api/admin/signals', { signal })
 
-export const createSignal = (draft: SignalDraft, token: string) =>
-  request<AdminSignal>('/api/admin/signals', { method: 'POST', body: JSON.stringify(draft) }, token)
+export const createSignal = (draft: SignalDraft) =>
+  request<AdminSignal>('/api/admin/signals', { method: 'POST', body: JSON.stringify(draft) })
 
-export const updateSignal = (key: string, draft: SignalDraft, version: number, token: string) =>
+export const updateSignal = (key: string, draft: SignalDraft, version: number) =>
   request<AdminSignal>(
     `/api/admin/signals/${encodeURIComponent(key)}`,
     { method: 'PUT', body: JSON.stringify({ ...draft, version }) },
-    token,
   )
 
-export const setSignalArchived = (key: string, archived: boolean, version: number, token: string) =>
+export const setSignalArchived = (key: string, archived: boolean, version: number) =>
   request<AdminSignal>(
     `/api/admin/signals/${encodeURIComponent(key)}/${archived ? 'archive' : 'restore'}`,
     { method: 'POST', body: JSON.stringify({ version }) },
-    token,
   )
 
 export const updateDirective = (
   directive: Pick<CorrectnessDirective, 'instructions' | 'criteria' | 'correctnessWeight' | 'version'>,
-  token: string,
-) => request<CorrectnessDirective>('/api/admin/signals/directive/mcq', { method: 'PUT', body: JSON.stringify(directive) }, token)
+) => request<CorrectnessDirective>('/api/admin/signals/directive/mcq', { method: 'PUT', body: JSON.stringify(directive) })
 
 export const fetchSignalRevisions = (subject: string) =>
   request<SignalRevision[]>(`/api/admin/signals/revisions/${encodeURIComponent(subject)}`)
 
 export const fetchMcqSamples = () => request<McqSample[]>('/api/admin/signals/samples')
 
-export const trySignal = (draft: SignalDraft, problemId: string, choiceId: string, token: string) =>
+export const trySignal = (draft: SignalDraft, problemId: string, choiceId: string) =>
   request<SignalTryResult>(
     '/api/admin/signals/try',
     { method: 'POST', body: JSON.stringify({ draft, problemId, choiceId }) },
-    token,
   )
 
 export const emptySignalDraft = (): SignalDraft => ({

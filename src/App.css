@@ -6384,11 +6384,6 @@ button.tune-reset {
 }
 
 /* Signal specs (Tune viewer) and submission signal details (history, admin). */
-.signal-spec-viewer {
-  display: grid;
-  gap: 0.9rem;
-}
-
 .signal-spec-meta {
   display: flex;
   flex-wrap: wrap;
@@ -6549,15 +6544,6 @@ button.tune-reset {
 }
 
 /* Signal admin (/admin): editable Jev signals, built on the Tune layout. */
-.admin-banner {
-  margin: 0;
-  padding: 0.6rem 1.5rem;
-  border-bottom: 1px solid var(--hc-border-dim);
-  color: var(--hc-warning);
-  font-size: 0.78rem;
-}
-
-.admin-banner code,
 .admin-editor code,
 .admin-signal-title code {
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
@@ -6567,23 +6553,6 @@ button.tune-reset {
 
 .admin-page-error {
   padding: 1.35rem 1.5rem;
-}
-
-.admin-token {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.admin-token input {
-  width: 9rem;
-  min-height: 1.65rem;
-  padding: 0.2rem 0.45rem;
-  border: 1px solid var(--hc-border-dim);
-  background: var(--hc-input-bg);
-  color: var(--hc-fg);
-  font: inherit;
-  font-size: 0.74rem;
 }
 
 button.admin-small-button {
@@ -6612,22 +6581,8 @@ button.admin-icon-button {
   text-transform: uppercase;
 }
 
-.admin-badge-success {
-  color: var(--hc-success);
-}
-
 .admin-badge-warning {
   color: var(--hc-warning);
-}
-
-.admin-filter {
-  min-height: 1.9rem;
-  padding: 0.25rem 0.45rem;
-  border: 1px solid var(--hc-border-dim);
-  background: var(--hc-input-bg);
-  color: var(--hc-fg);
-  font: inherit;
-  font-size: 0.76rem;
 }
 
 .admin-signal-list,
@@ -6847,10 +6802,6 @@ p.admin-success {
   .admin-criteria-row-levels .admin-row-actions {
     grid-column: 2;
   }
-
-  .admin-token input {
-    width: 7rem;
-  }
 }
 
 /* Admin: modality groups in the rail, one signal list with archived signals deprecated in place. */
@@ -6858,18 +6809,6 @@ p.admin-success {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
-}
-
-.tune-rail a.admin-rail-group-label {
-  color: var(--hc-accent);
-}
-
-.tune-rail .admin-rail-group a:not(.admin-rail-group-label) {
-  padding-left: 1.2rem;
-}
-
-.admin-anchor {
-  scroll-margin-top: 1rem;
 }
 
 .admin-signal-group-copy {
@@ -6925,9 +6864,6 @@ p.admin-success {
     flex-wrap: wrap;
   }
 
-  .tune-rail .admin-rail-group a:not(.admin-rail-group-label) {
-    padding-left: 0.6rem;
-  }
 }
 
 /* Clickable field help (InfoTip). */
@@ -6990,12 +6926,6 @@ button.info-tip-button[aria-expanded='true'] {
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
   font-size: 0.7rem;
   color: var(--hc-accent);
-}
-
-.admin-signal-description {
-  color: var(--hc-fg-dim);
-  font-size: 0.76rem;
-  line-height: 1.45;
 }
 
 /* History page: range buttons, selected day, and the day detail card (shares .daily-work-history). */
@@ -7536,4 +7466,148 @@ html.journey-snap {
 
 .app-history > section {
   scroll-snap-align: start;
+}
+
+
+/* Journey day detail: each submission is a collapsed row that opens to its question and signals. */
+.history-day-submission-summary {
+  display: grid;
+  gap: 0.35rem;
+  list-style: none;
+  cursor: pointer;
+}
+
+.history-day-submission-summary::-webkit-details-marker {
+  display: none;
+}
+
+.history-day-submission-summary::before {
+  content: '▸';
+  position: absolute;
+  margin-left: -0.75rem;
+  color: var(--hc-fg-dim);
+  font-size: 0.7rem;
+  transition: transform 0.15s ease;
+}
+
+.history-day-submission {
+  position: relative;
+  padding-left: 1.4rem;
+}
+
+.history-day-submission[open] > .history-day-submission-summary::before {
+  transform: rotate(90deg);
+}
+
+.history-day-submission-body {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+
+span.history-day-title {
+  display: block;
+}
+
+
+/* Admin rail: question type (MCQ, Recall) > scope. Buttons styled like the Tune rail's links. */
+.tune-rail .admin-rail-group + .admin-rail-group {
+  margin-top: 0.85rem;
+}
+
+.tune-rail button.admin-rail-group-label,
+.tune-rail button.admin-rail-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  width: 100%;
+  min-height: 0;
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--hc-fg-dim);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.15;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.tune-rail button.admin-rail-group-label {
+  color: var(--hc-accent);
+}
+
+.tune-rail button.admin-rail-item {
+  padding-left: 1.2rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.tune-rail button.admin-rail-group-label:hover,
+.tune-rail button.admin-rail-item:hover {
+  background: var(--hc-option-hover-bg);
+  color: var(--hc-fg);
+}
+
+.tune-rail button.admin-rail-item-empty {
+  color: color-mix(in srgb, var(--hc-fg-dim) 60%, transparent);
+}
+
+.tune-rail button.admin-rail-item-current,
+.tune-rail button.admin-rail-item-current:hover {
+  background: color-mix(in srgb, var(--hc-accent) 14%, transparent);
+  color: var(--hc-accent);
+}
+
+.admin-rail-count {
+  color: var(--hc-fg-dim);
+  font-size: 0.64rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Collapsed signal: label + key with the primitive right-aligned; instructions; a spread meta row. */
+.admin-signal-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.admin-signal-primitive {
+  flex: none;
+  color: var(--hc-accent);
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+
+.admin-signal-instructions {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--hc-fg-dim);
+  font-size: 0.76rem;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.admin-signal:not(.admin-signal-new) .admin-signal-meta {
+  justify-content: space-between;
+}
+
+.admin-recall-list,
+.admin-recall-spec {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.admin-recall-list {
+  gap: 1.4rem;
+}
+
+.admin-recall-spec-title {
+  color: var(--hc-fg);
 }

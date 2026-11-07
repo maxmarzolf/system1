@@ -104,9 +104,11 @@ function SubmissionAnswer({ submission }: { submission: HistorySubmission }) {
 
 function SubmissionCard({ submission }: { submission: HistorySubmission }) {
   const score = overallScore(submission.evaluation)
+  // Collapsed by default: the summary line (result, type, time, score, title) opens to the details.
   return (
-    <article className={`history-day-submission${submission.successful ? '' : ' history-day-submission-missed'}`}>
-      <header className="history-day-submission-header">
+    <details className={`history-day-submission${submission.successful ? '' : ' history-day-submission-missed'}`}>
+      <summary className="history-day-submission-summary">
+      <span className="history-day-submission-header">
         <span className={`history-day-result${submission.successful ? ' history-day-result-pass' : ' history-day-result-fail'}`}>
           {submission.successful ? '✓ Correct' : '✗ Missed'}
         </span>
@@ -119,15 +121,18 @@ function SubmissionCard({ submission }: { submission: HistorySubmission }) {
           {formatElapsed(submission.elapsedMs) ? <span>{formatElapsed(submission.elapsedMs)}</span> : null}
           {score !== null ? <span>score {score.toFixed(1)}</span> : null}
         </span>
-      </header>
-      {submission.title ? <h4 className="history-day-title">{submission.title}</h4> : null}
-      {submission.question ? <QuestionText text={submission.question} /> : null}
-      <SubmissionAnswer submission={submission} />
-      <details className="history-day-signals" open>
-        <summary>Signals</summary>
-        <SubmissionSignalDetails evaluation={submission.evaluation} />
-      </details>
-    </article>
+      </span>
+      {submission.title ? <span className="history-day-title">{submission.title}</span> : null}
+      </summary>
+      <div className="history-day-submission-body">
+        {submission.question ? <QuestionText text={submission.question} /> : null}
+        <SubmissionAnswer submission={submission} />
+        <details className="history-day-signals" open>
+          <summary>Signals</summary>
+          <SubmissionSignalDetails evaluation={submission.evaluation} />
+        </details>
+      </div>
+    </details>
   )
 }
 

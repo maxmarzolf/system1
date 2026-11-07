@@ -9,8 +9,6 @@ class Settings(BaseSettings):
     port: int = 3001
     allowed_origins: list[str] = ["*"]
     admin_reset_token: str = "reset-practice-history"
-    # Required for writes on /admin (signal edits and Jev "Try it"); empty disables them.
-    admin_token: str = Field(default="", validation_alias=AliasChoices("ADMIN_TOKEN"))
     coach_llm_provider: str = Field(
         default="openai",
         validation_alias=AliasChoices("LLM_DEFAULT", "COACH_LLM_PROVIDER"),

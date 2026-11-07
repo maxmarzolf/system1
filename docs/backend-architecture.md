@@ -66,7 +66,7 @@ Jev signals are data; deterministic signal logic is code.
 - `app/core/signals/`: `definitions.py::definition_to_plugin` builds a `JevSignal` from a row or wraps a registered `DeterministicSignal`; `spec.py::ModalitySignalSpec` snapshots and hashes the effective spec, correctness wording included; `mcq.py` holds the seed defaults (inserted once by `signal_registry_service.seed_signal_definitions` at startup, never overwriting).
 - `app/domain/signal_definition_rules.py`: field-level validation mirroring Jev's limits plus key, scope and weight rules.
 - `app/repositories/signal_definition_repository.py`: reads, version-checked writes and revisions.
-- `app/services/signal_admin_service.py` + `app/endpoints/admin.py` (`/api/admin/signals…`): list, create, update, archive, restore, correctness wording, revisions, stored-MCQ samples, and Try it (one Jev call on a stored MCQ, nothing saved). Writes need the `X-Admin-Token` header matching `ADMIN_TOKEN`; validation errors are 422 with per-field messages, stale versions 409.
+- `app/services/signal_admin_service.py` + `app/endpoints/admin.py` (`/api/admin/signals…`): list, create, update, archive, restore, correctness wording, revisions, stored-MCQ samples, and Try it (one Jev call on a stored MCQ, nothing saved). No admin token for now. Validation errors are 422 with per-field messages, stale versions 409.
 - Frontend: `src/AdminPage.tsx` (route `/admin`), API client `src/signalAdmin.ts`, shared Tune controls in `src/tuneControls.tsx`.
 
 ### 1d) Coach Variations

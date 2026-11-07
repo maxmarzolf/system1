@@ -3,8 +3,6 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from app.core.core_algorithm_practice import problem_slug_candidates
-from app.core.signals import ModalitySignalSpec
-from app.core.signals.mcq import MCQ_MODALITY
 from app.core.signal_catalog import (
     DEFAULT_SIGNAL_SPEC,
     SignalSpec,
@@ -13,9 +11,7 @@ from app.core.signal_catalog import (
     spec_to_json,
 )
 from app.domain.coach_context import algorithm_slug_for_tags
-from app.models import SubmissionModality
-from app.repositories import signal_definition_repository, signal_spec_repository
-from app.services import signal_registry_service
+from app.repositories import signal_spec_repository
 from app.submission_rubric import coerce_json_object
 
 SpecSource = Literal["problem", "skill-tag", "default"]
@@ -57,26 +53,4 @@ async def list_signal_specs() -> dict[str, Any]:
     return {
         "default": spec_to_json(DEFAULT_SIGNAL_SPEC),
         "algorithms": algorithms,
-        "modalitySpecs": {SubmissionModality.mcq.value: await _mcq_specs()},
     }
-
-
-async def _mcq_specs() -> dict[str, Any]:
-    """The general MCQ spec, plus the effective spec of every algorithm with its own signals."""
-    scopes = sorted(
-        {
-            definition["scope"]
-            for definition in await signal_definition_repository.fetch_definitions(MCQ_MODALITY)
-            if definition["status"] == "active" and definition["scope"] != "general"
-        }
-    )
-    return {
-        "default": modality_spec_to_json(await signal_registry_service.load_mcq_spec("")),
-        "overrides": {
-            slug: modality_spec_to_json(await signal_registry_service.load_mcq_spec(slug)) for slug in scopes
-        },
-    }
-
-
-def modality_spec_to_json(spec: ModalitySignalSpec) -> dict[str, Any]:
-    return {**spec.snapshot(), "hash": spec.hash()}

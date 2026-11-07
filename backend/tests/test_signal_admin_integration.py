@@ -16,8 +16,6 @@ from app.services import signal_registry_service
 from app.services.evaluators import EVALUATORS, jev_mcq
 from app.services.evaluators.jev_mcq import JevMcqEvaluator
 
-TOKEN = "itest-admin-token"
-HEADERS = {"X-Admin-Token": TOKEN}
 
 
 class CapturingGateway:
@@ -107,13 +105,12 @@ async def _cleanup_problem(problem_id: str) -> None:
 
 @pytest.fixture
 def admin(monkeypatch):
-    """A TestClient with ADMIN_TOKEN set, a capturing Jev gateway, and signal tables restored afterwards."""
+    """A TestClient with a capturing Jev gateway, and signal tables restored afterwards."""
     try:
         snapshot = asyncio.run(_snapshot())
     except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - environment-dependent integration guard
         pytest.skip(f"Postgres not available for integration test: {exc}")
     gateway = CapturingGateway()
-    monkeypatch.setattr(settings, "admin_token", TOKEN)
     monkeypatch.setattr(jev_mcq, "default_jev_gateway", lambda: gateway)
     monkeypatch.setitem(EVALUATORS, SubmissionModality.mcq, JevMcqEvaluator(lambda: gateway))
     problem_id = f"mcq-itest-admin-{uuid4().hex[:12]}"
@@ -160,7 +157,6 @@ def test_listing_shows_seeded_signals_directive_and_jev_payloads(admin) -> None:
 
     body = _signals(client)
 
-    assert body["writesEnabled"] is True
     assert body["directive"]["labels"] == ["1", "0"]
     assert {"conceptRecognition", "nearMiss", "distractorMisconception", "completionTime"} <= {
         signal["key"] for signal in body["signals"]
@@ -174,16 +170,12 @@ def test_listing_shows_seeded_signals_directive_and_jev_payloads(admin) -> None:
 
 
 @pytest.mark.integration
-def test_writes_need_the_admin_token_and_valid_fields(admin) -> None:
+def test_writes_validate_every_field(admin) -> None:
     client, _gateway, _problem_id = admin
-    draft = {"key": "itestNoToken", "label": "x", "primitive": "noul", "instructions": "?"}
 
-    assert client.post("/api/admin/signals", json=draft).status_code == 403
-    assert client.post("/api/admin/signals", json=draft, headers={"X-Admin-Token": "wrong"}).status_code == 403
     invalid = client.post(
         "/api/admin/signals",
         json={"key": "Bad Key", "label": "", "primitive": "score", "criteria": ["one"], "appliesWhen": "never"},
-        headers=HEADERS,
     )
     assert invalid.status_code == 422
     assert {"key", "label", "instructions", "criteria", "appliesWhen"} <= set(invalid.json()["detail"]["errors"])
@@ -197,9 +189,9 @@ def test_edits_apply_to_the_very_next_jev_payload(admin) -> None:
     near_miss = _signal(body, "nearMiss")
 
     reworded = {**concept, "instructions": "ITEST: did they recognize the invariant?"}
-    assert client.put(f"/api/admin/signals/{concept['key']}", json=reworded, headers=HEADERS).status_code == 200
+    assert client.put(f"/api/admin/signals/{concept['key']}", json=reworded).status_code == 200
     archived = client.post(
-        f"/api/admin/signals/{near_miss['key']}/archive", json={"version": near_miss["version"]}, headers=HEADERS
+        f"/api/admin/signals/{near_miss['key']}/archive", json={"version": near_miss["version"]}
     )
     assert archived.status_code == 200 and archived.json()["status"] == "archived"
     created = client.post(
@@ -214,14 +206,12 @@ def test_edits_apply_to_the_very_next_jev_payload(admin) -> None:
             "scoreMap": {"min_heap_k": 100, "other": 0},
             "weight": 0.2,
         },
-        headers=HEADERS,
     )
     assert created.status_code == 201, created.text
     directive = body["directive"]
     assert client.put(
         "/api/admin/signals/directive/mcq",
         json={**directive, "instructions": "ITEST: is submittedAnswer correctAnswer?"},
-        headers=HEADERS,
     ).status_code == 200
 
     heap_result = _submit(client, problem_id, "heap-priority-queue")
@@ -245,15 +235,15 @@ def test_stale_versions_conflict_and_every_change_is_recorded(admin) -> None:
     client, _gateway, _problem_id = admin
     concept = _signal(_signals(client), "conceptRecognition")
 
-    first = client.put("/api/admin/signals/conceptRecognition", json={**concept, "weight": 0.3}, headers=HEADERS)
-    stale = client.put("/api/admin/signals/conceptRecognition", json={**concept, "weight": 0.4}, headers=HEADERS)
+    first = client.put("/api/admin/signals/conceptRecognition", json={**concept, "weight": 0.3})
+    stale = client.put("/api/admin/signals/conceptRecognition", json={**concept, "weight": 0.4})
     archived = client.post(
-        "/api/admin/signals/conceptRecognition/archive", json={"version": first.json()["version"]}, headers=HEADERS
+        "/api/admin/signals/conceptRecognition/archive", json={"version": first.json()["version"]}
     )
     restored = client.post(
-        "/api/admin/signals/conceptRecognition/restore", json={"version": archived.json()["version"]}, headers=HEADERS
+        "/api/admin/signals/conceptRecognition/restore", json={"version": archived.json()["version"]}
     )
-    duplicate = client.post("/api/admin/signals", json={**concept, "version": None}, headers=HEADERS)
+    duplicate = client.post("/api/admin/signals", json={**concept, "version": None})
     revisions = client.get("/api/admin/signals/revisions/conceptRecognition").json()
 
     assert first.status_code == 200 and first.json()["version"] == concept["version"] + 1
@@ -269,7 +259,7 @@ def test_stale_versions_conflict_and_every_change_is_recorded(admin) -> None:
 def test_seeding_never_overwrites_edits(admin) -> None:
     client, _gateway, _problem_id = admin
     concept = _signal(_signals(client), "conceptRecognition")
-    client.put("/api/admin/signals/conceptRecognition", json={**concept, "label": "Edited label"}, headers=HEADERS)
+    client.put("/api/admin/signals/conceptRecognition", json={**concept, "label": "Edited label"})
 
     inserted = client.portal.call(signal_registry_service.seed_signal_definitions)
 
@@ -292,7 +282,6 @@ def test_try_runs_a_draft_against_a_stored_question_without_saving(admin) -> Non
     response = client.post(
         "/api/admin/signals/try",
         json={"draft": draft, "problemId": problem_id, "choiceId": "B"},
-        headers=HEADERS,
     )
     samples = client.get("/api/admin/signals/samples").json()
 
@@ -320,7 +309,6 @@ def test_descriptions_are_for_admins_only(admin) -> None:
     updated = client.put(
         "/api/admin/signals/conceptRecognition",
         json={**concept, "description": "ITEST: admin-only note"},
-        headers=HEADERS,
     )
     after_result = _submit(client, problem_id, "sliding-window")
     _state, questions = gateway.calls[-1]
@@ -331,6 +319,5 @@ def test_descriptions_are_for_admins_only(admin) -> None:
     too_long = client.put(
         "/api/admin/signals/conceptRecognition",
         json={**updated.json(), "description": "x" * 2001},
-        headers=HEADERS,
     )
     assert too_long.status_code == 422 and "description" in too_long.json()["detail"]["errors"]

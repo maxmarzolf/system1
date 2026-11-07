@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 
 from app.models import (
     AdminResetPracticeHistoryRequest,
@@ -27,8 +27,6 @@ async def _signal_call(call):
     """Run a signal admin call, mapping its errors to HTTP responses."""
     try:
         return await call
-    except signal_admin_service.AdminTokenError as error:
-        raise HTTPException(status_code=403, detail={"code": "admin_token", "message": str(error)}) from error
     except signal_admin_service.SignalValidationError as error:
         raise HTTPException(
             status_code=422, detail={"code": "invalid_signal", "message": str(error), "errors": error.errors}
@@ -49,19 +47,19 @@ async def list_signals():
 
 
 @router.post("/signals", status_code=201)
-async def create_signal(body: SignalDefinitionDraft, x_admin_token: str = Header(default="")):
-    return await _signal_call(signal_admin_service.create_signal(body, x_admin_token))
+async def create_signal(body: SignalDefinitionDraft):
+    return await _signal_call(signal_admin_service.create_signal(body))
 
 
 @router.put("/signals/directive/mcq")
-async def update_directive(body: SignalDirectiveUpdate, x_admin_token: str = Header(default="")):
-    return await _signal_call(signal_admin_service.update_directive(body, x_admin_token))
+async def update_directive(body: SignalDirectiveUpdate):
+    return await _signal_call(signal_admin_service.update_directive(body))
 
 
 @router.post("/signals/try")
-async def try_signal(body: SignalTryRequest, x_admin_token: str = Header(default="")):
+async def try_signal(body: SignalTryRequest):
     return await _signal_call(
-        signal_admin_service.try_signal(body.draft, body.problemId, body.choiceId, x_admin_token)
+        signal_admin_service.try_signal(body.draft, body.problemId, body.choiceId)
     )
 
 
@@ -76,15 +74,15 @@ async def signal_revisions(subject: str):
 
 
 @router.put("/signals/{key}")
-async def update_signal(key: str, body: SignalDefinitionUpdate, x_admin_token: str = Header(default="")):
-    return await _signal_call(signal_admin_service.update_signal(key, body, body.version, x_admin_token))
+async def update_signal(key: str, body: SignalDefinitionUpdate):
+    return await _signal_call(signal_admin_service.update_signal(key, body, body.version))
 
 
 @router.post("/signals/{key}/archive")
-async def archive_signal(key: str, body: SignalStatusChange, x_admin_token: str = Header(default="")):
-    return await _signal_call(signal_admin_service.set_signal_status(key, True, body.version, x_admin_token))
+async def archive_signal(key: str, body: SignalStatusChange):
+    return await _signal_call(signal_admin_service.set_signal_status(key, True, body.version))
 
 
 @router.post("/signals/{key}/restore")
-async def restore_signal(key: str, body: SignalStatusChange, x_admin_token: str = Header(default="")):
-    return await _signal_call(signal_admin_service.set_signal_status(key, False, body.version, x_admin_token))
+async def restore_signal(key: str, body: SignalStatusChange):
+    return await _signal_call(signal_admin_service.set_signal_status(key, False, body.version))

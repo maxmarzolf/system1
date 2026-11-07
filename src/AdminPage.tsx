@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import SignalSpecTable from './SignalSpecTable'
+import { fetchSignalSpecCatalog } from './signalSpecs'
+import type { SignalSpec, SignalSpecCatalog } from './signalSpecs'
 import TopNav from './TopNav'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import { TuneSection } from './tuneControls'
@@ -13,12 +17,10 @@ import {
   fetchSignalAdminCatalog,
   fetchSignalRevisions,
   jevQuestionFor,
-  readAdminToken,
   setSignalArchived,
   trySignal,
   updateDirective,
   updateSignal,
-  writeAdminToken,
 } from './signalAdmin'
 import type {
   AdminSignal,
@@ -443,7 +445,7 @@ function SignalEditor({
 
 // ─── Try it ───
 
-function TryPanel({ draft, token, writesEnabled }: { draft: SignalDraft; token: string; writesEnabled: boolean }) {
+function TryPanel({ draft }: { draft: SignalDraft }) {
   const [samples, setSamples] = useState<McqSample[] | null>(null)
   const [problemId, setProblemId] = useState('')
   const [choiceId, setChoiceId] = useState('')
@@ -470,7 +472,7 @@ function TryPanel({ draft, token, writesEnabled }: { draft: SignalDraft; token: 
     setError('')
     setResult(null)
     try {
-      setResult(await trySignal(draft, problemId, choiceId, token))
+      setResult(await trySignal(draft, problemId, choiceId))
     } catch (reason) {
       setError(reason instanceof SignalAdminError && Object.keys(reason.fieldErrors).length
         ? Object.values(reason.fieldErrors).join(' ')
@@ -510,7 +512,7 @@ function TryPanel({ draft, token, writesEnabled }: { draft: SignalDraft; token: 
               </select>
             </label>
             <div className="admin-actions">
-              <button type="button" onClick={run} disabled={running || !writesEnabled || !token || !problemId || !choiceId}>
+              <button type="button" onClick={run} disabled={running || !problemId || !choiceId}>
                 {running ? 'Asking Jev…' : 'Run draft'}
               </button>
               <span className="tune-footnote">Uses the unsaved draft. One Jev call; nothing is stored.</span>
@@ -568,15 +570,22 @@ function RevisionHistory({ subject }: { subject: string }) {
 
 // ─── Signal card ───
 
+/** The collapsed card's middle line: what Jev is asked, or what the code computes. */
+const signalSummaryText = (signal: AdminSignal, catalog: SignalAdminCatalog) => {
+  if (signal.source === 'deterministic') {
+    const implementation = catalog.implementations.find((item) => item.name === signal.implementation)
+    return `Computed in code${implementation?.description ? `: ${implementation.description}` : '.'}`
+  }
+  return signal.instructions || 'No instructions yet.'
+}
+
 function SignalCard({
   signal,
   catalog,
-  token,
   onSaved,
 }: {
   signal: AdminSignal
   catalog: SignalAdminCatalog
-  token: string
   onSaved: () => void
 }) {
   const original = useMemo(() => draftFromSignal(signal), [signal])
@@ -587,7 +596,6 @@ function SignalCard({
   const [conflict, setConflict] = useState(false)
   const [busy, setBusy] = useState(false)
   const dirty = JSON.stringify(draft) !== JSON.stringify(original)
-  const canWrite = catalog.writesEnabled && Boolean(token)
   const archived = signal.status === 'archived'
 
   useEffect(() => {
@@ -619,23 +627,23 @@ function SignalCard({
   return (
     <article className={archived ? 'admin-signal admin-signal-archived' : 'admin-signal'}>
       <button type="button" className="admin-signal-summary" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        <span className="admin-signal-title">
-          <strong>{signal.label}</strong>
-          <code>{signal.key}</code>
-          {archived ? <span className="admin-badge admin-badge-archived">Archived</span> : null}
-          {dirty ? <span className="admin-badge admin-badge-warning">Unsaved</span> : null}
-        </span>
-        {signal.description ? <span className="admin-signal-description">{signal.description}</span> : null}
-        <span className="admin-signal-meta">
-          <span>{describeResponse(signal)}</span>
-          <span>{signal.role}</span>
-          <span>
-            {archived
-              ? 'not sent to Jev'
-              : signal.role === 'diagnostic' ? 'not scored' : `weight ${signal.weight} · ${formatShare(signal.effectiveShare)}`}
+        <span className="admin-signal-top">
+          <span className="admin-signal-title">
+            <strong>{signal.label}</strong>
+            <code>{signal.key}</code>
+            {archived ? <span className="admin-badge admin-badge-archived">Archived</span> : null}
+            {dirty ? <span className="admin-badge admin-badge-warning">Unsaved</span> : null}
           </span>
-          <span>{APPLIES_LABELS[signal.appliesWhen].toLowerCase()}</span>
-          <span>v{signal.version}</span>
+          <span className="admin-signal-primitive">
+            {signal.source === 'deterministic' ? 'Computed' : describeResponse(signal)}
+          </span>
+        </span>
+        <span className="admin-signal-instructions">{signalSummaryText(signal, catalog)}</span>
+        <span className="admin-signal-meta">
+          <span>Applies: {APPLIES_LABELS[signal.appliesWhen]}</span>
+          <span>Weight: {Math.round(signal.weight * 100)}%</span>
+          <span>Role: {signal.role}</span>
+          <span>Version: v{signal.version}</span>
         </span>
       </button>
       {open ? (
@@ -650,22 +658,22 @@ function SignalCard({
             </p>
           ) : null}
           <div className="admin-actions">
-            <button type="button" disabled={!dirty || busy || !canWrite}
-              onClick={() => handle(() => updateSignal(signal.key, draft, signal.version, token), 'Saved. Applies to the next MCQ evaluation.')}>
+            <button type="button" disabled={!dirty || busy}
+              onClick={() => handle(() => updateSignal(signal.key, draft, signal.version), 'Saved. Applies to the next MCQ evaluation.')}>
               Save
             </button>
             <button type="button" className="secondary" disabled={!dirty || busy} onClick={() => setDraft(original)}>Discard</button>
             <span className="admin-actions-spacer" />
-            <button type="button" className="secondary" disabled={busy || !canWrite || dirty}
+            <button type="button" className="secondary" disabled={busy || dirty}
               title={dirty ? 'Save or discard changes first' : undefined}
               onClick={() => handle(
-                () => setSignalArchived(signal.key, !archived, signal.version, token),
+                () => setSignalArchived(signal.key, !archived, signal.version),
                 archived ? 'Restored. Runs again from the next evaluation.' : 'Archived. No longer sent to Jev.',
               )}>
               {archived ? 'Restore' : 'Archive'}
             </button>
           </div>
-          {draft.source === 'jev' ? <TryPanel draft={draft} token={token} writesEnabled={catalog.writesEnabled} /> : null}
+          {draft.source === 'jev' ? <TryPanel draft={draft} /> : null}
           <RevisionHistory subject={signal.key} />
         </div>
       ) : null}
@@ -675,17 +683,7 @@ function SignalCard({
 
 // ─── Correctness question ───
 
-function DirectiveEditor({
-  directive,
-  token,
-  writesEnabled,
-  onSaved,
-}: {
-  directive: CorrectnessDirective
-  token: string
-  writesEnabled: boolean
-  onSaved: () => void
-}) {
+function DirectiveEditor({ directive, onSaved }: { directive: CorrectnessDirective; onSaved: () => void }) {
   const original = useMemo(() => ({
     instructions: directive.instructions,
     criteria: { '1': directive.criteria['1'] ?? '', '0': directive.criteria['0'] ?? '' },
@@ -704,7 +702,7 @@ function DirectiveEditor({
     setMessage('')
     setErrors({})
     try {
-      await updateDirective({ ...draft, version: directive.version }, token)
+      await updateDirective({ ...draft, version: directive.version })
       setMessage('Saved. Applies to the next MCQ evaluation.')
       onSaved()
     } catch (reason) {
@@ -749,7 +747,7 @@ function DirectiveEditor({
       </div>
       {message ? <p className={Object.keys(errors).length ? 'admin-field-error' : 'admin-success'} role="status">{message}</p> : null}
       <div className="admin-actions">
-        <button type="button" disabled={!dirty || busy || !writesEnabled || !token} onClick={save}>Save</button>
+        <button type="button" disabled={!dirty || busy} onClick={save}>Save</button>
         <button type="button" className="secondary" disabled={!dirty || busy} onClick={() => setDraft(original)}>Discard</button>
       </div>
       <details className="signal-trace-raw">
@@ -765,12 +763,10 @@ function DirectiveEditor({
 
 function NewSignal({
   catalog,
-  token,
   defaultScope,
   onSaved,
 }: {
   catalog: SignalAdminCatalog
-  token: string
   defaultScope: string
   onSaved: () => void
 }) {
@@ -785,7 +781,7 @@ function NewSignal({
     setMessage('')
     setErrors({})
     try {
-      const created = await createSignal(draft, token)
+      const created = await createSignal(draft)
       setMessage(`Created ${created.key}. Applies to the next MCQ evaluation.`)
       setDraft(emptySignalDraft())
       setOpen(false)
@@ -822,46 +818,84 @@ function NewSignal({
           <SignalEditor draft={draft} onChange={setDraft} errors={errors} catalog={catalog} isNew />
           {message ? <p className={Object.keys(errors).length ? 'admin-field-error' : 'admin-success'} role="status">{message}</p> : null}
           <div className="admin-actions">
-            <button type="button" disabled={busy || !catalog.writesEnabled || !token} onClick={create}>Create signal</button>
+            <button type="button" disabled={busy} onClick={create}>Create signal</button>
             <button type="button" className="secondary" disabled={busy}
               onClick={() => { setDraft({ ...emptySignalDraft(), scope: defaultScope }); setErrors({}); setOpen(false) }}>
               Cancel
             </button>
           </div>
-          {draft.source === 'jev' ? <TryPanel draft={draft} token={token} writesEnabled={catalog.writesEnabled} /> : null}
+          {draft.source === 'jev' ? <TryPanel draft={draft} /> : null}
         </div>
       ) : null}
     </article>
   )
 }
 
-// ─── Page ───
+// ─── Recall (read-only specs) ───
 
-function TokenUnlock({ token, onChange }: { token: string; onChange: (token: string) => void }) {
-  const [value, setValue] = useState('')
-  if (token) {
-    return (
-      <span className="admin-token">
-        <span className="admin-badge admin-badge-success">Unlocked</span>
-        <button type="button" className="secondary admin-small-button" onClick={() => onChange('')}>Lock</button>
-      </span>
-    )
-  }
+function RecallSpec({ spec, title }: { spec: SignalSpec; title: string }) {
   return (
-    <form className="admin-token" onSubmit={(event) => { event.preventDefault(); onChange(value.trim()) }}>
-      <input type="password" aria-label="Admin token" placeholder="Admin token" value={value}
-        onChange={(event) => setValue(event.target.value)} />
-      <button type="submit" className="admin-small-button" disabled={!value.trim()}>Unlock</button>
-    </form>
+    <div className="admin-recall-spec">
+      <div className="signal-spec-meta" aria-label="Spec details">
+        <strong className="admin-recall-spec-title">{title}</strong>
+        <span>Spec <code>{spec.algorithm}</code></span>
+        <span>Version <code>v{spec.version}</code></span>
+        <span>{spec.signals.length} signals</span>
+      </div>
+      <SignalSpecTable spec={spec} />
+    </div>
   )
 }
+
+function RecallView({ specs, scope }: { specs: SignalSpecCatalog | null; scope: string }) {
+  if (!specs) return <p className="tune-footnote admin-page-error" aria-busy="true">Loading recall specs…</p>
+  const algorithm = specs.algorithms.find((item) => item.slug === scope)
+  const custom = specs.algorithms.filter((item) => !item.usesDefault)
+  return (
+    <TuneSection
+      eyebrow="Recall"
+      title={algorithm ? `${algorithm.name} signals` : 'All recall signals'}
+      copy="Read-only. Recall answers are scored by the Signal Assessor against these specs, authored in backend/app/core/signal_catalog.py and reseeded on backend startup."
+    >
+      <div className="admin-recall-list">
+        {algorithm ? (
+          <>
+            {algorithm.usesDefault ? <p className="tune-footnote">{algorithm.name} has no spec of its own, so it uses the default spec.</p> : null}
+            {!algorithm.seeded ? <p className="tune-footnote signal-spec-warning">Not seeded in the database yet.</p> : null}
+            <RecallSpec spec={algorithm.spec} title={algorithm.usesDefault ? 'Default spec' : algorithm.name} />
+          </>
+        ) : (
+          <>
+            <RecallSpec spec={specs.default} title="Default spec" />
+            <p className="tune-footnote">
+              Used by {specs.algorithms.length - custom.length} of {specs.algorithms.length} algorithms. These have their own:
+            </p>
+            {custom.map((item) => <RecallSpec key={item.slug} spec={item.spec} title={item.name} />)}
+          </>
+        )}
+      </div>
+    </TuneSection>
+  )
+}
+
+// ─── Page ───
+
+type QuestionType = 'mcq' | 'recall'
+const QUESTION_TYPE_LABELS: Record<QuestionType, string> = { mcq: 'MCQ', recall: 'Recall' }
+const ALL_SCOPES = 'all'
 
 export default function AdminPage() {
   const configuredProviderLabel = useConfiguredProviderLabel()
   const [catalog, setCatalog] = useState<SignalAdminCatalog | null>(null)
+  const [specs, setSpecs] = useState<SignalSpecCatalog | null>(null)
   const [error, setError] = useState('')
-  const [token, setToken] = useState(readAdminToken)
-  const [scopeFilter, setScopeFilter] = useState('')
+  // Question type and scope live in the URL (?type=recall&scope=binary-search), so views are linkable.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const questionType: QuestionType = searchParams.get('type') === 'recall' ? 'recall' : 'mcq'
+  const scope = searchParams.get('scope') || ALL_SCOPES
+  const select = (type: QuestionType, nextScope: string) => setSearchParams(
+    nextScope === ALL_SCOPES && type === 'mcq' ? {} : { type, scope: nextScope },
+  )
 
   const load = useCallback(() => {
     fetchSignalAdminCatalog()
@@ -873,98 +907,114 @@ export default function AdminPage() {
   }, [])
 
   useEffect(load, [load])
+  useEffect(() => {
+    fetchSignalSpecCatalog().then(setSpecs).catch((reason: unknown) => setError(errorMessage(reason)))
+  }, [])
 
-  const changeToken = (next: string) => {
-    setToken(next)
-    writeAdminToken(next)
-  }
-
-  // One list: general first, then each algorithm; archived signals stay in their group, after the active ones.
-  const visible = (catalog?.signals ?? [])
-    .filter((signal) => !scopeFilter || signal.scope === scopeFilter)
-    .sort((a, b) => Number(a.status === 'archived') - Number(b.status === 'archived'))
   const algorithmName = (slug: string) => catalog?.algorithms.find((algorithm) => algorithm.slug === slug)?.name ?? slug
+  const signalCount = (slug: string) => catalog?.signals.filter((signal) => signal.scope === slug).length ?? 0
+  const mcqScopes = [
+    { slug: ALL_SCOPES, label: 'All', count: catalog?.signals.length ?? 0 },
+    { slug: 'general', label: 'General', count: signalCount('general') },
+    ...(catalog?.algorithms ?? []).map((algorithm) => ({ slug: algorithm.slug, label: algorithm.name, count: signalCount(algorithm.slug) })),
+  ]
+  const recallScopes = [
+    { slug: ALL_SCOPES, label: 'All', count: 0 },
+    ...(specs?.algorithms ?? []).map((algorithm) => ({ slug: algorithm.slug, label: algorithm.name, count: algorithm.usesDefault ? 0 : algorithm.spec.signals.length })),
+  ]
+
+  // MCQ: the selected scope's signals; "All" groups every scope, general first. Archived signals
+  // stay in their group, after the active ones.
+  const visible = (catalog?.signals ?? [])
+    .filter((signal) => scope === ALL_SCOPES || signal.scope === scope)
+    .sort((a, b) => Number(a.status === 'archived') - Number(b.status === 'archived'))
   const groups = [...new Set(visible.map((signal) => signal.scope))].sort(
     (a, b) => Number(a !== 'general') - Number(b !== 'general'),
   )
-  const groupCopy = (scope: string) => (scope === 'general'
-    ? 'Asked for every MCQ, in one Jev call with the correctness question.'
-    : `Asked in addition to the general signals when the MCQ's algorithm is ${algorithmName(scope)}.`)
-  const archivedCount = catalog?.signals.filter((signal) => signal.status === 'archived').length ?? 0
+  const scopeLabel = scope === ALL_SCOPES ? 'All MCQ' : scope === 'general' ? 'General' : algorithmName(scope)
+  const generalCount = signalCount('general')
+  const scopeCopy = scope === ALL_SCOPES
+    ? 'Every MCQ signal, grouped by scope. Archived signals are not sent to Jev and can be restored; keys are permanent.'
+    : scope === 'general'
+      ? 'Asked for every MCQ, in one Jev call with the correctness question.'
+      : `Asked in addition to the ${generalCount} general signal${generalCount === 1 ? '' : 's'} when the MCQ's algorithm is ${algorithmName(scope)}.`
 
   return (
     <div className="app app-tune">
-      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} pinned />
+      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} pinned solid />
 
       <section className="tune-surface">
         <div className="tune-hero">
           <div>
             <h2>Admin</h2>
-            <p>Signals Jev generates when someone answers an MCQ: the correctness question and every signal question asked alongside it.</p>
+            <p>Signals each question type produces. MCQ signals are Jev questions you can edit; recall signals are the assessor&rsquo;s read-only specs.</p>
           </div>
           <div className="tune-hero-meta" aria-label="Admin page behavior">
             <span>Saved explicitly</span>
             <span>Applies next evaluation</span>
-            <TokenUnlock token={token} onChange={changeToken} />
           </div>
         </div>
 
-        {catalog && !catalog.writesEnabled ? (
-          <p className="admin-banner" role="status">Read-only: set <code>ADMIN_TOKEN</code> on the backend to enable edits.</p>
-        ) : null}
-        {catalog?.writesEnabled && !token ? (
-          <p className="admin-banner" role="status">Enter the admin token to edit, archive or try signals.</p>
-        ) : null}
-
         <div className="tune-layout">
-          <aside className="tune-rail" aria-label="Admin sections">
-            <div className="admin-rail-group">
-              <a href="#mcq" className="admin-rail-group-label">MCQ</a>
-              <a href="#correctness">Correctness</a>
-              <a href="#signals">Signals</a>
-            </div>
-          </aside>
+          <nav className="tune-rail" aria-label="Question types and scopes">
+            {(['mcq', 'recall'] as QuestionType[]).map((type) => (
+              <div key={type} className="admin-rail-group">
+                <button
+                  type="button"
+                  className={`admin-rail-group-label${questionType === type ? ' admin-rail-active-group' : ''}`}
+                  onClick={() => select(type, ALL_SCOPES)}
+                >
+                  {QUESTION_TYPE_LABELS[type]}
+                </button>
+                {(type === 'mcq' ? mcqScopes : recallScopes).map((item) => {
+                  const current = questionType === type && scope === item.slug
+                  return (
+                    <button
+                      key={item.slug}
+                      type="button"
+                      className={`admin-rail-item${current ? ' admin-rail-item-current' : ''}${item.slug !== ALL_SCOPES && !item.count ? ' admin-rail-item-empty' : ''}`}
+                      aria-current={current ? 'page' : undefined}
+                      onClick={() => select(type, item.slug)}
+                    >
+                      <span>{item.label}</span>
+                      {item.count ? <span className="admin-rail-count">{item.count}</span> : null}
+                    </button>
+                  )
+                })}
+              </div>
+            ))}
+          </nav>
 
           <div className="tune-content">
             {error ? <p className="admin-field-error admin-page-error" role="alert">{error}</p> : null}
-            {!catalog && !error ? <p className="tune-footnote admin-page-error" aria-busy="true">Loading signals…</p> : null}
-            {catalog ? (
+            {questionType === 'recall' ? <RecallView specs={specs} scope={scope} /> : null}
+            {questionType === 'mcq' && !catalog && !error ? <p className="tune-footnote admin-page-error" aria-busy="true">Loading signals…</p> : null}
+            {questionType === 'mcq' && catalog ? (
               <>
-                <div id="mcq" className="admin-anchor" aria-hidden="true" />
-                <TuneSection eyebrow="01" title="Correctness question"
-                  copy={'Decides whether the answer was correct. Jev answers "1" (correct) or "0"; the labels are fixed and this question cannot be archived.'}>
-                  <div id="correctness">
-                    <DirectiveEditor directive={catalog.directive} token={token} writesEnabled={catalog.writesEnabled} onSaved={load} />
-                  </div>
-                </TuneSection>
+                {scope === ALL_SCOPES || scope === 'general' ? (
+                  <TuneSection eyebrow="MCQ" title="Correctness question"
+                    copy={'Decides whether the answer was correct. Jev answers "1" (correct) or "0"; the labels are fixed and this question cannot be archived.'}>
+                    <DirectiveEditor directive={catalog.directive} onSaved={load} />
+                  </TuneSection>
+                ) : null}
 
-                <TuneSection
-                  eyebrow="02"
-                  title="Signals"
-                  copy={`Every MCQ signal, including archived ones${archivedCount ? ` (${archivedCount})` : ''}. Archived signals are not sent to Jev and can be restored; keys are permanent.`}
-                  action={(
-                    <select className="admin-filter" aria-label="Filter by scope" value={scopeFilter}
-                      onChange={(event) => setScopeFilter(event.target.value)}>
-                      <option value="">All scopes</option>
-                      <option value="general">General</option>
-                      {catalog.algorithms.map((algorithm) => <option key={algorithm.slug} value={algorithm.slug}>{algorithm.name}</option>)}
-                    </select>
-                  )}
-                >
-                  <div id="signals" className="admin-signal-list">
-                    {groups.map((scope) => (
-                      <div key={scope} className="admin-signal-group">
-                        <h4>{scope === 'general' ? 'General' : algorithmName(scope)}</h4>
-                        <p className="admin-signal-group-copy">{groupCopy(scope)}</p>
-                        {visible.filter((signal) => signal.scope === scope).map((signal) => (
-                          <SignalCard key={signal.key} signal={signal} catalog={catalog} token={token} onSaved={load} />
+                <TuneSection eyebrow="MCQ" title={`${scopeLabel} signals`} copy={scopeCopy}>
+                  <div className="admin-signal-list">
+                    {groups.map((group) => (
+                      <div key={group} className="admin-signal-group">
+                        {scope === ALL_SCOPES ? <h4>{group === 'general' ? 'General' : algorithmName(group)}</h4> : null}
+                        {visible.filter((signal) => signal.scope === group).map((signal) => (
+                          <SignalCard key={signal.key} signal={signal} catalog={catalog} onSaved={load} />
                         ))}
                       </div>
                     ))}
-                    {!groups.length ? (
-                      <p className="tune-footnote">No signals{scopeFilter ? ` for ${scopeFilter === 'general' ? 'general' : algorithmName(scopeFilter)}` : ''} yet.</p>
-                    ) : null}
-                    <NewSignal catalog={catalog} token={token} defaultScope={scopeFilter || 'general'} onSaved={load} />
+                    {!groups.length ? <p className="tune-footnote">No {scopeLabel} signals yet.</p> : null}
+                    <NewSignal
+                      key={scope}
+                      catalog={catalog}
+                      defaultScope={scope === ALL_SCOPES ? 'general' : scope}
+                      onSaved={load}
+                    />
                   </div>
                 </TuneSection>
               </>

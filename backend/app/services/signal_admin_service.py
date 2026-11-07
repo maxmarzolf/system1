@@ -1,17 +1,15 @@
 """Signal administration for /admin: list, create, edit, archive, restore, try.
 
-Writes need ``ADMIN_TOKEN``. Every write is validated against Jev's rules,
+Every write is validated against Jev's rules,
 guarded by the row's version, and recorded in ``signal_definition_revision``.
 Changes apply to the next evaluation (see ``signal_registry_service``).
 """
 
 from __future__ import annotations
 
-import hmac
 from collections.abc import Callable
 from typing import Any
 
-from app.config import settings
 from app.core.jev import JevGateway, JevUnavailableError
 from app.core.signals import DETERMINISTIC_IMPLEMENTATIONS, SignalContext, applies, definition_to_plugin
 from app.core.signals.mcq import MCQ_MODALITY, MCQ_STATE_FIELDS
@@ -43,10 +41,6 @@ STORED_FIELDS = {api: stored for stored, api in API_FIELDS.items()}
 TRY_KEY = "draftSignal"
 
 
-class AdminTokenError(PermissionError):
-    pass
-
-
 class SignalValidationError(ValueError):
     def __init__(self, errors: dict[str, str]):
         super().__init__("Signal is invalid.")
@@ -63,13 +57,6 @@ class SignalConflictError(RuntimeError):
 
 class SignalTryError(RuntimeError):
     pass
-
-
-def require_admin_token(token: str) -> None:
-    if not settings.admin_token:
-        raise AdminTokenError("Signal edits are disabled: set ADMIN_TOKEN on the backend.")
-    if not hmac.compare_digest(token.encode("utf-8"), settings.admin_token.encode("utf-8")):
-        raise AdminTokenError("Admin token did not match.")
 
 
 def _to_api(record: dict[str, Any]) -> dict[str, Any]:
@@ -115,7 +102,6 @@ async def list_signals(modality: str = MCQ_MODALITY) -> dict[str, Any]:
     return {
         "modality": modality,
         "stateFields": list(MCQ_STATE_FIELDS),
-        "writesEnabled": bool(settings.admin_token),
         "directive": {
             **_to_api(directive),
             "labels": ["1", "0"],
@@ -148,8 +134,7 @@ async def _validated(draft: dict[str, Any]) -> dict[str, Any]:
     return definition
 
 
-async def create_signal(draft: SignalDefinitionDraft, token: str, modality: str = MCQ_MODALITY) -> dict[str, Any]:
-    require_admin_token(token)
+async def create_signal(draft: SignalDefinitionDraft, modality: str = MCQ_MODALITY) -> dict[str, Any]:
     definition = await _validated(_from_draft(draft))
     created = await signal_definition_repository.insert_definition(definition, modality)
     if created is None:
@@ -159,8 +144,7 @@ async def create_signal(draft: SignalDefinitionDraft, token: str, modality: str 
     return _to_api(created)
 
 
-async def update_signal(key: str, draft: SignalDefinitionDraft, version: int, token: str) -> dict[str, Any]:
-    require_admin_token(token)
+async def update_signal(key: str, draft: SignalDefinitionDraft, version: int) -> dict[str, Any]:
     definition = await _validated({**_from_draft(draft), "key": key})
     try:
         updated = await signal_definition_repository.update_definition(key, definition, version)
@@ -171,8 +155,7 @@ async def update_signal(key: str, draft: SignalDefinitionDraft, version: int, to
     return _to_api(updated)
 
 
-async def set_signal_status(key: str, archived: bool, version: int, token: str) -> dict[str, Any]:
-    require_admin_token(token)
+async def set_signal_status(key: str, archived: bool, version: int) -> dict[str, Any]:
     try:
         updated = await signal_definition_repository.set_definition_status(
             key, "archived" if archived else "active", version
@@ -184,8 +167,7 @@ async def set_signal_status(key: str, archived: bool, version: int, token: str) 
     return _to_api(updated)
 
 
-async def update_directive(body: SignalDirectiveUpdate, token: str, modality: str = MCQ_MODALITY) -> dict[str, Any]:
-    require_admin_token(token)
+async def update_directive(body: SignalDirectiveUpdate, modality: str = MCQ_MODALITY) -> dict[str, Any]:
     directive = normalize_directive(
         {"instructions": body.instructions, "criteria": body.criteria, "correctness_weight": body.correctnessWeight}
     )
@@ -214,14 +196,12 @@ async def try_signal(
     draft: SignalDefinitionDraft,
     problem_id: str,
     choice_id: str,
-    token: str,
     gateway_factory: Callable[[], JevGateway] | None = None,
 ) -> dict[str, Any]:
     """Ask Jev one draft signal question about a stored MCQ answered with ``choice_id``.
 
     Nothing is saved. ``answeredCorrectly`` comes from the stored answer key.
     """
-    require_admin_token(token)
     raw = _from_draft(draft)
     definition = await _validated({**raw, "key": raw["key"] or TRY_KEY})
     context = await mcq_context_for(problem_id, choice_id)

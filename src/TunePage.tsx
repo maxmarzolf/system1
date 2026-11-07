@@ -34,7 +34,6 @@ import {
 import type { GooglePlaylistTuning } from './googlePlaylistTuning'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
-import SignalSpecViewer from './SignalSpecViewer'
 import { getHotkeyReferenceGroups } from './hotkeys'
 import { NumberControl, SelectControl, ToggleControl, TuneSection } from './tuneControls'
 
@@ -89,7 +88,7 @@ export default function TunePage() {
 
   return (
     <div className="app app-tune">
-      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} pinned />
+      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} pinned solid />
 
       <section className="tune-surface">
         <div className="tune-hero">
@@ -111,7 +110,6 @@ export default function TunePage() {
             <a href="#mcq">MCQ</a>
             <a href="#ai-completion">AI completion</a>
             <a href="#submission">Submission</a>
-            <a href="#signals">Signals</a>
             <a href="#hotkeys">Hotkeys</a>
           </aside>
 
@@ -352,14 +350,6 @@ export default function TunePage() {
 
             <TuneSection
               eyebrow="07"
-              title="Signals"
-              copy="What the Signal Assessor scores for each algorithm, and how each signal feeds the rubric."
-            >
-              <SignalSpecViewer />
-            </TuneSection>
-
-            <TuneSection
-              eyebrow="08"
               title="Hotkeys"
               copy="Reference the keyboard controls available whenever a practice card is showing."
             >
