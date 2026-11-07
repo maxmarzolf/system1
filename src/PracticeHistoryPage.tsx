@@ -6,6 +6,7 @@ import DailyWorkHistory, {
 } from './DailyWorkHistory'
 import { DAILY_WORK_RANGES, type DailyWorkRange, viewerTimeZone } from './dailyWork'
 import HistoryDayDetail from './HistoryDayDetail'
+import SignalHologramHeader from './SignalHologramHeader'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 
@@ -142,8 +143,8 @@ export default function PracticeHistoryPage() {
       <Suspense
         fallback={(
           <section className="signal-hologram" aria-label="Signal score terrain">
-            <p className="dashboard-activity-eyebrow">Signal Score Terrain</p>
-            <p className="dashboard-mode-meta">Mapping signal scores…</p>
+            <SignalHologramHeader summary="" />
+            <p className="dashboard-mode-meta signal-hologram-loading">Mapping signal scores…</p>
           </section>
         )}
       >

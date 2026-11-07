@@ -7207,6 +7207,46 @@ button.daily-work-history-x-day-selected:hover {
 .signal-hologram {
   position: relative;
   margin: 0 0 1rem;
+  /* Reserve the full window from the first paint (SignalHologram then sets the exact height), so the
+     sections below never jump down when the scene arrives. */
+  min-height: calc(100vh - var(--journey-snap-padding, 5.5rem));
+}
+
+.signal-hologram-summary {
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.signal-hologram-summary-ready {
+  opacity: 1;
+}
+
+.signal-hologram-loading {
+  animation: signal-hologram-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes signal-hologram-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.9; }
+}
+
+/* Overlays on the stage arrive with the terrain instead of popping in ahead of it. */
+.signal-hologram-stage .signal-hologram-actions,
+.signal-hologram-stage .signal-hologram-hint {
+  animation: signal-hologram-fade-in 0.7s ease 1.1s both;
+}
+
+/* Opacity only: the actions bar is centered with a transform. */
+@keyframes signal-hologram-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signal-hologram-loading { animation: none; opacity: 0.7; }
+  .signal-hologram-stage .signal-hologram-actions,
+  .signal-hologram-stage .signal-hologram-hint { animation-duration: 0.3s; animation-delay: 0s; }
+  .signal-hologram-summary { transition: none; }
 }
 
 /* Page chrome stays above the full-window canvas and clickable. */

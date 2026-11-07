@@ -19,6 +19,7 @@ class FakeRenderer {
   }
   setPixelRatio() {}
   setClearColor() {}
+  compile() {}
   setSize() {}
   render() {
     this.rendered += 1

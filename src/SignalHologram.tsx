@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { apiUrl } from './api'
 import { formatCalendarDate, viewerTimeZone } from './dailyWork'
-import InfoTip from './InfoTip'
+import SignalHologramHeader from './SignalHologramHeader'
 import { Link } from 'react-router-dom'
 import { useTheme } from './theme'
 
@@ -37,6 +37,12 @@ const LANDSCAPE_ROWS = 48 // samples along time, front to back
 const LANDSCAPE_SUBDIVISIONS = 6 // samples between neighbouring signals
 const TIME_BANDWIDTH = 0.07 // smoothing kernel width, as a fraction of the whole time span
 const PRIOR_WEIGHT = 0.2 // pull toward a signal's mean shortfall where it has no nearby answers
+// Reveal: the terrain rises from flat while the camera eases in; dots and labels follow.
+const REVEAL_MS = 1600
+const REVEAL_MS_REDUCED = 400 // reduced motion: a plain fade
+const REVEAL_DOLLY = 0.35 // the camera starts this much farther out
+const easeOutCubic = (t: number) => 1 - (1 - t) ** 3
+const phase = (t: number, start: number, end: number) => Math.min(Math.max((t - start) / (end - start), 0), 1)
 
 const cssColor = (name: string, fallback: string) => {
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -46,17 +52,6 @@ const cssColor = (name: string, fallback: string) => {
     return new THREE.Color(fallback)
   }
 }
-
-const SCORE_EXPLANATION = (
-  <>
-    Every graded answer gives each signal a score from 0 to 100. <strong>Correct choice</strong>: 100 if the answer
-    was right, 0 if not. <strong>Yes/no signals</strong> (e.g. concept recognition): how likely Jev judged the answer
-    to be a yes, times 100. <strong>Scale signals</strong> (e.g. near miss): where the answer landed on the scale,
-    e.g. the middle of three levels is 50. <strong>Recall signals</strong>: the assessor&rsquo;s 0&ndash;100 rating of
-    that part of your code. <strong>Speed</strong>: 100 at 10 seconds or faster, falling to 0 at 90 seconds. Signals
-    that didn&rsquo;t apply to an answer, like near miss on a correct one, aren&rsquo;t plotted.
-  </>
-)
 
 const LABEL_FONT = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace"
 
@@ -234,17 +229,16 @@ function mountHologram(
   surfaceGeometry.setAttribute('position', new THREE.Float32BufferAttribute(surfacePositions, 3))
   surfaceGeometry.setAttribute('color', new THREE.Float32BufferAttribute(surfaceColors, 3))
   surfaceGeometry.setIndex(surfaceIndex)
-  hologram.add(new THREE.Mesh(
-    surfaceGeometry,
-    new THREE.MeshBasicMaterial({
-      vertexColors: true,
-      transparent: true,
-      opacity: light ? 0.32 : 0.24,
-      side: THREE.DoubleSide,
-      blending,
-      depthWrite: false,
-    }),
-  ))
+  const surfaceOpacity = light ? 0.32 : 0.24
+  const surfaceMaterial = new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0,
+    side: THREE.DoubleSide,
+    blending,
+    depthWrite: false,
+  })
+  hologram.add(new THREE.Mesh(surfaceGeometry, surfaceMaterial))
 
   // Wireframe over the surface: every other time row, and each signal plus the half-steps between.
   const wirePositions: number[] = []
@@ -263,10 +257,9 @@ function mountHologram(
   const wireGeometry = new THREE.BufferGeometry()
   wireGeometry.setAttribute('position', new THREE.Float32BufferAttribute(wirePositions, 3))
   wireGeometry.setAttribute('color', new THREE.Float32BufferAttribute(wireColors, 3))
-  hologram.add(new THREE.LineSegments(
-    wireGeometry,
-    new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: light ? 0.8 : 0.7, blending, depthWrite: false }),
-  ))
+  const wireOpacity = light ? 0.8 : 0.7
+  const wireMaterial = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, blending, depthWrite: false })
+  hologram.add(new THREE.LineSegments(wireGeometry, wireMaterial))
 
   // Each actual answer, as a marker at its own shortfall.
   const positions: number[] = []
@@ -286,6 +279,7 @@ function mountHologram(
     map: dot,
     vertexColors: true,
     transparent: true,
+    opacity: 0,
     depthWrite: false,
     blending,
     sizeAttenuation: true,
@@ -293,11 +287,13 @@ function mountHologram(
   const pointCloud = new THREE.Points(pointGeometry, pointMaterial)
   hologram.add(pointCloud)
 
-  // Labels: signals along the front, dates down the side.
+  // Labels: signals along the front, dates down the side. They sit outside the rising group
+  // so they never squash during the reveal.
+  const labels: THREE.Sprite[] = []
   for (const signal of signals) {
     const label = textSprite(compact(signal.label), accent, 0.22)
     label.position.set(xOf(signal.key), -0.05, TIME_DEPTH / 2 + 0.55)
-    hologram.add(label)
+    labels.push(label)
   }
   for (let tick = 0; tick < TIME_TICKS; tick += 1) {
     const fraction = tick / (TIME_TICKS - 1)
@@ -305,8 +301,13 @@ function mountHologram(
     const localDate = `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}`
     const label = textSprite(formatCalendarDate(localDate), accent, 0.2)
     label.position.set(-width / 2 - 1.25, 0, (fraction - 0.5) * TIME_DEPTH)
-    hologram.add(label)
+    labels.push(label)
   }
+  for (const label of labels) {
+    ;(label.material as THREE.SpriteMaterial).opacity = 0
+    scene.add(label)
+  }
+  hologram.scale.y = 0.001
 
   const target = new THREE.Vector3(0, SCORE_HEIGHT * 0.22, 0.6)
   // Default view direction; the distance is fitted to the window in resize().
@@ -323,7 +324,9 @@ function mountHologram(
   controls.minDistance = 4
   controls.maxDistance = 40
   controls.maxPolarAngle = Math.PI * 0.49
-  controls.autoRotate = !reduceMotion
+  let revealed = false
+  const resumeRotation = () => !reduceMotion && !userMoved && revealed
+  controls.autoRotate = false // starts once the reveal settles
   controls.autoRotateSpeed = 0.5
   // The canvas fills the window, so plain wheel/trackpad scrolling must keep scrolling the page:
   // zoom only on pinch (sent as ctrl+wheel) or Ctrl/Cmd + scroll, and let vertical swipes scroll on touch.
@@ -341,6 +344,9 @@ function mountHologram(
   renderer.domElement.addEventListener('wheel', onWheel, { passive: false })
   controls.addEventListener('start', stopRotating)
 
+  let fittedDistance = 20
+  let dolly = reduceMotion ? 0 : REVEAL_DOLLY
+  const placeCamera = () => camera.position.copy(target).addScaledVector(viewDirection, fittedDistance * (1 + dolly))
   const resize = () => {
     const { clientWidth, clientHeight } = container
     if (!clientWidth || !clientHeight) return
@@ -351,8 +357,8 @@ function mountHologram(
       // Frame the whole landscape in whichever of the window's dimensions is tighter.
       const verticalHalfFov = THREE.MathUtils.degToRad(camera.fov / 2)
       const horizontalHalfFov = Math.atan(Math.tan(verticalHalfFov) * camera.aspect)
-      const distance = (sceneRadius / Math.sin(Math.min(verticalHalfFov, horizontalHalfFov))) * 0.8
-      camera.position.copy(target).addScaledVector(viewDirection, distance)
+      fittedDistance = (sceneRadius / Math.sin(Math.min(verticalHalfFov, horizontalHalfFov))) * 0.8
+      placeCamera()
     }
   }
   resize()
@@ -371,7 +377,7 @@ function mountHologram(
     if (hit?.index === undefined) {
       setTooltip(null)
       // Resume spinning once off a dot, unless the user has taken over the camera.
-      controls.autoRotate = !reduceMotion && !userMoved
+      controls.autoRotate = resumeRotation()
       return
     }
     // Hold still while a dot's details are showing.
@@ -386,7 +392,7 @@ function mountHologram(
   }
   const onPointerLeave = () => {
     setTooltip(null)
-    controls.autoRotate = !reduceMotion && !userMoved
+    controls.autoRotate = resumeRotation()
   }
   renderer.domElement.addEventListener('pointermove', onPointerMove)
   renderer.domElement.addEventListener('pointerleave', onPointerLeave)
@@ -399,11 +405,35 @@ function mountHologram(
   visibilityObserver.observe(container)
   let frame = 0
   const clock = new THREE.Clock()
-  const animate = () => {
+  // Compile the shaders now, while everything is still transparent, so the first visible frames
+  // don't hitch (three.js otherwise compiles lazily on the first render).
+  renderer.compile(scene, camera)
+  const revealMs = reduceMotion ? REVEAL_MS_REDUCED : REVEAL_MS
+  let revealStart = -1
+  const reveal = (now: number) => {
+    if (revealStart < 0) revealStart = now
+    const t = Math.min((now - revealStart) / revealMs, 1)
+    const fade = reduceMotion ? t : easeOutCubic(phase(t, 0, 0.45))
+    surfaceMaterial.opacity = surfaceOpacity * fade
+    wireMaterial.opacity = wireOpacity * fade
+    pointMaterial.opacity = reduceMotion ? t : easeOutCubic(phase(t, 0.55, 1))
+    for (const label of labels) (label.material as THREE.SpriteMaterial).opacity = reduceMotion ? t : easeOutCubic(phase(t, 0.35, 0.9))
+    hologram.scale.y = reduceMotion ? 1 : Math.max(easeOutCubic(phase(t, 0.1, 0.85)), 0.001)
+    if (!userMoved) {
+      dolly = reduceMotion ? 0 : REVEAL_DOLLY * (1 - easeOutCubic(t))
+      placeCamera()
+    }
+    if (t >= 1) {
+      revealed = true
+      controls.autoRotate = resumeRotation()
+    }
+  }
+  const animate = (now: number = performance.now()) => {
     frame = requestAnimationFrame(animate)
     if (!visible) return
+    if (!revealed) reveal(now)
     const elapsed = clock.getElapsedTime()
-    if (!reduceMotion) pointMaterial.size = POINT_SIZE * (1 + 0.08 * Math.sin(elapsed * 2.2))
+    if (!reduceMotion && revealed) pointMaterial.size = POINT_SIZE * (1 + 0.08 * Math.sin(elapsed * 2.2))
     controls.update()
     renderer.render(scene, camera)
   }
@@ -537,26 +567,9 @@ export default function SignalHologram() {
 
   return (
     <section ref={sectionRef} className="signal-hologram" aria-label="Signal score terrain">
-      <div className="signal-hologram-header">
-        <div className="signal-hologram-title">
-          <p className="dashboard-activity-eyebrow">
-            Signal Score Terrain{' '}
-            <InfoTip label="what a signal score is">{SCORE_EXPLANATION}</InfoTip>
-          </p>
-          {summary ? <p className="history-day-summary">{summary} · all time</p> : null}
-          <p className="signal-hologram-explainer">
-            Height is how far each signal fell short of a perfect 100, smoothed over time: peaks are weak spots,
-            flat ground is where you scored well. Dots are individual answers.
-          </p>
-        </div>
-        <div className="signal-hologram-legend" aria-label="Colors: strong scores to weak scores">
-          <span>strong · 100</span>
-          <span className="signal-hologram-gradient" aria-hidden="true" />
-          <span>weak · 0</span>
-        </div>
-      </div>
+      <SignalHologramHeader summary={summary} />
       {error ? <p className="coach-error" role="alert">{error}</p> : null}
-      {!history && !error ? <p className="dashboard-mode-meta">Mapping signal scores…</p> : null}
+      {!history && !error ? <p className="dashboard-mode-meta signal-hologram-loading">Mapping signal scores…</p> : null}
       {history && !points.length ? <p className="dashboard-mode-meta">No scored signals yet. Answer a few questions to shape the terrain.</p> : null}
       {points.length && !webgl ? (
         <p className="dashboard-mode-meta">The 3D view needs WebGL, which this browser has turned off.</p>
