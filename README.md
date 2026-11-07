@@ -60,16 +60,15 @@ React pages ──► FastAPI endpoints ──► services ──► domain / co
 - **Recall signal specs** live in `backend/app/core/signal_catalog.py` and are reseeded at startup.
 - The schema is `backend/app/schema.sql`, applied idempotently at startup along with small upgrades and seeding in `backend/app/database.py`. There is no migration tool.
 
-Docs:
+Docs ([index](docs/README.md)):
 
 | Doc | What it covers |
 |---|---|
 | [docs/data-flow.md](docs/data-flow.md) | Diagrams of every flow: practice, MCQ grading with Jev, review, `/admin` |
-| [docs/database-schema.md](docs/database-schema.md) | ER diagram and what each table holds |
-| [docs/backend-architecture.md](docs/backend-architecture.md) | Layer rules and request traces, module by module |
-| [docs/service-contracts.md](docs/service-contracts.md) | Typed service payload contracts |
-| [docs/content-architecture.md](docs/content-architecture.md) | How catalog content (problems, playlists) is modeled |
-| [docs/migration-notes.md](docs/migration-notes.md) | History of moved and removed modules |
+| [docs/backend-architecture.md](docs/backend-architecture.md) | Layers and enforced rules, where new code goes, module map, request paths |
+| [docs/frontend.md](docs/frontend.md) | Pages, URL parameters, stored settings, the practice flow engine, test helpers |
+| [docs/database-schema.md](docs/database-schema.md) | ER diagram, content rules, what a stored evaluation holds |
+| [docs/history.md](docs/history.md) | The major changes and what they replaced |
 
 ### Backend layering rules
 

@@ -152,6 +152,16 @@ erDiagram
 | `playlist`, `playlist_problem_order` | Ordered decks of problems. A playlist can have several named orders (`order_slug`). | Seed |
 | `multiple_choice_problem` | A generated MCQ with up to four choices and the answer key. `fingerprint` deduplicates identical questions. | Generated during practice |
 
+### Content rules
+
+- **`problem` is the single home for practice content:** core algorithms, meta questions, static playlist cards and generated cards. Do not add another table that stores titles, prompts, code, difficulty or tags; the architecture tests guard this.
+- **`source_type` records where a row came from:** `core-catalog`, `core-meta`, `static-playlist` or `generated-llm`. Generated cards are written straight to `problem`, with `generation_context` and `llm_used`.
+- **Playlists only organize:** `playlist` and `playlist_problem_order` reference problems by slug and never copy their content.
+- **Submissions keep a snapshot:** `submission.generated_card` stores the card exactly as shown, so history renders correctly even if the problem later changes.
+- **Resetting practice history** deletes `generated-llm` problems but never core or playlist rows.
+- **MCQs are separate on purpose:** they live in `multiple_choice_problem`. A stored question is never edited, so every MCQ answer can be checked against what was shown.
+- The Python and TypeScript catalogs in code (`backend/app/core/*catalog*.py`, `src/data/`) are seed inputs and offline fallbacks; reads at runtime go through the repositories.
+
 ## Practice records
 
 `submission` is the only table practice writes to. One row per answer, across every modality.
@@ -163,7 +173,7 @@ erDiagram
   - `evaluation`: the canonical evaluation. For MCQ this includes `signalResults`, `correctness`, `provenance`, `jevTrace` and a `signalSpecSnapshot`, so a stored grade can always be explained even after the signals change.
   - `flow`: flow-mode bookkeeping (`anchorCardId`, …)
   - `modality`: modality-specific extras
-- The Dashboard, Journey and Tune pages all read from this table. The Journey day view groups rows by date in the viewer's time zone.
+- The Dashboard and Journey pages read from this table. The Journey day view groups rows by date in the viewer's time zone.
 
 ## Signal registry
 

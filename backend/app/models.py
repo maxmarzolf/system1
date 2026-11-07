@@ -466,43 +466,6 @@ class SkillMapGhostRepActivity(BaseModel):
     days: list[SkillMapGhostRepActivityDay] = []
     algorithms: list[SkillMapGhostRepAlgorithm] = []
 
-class SkillMapSpacedRepetitionDay(BaseModel):
-    date: str = ""
-    status: str = "empty"
-    label: str = ""
-
-
-class SkillMapSpacedRepetitionTrack(BaseModel):
-    id: str = ""
-    label: str = ""
-    slug: str = ""
-    level: str = "pattern"
-    parentSlug: str | None = None
-    parentLabel: str | None = None
-    coreAlgorithmCount: int = Field(default=0, ge=0)
-    requiredGhostReps: int = Field(default=1, ge=1)
-    status: str = "not_started"
-    statusLabel: str = "Not started"
-    stageLabel: str = "Acquire"
-    completedSessions: int = Field(default=0, ge=0)
-    startedAt: str | None = None
-    lastAttemptedAt: str | None = None
-    lastCompletedAt: str | None = None
-    nextDueAt: str | None = None
-    daysUntilDue: int | None = None
-    days: list[SkillMapSpacedRepetitionDay] = []
-
-
-class SkillMapSpacedRepetition(BaseModel):
-    today: str = ""
-    windowStart: str = ""
-    windowEnd: str = ""
-    intervals: list[int] = []
-    requiredGhostReps: int = Field(default=1, ge=1)
-    tracks: list[SkillMapSpacedRepetitionTrack] = []
-    queue: list[SkillMapSpacedRepetitionTrack] = []
-
-
 class SkillMapModeReadiness(BaseModel):
     readiness: float = Field(default=0, ge=0, le=100)
     attemptCount: int = Field(default=0, ge=0)
@@ -560,7 +523,6 @@ class SkillMapOverviewResponse(BaseModel):
     algorithms: list[SkillMapAlgorithmReadiness] = []
     reviewQueue: list[SkillMapCardReadiness] = []
     ghostRepActivity: SkillMapGhostRepActivity = SkillMapGhostRepActivity()
-    spacedRepetition: SkillMapSpacedRepetition = SkillMapSpacedRepetition()
 
 
 class AdminResetPracticeHistoryRequest(BaseModel):

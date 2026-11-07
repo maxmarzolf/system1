@@ -38,7 +38,6 @@ from app.services.contracts import (
     SkillMapOverviewPayload,
     SkillMapOverviewSummary,
     SkillMapReviewQueueItem,
-    SkillMapSpacedRepetitionPayload,
 )
 
 
@@ -48,48 +47,6 @@ class AttemptOverviewItem(TypedDict):
     supportLayer: str
     liveCoachUsed: bool
     signals: dict[str, Any]
-
-
-SPACED_REPETITION_REQUIRED_GHOST_REPS = 1
-SPACED_REPETITION_INTERVALS = (0, 1, 3, 7, 14, 30, 60, 90)
-SPACED_REPETITION_PACKET_DEFINITIONS = (
-    {
-        "id": "group-1a",
-        "label": "Group 1A",
-        "group": "Linear Scan / Index Control",
-        "algorithmSlugs": ("prefix-sums", "two-pointers", "sliding-window"),
-    },
-    {
-        "id": "group-1b",
-        "label": "Group 1B",
-        "group": "Linear Scan / Index Control",
-        "algorithmSlugs": ("binary-search", "intervals", "sorting"),
-    },
-    {
-        "id": "group-2a",
-        "label": "Group 2A",
-        "group": "Structure / Traversal / Search",
-        "algorithmSlugs": ("linked-lists", "stacks-queues", "monotonic-stack"),
-    },
-    {
-        "id": "group-2b",
-        "label": "Group 2B",
-        "group": "Structure / Traversal / Search",
-        "algorithmSlugs": ("trees", "backtracking", "trie"),
-    },
-    {
-        "id": "group-3a",
-        "label": "Group 3A",
-        "group": "Optimization / Connectivity / Advanced State",
-        "algorithmSlugs": ("heap", "union-find", "graphs"),
-    },
-    {
-        "id": "group-3b",
-        "label": "Group 3B",
-        "group": "Optimization / Connectivity / Advanced State",
-        "algorithmSlugs": ("dynamic-programming", "matrix-grid"),
-    },
-)
 
 
 def _submission_modality(row: dict[str, Any]) -> str:
@@ -434,252 +391,6 @@ def _build_ghost_rep_activity(
     }
 
 
-def _status_label(status: str) -> str:
-    return {
-        "not_started": "Not started",
-        "acquisition": "Acquisition incomplete",
-        "failed": "Failed validation",
-        "overdue": "Overdue",
-        "due": "Due today",
-        "scheduled": "Scheduled",
-        "maintenance": "Maintenance",
-    }.get(status, status.replace("_", " ").title())
-
-
-def _next_interval_gap(completed_sessions: int) -> int:
-    if completed_sessions <= 0:
-        return 0
-    if completed_sessions < len(SPACED_REPETITION_INTERVALS):
-        return SPACED_REPETITION_INTERVALS[completed_sessions] - SPACED_REPETITION_INTERVALS[completed_sessions - 1]
-    return 90
-
-
-def _build_spaced_repetition(
-    attempt_rows: list[SkillMapOverviewAttemptRow],
-    card_ids_by_pattern: dict[str, set[str]],
-    slug_to_pattern: dict[str, str],
-    methods_by_pattern_slug: dict[str, list[str]],
-    card_ids_by_method: dict[tuple[str, str], set[str]],
-) -> SkillMapSpacedRepetitionPayload:
-    today = datetime.now(timezone.utc).date()
-    window_start = today - timedelta(days=6)
-    window_end = today + timedelta(days=14)
-
-    track_definitions: list[dict[str, Any]] = []
-    card_to_track_ids: dict[str, set[str]] = {}
-    method_slug_lookup: dict[tuple[str, str], str] = {}
-
-    for pattern_slug, pattern_label in slug_to_pattern.items():
-        pattern_cards = card_ids_by_pattern.get(pattern_slug, set())
-        track_definitions.append({
-            "id": pattern_slug,
-            "label": pattern_label,
-            "slug": pattern_slug,
-            "level": "pattern",
-            "parentSlug": None,
-            "parentLabel": None,
-            "cards": pattern_cards,
-        })
-        for card_id in pattern_cards:
-            card_to_track_ids.setdefault(card_id, set()).add(pattern_slug)
-
-        for method in methods_by_pattern_slug.get(pattern_slug, []):
-            method_slug = _algorithm_slug(method)
-            track_id = f"{pattern_slug}:{method_slug}"
-            method_cards = card_ids_by_method.get((pattern_slug, method_slug), set())
-            method_slug_lookup[(pattern_slug, method_slug)] = track_id
-            track_definitions.append({
-                "id": track_id,
-                "label": method,
-                "slug": method_slug,
-                "level": "method",
-                "parentSlug": pattern_slug,
-                "parentLabel": pattern_label,
-                "cards": method_cards,
-            })
-            for card_id in method_cards:
-                card_to_track_ids.setdefault(card_id, set()).add(track_id)
-
-    attempted_cards_by_track_day: dict[str, dict[date, set[str]]] = {
-        str(track["id"]): {} for track in track_definitions
-    }
-    attempt_counts_by_track_day: dict[str, Counter[date]] = {
-        str(track["id"]): Counter() for track in track_definitions
-    }
-
-    for row in attempt_rows:
-        if _submission_modality(row) != "ghost-rep":
-            continue
-        card_id = str(row["tracked_card_id"] or "").strip()
-        created_at = _coerce_utc_datetime(row["created_at"])
-        if created_at is None:
-            continue
-        attempt_date = created_at.date()
-        category_tags = [str(tag) for tag in (row["category_tags"] or [])]
-        pattern_slugs = _matched_algorithm_slugs(category_tags, set(slug_to_pattern))
-        track_ids: set[str] = set()
-        if card_id:
-            track_ids.update(card_to_track_ids.get(card_id, set()))
-        track_ids.update(pattern_slugs)
-
-        for pattern_slug in pattern_slugs:
-            known_methods = methods_by_pattern_slug.get(pattern_slug, [])
-            for method in known_methods:
-                method_slug = _algorithm_slug(method)
-                if method_slug in category_tags:
-                    track_ids.add(method_slug_lookup[(pattern_slug, method_slug)])
-
-        for track_id in track_ids:
-            attempt_counts_by_track_day.setdefault(track_id, Counter())[attempt_date] += 1
-            if card_id:
-                attempted_cards_by_track_day.setdefault(track_id, {}).setdefault(attempt_date, set()).add(card_id)
-
-    tracks: list[dict[str, Any]] = []
-    for track in track_definitions:
-        track_id = str(track["id"])
-        cards = set(track["cards"])
-        if track["level"] == "pattern" and not cards:
-            continue
-
-        attempted_days = attempted_cards_by_track_day.get(track_id, {})
-        attempt_counts = attempt_counts_by_track_day.get(track_id, Counter())
-        all_activity_dates = sorted(set(attempted_days) | set(attempt_counts))
-        completion_dates = sorted(
-            attempt_date
-            for attempt_date in all_activity_dates
-            if (
-                cards.issubset(attempted_days.get(attempt_date, set()))
-                if cards
-                else attempt_counts.get(attempt_date, 0) >= SPACED_REPETITION_REQUIRED_GHOST_REPS
-            )
-        )
-        attempted_dates = all_activity_dates
-        started_at = attempted_dates[0] if attempted_dates else None
-        last_attempted_at = attempted_dates[-1] if attempted_dates else None
-        last_completed_at = completion_dates[-1] if completion_dates else None
-
-        completed_sessions = len(completion_dates)
-        next_due_at: date | None = None
-        status = "not_started"
-        stage_label = "Acquire"
-
-        incomplete_after_last_completion = [
-            attempt_date
-            for attempt_date in attempted_dates
-            if attempt_date not in completion_dates and (last_completed_at is None or attempt_date > last_completed_at)
-        ]
-        last_incomplete_at = incomplete_after_last_completion[-1] if incomplete_after_last_completion else None
-
-        if not completion_dates:
-            if attempted_dates:
-                status = "acquisition"
-                next_due_at = today
-            stage_label = "Acquire"
-        elif last_incomplete_at:
-            next_due_at = last_incomplete_at + timedelta(days=1)
-            if next_due_at < today:
-                status = "overdue"
-            elif next_due_at == today:
-                status = "failed"
-            else:
-                status = "failed"
-            stage_label = "Validate"
-        else:
-            next_due_at = last_completed_at + timedelta(days=_next_interval_gap(completed_sessions))
-            if completed_sessions >= len(SPACED_REPETITION_INTERVALS):
-                stage_label = "Maintenance"
-            else:
-                stage_label = f"Day {SPACED_REPETITION_INTERVALS[completed_sessions]}"
-
-            if next_due_at < today:
-                status = "overdue"
-            elif next_due_at == today:
-                status = "due"
-            elif completed_sessions >= len(SPACED_REPETITION_INTERVALS):
-                status = "maintenance"
-            else:
-                status = "scheduled"
-
-        days = []
-        cursor = window_start
-        while cursor <= window_end:
-            if cursor in completion_dates:
-                day_status = "completed"
-                label = "Completed"
-            elif cursor in attempted_dates:
-                day_status = "failed"
-                label = "Incomplete"
-            elif next_due_at and cursor == next_due_at:
-                day_status = "due" if cursor <= today else "scheduled"
-                label = "Due" if cursor <= today else "Scheduled"
-            elif next_due_at and next_due_at < cursor <= today:
-                day_status = "overdue"
-                label = "Overdue"
-            else:
-                day_status = "empty"
-                label = ""
-            days.append({
-                "date": cursor.isoformat(),
-                "status": day_status,
-                "label": label,
-            })
-            cursor += timedelta(days=1)
-
-        days_until_due = (next_due_at - today).days if next_due_at else None
-        tracks.append({
-            "id": track_id,
-            "label": str(track["label"]),
-            "slug": str(track["slug"]),
-            "level": str(track["level"]),
-            "parentSlug": track["parentSlug"],
-            "parentLabel": track["parentLabel"],
-            "coreAlgorithmCount": len(cards) if cards else SPACED_REPETITION_REQUIRED_GHOST_REPS,
-            "requiredGhostReps": SPACED_REPETITION_REQUIRED_GHOST_REPS,
-            "status": status,
-            "statusLabel": _status_label(status),
-            "stageLabel": stage_label,
-            "completedSessions": completed_sessions,
-            "startedAt": started_at.isoformat() if started_at else None,
-            "lastAttemptedAt": last_attempted_at.isoformat() if last_attempted_at else None,
-            "lastCompletedAt": last_completed_at.isoformat() if last_completed_at else None,
-            "nextDueAt": next_due_at.isoformat() if next_due_at else None,
-            "daysUntilDue": days_until_due,
-            "days": days,
-        })
-
-    priority = {
-        "overdue": 0,
-        "failed": 1,
-        "acquisition": 2,
-        "due": 3,
-        "not_started": 4,
-        "scheduled": 5,
-        "maintenance": 6,
-    }
-    queue = [
-        track for track in sorted(
-            tracks,
-            key=lambda item: (
-                priority.get(str(item["status"]), 9),
-                item["daysUntilDue"] if item["daysUntilDue"] is not None else 999,
-                0 if str(item["level"]) == "pattern" else 1,
-                str(item["id"]),
-            ),
-        )
-        if str(track["status"]) in {"overdue", "failed", "acquisition", "due"}
-    ]
-
-    return {
-        "today": today.isoformat(),
-        "windowStart": window_start.isoformat(),
-        "windowEnd": window_end.isoformat(),
-        "intervals": list(SPACED_REPETITION_INTERVALS),
-        "requiredGhostReps": SPACED_REPETITION_REQUIRED_GHOST_REPS,
-        "tracks": tracks,
-        "queue": queue,
-    }
-
-
 def build_skill_map_overview(
     algorithm_rows: list[SkillMapOverviewAlgorithmRow],
     generated_rows: list[SkillMapOverviewGeneratedRow],
@@ -718,11 +429,6 @@ def build_skill_map_overview(
 
     generated_cards: dict[str, dict[str, Any]] = {}
     card_ids_by_pattern: dict[str, set[str]] = {slug: set() for slug in known_pattern_slugs}
-    card_ids_by_method: dict[tuple[str, str], set[str]] = {
-        (pattern_slug, _algorithm_slug(method)): set()
-        for pattern_slug, methods in methods_by_pattern_slug.items()
-        for method in methods
-    }
     for row in generated_rows:
         tags = [str(tag) for tag in (row["tags"] or [])]
         matched_algorithm_slugs = _matched_algorithm_slugs(tags, known_algorithm_slugs)
@@ -751,10 +457,6 @@ def build_skill_map_overview(
         for slug in inventory_algorithm_slugs:
             card_ids_by_algorithm.setdefault(slug, set()).add(str(row["id"]))
             card_ids_by_pattern.setdefault(slug, set()).add(str(row["id"]))
-            for method in methods_by_pattern_slug.get(slug, []):
-                method_slug = _algorithm_slug(method)
-                if method_slug in tags:
-                    card_ids_by_method.setdefault((slug, method_slug), set()).add(str(row["id"]))
 
     attempts_by_card_mode: dict[tuple[str, str], list[AttemptOverviewItem]] = {}
     attempts_by_algorithm_mode: dict[tuple[str, str], list[AttemptOverviewItem]] = {}
@@ -939,13 +641,6 @@ def build_skill_map_overview(
             {str(item["slug"]) for item in static_playlist_algorithms},
             window_days=history_days,
             tz=history_tz,
-        ),
-        "spacedRepetition": _build_spaced_repetition(
-            attempt_rows,
-            card_ids_by_pattern,
-            slug_to_pattern,
-            methods_by_pattern_slug,
-            card_ids_by_method,
         ),
     }
 

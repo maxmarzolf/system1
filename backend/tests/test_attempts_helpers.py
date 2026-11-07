@@ -35,19 +35,6 @@ def test_coerce_utc_datetime_accepts_datetimes_and_iso_strings() -> None:
         assert attempts_service._coerce_utc_datetime(bad) is None
 
 
-def test_next_interval_gap_grows_then_caps() -> None:
-    assert attempts_service._next_interval_gap(0) == 0
-    assert attempts_service._next_interval_gap(1) == 1
-    assert attempts_service._next_interval_gap(3) == 4
-    assert attempts_service._next_interval_gap(99) == 90
-
-
-def test_status_labels() -> None:
-    assert attempts_service._status_label("due") == "Due today"
-    assert attempts_service._status_label("not_started") == "Not started"
-    assert attempts_service._status_label("some_new_state") == "Some New State"
-
-
 def test_build_skill_map_nodes_groups_skills_by_algorithm() -> None:
     rows = [
         {"algorithm_id": 1, "algorithm_name": "Sliding Window", "skill_id": 1, "skill_name": "expand"},

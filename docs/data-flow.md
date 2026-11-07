@@ -1,6 +1,6 @@
 # Data flow
 
-How data moves through System 1: from the practice screen, through the evaluators, into Postgres, and back out to the Dashboard, Journey, Tune and Admin pages. For the tables themselves, see [database-schema.md](database-schema.md). For the backend's layering rules, see [backend-architecture.md](backend-architecture.md).
+How data moves through System 1: from the practice screen, through the evaluators, into Postgres, and back out to the Dashboard, Journey and Admin pages. (Tune only edits settings stored in the browser.) For the tables themselves, see [database-schema.md](database-schema.md). For the backend's layering rules, see [backend-architecture.md](backend-architecture.md).
 
 ## The whole system
 
@@ -10,7 +10,6 @@ flowchart LR
     Practice["Practice / (App.tsx)"]
     Dashboard["/dashboard"]
     Journey["/practice-history (Journey)"]
-    Tune["/tune"]
     Admin["/admin"]
   end
 
@@ -42,7 +41,6 @@ flowchart LR
   Dashboard --> Reads
   Journey --> Reads
   Reads --> DB
-  Tune --> Catalog
   Admin --> Catalog
   Catalog --> DB
   Admin --> AdminAPI
@@ -54,7 +52,7 @@ There are three loops:
 
 1. **Practice:** fetch a drill, answer it, get graded, and store the result.
 2. **Review:** the Dashboard and Journey read stored submissions back as readiness, activity and signal history.
-3. **Configure:** `/admin` edits the MCQ signals that Jev uses; `/tune` adjusts local practice preferences and shows the recall signal specs.
+3. **Configure:** `/admin` edits the MCQ signals that Jev uses; `/admin` also shows the recall signal specs, read-only. `/tune` adjusts practice preferences stored in the browser.
 
 ## 1. Practice: submitting an answer
 

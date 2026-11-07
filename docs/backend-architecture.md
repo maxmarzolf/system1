@@ -1,138 +1,142 @@
-# Backend Architecture Map
+# Backend architecture
 
-Related docs:
-- `../README.md`
-- `./data-flow.md` (diagrams of every flow)
-- `./database-schema.md` (ER diagram)
-- `./migration-notes.md`
-- `./service-contracts.md`
+The backend is a FastAPI app in `backend/app/`. This doc covers how the code is layered, where each kind of code goes, and the request paths through it. For diagrams of the same paths, see [data-flow.md](data-flow.md). For the tables, see [database-schema.md](database-schema.md).
 
-## Canonical Dependency Flow
+## Layers
 
-Request flow is now:
+```
+endpoints ──► services ──► domain / core ──► repositories ──► Postgres
+```
 
-`endpoints -> services -> domain/core helpers -> repositories -> database`
+| Layer | Folder | Owns | Must not |
+|---|---|---|---|
+| Endpoints | `app/endpoints/` | HTTP binding: parse the request, call one service, map service errors to status codes, wrap streams in `StreamingResponse` | Contain SQL, orchestration or LLM retries; import `app.core` |
+| Services | `app/services/` | Use cases: orchestration, calling Jev and LLM providers, deciding what to persist | Import `fastapi` or endpoints; contain SQL |
+| Domain | `app/domain/` | Pure decisions: rubric building, signal validation, readiness inputs, error taxonomy | Import repositories |
+| Core | `app/core/` | Engines and catalogs: the Jev client, signal plug-ins, LLM provider adapters, assessor, narrator, drill generator, seeded content | Import repositories, `fastapi` or `starlette` |
+| Repositories | `app/repositories/` | All SQL, and shaping rows into typed dicts | Import services or endpoints; make business decisions |
 
-Hard rules:
-- Endpoints are transport-only and call services.
-- Services orchestrate use-cases and persistence boundaries.
-- Service input/output and callback payloads are defined in `app/services/contracts.py`.
-- Domain modules are pure logic and cannot import repositories.
-- Repositories are SQL-only access boundaries.
+`app/config.py` (settings from the environment), `app/models.py` (Pydantic request and response models), `app/database.py` (pool, schema, upgrades, seeding) and `app/main.py` (app factory) sit at the top level, along with two shared scoring helpers, `readiness.py` and `submission_rubric.py`.
 
-## Canonical Request Traces
+**Enforced by tests.** `tests/test_architecture_boundaries.py` fails the build when:
 
-### 1) Final Submission Evaluation and Persistence
-1. `POST /api/attempts` in `app/endpoints/attempts.py`
-2. `app/services/submission_service.py::create_submission` looks up the evaluator for the submission's modality
-3. `app/services/evaluators/registry.py::get_evaluator` returns the registered `SubmissionEvaluator`:
-   - `mcq` → `evaluators/jev_mcq.py::JevMcqEvaluator` (see 1b)
-   - `total-recall`, `microdrill` → `evaluators/legacy_recall.py::AssessorEvaluator` (steps 4–10)
-   - `ghost-rep` → `evaluators/legacy_recall.py::GhostRepEvaluator` (semantic grader only)
-4. `app/services/signal_spec_service.py::resolve_signal_spec` picks the signal spec (see 1a)
-5. `app/services/feedback_service.py::coach_submission_evaluation`
-6. `app/services/history_service.py::load_feedback_context`
-7. `app/core/assessor.py::run_signal_assessor` scores exactly the spec's signals
-8. `app/core/narrator.py::attempt_feedback_with_narrator`
-9. `app/domain/feedback_builder.py::submission_rubric_from_assessment` turns spec signals into the rubric
-10. `app/domain/submission_evaluation.py::canonical_submission_evaluation`
-11. `app/services/attempts_service.py::create_attempt` persists the canonical result, plus the evaluator's `SubmissionRecord` (server-trusted answer text and MCQ problem id) when it returns one.
+- an endpoint imports `app.core`;
+- a service imports `app.endpoints` or `fastapi`;
+- a domain or core module imports `app.repositories`;
+- a core module imports `fastapi` or `starlette`;
+- a repository imports `app.services` or `app.endpoints`;
+- the Jev client or signal plug-ins (`app/core/jev`, `app/core/signals`) import anything outside `app.core`, or `fastapi`.
 
-The client sends the attempt once and never supplies its own verdict or evaluation signals. The evaluator is the single place that decides `successful` and produces the evaluation; moving a modality to Jev means registering a different evaluator, with no endpoint, persistence, or UI change. While the user types, CodeMirror requests non-persisted code suggestions from `POST /api/coach/inline-completion`.
+One known exception: `domain/llm_resilience.py` builds a FastAPI `HTTPException` for coach LLM failures. It predates the current rules; moving that mapping into the endpoints would remove it.
 
-### 1a) Signal Specs
-Signals are defined per catalog group (the `algorithm` table), not per problem:
-- `app/core/signal_catalog.py` is the source of truth: a `SignalSpec` per algorithm slug plus `DEFAULT_SIGNAL_SPEC`. Each `SignalDefinition` carries its key, label, kind (`score` or `boolean`), role (`dimension` or `modifier`), weight, assessor guidance, adaptive-variation strategy, and optional score axis (`fidelity`, `executable`, `fluency`).
-- Startup seeds each spec into `algorithm.signal_spec` (JSONB).
-- `signal_spec_repository.fetch_algorithm_signal_spec` resolves the submission's problem slug to its algorithm row, otherwise the primary skill tag's algorithm row. A missing row falls back to `DEFAULT_SIGNAL_SPEC`.
-- The assessor prompt, the required-signal validation, the rubric dimensions/modifiers, weighted scores, labels, and the adaptive-variation strategy all come from the resolved spec.
-- Every stored evaluation records `signalSpec: {algorithm, version}`. Evaluations written before signal specs existed are stamped `{"algorithm": "default", "version": 0}`.
+## Where code goes
 
-### 1b) MCQ Evaluation Through Jev
-1. `app/services/submission_context_service.py::build_mcq_context` loads the stored `multiple_choice_problem` row named by `multipleChoiceProblemId` and the client's `selectedChoiceId`. Unknown problems or choices are a 422; client-sent question or answer text is ignored.
-2. `app/services/signal_registry_service.py::load_mcq_spec` reads the active `signal_definition` rows (general plus those scoped to the algorithm from `domain/coach_context.py::algorithm_slug_for_tags`) and the correctness wording from `signal_evaluation_directive`, on every submission.
-3. One Jev `system_one` call (`app/core/jev/client.py::HttpJevGateway`, REST `POST /v1/systemone`) carries:
-   - `correctness`: a `Choice` with labels `"1"` (answered correctly) and `"0"`, over the state `{question, answers, correctAnswer, submittedAnswer}`;
-   - one question per signal plug-in in the spec, over the same state.
-4. `successful` is Jev's correctness label. It is compared with the stored answer key; disagreement or confidence below 0.6 adds a `provenance.flags` entry.
-5. Plug-ins marked `needs_correctness` are asked in a second call whose state adds `answeredCorrectly`.
-6. Each plug-in interprets its own answer; `applies_when` (`always`/`correct`/`incorrect`) is applied after the call.
-7. `app/domain/feedback_builder.py::rubric_from_signal_results` builds the rubric (correctness plus weighted, scored signals; diagnostic signals are stored but not scored).
-8. If Jev is unavailable, the stored answer key decides, Jev signals are `unavailable`, deterministic signals still score, and `feedbackUnavailable` names Jev.
+- **A new endpoint:** a thin handler in `app/endpoints/`, its request and response models in `app/models.py`, and the logic in a service.
+- **SQL:** a function in the relevant repository. Its row type goes in `app/repositories/types.py`.
+- **A payload passed between services** (callbacks, summaries, drill payloads): a `TypedDict` in `app/services/contracts.py`. If the shape belongs to a domain module, define it there and alias it from `contracts.py`.
+- **A new submission modality:** a class with `async evaluate(body) -> EvaluationOutcome` in `app/services/evaluators/`, registered with `register_evaluator`. Nothing else changes.
+- **A new deterministic MCQ signal:** a `DeterministicSignal` registered in `app/core/signals/`. It then appears as an implementation in `/admin`.
+- **A new Jev MCQ signal:** no code. Create it in `/admin`.
+- **A recall signal spec for another algorithm:** a `SignalSpec` in `app/core/signal_catalog.py`. Bump its `version` whenever its signals change.
+- **Schema changes:** edit `app/schema.sql` (every statement must be idempotent). If existing databases need an in-place change, add it to `_apply_schema_upgrades` in `app/database.py`.
 
-Generated MCQs are stored when generated (`coach_repository.insert_generated_multiple_choice_question_rows`); rows are immutable and the served card always takes the stored id and choice order, so a submission is graded against exactly what was shown.
+## Module map
 
-### 1c) Signal Definitions and `/admin`
-Jev signals are data; deterministic signal logic is code.
-- `app/schema.sql`: `signal_definition` (key, scope, primitive, instructions, criteria, score map, role, weight, axis, applicability, status, version), `signal_evaluation_directive` (correctness wording and weight; labels fixed to `"1"`/`"0"`), and the append-only `signal_definition_revision`.
-- `app/core/signals/`: `definitions.py::definition_to_plugin` builds a `JevSignal` from a row or wraps a registered `DeterministicSignal`; `spec.py::ModalitySignalSpec` snapshots and hashes the effective spec, correctness wording included; `mcq.py` holds the seed defaults (inserted once by `signal_registry_service.seed_signal_definitions` at startup, never overwriting).
-- `app/domain/signal_definition_rules.py`: field-level validation mirroring Jev's limits plus key, scope and weight rules.
-- `app/repositories/signal_definition_repository.py`: reads, version-checked writes and revisions.
-- `app/services/signal_admin_service.py` + `app/endpoints/admin.py` (`/api/admin/signals…`): list, create, update, archive, restore, correctness wording, revisions, stored-MCQ samples, and Try it (one Jev call on a stored MCQ, nothing saved). No admin token for now. Validation errors are 422 with per-field messages, stale versions 409.
-- Frontend: `src/AdminPage.tsx` (route `/admin`), API client `src/signalAdmin.ts`, shared Tune controls in `src/tuneControls.tsx`.
+| Area | Modules |
+|---|---|
+| Submissions | `services/submission_service.py` (dispatch and persist), `services/evaluators/` (`jev_mcq.py`, `legacy_recall.py`, `registry.py`), `services/attempts_service.py` (persistence plus every read model: readiness, daily activity, day detail, signal history) |
+| MCQ grading | `core/jev/client.py`, `core/signals/` (`base`, `definitions`, `registry`, `spec`, `mcq`), `services/signal_registry_service.py`, `services/submission_context_service.py`, `domain/feedback_builder.py` |
+| `/admin` | `services/signal_admin_service.py`, `domain/signal_definition_rules.py`, `repositories/signal_definition_repository.py`, `endpoints/admin.py` |
+| Recall grading | `services/feedback_service.py`, `core/assessor.py`, `core/narrator.py`, `core/submission_llm_client.py`, `services/evaluation_service.py`, `domain/recall_soundness.py`, `services/signal_spec_service.py`, `core/signal_catalog.py` |
+| Drills | `services/drill_generation_service.py` and `core/generator.py` (generated cards and MCQs), `services/problem_practice_service.py` (catalog drills), `services/micro_drill_service.py`, `services/variation_service.py`, `services/sliding_window_ladder_service.py`, `services/inline_completion_service.py` |
+| Coach facade | `services/coach_service.py` passes endpoint calls to `services/coach_orchestration_service.py`, which maps LLM failures to 503s and wires persistence callbacks |
+| Catalog content | `core/core_algorithm_catalog.py`, `core/core_algorithms.py` and `core/core_meta.py` (answer bank), `core/static_playlists.py`, `core/taxonomy_catalog.py`, `services/unified_catalog_service.py`, `services/catalog_service.py` |
+| LLM providers | `core/llm.py` (provider selection and JSON calls), `domain/llm_resilience.py` (error taxonomy) |
 
-### 1d) Coach Variations
-1. `POST /api/coach/adaptive-variation` or `POST /api/coach/sequential-variation`
-2. `app/services/coach_service.py` facade delegates to orchestration layer
-3. `app/services/coach_orchestration_service.py` handles transport translation
-4. `app/services/variation_service.py` owns variation orchestration and drill assembly
+## Request paths
 
-### 2) Practice History
-1. `POST /api/coach/history` in `app/endpoints/coach.py`
-2. `app/services/coach_service.py::coach_practice_history`
-3. `app/services/history_service.py::coach_practice_history`
-4. `app/repositories/coach_repository.py::fetch_practice_history_entries`
+### Submitting an answer: `POST /api/attempts`
 
-### 3) Admin Reset
-1. `POST /api/admin/reset-practice-history` in `app/endpoints/admin.py`
-2. `app/services/admin_service.py::reset_practice_history`
-3. `app/core/admin.py::reset_practice_history`
-4. `app/repositories/admin_repository.py::*`
+1. `endpoints/attempts.py` calls `submission_service.create_submission`.
+2. `evaluators/registry.py::get_evaluator` picks the evaluator for the submission's `modality`:
+   - `mcq`: `JevMcqEvaluator` (next section);
+   - `total-recall`, `microdrill`: `AssessorEvaluator`;
+   - `ghost-rep`: `GhostRepEvaluator` (semantic check only).
+3. The evaluator returns an `EvaluationOutcome`: `successful`, the canonical `evaluation`, and, for MCQs, a `SubmissionRecord` with the server-trusted answer text and problem id.
+4. `attempts_service.create_attempt` stores it as one `submission` row.
 
-## Responsibility Matrix
+The client never supplies its own verdict or scores; the evaluator is the only place that decides `successful`.
 
-| Layer | Owns | Must Not Own |
-|---|---|---|
-| `app/endpoints` | HTTP request/response binding | SQL, orchestration, LLM retries |
-| `app/services` | Use-case orchestration, dependency wiring, persistence orchestration, service-level TypedDict contracts | FastAPI framework coupling, SQL text |
-| `app/domain` | Pure decision logic, scoring, profiles, error taxonomy helpers | Repositories, HTTP exceptions |
-| `app/core` | Cross-domain engines (assessor, narrator, generator, provider adapters) | Endpoint orchestration, direct route handling |
-| `app/repositories` | SQL statements and row-level data access | Business branching/orchestration |
-| `app/config.py` | Environment-backed runtime configuration | Request-scoped decisions |
+### MCQ grading with Jev
 
-## Dependency Rules and Anti-Patterns
+1. `submission_context_service.build_mcq_context` loads the stored `multiple_choice_problem` by `multipleChoiceProblemId` and the client's `selectedChoiceId`. An unknown problem or choice is a 422. Client-sent question text is ignored.
+2. `signal_registry_service.load_mcq_spec` reads, on every submission, the active `signal_definition` rows (general, plus those scoped to the algorithm from `domain/coach_context.py::algorithm_slug_for_tags`) and the correctness wording from `signal_evaluation_directive`.
+3. One `HttpJevGateway.system_one` call carries the correctness question (a Choice: `"1"` correct, `"0"` incorrect) and one question per Jev signal. The state is `{question, answers, correctAnswer, submittedAnswer}`.
+4. `successful` is Jev's correctness label. It is compared with the answer key; disagreement, or confidence below 0.6, adds a `provenance.flags` entry.
+5. Signals marked `needs_correctness` go in a second call whose state adds `answeredCorrectly`.
+6. Each plug-in interprets its own answer; `applies_when` is applied afterwards.
+7. `domain/feedback_builder.py::rubric_from_signal_results` builds the rubric. Diagnostic signals are stored but not scored.
+8. If Jev is unavailable, the answer key decides, Jev signals are recorded as `unavailable`, and deterministic signals still score.
 
-Rules enforced in tests:
-- Endpoints cannot import `app.core.*`.
-- Services cannot import `app.endpoints.*` or `fastapi`.
-- Domain modules cannot import `app.repositories.*`.
-- Core modules cannot import `app.repositories.*`, `fastapi`, or `starlette`.
-- Repository modules cannot import `app.services.*` or `app.endpoints.*`.
+Generated MCQs are stored when they are generated, and the served card always uses the stored id and choice order, so an answer is graded against exactly what was shown.
 
-Practical implications:
-- Streaming transport wrappers (for example `StreamingResponse`) are endpoint-owned.
-- Core generator stream APIs return framework-agnostic async iterators.
-- Repository writes are always delegated by services; attempt signals are persisted through the canonical submission repository.
+### Recall grading
 
-The canonical `submission.signals` JSONB object has four allowed top-level fields:
+1. `signal_spec_service.resolve_signal_spec` picks the spec: the problem's algorithm, else the primary skill tag's algorithm, else `DEFAULT_SIGNAL_SPEC`.
+2. `feedback_service.coach_submission_evaluation` loads recent history (`history_service.load_feedback_context`), then runs:
+   - the **assessor** (`core/assessor.py`), which must score every signal in the spec, or the response is rejected;
+   - the **narrator** (`core/narrator.py`), which writes the coaching text, retrying retryable provider failures.
+3. `domain/feedback_builder.py::submission_rubric_from_assessment` and `domain/submission_evaluation.py::canonical_submission_evaluation` build the stored evaluation.
+4. When the assessor or narrator fails, `AssessorEvaluator` falls back to the semantic check (`evaluation_service`, then the AST check in `domain/recall_soundness.py`) and returns `feedbackUnavailable` so the UI can say why.
 
-- `elapsed_ms`
-- `evaluation`
-- `flow` (optional adaptive/custom flow context)
-- `modality` (modality-specific measurements plus canonical `kind`)
+### Editing signals: `/api/admin/signals…`
 
-`evaluation` contains the versioned verdict, the `signalSpec` reference, score, primary failure, dimensions, modifiers, recommended action, narrative feedback, and provenance. Jev evaluations also store `correctness` (label, confidence, probabilities, `answerKeyAgreement`), `signalResults` (every plug-in's raw answer, score, and status), `signalSpecSnapshot`, and `jevTrace` (model, request ids, question ids, answers); their `signalSpec` adds `modality` and `hash`. Dimension and modifier keys are the referenced spec's signal keys, in spec order. Narrative feedback does not embed another copy of the evaluation. The ledger's `successful` value is derived from `evaluation.verdict`; it is never accepted from the client.
+`signal_admin_service` validates every write with `domain/signal_definition_rules.py` (422 with per-field errors). It writes through `signal_definition_repository`, which checks the row's `version` (409 if stale) and appends a `signal_definition_revision`.
 
-## Adaptive Flow Contract
+"Try it" asks Jev one draft question about a stored MCQ and saves nothing. There is no admin token for now.
 
-- The current card is the immutable flow anchor. Historical MCQs are joined back to it through `signals.flow.anchorCardId`.
-- The client derives a deterministic phase (`establish`, `remediate`, `consolidate`, `challenge`, or `mastered`) from recent scores, success streaks, missed lines, and modality coverage.
-- Recall failures route to Ghost; unresolved conceptual failures route through MCQ and Microdrill; Microdrill failures return to Recall so a fresh line-level weakness can be measured.
-- MCQ and Microdrill generation receive a bounded summary of recent cross-modality attempts and weaknesses. Challenge prompts may vary constraints or edge cases but must remain inside the anchor card's algorithm space.
-- Mastery requires strong recent scores and successful Recall, MCQ, and Microdrill evidence. Ghost evidence is required only when remediation was needed. Once mastered, the flow advances to another card already present in the active deck.
+### Reads for Dashboard and Journey
 
-Anti-pattern examples:
-- Endpoint calling repository directly.
-- Domain function raising transport exceptions.
-- Core module writing database rows directly for request use-cases.
-- Service embedding raw SQL.
+- `GET /api/skill-map-overview?historyDays=&tz=` → `attempts_service.get_skill_map_overview`: readiness per algorithm and the daily activity grid.
+- `GET /api/history/day?date=&tz=` → `get_history_day`: every submission on one local day, with its stored evaluation.
+- `GET /api/history/signals?tz=` → `get_signal_history`: every scored rubric entry over time, for the terrain.
+
+Days are computed in the viewer's time zone (`resolve_timezone`, falling back to UTC).
+
+### Drills
+
+- Catalog drills (`/api/coach/problem-drills…`, `/playlist-drills/…`) are read from the seeded catalog by `problem_practice_service`.
+- Generated drills go through `coach_orchestration_service` → `drill_generation_service` → `core/generator.py`. They fall back to template drills when no provider is available.
+- The streaming endpoint returns server-sent events; the generator yields framework-free strings and the endpoint wraps them.
+
+### Reset practice history: `POST /api/admin/reset-practice-history`
+
+`admin_service.reset_practice_history` checks `ADMIN_RESET_TOKEN`, then `admin_repository` truncates `submission` and deletes generated problems.
+
+## The stored evaluation
+
+`submission.signals` allows four top-level keys (a CHECK constraint enforces this): `elapsed_ms`, `evaluation`, `flow` and `modality`.
+
+`evaluation` holds:
+
+- the versioned verdict and a `signalSpec` reference;
+- score, primary failure, dimensions, modifiers, recommended action, coaching feedback and provenance.
+
+Jev evaluations also store:
+
+- `correctness` (label, confidence, probabilities, `answerKeyAgreement`);
+- `signalResults` (every plug-in's raw answer, score and status);
+- `signalSpecSnapshot`;
+- `jevTrace` (model, request ids, questions, answers).
+
+Their `signalSpec` adds `modality` and `hash`.
+
+Dimension and modifier keys are the spec's signal keys, in spec order. Because the spec is stored with each evaluation, old grades stay explainable after the signals change.
+
+## Tests
+
+- **Unit tests** fake every Jev and LLM call: a `FakeJevGateway`, an `httpx.MockTransport`, or a patched `urlopen`.
+- **Integration tests** (`-m integration`) use Postgres and restore any rows they change.
+- **`-m jev_live`** makes one real Jev call.
+
+Coverage must stay at or above 90% (`backend/.coveragerc`). See the README for commands.
