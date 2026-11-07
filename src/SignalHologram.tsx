@@ -178,46 +178,9 @@ function mountHologram(
   // Newest answers sit at the front, nearest the viewer.
   const zOf = (time: number) => (tMax === tMin ? 0 : ((time - tMin) / (tMax - tMin) - 0.5) * TIME_DEPTH)
   const yOf = (loss: number) => (loss / 100) * SCORE_HEIGHT
-  const line = (positions: number[], opacity: number, color = accent) => {
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-    return new THREE.LineSegments(
-      geometry,
-      new THREE.LineBasicMaterial({ color, transparent: true, opacity, blending, depthWrite: false }),
-    )
-  }
 
   const hologram = new THREE.Group()
   scene.add(hologram)
-
-  // Projector floor: a faint plate with signal columns and time rows.
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(width + 2.2, TIME_DEPTH + 1.4),
-    new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: light ? 0.06 : 0.05, blending, depthWrite: false }),
-  )
-  floor.rotation.x = -Math.PI / 2
-  hologram.add(floor)
-  const grid: number[] = []
-  for (const signal of signals) {
-    const x = xOf(signal.key)
-    grid.push(x, 0, -TIME_DEPTH / 2, x, 0, TIME_DEPTH / 2)
-  }
-  for (let tick = 0; tick < TIME_TICKS; tick += 1) {
-    const z = (tick / (TIME_TICKS - 1) - 0.5) * TIME_DEPTH
-    grid.push(-width / 2 - 0.6, 0, z, width / 2 + 0.6, 0, z)
-  }
-  hologram.add(line(grid, light ? 0.35 : 0.22))
-
-  // Loss wall at the back: 0 / 50 / 100 guides.
-  const wall: number[] = []
-  for (const loss of [0, 50, 100]) {
-    wall.push(-width / 2 - 0.6, yOf(loss), -TIME_DEPTH / 2, width / 2 + 0.6, yOf(loss), -TIME_DEPTH / 2)
-    const label = textSprite(String(loss), accent, 0.34)
-    label.position.set(-width / 2 - 1.05, yOf(loss), -TIME_DEPTH / 2)
-    hologram.add(label)
-  }
-  wall.push(-width / 2 - 0.6, 0, -TIME_DEPTH / 2, -width / 2 - 0.6, SCORE_HEIGHT, -TIME_DEPTH / 2)
-  hologram.add(line(wall, light ? 0.3 : 0.16))
 
   // The landscape: one surface over signals (x) and time (depth), height = smoothed loss.
   const lossRows = signalLossRows(history, tMin, tMax)
@@ -271,15 +234,12 @@ function mountHologram(
     }),
   ))
 
-  // Wireframe over the surface (every other time row; each signal and the half-steps between),
-  // plus its shadow on the floor like a contour map.
+  // Wireframe over the surface: every other time row, and each signal plus the half-steps between.
   const wirePositions: number[] = []
   const wireColors: number[] = []
-  const shadow: number[] = []
   const addWire = (from: ReturnType<typeof vertexAt>, to: ReturnType<typeof vertexAt>) => {
     wirePositions.push(from.x, from.y, from.z, to.x, to.y, to.z)
     wireColors.push(from.color.r, from.color.g, from.color.b, to.color.r, to.color.g, to.color.b)
-    shadow.push(from.x, 0.001, from.z, to.x, 0.001, to.z)
   }
   const halfStep = Math.max(LANDSCAPE_SUBDIVISIONS / 2, 1)
   for (let row = 0; row < LANDSCAPE_ROWS; row += 2) {
@@ -295,7 +255,6 @@ function mountHologram(
     wireGeometry,
     new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: light ? 0.8 : 0.7, blending, depthWrite: false }),
   ))
-  hologram.add(line(shadow, light ? 0.14 : 0.09))
 
   // Each actual answer, as a marker at its own loss.
   const positions: number[] = []
@@ -322,7 +281,7 @@ function mountHologram(
   const pointCloud = new THREE.Points(pointGeometry, pointMaterial)
   hologram.add(pointCloud)
 
-  // Labels: signals along the front, dates down the side, axis names.
+  // Labels: signals along the front, dates down the side.
   for (const signal of signals) {
     const label = textSprite(compact(signal.label), accent, 0.34)
     label.position.set(xOf(signal.key), -0.05, TIME_DEPTH / 2 + 0.55)
@@ -336,14 +295,6 @@ function mountHologram(
     label.position.set(-width / 2 - 1.25, 0, (fraction - 0.5) * TIME_DEPTH)
     hologram.add(label)
   }
-  const axisColor = accent.clone().lerp(new THREE.Color(light ? 0x000000 : 0xffffff), 0.35)
-  const xTitle = textSprite('X · SIGNALS', axisColor, 0.42, 700)
-  xTitle.position.set(0, -0.05, TIME_DEPTH / 2 + 1.45)
-  const yTitle = textSprite('Y · TIME', axisColor, 0.42, 700)
-  yTitle.position.set(-width / 2 - 2.7, 0, 0)
-  const zTitle = textSprite('Z · LOSS', axisColor, 0.42, 700)
-  zTitle.position.set(-width / 2 - 0.6, SCORE_HEIGHT + 0.55, -TIME_DEPTH / 2)
-  hologram.add(xTitle, yTitle, zTitle)
 
   const target = new THREE.Vector3(0, SCORE_HEIGHT * 0.22, 0.6)
   camera.position.set(width * 0.5 + 4, SCORE_HEIGHT * 1.5, TIME_DEPTH * 0.78 + 3.5)
