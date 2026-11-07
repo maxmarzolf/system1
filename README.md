@@ -89,7 +89,7 @@ Every recall submission is scored by the Signal Assessor against a **signal spec
 
 Viewing specs and signal values in the UI:
 - **Tune → Signals** shows each algorithm's spec read-only: signals, role, kind, weight, axis, assessor guidance, variation strategy, and structural elements. Algorithms on the default spec are labeled.
-- **History** (`/practice-history`) shows a daily work grid per algorithm with **Day / Week / Month / All-Time** ranges. Clicking a highlighted day opens a card listing every submission from that day: the question, choices or answer, result, timing, and the full stored evaluation (spec, verdict, scores, dimensions, modifiers, signal results, Jev answers, raw JSON). Days follow the viewer's timezone. Data: `GET /api/skill-map-overview?historyDays=&tz=` and `GET /api/history/day?date=&tz=`.
+- **History** (`/practice-history`) shows a daily work grid per algorithm with **Week / Month / All-Time** ranges and the dates as a selectable x axis underneath. Clicking a date (or a highlighted square) opens a card listing every submission from that day: the question, choices or answer, result, timing, and the full stored evaluation (spec, verdict, scores, dimensions, modifiers, signal results, Jev answers, raw JSON). Days follow the viewer's timezone. Data: `GET /api/skill-map-overview?historyDays=&tz=` and `GET /api/history/day?date=&tz=`.
 
 ### MCQ signals (Jev)
 

@@ -7234,7 +7234,7 @@ button.daily-work-history-cell:focus-visible {
 
 /* Keep algorithm labels visible while the day columns scroll. */
 .daily-work-history-lane-label,
-.daily-work-history-swimlane > div:first-child {
+.daily-work-history-corner {
   position: sticky;
   left: 0;
   z-index: 1;
@@ -7244,4 +7244,43 @@ button.daily-work-history-cell:focus-visible {
 .daily-work-history-cell-selected:not(.daily-work-history-cell-active) {
   outline: none;
   border-color: color-mix(in srgb, var(--hc-fg) 35%, transparent);
+}
+
+
+/* Dates form the x axis under the grid; each is a button that opens that day. */
+.daily-work-history-swimlane .daily-work-history-x-axis {
+  margin-top: 0.35rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--workbench-edge);
+}
+
+button.daily-work-history-x-day {
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  padding: 0.2rem 0;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  background: transparent;
+  font: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: pointer;
+}
+
+button.daily-work-history-x-day:hover,
+button.daily-work-history-x-day:focus-visible {
+  border-color: var(--workbench-edge-strong);
+  color: var(--hc-fg);
+}
+
+.daily-work-history-x-day-active strong,
+.daily-work-history-x-day-active span {
+  color: var(--daily-work-history-glow);
+}
+
+button.daily-work-history-x-day-selected,
+button.daily-work-history-x-day-selected:hover {
+  border-color: var(--hc-fg);
+  background: color-mix(in srgb, var(--hc-fg) 8%, transparent);
 }

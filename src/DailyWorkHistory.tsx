@@ -58,6 +58,10 @@ export default function DailyWorkHistory({
   const today = activity?.windowEnd
   const swimlaneRef = useRef<HTMLDivElement>(null)
   const chartDates = useMemo(() => (activity?.days ?? []).map(day => day.date), [activity])
+  const dayTotals = useMemo(
+    () => new Map((activity?.days ?? []).map(day => [day.date, day.segments.reduce((total, segment) => total + segment.count, 0)])),
+    [activity],
+  )
   const rows = useMemo<SwimLaneRow[]>(() => {
     if (!activity) return []
     const activityByDate = new Map(activity.days.map(day => [day.date, day]))
@@ -106,23 +110,6 @@ export default function DailyWorkHistory({
           className="daily-work-history-swimlane"
           style={{ '--daily-work-history-days': chartDates.length } as CSSProperties}
         >
-          <div aria-hidden="true" />
-          <div className="daily-work-history-x-axis" aria-label="Days">
-            {chartDates.map(date => (
-              <div
-                key={date}
-                className={[
-                  'daily-work-history-x-day',
-                  date === today ? 'daily-work-history-x-day-today' : '',
-                  date === selectedDate ? 'daily-work-history-x-day-selected' : '',
-                ].filter(Boolean).join(' ')}
-              >
-                <strong>{formatCalendarWeekday(date)}</strong>
-                <span>{formatCalendarDate(date)}</span>
-              </div>
-            ))}
-          </div>
-
           {rows.map(row => (
             <div key={row.slug} className="daily-work-history-lane">
               <div className="daily-work-history-lane-label">
@@ -157,6 +144,36 @@ export default function DailyWorkHistory({
               </div>
             </div>
           ))}
+
+          <div className="daily-work-history-corner" aria-hidden="true" />
+          <div className="daily-work-history-x-axis" role="group" aria-label="Days: select one to see its work">
+            {chartDates.map(date => {
+              const total = dayTotals.get(date) ?? 0
+              const selected = date === selectedDate
+              const label = `${formatCalendarWeekday(date)} ${formatCalendarDate(date)}: ${
+                total ? `${total} submission${total === 1 ? '' : 's'}` : 'no work'
+              }`
+              return (
+                <button
+                  key={date}
+                  type="button"
+                  className={[
+                    'daily-work-history-x-day',
+                    total ? 'daily-work-history-x-day-active' : '',
+                    date === today ? 'daily-work-history-x-day-today' : '',
+                    selected ? 'daily-work-history-x-day-selected' : '',
+                  ].filter(Boolean).join(' ')}
+                  title={label}
+                  aria-label={label}
+                  aria-pressed={selected}
+                  onClick={() => onSelectDate(date)}
+                >
+                  <strong>{formatCalendarWeekday(date)}</strong>
+                  <span>{formatCalendarDate(date)}</span>
+                </button>
+              )
+            })}
+          </div>
         </div>
       )}
     </section>

@@ -1,4 +1,4 @@
-export type DailyWorkRange = 'day' | 'week' | 'month' | 'all'
+export type DailyWorkRange = 'week' | 'month' | 'all'
 
 /** The viewer's IANA timezone; history days are grouped by the viewer's calendar, not UTC. */
 export const viewerTimeZone = () => {
@@ -9,9 +9,9 @@ export const viewerTimeZone = () => {
   }
 }
 
-/** History ranges; ``days`` is the window sent to /api/skill-map-overview (0 = all time). */
+/** History ranges; ``days`` is the window sent to /api/skill-map-overview (0 = all time).
+ * A single day is chosen by clicking its date on the grid's x axis. */
 export const DAILY_WORK_RANGES: { value: DailyWorkRange; label: string; days: number }[] = [
-  { value: 'day', label: 'Day', days: 1 },
   { value: 'week', label: 'Week', days: 7 },
   { value: 'month', label: 'Month', days: 30 },
   { value: 'all', label: 'All-Time', days: 0 },
