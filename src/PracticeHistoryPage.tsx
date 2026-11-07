@@ -34,6 +34,12 @@ export default function PracticeHistoryPage() {
   const selectDate = (date: string) => setSelectedDate(current => (current === date ? null : date))
   const selectAlgorithm = (slug: string) => setSelectedAlgorithm(current => (current === slug ? '' : slug))
 
+  // Sections snap into view instead of free-scrolling (styles keyed off this class).
+  useEffect(() => {
+    document.documentElement.classList.add('journey-snap')
+    return () => document.documentElement.classList.remove('journey-snap')
+  }, [])
+
   useEffect(() => {
     const controller = new AbortController()
     const historyDays = DAILY_WORK_RANGES.find(option => option.value === range)?.days ?? 30
@@ -69,7 +75,7 @@ export default function PracticeHistoryPage() {
 
   return (
     <div className="app app-history">
-      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} />
+      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} pinned />
       <Suspense
         fallback={(
           <section className="signal-hologram" aria-label="Signal score terrain">

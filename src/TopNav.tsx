@@ -10,6 +10,8 @@ type TopNavProps = {
   llmProviderMenuRef?: RefObject<HTMLDivElement | null>
   practiceHistoryHref?: string
   rightExtras?: ReactNode
+  /** Keep the bar fixed to the top of the window while the page scrolls. */
+  pinned?: boolean
 }
 
 export default function TopNav({
@@ -20,6 +22,7 @@ export default function TopNav({
   llmProviderMenuRef,
   practiceHistoryHref = '/practice-history',
   rightExtras,
+  pinned = false,
 }: TopNavProps) {
   const { theme, setTheme } = useTheme()
   const lightModeEnabled = theme === 'light-high-contrast'
@@ -27,7 +30,7 @@ export default function TopNav({
   const toggleTheme = () => setTheme(lightModeEnabled ? 'dark-high-contrast' : 'light-high-contrast')
 
   return (
-    <nav className="navbar">
+    <nav className={pinned ? 'navbar navbar-pinned' : 'navbar'}>
       <div className="navbar-left">
         <Link to="/" className="navbar-brand">System 1</Link>
         <span className="navbar-divider" />

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { apiUrl } from './api'
@@ -377,8 +378,8 @@ function mountHologram(
     controls.autoRotate = false
     const point = history.points[hit.index]
     setTooltip({
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
+      x: event.clientX,
+      y: event.clientY,
       point,
       label: signalLabels.get(point.signal) ?? point.signal,
     })
@@ -528,14 +529,16 @@ export default function SignalHologram() {
           role="img"
           aria-label={`3D terrain of signal scores over time; height is 100 minus the score, so peaks are weak spots: ${summary}. Drag to rotate; pinch or hold Ctrl or Command and scroll to zoom.`}
         >
-          {tooltip ? (
+          {/* Portaled to <body> so it draws above the pinned nav and the page header. */}
+          {tooltip ? createPortal(
             <div className="signal-hologram-tooltip" style={{ left: tooltip.x, top: tooltip.y }} role="status">
               <strong>{tooltip.label}</strong>
               <span>score {tooltip.point.score.toFixed(1)} / 100</span>
               <span>{formatCalendarDate(tooltip.point.date)}</span>
               <span>{tooltip.point.algorithm}</span>
               {tooltip.point.title ? <span className="signal-hologram-tooltip-title">{tooltip.point.title}</span> : null}
-            </div>
+            </div>,
+            document.body,
           ) : null}
           {/* Inside the full-window stage, so these sit at the bottom of the screen. */}
           <nav className="signal-hologram-actions" aria-label="Start working">

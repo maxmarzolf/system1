@@ -795,7 +795,7 @@ export default function DashboardPage() {
 
   return (
     <div className="app app-dashboard">
-      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} />
+      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} pinned />
 
       <section className="dashboard">
         {error && <p className="skill-map-intro">{error}</p>}

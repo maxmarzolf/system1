@@ -894,7 +894,7 @@ export default function AdminPage() {
 
   return (
     <div className="app app-tune">
-      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} />
+      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} pinned />
 
       <section className="tune-surface">
         <div className="tune-hero">

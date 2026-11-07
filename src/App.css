@@ -7337,7 +7337,6 @@ button.daily-work-history-x-day-selected:hover {
 }
 
 /* Page chrome stays above the full-window canvas and clickable. */
-.app-history .navbar,
 .signal-hologram-header {
   position: relative;
   z-index: 2;
@@ -7388,15 +7387,15 @@ button.daily-work-history-x-day-selected:hover {
 }
 
 .signal-hologram-tooltip {
-  position: absolute;
-  z-index: 3;
+  position: fixed;
+  z-index: 1000;
   display: grid;
   gap: 0.15rem;
   max-width: 16rem;
   padding: 0.45rem 0.6rem;
   border: 1px solid var(--hc-accent);
   border-radius: 0.3rem;
-  background: color-mix(in srgb, var(--hc-bg) 88%, transparent);
+  background: color-mix(in srgb, var(--hc-bg) 94%, transparent);
   color: var(--hc-fg-dim);
   font-size: 0.72rem;
   line-height: 1.35;
@@ -7461,12 +7460,12 @@ button.daily-work-history-x-day-selected:hover {
   transform: translateX(-50%);
 }
 
-/* Same as the app's buttons (light border, dark fill), but roomier and see-through. */
+/* Same as the app's buttons (light border, dark fill, same padding), but see-through. */
 .signal-hologram-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.8rem 1.8rem;
+  padding: 0.6rem 1.4rem;
   border: 1px solid var(--hc-border);
   border-radius: 0;
   background: color-mix(in srgb, var(--hc-button-bg) 60%, transparent);
@@ -7485,4 +7484,38 @@ button.daily-work-history-x-day-selected:hover {
 .signal-hologram-action:focus-visible {
   outline: 2px solid var(--hc-accent);
   outline-offset: 1px;
+}
+
+
+/* Top nav pinned to the window (Journey, Tune, Admin, Dashboard). Its background spans the
+   full window width, since content (like the Journey terrain) scrolls underneath. */
+.navbar-pinned {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  min-height: var(--pinned-nav-height);
+}
+
+.navbar-pinned::before {
+  content: '';
+  position: absolute;
+  inset: 0 calc(50% - 50vw);
+  z-index: -1;
+  border-bottom: 1px solid var(--hc-border);
+  background: color-mix(in srgb, var(--hc-bg) 94%, transparent);
+}
+
+:root {
+  --pinned-nav-height: 3.25rem;
+}
+
+/* Journey: whole sections snap into place below the pinned nav. A section taller than the
+   window (a long day detail) still scrolls freely inside before snapping to the next. */
+html.journey-snap {
+  scroll-snap-type: y mandatory;
+  scroll-padding-top: calc(var(--pinned-nav-height) + 0.75rem);
+}
+
+.app-history > section {
+  scroll-snap-align: start;
 }
