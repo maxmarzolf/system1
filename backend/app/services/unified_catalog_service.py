@@ -67,29 +67,36 @@ def _ordered_ids(playlist_slug: str, order_slug: str) -> list[str]:
     return [str(drill["id"]) for drill in payload["drills"]]
 
 
-async def seed_canonical_catalog() -> None:
-
+def build_static_playlist_seeds() -> list[dict[str, Any]]:
+    """Everything ``seed_static_playlist`` writes, one dict of keyword arguments per playlist."""
+    seeds: list[dict[str, Any]] = []
     for playlist_slug, playlist in STATIC_PLAYLISTS.items():
         curated = build_static_playlist_drills(playlist_slug, "curated") or {"drills": []}
         questions_by_title = {
             str(question["title"]): question
             for question in playlist["questions"]
         }
-        items = [
-            _playlist_item(drill, questions_by_title.get(str(drill["title"])))
-            for drill in curated["drills"]
-        ]
-        orderings = {
-            order_slug: _ordered_ids(playlist_slug, order_slug)
-            for order_slug in static_playlist_orders(playlist_slug)
-        }
-        await seed_static_playlist(
-            slug=playlist_slug,
-            title=str(playlist["title"]),
-            description=_STATIC_PLAYLIST_DESCRIPTIONS.get(playlist_slug, ""),
-            show_on_skill_map=True,
-            items=items,
-            orderings=orderings,
+        seeds.append(
+            {
+                "slug": playlist_slug,
+                "title": str(playlist["title"]),
+                "description": _STATIC_PLAYLIST_DESCRIPTIONS.get(playlist_slug, ""),
+                "show_on_skill_map": True,
+                "items": [
+                    _playlist_item(drill, questions_by_title.get(str(drill["title"])))
+                    for drill in curated["drills"]
+                ],
+                "orderings": {
+                    order_slug: _ordered_ids(playlist_slug, order_slug)
+                    for order_slug in static_playlist_orders(playlist_slug)
+                },
+            }
         )
+    return seeds
+
+
+async def seed_canonical_catalog(seeds: list[dict[str, Any]] | None = None) -> None:
+    for seed in seeds if seeds is not None else build_static_playlist_seeds():
+        await seed_static_playlist(**seed)
 
     await delete_static_playlist_aliases(list(STATIC_PLAYLIST_ALIASES))

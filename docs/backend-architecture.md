@@ -38,7 +38,7 @@ One known exception: `domain/llm_resilience.py` builds a FastAPI `HTTPException`
 - **A new deterministic MCQ signal:** a `DeterministicSignal` registered in `app/core/signals/`. It then appears as an implementation in `/admin`.
 - **A new Jev MCQ signal:** no code. Create it in `/admin`.
 - **A recall signal spec for another algorithm:** a `SignalSpec` in `app/core/signal_catalog.py`. Bump its `version` whenever its signals change.
-- **Schema changes:** edit `app/schema.sql` (every statement must be idempotent). If existing databases need an in-place change, add it to `_apply_schema_upgrades` in `app/database.py`.
+- **Schema changes:** a new Alembic revision in `app/migrations/versions/` (`cd backend && alembic revision -m "..." --rev-id <next>`), written as raw SQL with `execute_script()` and safe to run on a database that already has the change. Startup applies it (`alembic upgrade head`); never edit an applied revision. One-time data fixes are revisions too. See [database-schema.md → Migrations](database-schema.md#migrations).
 
 ## Module map
 

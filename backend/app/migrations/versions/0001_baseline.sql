@@ -1,4 +1,7 @@
--- Canonical schema. Executed idempotently by app/database.py on every startup.
+-- Alembic baseline (revision 0001): the schema as it stood when migrations were introduced.
+-- Frozen: never edit this file. Change the schema with a new revision in this directory.
+-- Every statement is IF NOT EXISTS so the baseline also applies cleanly to databases
+-- created before Alembic (no manual `alembic stamp` needed).
 
 -- ============================================================================
 -- Multiple Choice Problem Table

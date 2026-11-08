@@ -1,10 +1,10 @@
 # Database schema
 
-Postgres, defined in [`backend/app/schema.sql`](../backend/app/schema.sql). The backend applies that file at every startup (every statement is `IF NOT EXISTS`), then runs the small, idempotent upgrades in `_apply_schema_upgrades` (`backend/app/database.py`) and seeds the catalog and the default MCQ signals. There is no separate migration tool.
+Postgres. The schema is built by [Alembic](https://alembic.sqlalchemy.org/) migrations written as raw SQL in [`backend/app/migrations/versions/`](../backend/app/migrations/versions/); there are no ORM models. Revision `0001` is the baseline ([`0001_baseline.sql`](../backend/app/migrations/versions/0001_baseline.sql), frozen), and each later revision is one change on top of it. Startup (`connect()` in `backend/app/database.py`) takes a Postgres advisory lock, runs `alembic upgrade head`, seeds the catalog if it changed, and seeds any missing default MCQ signals. See [Migrations](#migrations) below.
 
 The tables fall into three groups:
 
-- **Content catalog:** what you practice. Seeded from code on every boot.
+- **Content catalog:** what you practice. Seeded from code at boot whenever the code catalogs change.
 - **Practice records:** what you did. Written by `POST /api/attempts`.
 - **Signal registry:** how MCQ answers are graded by Jev. Seeded once (insert-if-missing), then owned by `/admin`.
 
@@ -145,7 +145,7 @@ erDiagram
 
 | Table | Holds | Written by |
 |---|---|---|
-| `algorithm` | One row per algorithm family (sliding window, heap, …). `signal_spec` is the recall signal spec used by the legacy LLM evaluators. | Seed on every boot (overwrites) |
+| `algorithm` | One row per algorithm family (sliding window, heap, …). `signal_spec` is the recall signal spec used by the legacy LLM evaluators. | Seed (overwrites) |
 | `problem` | A practice card: its code, prompt, hint and tags. Every problem belongs to one algorithm. | Seed |
 | `skill`, `technique` | Finer-grained labels. | Seed |
 | `problem_skill`, `problem_technique` | Many-to-many links from problems to skills and techniques. | Seed |
@@ -161,6 +161,8 @@ erDiagram
 - **Resetting practice history** deletes `generated-llm` problems but never core or playlist rows.
 - **MCQs are separate on purpose:** they live in `multiple_choice_problem`. A stored question is never edited, so every MCQ answer can be checked against what was shown.
 - The Python and TypeScript catalogs in code (`backend/app/core/*catalog*.py`, `src/data/`) are seed inputs and offline fallbacks; reads at runtime go through the repositories.
+- **Seeding is skipped when nothing changed:** the seed hashes the code catalogs plus the seeding code and stores the hash in `seed_state` (key `catalog`). A boot with a matching hash writes nothing. To force a reseed, `DELETE FROM seed_state WHERE key = 'catalog'` and restart.
+- **Retired core problems that have submissions are kept:** `submission.problem_slug` is `ON DELETE RESTRICT`, so the seed skips deleting them and logs a warning instead of failing the boot.
 
 ## Practice records
 
@@ -187,3 +189,31 @@ These three tables make MCQ grading data-driven. See [backend-architecture.md](b
 - **`signal_definition_revision`:** an append-only log of every seed, create, update, archive and restore, with before and after snapshots. `subject` is a signal key, or `directive:<modality>` for the correctness question.
 
 The evaluator reads the active definitions on every MCQ submission, so an edit in `/admin` applies to the next answer without a restart.
+
+## Migrations
+
+Alembic, raw SQL, on the app's asyncpg driver (`postgresql+asyncpg`). Files:
+
+- `backend/alembic.ini`: CLI config. The URL comes from `DATABASE_URL` (`app.config.settings`).
+- `backend/app/migrations/env.py`: async environment; holds a transaction-level advisory lock while upgrading, and runs every pending revision in one transaction.
+- `backend/app/migrations/versions/`: one file per revision. `execute_script()` (from `app/migrations/runner.py`) runs a multi-statement SQL string, `DO $$` blocks included.
+- `alembic_version`: the applied revision, managed by Alembic.
+
+The app upgrades to head on every start, so in normal use you never run Alembic by hand. To change the schema:
+
+```bash
+cd backend
+alembic revision -m "add foo to bar" --rev-id 0008   # next number in sequence
+# write the SQL in upgrade() (and downgrade() if it is reversible)
+alembic upgrade head                                 # or just restart the backend
+alembic current                                      # which revision a database is on
+```
+
+Rules:
+
+- **Never edit an applied revision** (the baseline included). Add a new one.
+- **Write revisions to be safe if their change already exists** (`IF NOT EXISTS`, `IF EXISTS`, guarded `UPDATE`s), so databases that predate a change, or were patched by hand, upgrade cleanly.
+- **Keep data fixes in revisions, not in startup code:** a revision runs once per database; startup code runs on every boot.
+- Revision numbers are zero-padded and sequential (`--rev-id`), so `versions/` reads in order.
+
+Databases created before Alembic need nothing special: the baseline is all `IF NOT EXISTS`, and revisions `0002`–`0006` replay the old in-place upgrades (add `algorithm.signal_spec`, drop `submission.migration_key`, stamp evaluations missing `signalSpec`, add `signal_definition.description`, backfill `submission.problem_slug`). `0007` adds `seed_state`.

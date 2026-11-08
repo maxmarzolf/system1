@@ -4,11 +4,12 @@ from pathlib import Path
 
 
 BACKEND_APP = Path(__file__).parents[1] / "app"
+MIGRATIONS = BACKEND_APP / "migrations" / "versions"
 
 
 def _runtime_source() -> str:
     chunks: list[str] = []
-    for path in sorted([*BACKEND_APP.rglob("*.py"), BACKEND_APP / "schema.sql"]):
+    for path in sorted([*BACKEND_APP.rglob("*.py"), *MIGRATIONS.glob("*.sql")]):
         chunks.append(path.read_text())
     return "\n".join(chunks)
 
@@ -40,7 +41,7 @@ def test_runtime_generated_content_targets_problem_repository() -> None:
 
 def test_submission_write_path_populates_problem_slug() -> None:
     repository = (BACKEND_APP / "repositories" / "attempts_repository.py").read_text()
-    schema = (BACKEND_APP / "schema.sql").read_text()
+    schema = "\n".join(path.read_text() for path in sorted(MIGRATIONS.glob("*.sql")))
 
     assert "generated_card_id, problem_slug, generated_card" in repository
     assert "SELECT slug FROM problem" in repository

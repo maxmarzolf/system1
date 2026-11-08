@@ -58,7 +58,7 @@ React pages ──► FastAPI endpoints ──► services ──► domain / co
 - Every answer goes to `POST /api/attempts`. An **evaluator registry** picks the grader by modality: `mcq` goes to Jev; `total-recall`, `microdrill` and `ghost-rep` go to the LLM graders. The result is stored as one `submission` row.
 - **MCQ signals live in the database** and are read on every submission, so a save in `/admin` applies to the next answer with no restart. Signals are archived, never deleted; every change is versioned and logged.
 - **Recall signal specs** live in `backend/app/core/signal_catalog.py` and are reseeded at startup.
-- The schema is `backend/app/schema.sql`, applied idempotently at startup along with small upgrades and seeding in `backend/app/database.py`. There is no migration tool.
+- The schema is managed by **Alembic** with raw-SQL revisions in `backend/app/migrations/versions/`. The backend runs `alembic upgrade head` at startup (under a Postgres advisory lock), then seeds the catalog only when its code changed (a hash in `seed_state`). New schema change: `cd backend && alembic revision -m "..." --rev-id <next>`, then restart or `alembic upgrade head`. Details in [docs/database-schema.md](docs/database-schema.md#migrations).
 
 Docs ([index](docs/README.md)):
 
