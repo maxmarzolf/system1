@@ -356,35 +356,6 @@ export const buildInlineTemplate = (patternTag: string, algorithmTarget: string,
   return output.join('\n')
 }
 
-export const extractNestedHelperTarget = (algorithmTarget: string) => {
-  const lines = normalizeTyping(algorithmTarget).split('\n')
-  for (let start = 0; start < lines.length; start += 1) {
-    const match = lines[start]?.match(/^(\s*)def\s+(dfs|backtrack|search|helper)\s*\(/)
-    if (!match?.[1]) continue
-    const baseIndent = match[1].length
-    const block = [lines[start] ?? '']
-    for (const nextLine of lines.slice(start + 1)) {
-      const indent = nextLine.length - nextLine.trimStart().length
-      if (nextLine.trim() && indent <= baseIndent) break
-      block.push(nextLine)
-    }
-    return block
-      .map((line) => line.length >= baseIndent ? line.slice(baseIndent) : line.trimStart())
-      .join('\n')
-      .replace(/\blen\((items|nums|arr|values|candidates|choices|s)\)/g, 'n')
-      .trim()
-  }
-  return ''
-}
-
-export const buildCoreShapeTemplate = (patternTag: string, algorithmTarget: string) => {
-  if (patternTag === 'backtracking') {
-    const nestedHelper = extractNestedHelperTarget(algorithmTarget)
-    if (nestedHelper) return buildInlineTemplate(patternTag, nestedHelper)
-  }
-  return buildInlineTemplate(patternTag, algorithmTarget)
-}
-
 export const normalizeInlineTemplateTarget = (rawTarget: string, patternTag: string, lens: InlineLens = 'pattern') => {
   const lines = normalizeTyping(rawTarget)
     .split('\n')

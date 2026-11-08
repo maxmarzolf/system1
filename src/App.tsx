@@ -5,7 +5,7 @@ import FlowBuilder from './FlowBuilder'
 import { FLOW_LABELS, buildFlowTransitionCopy, buildFlowGenerationContext, expandFlow, loadFlowConfig, mergeFlowAttempts, nextFlowStep, saveFlowConfig, summarizeFlowMastery, type FlowAttempt, type FlowConfig, type FlowStage, type SubmissionModality } from './practiceFlow'
 import RelatedLeetCodeDrawer from './RelatedLeetCodeDrawer'
 import { skillMap, type SkillMapNode } from './data/skill-map'
-import { playlistQuestionsToSkillMap, practicePlaylists, type PracticePlaylist } from './data/playlists'
+import { practicePlaylists, type PracticePlaylist } from './data/playlists'
 import { resolveRelatedLeetCodeSet } from './data/related-leetcode'
 import { loadStoredSubmissionTuning, saveStoredSubmissionTuning } from './submissionTuning'
 import { loadStoredSpecimenTuning } from './specimenTuning'
@@ -21,20 +21,23 @@ import RecallCodeEditor, { type RecallCodeEditorHandle, type RecallEditorLineMet
 import SlidingWindowLadder from './WindowLadderPanel'
 import { slidingWindowTechnique } from './windowLadderPlan'
 import { matchesHotkey, type PracticeFlowStage } from './hotkeys'
-import { FlowCoachTransition, FlowMicroDrillCard, FlowNextIcon } from './practice/FlowMicroDrillCard'
+import { FlowCoachTransition, FlowMicroDrillCard } from './practice/FlowMicroDrillCard'
 import { compactFeedbackItems, flowEvaluationScore, flowEvaluationWeaknesses, flowModalityWeakness, requestFlowAttemptHistory } from './practice/flowHistory'
-import { buildCoreShapeTemplate, buildInlineTaskProgression, buildPracticePrompt, inlineDisplayLines, normalizeInlineTemplateTarget, normalizeTyping, splitInlineAnnotationLine, stripHashAnnotationComments, stripInlineAnnotationNotes } from './practice/inlineNotes'
+import { inlineDisplayLines, normalizeTyping, splitInlineAnnotationLine } from './practice/inlineNotes'
 import { buildFlowFocusSummary, buildFlowGhostScaffold, buildFlowGhostTarget, computeLineReview, createInteractionId, extractFlowGhostFocusedInput, firstIncompleteGhostLineNumber, initialFlowFocus, nextFlowAnchor, nextGhostLineNumber, summarizeFlowFocusLine, summarizeRecallAttempt, toMultipleChoiceFocusLines } from './practice/lineReview'
 import { MarkdownCodeContent } from './practice/markdown'
+import PrimaryActionIcon from './practice/components/PrimaryActionIcon'
+import { resolvePracticeFocus } from './practice/focus'
+import { resolvePrimaryAction, type PrimaryActionKind } from './practice/primaryAction'
+import { INLINE_LENS, RECALL_TARGET_MODE, derivePracticeTargets } from './practice/targets'
 import { focusMicroDrillInput } from './practice/markdownText'
-import { DEFAULT_TEMPLATE_MODES, TEMPLATE_MODE_LABELS, TEMPLATE_MODE_ORDER, getPrimaryPatternTag, patternLabelFromSlug, patternToSlug } from './practice/patterns'
+import { TEMPLATE_MODE_LABELS, getPrimaryPatternTag, patternLabelFromSlug } from './practice/patterns'
 import { postAttempt, rejectionReason, requestCoreAlgorithmDrills, requestCoreAlgorithmDrillsByTag, requestMultipleChoiceDrills, requestRandomCoreAlgorithmDrills, requestSkillMapDrills, requestSkillMapDrillsStream, requestStaticPlaylistDrills } from './practice/requests'
-import { CARD_MOVE_DOUBLE_TAP_WINDOW_MS, FLOW_TRANSITION_MINIMUM_MS, FLOW_TRANSITION_SETTLE_MS, INLINE_FEEDBACK_ENABLED, emptySkillMapCard, EMPTY_FLOW_MICRODRILL_ACTION_STATE, type AnnotatedDisplayLine, type AttemptPayload, type CoachAttemptFeedback, type CoachSessionPlan, type Flashcard, type FlowMicroDrillPrimaryActionState, type InlineLens, type LlmProviderSelection, type MultipleChoiceCard, type MultipleChoiceChoice, type MultipleChoiceDifficulty, type MultipleChoiceDrillsRequest, type MultipleChoiceSpecimenContext, type PracticeFlowState, type PracticeFlowTransitionState, type PracticeMode, type RecallAttemptSnapshot, type RecallTargetMode, type SubmissionFailureModalState, type SubmissionSaveResponse, type SupportLayer, type TemplateMode } from './practice/types'
+import { CARD_MOVE_DOUBLE_TAP_WINDOW_MS, FLOW_TRANSITION_MINIMUM_MS, FLOW_TRANSITION_SETTLE_MS, INLINE_FEEDBACK_ENABLED, emptySkillMapCard, EMPTY_FLOW_MICRODRILL_ACTION_STATE, type AnnotatedDisplayLine, type AttemptPayload, type CoachAttemptFeedback, type CoachSessionPlan, type Flashcard, type FlowMicroDrillPrimaryActionState, type LlmProviderSelection, type MultipleChoiceCard, type MultipleChoiceChoice, type MultipleChoiceDifficulty, type MultipleChoiceDrillsRequest, type MultipleChoiceSpecimenContext, type PracticeFlowState, type PracticeFlowTransitionState, type PracticeMode, type RecallAttemptSnapshot, type SubmissionFailureModalState, type SubmissionSaveResponse, type SupportLayer, type TemplateMode } from './practice/types'
 
 function App() {
   const { theme } = useTheme()
   const [searchParams, setSearchParams] = useSearchParams()
-  const questionType = 'skill-map' as const
   const [practiceMode, setPracticeMode] = useState<PracticeMode>('recall')
   const [mcqSourceSpecimen, setMcqSourceSpecimen] = useState<MultipleChoiceSpecimenContext | null>(null)
   const [multipleChoiceDifficulty] = useState<MultipleChoiceDifficulty>('Med.')
@@ -53,9 +56,7 @@ function App() {
   const [multipleChoiceLoading, setMultipleChoiceLoading] = useState(false)
   const [multipleChoiceError, setMultipleChoiceError] = useState('')
   const [multipleChoiceSessionVersion, setMultipleChoiceSessionVersion] = useState(0)
-  const [recallTargetMode] = useState<RecallTargetMode>('algorithm')
   const [inlineEnabled, setInlineEnabled] = useState(false)
-  const [inlineLens] = useState<InlineLens>('pattern')
   const [inlineTaskProgress, setInlineTaskProgress] = useState(0)
   const [tagsExpanded, setTagsExpanded] = useState(false)
   const [relatedDrawerOpen, setRelatedDrawerOpen] = useState(false)
@@ -134,63 +135,15 @@ function App() {
   const skillMapDeckRequestVersionRef = useRef(0)
   const multipleChoiceDeckRequestVersionRef = useRef(0)
   const flowMultipleChoiceDeckRequestVersionRef = useRef(0)
-  const focusedPatternSlug = searchParams.get('focusPattern')?.trim() || ''
-  const focusedTagSlug = searchParams.get('focusTag')?.trim() || ''
-  const focusedModeParam = searchParams.get('focusMode')?.trim() || ''
-  const requestedPlaylistSlug = searchParams.get('playlist')?.trim() || ''
-  const focusedMethodParams = searchParams.getAll('focusMethod').map((method) => method.trim()).filter(Boolean)
   const availablePlaylists = catalogPlaylists ?? practicePlaylists
   const availableSkillMap = catalogSkillMap ?? skillMap
-  const requestedPlaylist = useMemo(
-    () => availablePlaylists.find((playlist) => playlist.slug === requestedPlaylistSlug) ?? null,
-    [availablePlaylists, requestedPlaylistSlug]
+  const {
+    focusedPatternSlug, focusedTagSlug, focusedPatternLabel, requestedPlaylist, focusedCardPending, focusedCardNotFound,
+    requestedSkillMap, requestedSkillMapSignature, requestedTemplateMode, requestedTemplateTargets, requestedQuestionType,
+  } = useMemo(
+    () => resolvePracticeFocus({ searchParams, playlists: availablePlaylists, skillMap: availableSkillMap, skillMapResolved: catalogSkillMapResolved }),
+    [availablePlaylists, availableSkillMap, catalogSkillMapResolved, searchParams],
   )
-  const focusedPatternNode = useMemo(
-    () => availableSkillMap.find((node) => patternToSlug(node.algorithm) === focusedPatternSlug) ?? null,
-    [availableSkillMap, focusedPatternSlug]
-  )
-  const focusedCardPending = Boolean(focusedPatternSlug && !requestedPlaylist && !catalogSkillMapResolved)
-  const focusedCardNotFound = Boolean(focusedPatternSlug && !requestedPlaylist && catalogSkillMapResolved && !focusedPatternNode)
-  const focusedTemplateMode = useMemo<TemplateMode | null>(() => {
-    if (TEMPLATE_MODE_ORDER.includes(focusedModeParam as TemplateMode)) {
-      return focusedModeParam as TemplateMode
-    }
-    return null
-  }, [focusedModeParam])
-  const requestedSkillMap = useMemo<SkillMapNode[]>(() => {
-    if (requestedPlaylist) return playlistQuestionsToSkillMap(requestedPlaylist)
-    if (!focusedPatternNode) return availableSkillMap
-    const focusedMethodSet = new Set(focusedMethodParams)
-    const focusedMethods = focusedMethodSet.size > 0
-      ? focusedPatternNode.skills.filter((method) => focusedMethodSet.has(method))
-      : focusedPatternNode.skills
-    const requestedMethods = focusedMethods.length > 0 ? focusedMethods : focusedPatternNode.skills
-    return requestedMethods.map((method) => ({
-      algorithm: focusedPatternNode.algorithm,
-      skills: [method],
-    }))
-  }, [availableSkillMap, focusedMethodParams, focusedPatternNode, requestedPlaylist])
-  const requestedSkillMapSignature = useMemo(
-    () => JSON.stringify(requestedSkillMap),
-    [requestedSkillMap]
-  )
-  const requestedTemplateMode = focusedTemplateMode ?? DEFAULT_TEMPLATE_MODES[0]
-  const requestedTemplateTargets = useMemo(() => {
-    const targets: Record<string, Partial<Record<TemplateMode, string>>> = {}
-    requestedSkillMap.forEach((node) => {
-      const patternSlug = patternToSlug(node.algorithm)
-      targets[patternSlug] = {}
-    })
-    return targets
-  }, [requestedSkillMap])
-  const requestedQuestionType = requestedPlaylist
-    ? `playlist:${requestedPlaylist.slug}`
-    : focusedTagSlug
-      ? `tag:${focusedTagSlug}`
-    : focusedPatternSlug
-      ? 'skill-map-core-algorithm'
-      : questionType
-  const focusedPatternLabel = focusedPatternNode?.algorithm ?? patternLabelFromSlug(focusedPatternSlug)
   const filteredDeck = useMemo(() => skillMapDeck, [skillMapDeck])
   const currentTemplateMode: TemplateMode = 'algorithm'
 
@@ -512,50 +465,7 @@ function App() {
   const headerCardTags = isFlowActive ? card.tags : activeCardTags
   const isCoreAlgorithmCard = headerCardTags.includes('core-algorithm')
   const isMetaCard = headerCardTags.includes('core-meta') || headerCardTags.includes('meta')
-  const primaryPatternTag = useMemo(() => getPrimaryPatternTag(card.tags), [card.tags])
-  const fullSolutionTarget = useMemo(
-    () => normalizeTyping(card.solution.replace('{{missing}}', card.missing)),
-    [card.missing, card.solution]
-  )
-  const algorithmPracticeTarget = useMemo(() => {
-    const generatedTarget = card.templateTargets?.algorithm?.trim()
-    if (generatedTarget) {
-      const resolvedTarget = generatedTarget.replace('{{missing}}', card.missing)
-      return normalizeTyping(resolvedTarget)
-    }
-    return fullSolutionTarget
-  }, [card.missing, card.templateTargets, fullSolutionTarget])
-  const coreShapePracticeTarget = useMemo(() => {
-    const generatedTarget = card.templateTargets?.coreShape?.trim()
-    if (generatedTarget) {
-      return normalizeTyping(generatedTarget.replace('{{missing}}', card.missing))
-    }
-    return normalizeTyping(buildCoreShapeTemplate(primaryPatternTag, algorithmPracticeTarget))
-  }, [algorithmPracticeTarget, card.missing, card.templateTargets, primaryPatternTag])
-  const selectedPracticeBaseTarget = recallTargetMode === 'coreShape' ? coreShapePracticeTarget : algorithmPracticeTarget
-  const inlinePracticeTarget = useMemo(() => {
-    const generatedTarget = recallTargetMode === 'algorithm' ? card.templateTargets?.inline?.trim() : ''
-    if (generatedTarget && recallTargetMode === 'algorithm') {
-      return normalizeInlineTemplateTarget(generatedTarget.replace('{{missing}}', card.missing), primaryPatternTag, inlineLens)
-    }
-    return normalizeInlineTemplateTarget(selectedPracticeBaseTarget, primaryPatternTag, inlineLens)
-  }, [card.missing, card.templateTargets, inlineLens, primaryPatternTag, recallTargetMode, selectedPracticeBaseTarget])
-  const plainPracticeTarget = useMemo(
-    () => normalizeTyping(stripHashAnnotationComments(stripInlineAnnotationNotes(selectedPracticeBaseTarget))),
-    [selectedPracticeBaseTarget]
-  )
-  const inlineTaskProgression = useMemo(
-    () => buildInlineTaskProgression(plainPracticeTarget, inlinePracticeTarget),
-    [inlinePracticeTarget, plainPracticeTarget]
-  )
-  const practiceTarget = plainPracticeTarget
-  const generatedPracticePrompt =
-    (recallTargetMode === 'coreShape' ? card.templatePrompts?.coreShape?.trim() : card.templatePrompts?.algorithm?.trim())
-    || card.prompt.trim()
-  const practicePrompt = useMemo(
-    () => generatedPracticePrompt || buildPracticePrompt(currentTemplateMode, primaryPatternTag),
-    [currentTemplateMode, generatedPracticePrompt, primaryPatternTag]
-  )
+  const { primaryPatternTag, practiceTarget, inlineTaskProgression, practicePrompt } = useMemo(() => derivePracticeTargets(card), [card])
   const skeletonReference = card.skeletonApplicability ?? null
   const tagsListId = `card-tags-${card.id}`
 
@@ -574,7 +484,7 @@ function App() {
     [mainInput, practiceFlow]
   )
   const activeRecallTarget = practiceFlow?.stage === 'ghost' && flowGhostTarget ? flowGhostTarget : practiceTarget
-  const currentQuestionType = `${requestedQuestionType}:${recallTargetMode}${inlineEnabled ? `:${inlineLens}` : ''}`
+  const currentQuestionType = `${requestedQuestionType}:${RECALL_TARGET_MODE}${inlineEnabled ? `:${INLINE_LENS}` : ''}`
   const currentMultipleChoiceQuestionType = isFlowActive
     ? `skill-map-mcq:card:progressive:flow-cycle-${practiceFlow?.cycle ?? 1}`
     : `skill-map-mcq:card:${mcqTuning.flowMode}`
@@ -582,15 +492,15 @@ function App() {
     () => [
       ...card.tags,
       `template-${currentTemplateMode}`,
-      `target-${recallTargetMode}`,
-      ...(inlineEnabled ? [`inline-${inlineLens}`] : []),
+      `target-${RECALL_TARGET_MODE}`,
+      ...(inlineEnabled ? [`inline-${INLINE_LENS}`] : []),
       ...(isFlowActive && practiceFlow
         ? ['mode-flow', `flow-stage-${practiceFlow.stage}`, `flow-cycle-${practiceFlow.cycle}`]
         : []),
     ],
-    [card.tags, currentTemplateMode, inlineEnabled, inlineLens, isFlowActive, practiceFlow, recallTargetMode]
+    [card.tags, currentTemplateMode, inlineEnabled, isFlowActive, practiceFlow]
   )
-  const currentRecallHistoryKey = `${card.id}:${currentTemplateMode}:${recallTargetMode}:${inlineEnabled ? inlineLens : 'plain'}`
+  const currentRecallHistoryKey = `${card.id}:${currentTemplateMode}:${RECALL_TARGET_MODE}:${inlineEnabled ? INLINE_LENS : 'plain'}`
   const currentMultipleChoiceSkillTags = useMemo(
     () => [
       ...(activeMultipleChoiceCard?.tags ?? []),
@@ -673,20 +583,16 @@ function App() {
     hasDeck,
   ])
   const currentTemplateLabel = TEMPLATE_MODE_LABELS[currentTemplateMode]
-  const activeRecallLabel = recallTargetMode === 'coreShape' ? 'Core shape' : currentTemplateLabel
+  const activeRecallLabel = currentTemplateLabel
   const practiceLanguage = codeEditorTuning.language
   const targetedGhostLineCount = practiceFlow?.focus.missedLines.filter((line) => line.expected.trim().length > 0).length ?? 0
-  const practiceInputLabel = recallTargetMode === 'coreShape'
-    ? 'Type the core shape from memory'
-    : 'Type the full algorithm from memory'
+  const practiceInputLabel = 'Type the full algorithm from memory'
   const supportedPracticeInputLabel = isGhostRepsEnabled
     ? practiceFlow?.stage === 'ghost'
       ? `Type only the ${targetedGhostLineCount || practiceFlow.focus.missedLines.length} targeted line${(targetedGhostLineCount || practiceFlow.focus.missedLines.length) === 1 ? '' : 's'} from memory`
       : `${practiceInputLabel} with Ghost Reps`
     : practiceInputLabel
-  const practicePlaceholder = recallTargetMode === 'coreShape'
-    ? 'Type the reusable skeleton from memory...'
-    : 'Type the full algorithm from memory...'
+  const practicePlaceholder = 'Type the full algorithm from memory...'
   const supportedPracticePlaceholder = isGhostRepsEnabled
     ? practiceFlow?.stage === 'ghost'
       ? 'Trace only the lines you missed on the last recall...'
@@ -1061,8 +967,6 @@ function App() {
     resetFlowMultipleChoiceState()
     resetPerCardInteraction()
   }
-
-  const advanceFlowMultipleChoice = advancePracticeFlow
 
   const activatePracticeFlowStage = async (nextStage: PracticeFlowStage) => {
     if (!hasRecallDeck || sessionFinished || flowTransition) return
@@ -1597,132 +1501,35 @@ function App() {
   const flowMicroDrillActionKey = practiceFlow?.stage === 'microdrill'
     ? `${practiceFlow.runId}-${practiceFlow.step}`
     : ''
-  const primaryCardAction = (() => {
-    if (ladderActive) return null
-    if (practiceFlow?.stage === 'microdrill') {
-      const microDrillActionState = flowMicroDrillPrimaryActionState.interactionKey === flowMicroDrillActionKey
-        ? flowMicroDrillPrimaryActionState
-        : EMPTY_FLOW_MICRODRILL_ACTION_STATE
-      if (microDrillActionState.submitted) {
-        return {
-          label: 'Next',
-          onClick: advancePracticeFlow,
-          disabled: false,
-          icon: <FlowNextIcon />,
-        }
-      }
-      return {
-        label: 'Submit',
-        onClick: () => flowMicroDrillPrimaryActionRef.current(),
-        disabled: !microDrillActionState.ready
-          || !microDrillActionState.complete
-          || microDrillActionState.saving,
-        icon: (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="m4.5 12.75 6 6 9-13.5" />
-          </svg>
-        ),
-      }
-    }
-    if (!hasDeck) return null
-    if (practiceFlow && currentPracticeMode === 'recall' && mainPhase === 'submitted') {
-      return {
-        label: 'Next',
-        onClick: advancePracticeFlow,
-        disabled: coachLoading,
-        icon: <FlowNextIcon />,
-      }
-    }
-
-    if (currentPracticeMode === 'multiple-choice') {
-      if (isFlowActive && multipleChoiceSubmitted) {
-        return {
-          label: 'Next',
-          onClick: advanceFlowMultipleChoice,
-          disabled: sessionFinished,
-          icon: <FlowNextIcon />,
-        }
-      }
-      if (multipleChoiceSubmitted) return null
-      return {
-        label: multipleChoiceGrading ? 'Grading…' : 'Submit',
-        onClick: submitMultipleChoice,
-        disabled: !selectedMultipleChoice || hasAnsweredCurrent || sessionFinished || multipleChoiceGrading,
-        icon: (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="m4.5 12.75 6 6 9-13.5" />
-          </svg>
-        ),
-      }
-    }
-
-    if (practiceFlow?.stage === 'ghost' && mainPhase === 'submitted' && !latestSubmittedWasGhostRep) {
-      return {
-        label: 'Start',
-        onClick: repeatGhostRep,
-        disabled: sessionFinished,
-        icon: (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M12 3v18M3 12h18" />
-          </svg>
-        ),
-      }
-    }
-
-    if (mainPhase === 'preview') {
-      return {
-        label: 'Start',
-        onClick: startMainRecall,
-        disabled: !hasDeck || hasAnsweredCurrent || sessionFinished,
-        icon: (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" />
-          </svg>
-        ),
-      }
-    }
-
-    if (mainPhase === 'typing') {
-      return {
-        label: 'Submit',
-        onClick: submitMainRecall,
-        disabled: totalRecallEvaluationPending || currentRecallSubmissionInput.trim().length === 0,
-        icon: (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 0 0 2.25-2.25V6.75a2.25 2.25 0 0 0-2.25-2.25H6.75A2.25 2.25 0 0 0 4.5 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25Zm.75-12h9v9h-9v-9Z" />
-          </svg>
-        ),
-      }
-    }
-
-    if (latestSubmittedWasGhostRep) {
-      return {
-        label: 'Submit',
-        onClick: repeatGhostRep,
-        disabled: sessionFinished,
-        icon: (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 0 0 2.25-2.25V6.75a2.25 2.25 0 0 0-2.25-2.25H6.75A2.25 2.25 0 0 0 4.5 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25Zm.75-12h9v9h-9v-9Z" />
-          </svg>
-        ),
-      }
-    }
-
-    if (!mainCloseEnough) {
-      return {
-        label: 'Submit',
-        onClick: reviseMainRecall,
-        disabled: sessionFinished,
-        icon: (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 0 0 2.25-2.25V6.75a2.25 2.25 0 0 0-2.25-2.25H6.75A2.25 2.25 0 0 0 4.5 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25Zm.75-12h9v9h-9v-9Z" />
-          </svg>
-        ),
-      }
-    }
-
-    return null
-  })()
+  const primaryCardAction = resolvePrimaryAction({
+    ladderActive,
+    flowStage: practiceFlow?.stage ?? null,
+    microDrill: flowMicroDrillPrimaryActionState.interactionKey === flowMicroDrillActionKey
+      ? flowMicroDrillPrimaryActionState
+      : EMPTY_FLOW_MICRODRILL_ACTION_STATE,
+    hasDeck,
+    practiceMode: currentPracticeMode,
+    mainPhase,
+    coachLoading,
+    mcqSubmitted: multipleChoiceSubmitted,
+    mcqSelected: Boolean(selectedMultipleChoice),
+    mcqGrading: multipleChoiceGrading,
+    hasAnsweredCurrent,
+    sessionFinished,
+    latestSubmittedWasGhostRep,
+    recallEvaluationPending: totalRecallEvaluationPending,
+    recallInputEmpty: currentRecallSubmissionInput.trim().length === 0,
+    mainCloseEnough,
+  })
+  const primaryActionHandlers: Record<PrimaryActionKind, () => void> = {
+    'flow-next': () => void advancePracticeFlow(),
+    'microdrill-submit': () => flowMicroDrillPrimaryActionRef.current(),
+    'mcq-submit': () => void submitMultipleChoice(),
+    'recall-start': startMainRecall,
+    'recall-submit': () => void submitMainRecall(),
+    'ghost-repeat': repeatGhostRep,
+    'recall-revise': reviseMainRecall,
+  }
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -1861,12 +1668,12 @@ function App() {
     mainInput,
   ])
   const previewEditorLineMeta = useMemo<RecallEditorLineMeta[]>(() => (
-    plainPracticeTarget.split('\n').map((_, index) => ({
+    practiceTarget.split('\n').map((_, index) => ({
       sourceLineNumber: index + 1,
       inlineDecision: false,
       inlineNote: undefined,
     }))
-  ), [plainPracticeTarget])
+  ), [practiceTarget])
 
   const microDrillEditorReady = !flowTransition && !flowDrawerOpen
     && practiceFlow?.stage === 'microdrill'
@@ -2624,18 +2431,18 @@ function App() {
                 className={isFlowActive && primaryCardAction.label === 'Next'
                   ? 'card-control-button card-control-button-flow-next'
                   : 'card-control-button'}
-                onClick={primaryCardAction.onClick}
+                onClick={primaryActionHandlers[primaryCardAction.kind]}
                 disabled={primaryCardAction.disabled}
                 aria-label={isFlowActive && primaryCardAction.label === 'Next' ? 'Continue to the next modality' : undefined}
               >
                 {isFlowActive && primaryCardAction.label === 'Next' ? (
                   <>
                     <span>{primaryCardAction.label}</span>
-                    {primaryCardAction.icon}
+                    <PrimaryActionIcon kind={primaryCardAction.kind} />
                   </>
                 ) : (
                   <>
-                    {primaryCardAction.icon}
+                    <PrimaryActionIcon kind={primaryCardAction.kind} />
                     <span>{primaryCardAction.label}</span>
                   </>
                 )}
