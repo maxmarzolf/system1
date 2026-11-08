@@ -7,7 +7,7 @@ import logging
 
 import pytest
 
-from app.core import generator
+from app.core.generator import prompts, skill_map
 from app.core.generator import GeneratorRuntime, SkillMapDrillGenerator
 
 
@@ -44,7 +44,7 @@ def stream(skill_map_request, progress_summary, call_llm_json, persisted, availa
 
 
 def test_stream_parser_emits_each_complete_drill_once() -> None:
-    parser = generator._DrillStreamParser()
+    parser = skill_map._DrillStreamParser()
     payload = json.dumps({"drills": [{"id": "a", "s": "x { y } \"q\""}, {"id": "b"}], "note": "{not a drill}"})
     found: list[dict] = []
     for index in range(0, len(payload), 7):
@@ -54,7 +54,7 @@ def test_stream_parser_emits_each_complete_drill_once() -> None:
 
 
 def test_stream_parser_skips_broken_items() -> None:
-    parser = generator._DrillStreamParser()
+    parser = skill_map._DrillStreamParser()
     assert parser.feed('{"drills": [{"id": 1, "x": tru}, {"id": 2}]}') == [{"id": 2}]
 
 
@@ -86,9 +86,9 @@ def sse(*deltas: str) -> list[str]:
 
 
 async def test_stream_uses_openai_streaming(monkeypatch, skill_map_request, progress_summary, llm_drills_payload) -> None:
-    monkeypatch.setattr(generator.settings, "coach_openai_api_key", "sk")
+    monkeypatch.setattr(skill_map.settings, "coach_openai_api_key", "sk")
     text = json.dumps(llm_drills_payload)
-    monkeypatch.setattr(generator, "stream_openai_text", lambda *a: iter([text[:40], text[40:]]))
+    monkeypatch.setattr(skill_map, "stream_openai_text", lambda *a: iter([text[:40], text[40:]]))
     persisted: dict = {}
     events = await collect(stream(skill_map_request, progress_summary, lambda *a: None, persisted))
     assert [event for event, _ in events] == ["drill", "drill", "done"]
@@ -100,19 +100,19 @@ async def test_stream_uses_openai_streaming(monkeypatch, skill_map_request, prog
 async def test_stream_falls_back_to_json_call_when_streaming_breaks(
     monkeypatch, skill_map_request, progress_summary, llm_drills_payload
 ) -> None:
-    monkeypatch.setattr(generator.settings, "coach_openai_api_key", "sk")
+    monkeypatch.setattr(skill_map.settings, "coach_openai_api_key", "sk")
 
     def broken(*_args):
         raise OSError("connection reset")
         yield ""  # pragma: no cover
 
-    monkeypatch.setattr(generator, "stream_openai_text", broken)
+    monkeypatch.setattr(skill_map, "stream_openai_text", broken)
     events = await collect(stream(skill_map_request, progress_summary, lambda *a: llm_drills_payload, {}))
     assert events[-1] == ("done", {"count": 2, "llmUsed": True})
 
 
 async def test_stream_fills_missing_drills_from_fallback(monkeypatch, skill_map_request, progress_summary) -> None:
-    monkeypatch.setattr(generator.settings, "coach_openai_api_key", "")
+    monkeypatch.setattr(skill_map.settings, "coach_openai_api_key", "")
     persisted: dict = {}
     events = await collect(stream(skill_map_request, progress_summary, lambda *a: {"drills": [{"bad": 1}]}, persisted))
     assert events[-1] == ("done", {"count": 2, "llmUsed": False})
@@ -120,7 +120,7 @@ async def test_stream_fills_missing_drills_from_fallback(monkeypatch, skill_map_
 
 
 async def test_stream_reports_generation_errors(monkeypatch, skill_map_request, progress_summary) -> None:
-    monkeypatch.setattr(generator.settings, "coach_openai_api_key", "")
+    monkeypatch.setattr(skill_map.settings, "coach_openai_api_key", "")
 
     def explode(*_args):
         raise RuntimeError("boom")
@@ -149,17 +149,17 @@ async def test_generate_response_falls_back_when_llm_output_is_invalid(skill_map
 
 
 def test_function_signature_and_sample_inputs() -> None:
-    assert generator._extract_function_signature("not code") == ("solve", "", "solve()")
+    assert prompts._extract_function_signature("not code") == ("solve", "", "solve()")
     target = "def window(nums: list[int], k: int, s, graph, intervals, target=0, n=1, *rest):\n    pass"
-    name, params, signature = generator._extract_function_signature(target)
+    name, params, signature = prompts._extract_function_signature(target)
     assert name == "window" and signature.startswith("window(nums")
-    example = generator._input_example_from_signature(target)
+    example = prompts._input_example_from_signature(target)
     assert "nums = [1, 2, 3]" in example
     assert "k = 2" in example and 's = "abc"' in example and "graph = {" in example
     assert "intervals = [[1, 3], [2, 6]]" in example and "target = 5" in example and "n = 3" in example
     assert "rest = ..." in example
-    assert generator._input_example_from_signature("def f():\n    pass") == "f()"
-    assert generator._sample_value_for_param("") == "value"
+    assert prompts._input_example_from_signature("def f():\n    pass") == "f()"
+    assert prompts._sample_value_for_param("") == "value"
 
 
 @pytest.mark.parametrize(
@@ -167,4 +167,4 @@ def test_function_signature_and_sample_inputs() -> None:
     [("Easy", "Easy"), ("medium", "Med."), ("HARD", "Hard"), ("other", "Med.")],
 )
 def test_difficulty_normalization(raw, expected) -> None:
-    assert generator._normalize_drill_difficulty(raw) == expected
+    assert prompts.normalize_drill_difficulty(raw) == expected

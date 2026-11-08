@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from app.core.assessor import AssessorContext, AssessorRuntime, run_signal_assessor
-from app.core.generator import _template_mode_value
+from app.core.generator import template_mode_value
 from app.core.llm import (
     LlmUnavailableError,
     call_llm_json as _call_llm_json,
@@ -87,7 +87,7 @@ async def _run_submission_narrator_phase(
 async def coach_submission_evaluation(body: CoachAttemptFeedbackRequest, spec: SignalSpec) -> Evaluation:
     history, history_summary = await history_service.load_feedback_context(body)
     provider = require_available_provider(body.llmProvider)
-    template_mode = _template_mode_value(body.templateMode)
+    template_mode = template_mode_value(body.templateMode)
     assessment = await _run_assessor_phase(body, provider, template_mode, spec)
     sound = str(assessment.get("verdict") or "").strip() == "sound"
     evaluated_body = body.model_copy(update={"exact": sound})

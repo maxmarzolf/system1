@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.generator import (
-    LlmUnavailableError,
-    _process_multiple_choice_card,
-    generate_multiple_choice_drills_response,
-)
+from app.core.generator import generate_multiple_choice_drills_response
+from app.core.generator.mcq import _process_multiple_choice_card
+from app.core.llm import LlmUnavailableError
 from app.models import MultipleChoiceDrillsRequest, SkillMapNode
 from app.repositories.coach_repository import _multiple_choice_question_fingerprint
 
