@@ -156,7 +156,7 @@ def feedback(monkeypatch):
 
 
 async def test_submission_evaluation_combines_assessor_and_narrator(feedback) -> None:
-    evaluation = await feedback_service.coach_submission_evaluation(body(), BINARY_SEARCH_SIGNAL_SPEC)
+    evaluation = (await feedback_service.coach_submission_evaluation(body(), BINARY_SEARCH_SIGNAL_SPEC)).to_stored()
     assert evaluation["verdict"] == "needs-work"
     assert evaluation["signalSpec"]["algorithm"] == BINARY_SEARCH_SIGNAL_SPEC.algorithm
     assert evaluation["provenance"]["llmUsed"] is True

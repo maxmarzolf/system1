@@ -28,10 +28,10 @@ from app.core.signals import (
 )
 from app.core.signals.mcq import MCQ_MODALITY
 from app.domain.feedback_builder import rubric_from_signal_results
-from app.domain.submission_evaluation import canonical_submission_evaluation
+from app.contracts.evaluation import Evaluation, build_evaluation
 from app.models import AttemptCreate, SubmissionModality
 from app.services import signal_registry_service
-from app.services.evaluators.base import EvaluationOutcome, SubmissionRecord
+from app.contracts.submission import EvaluationOutcome, SubmissionRecord
 from app.services.evaluators.registry import register_evaluator
 from app.services.submission_context_service import McqContext, build_mcq_context
 
@@ -80,6 +80,11 @@ def _trace(response: JevResponse, questions: dict[str, JevQuestion]) -> dict[str
         "questionIds": list(questions),
         "answers": response.answers,
     }
+
+
+def _add_provenance(evaluation: Evaluation, **fields: Any) -> None:
+    for name, value in fields.items():
+        setattr(evaluation.provenance, name, value)
 
 
 class JevMcqEvaluator:
@@ -147,22 +152,21 @@ class JevMcqEvaluator:
             flags.append("low_correctness_confidence")
 
         evaluation = self._evaluation(spec, successful, results, source="jev")
-        evaluation["correctness"] = {
+        evaluation.correctness = {
             "label": label,
             "confidence": round(confidence, 3),
             "probabilities": correctness.get("probabilities", {}),
             "answerKeyAgreement": agreement,
         }
-        evaluation["provenance"].update(
-            {
-                "engine": "jev",
-                "model": response.model,
-                "requestIds": [trace["requestId"] for trace in traces],
-                "usage": response.usage,
-                "flags": flags,
-            }
+        _add_provenance(
+            evaluation,
+            engine="jev",
+            model=response.model,
+            requestIds=[trace["requestId"] for trace in traces],
+            usage=response.usage,
+            flags=flags,
         )
-        evaluation["jevTrace"] = traces
+        evaluation.jevTrace = traces
         return EvaluationOutcome(successful=successful, evaluation=evaluation, record=_record(context))
 
     def _evaluation(
@@ -172,11 +176,11 @@ class JevMcqEvaluator:
         results: dict[str, SignalResult],
         *,
         source: str,
-    ) -> dict[str, Any]:
+    ) -> Evaluation:
         rubric = rubric_from_signal_results(spec, successful, results)
-        evaluation = canonical_submission_evaluation(rubric, spec, provider="jev", llm_used=source == "jev", source=source)
-        evaluation["signalResults"] = {key: result.to_json() for key, result in results.items()}
-        evaluation["signalSpecSnapshot"] = spec.snapshot()
+        evaluation = build_evaluation(rubric, spec, provider="jev", llm_used=source == "jev", source=source)
+        evaluation.signalResults = {key: result.to_json() for key, result in results.items()}
+        evaluation.signalSpecSnapshot = spec.snapshot()
         return evaluation
 
     def _answer_key_fallback(
@@ -197,7 +201,7 @@ class JevMcqEvaluator:
             else:
                 results[plugin.key] = skipped(plugin, "unavailable", error.message)
         evaluation = self._evaluation(spec, successful, results, source="answer-key-fallback")
-        evaluation["provenance"].update({"engine": "answer-key", "flags": ["jev_unavailable"]})
+        _add_provenance(evaluation, engine="answer-key", flags=["jev_unavailable"])
         return EvaluationOutcome(
             successful=successful,
             evaluation=evaluation,

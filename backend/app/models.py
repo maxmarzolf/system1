@@ -3,7 +3,9 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
+
+from app.contracts.evaluation import Evaluation
 
 
 # ─── Enums ───
@@ -45,48 +47,9 @@ class InlineCompletionResponse(BaseModel):
     prediction: str = ""
 
 
-class RubricDimension(BaseModel):
-    key: str = ""
-    label: str = ""
-    status: str = ""
-    score: float = 0.0
-    evidence: list[str] = []
-    missing: list[str] = []
-
-
-class SignalSpecReference(BaseModel):
-    """Recall specs carry algorithm and version; plug-in specs add modality and hash."""
-
-    model_config = ConfigDict(extra="allow")
-
-    algorithm: str = ""
-    version: int = 0
-
-
-class SubmissionEvaluation(BaseModel):
-    """Stored evaluation; dimension keys come from the signal spec it references.
-
-    Jev evaluations also carry ``correctness``, ``signalResults``,
-    ``signalSpecSnapshot`` and ``jevTrace``, kept as extra fields.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    version: int = 1
-    signalSpec: SignalSpecReference = Field(default_factory=SignalSpecReference)
-    verdict: str = ""
-    score: dict[str, float] = {}
-    primaryFailure: dict[str, Any] = {}
-    dimensions: dict[str, RubricDimension] = {}
-    modifiers: dict[str, RubricDimension] = {}
-    recommendedAction: str = ""
-    feedback: dict[str, Any] = {}
-    provenance: dict[str, Any] = {}
-
-
 class SubmissionSignals(BaseModel):
     elapsedMs: int = Field(default=0, ge=0)
-    evaluation: SubmissionEvaluation | None = None
+    evaluation: Evaluation | None = None
     flow: dict[str, Any] | None = None
     modality: dict[str, Any] | None = None
 

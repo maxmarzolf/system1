@@ -10,10 +10,10 @@ from typing import Any
 
 from app.core.signal_catalog import SignalSpec
 from app.domain.llm_resilience import SubmissionFeedbackUnavailableError
-from app.domain.submission_evaluation import outcome_evaluation
+from app.contracts.evaluation import Evaluation, outcome_evaluation
 from app.models import AttemptCreate, CoachAttemptEvaluationRequest, CoachAttemptFeedbackRequest, SubmissionModality
 from app.services import evaluation_service, feedback_service, signal_spec_service
-from app.services.evaluators.base import EvaluationOutcome
+from app.contracts.submission import EvaluationOutcome
 from app.services.evaluators.registry import register_evaluator
 
 
@@ -36,7 +36,7 @@ def _feedback_request(body: AttemptCreate) -> CoachAttemptFeedbackRequest:
     )
 
 
-async def _semantic_evaluation(body: AttemptCreate, spec: SignalSpec) -> dict[str, Any]:
+async def _semantic_evaluation(body: AttemptCreate, spec: SignalSpec) -> Evaluation:
     result = await evaluation_service.coach_attempt_evaluation(
         CoachAttemptEvaluationRequest(
             cardTitle=body.cardTitle or "",
@@ -67,7 +67,7 @@ class GhostRepEvaluator:
 
     async def evaluate(self, body: AttemptCreate) -> EvaluationOutcome:
         evaluation = await _semantic_evaluation(body, await _resolve_spec(body))
-        return EvaluationOutcome(successful=evaluation["verdict"] == "sound", evaluation=evaluation)
+        return EvaluationOutcome(successful=evaluation.sound, evaluation=evaluation)
 
 
 class AssessorEvaluator:
@@ -86,7 +86,7 @@ class AssessorEvaluator:
                 "provider": error.provider,
             }
         return EvaluationOutcome(
-            successful=evaluation["verdict"] == "sound",
+            successful=evaluation.sound,
             evaluation=evaluation,
             feedback_unavailable=feedback_unavailable,
         )

@@ -12,7 +12,7 @@ from app.core.signal_catalog import (
 )
 from app.domain.coach_context import algorithm_slug_for_tags
 from app.repositories import signal_spec_repository
-from app.submission_rubric import coerce_json_object
+from app.contracts.coerce import coerce_json_object
 
 SpecSource = Literal["problem", "skill-tag", "default"]
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.signal_catalog import BINARY_SEARCH_SIGNAL_SPEC, DEFAULT_SIGNAL_SPEC
-from app.domain.submission_evaluation import canonical_submission_evaluation
+from app.contracts.evaluation import Evaluation, build_evaluation
 from app.models import AttemptCreate
 from app.services import attempts_service, feedback_service, signal_spec_service, submission_service
 
@@ -25,13 +25,13 @@ def test_canonical_evaluation_removes_embedded_rubric_and_feedback_metadata() ->
         "signals": {"legacy": True},
     }
 
-    evaluation = canonical_submission_evaluation(
+    evaluation = build_evaluation(
         rubric,
         DEFAULT_SIGNAL_SPEC,
         feedback,
         provider="openai",
         llm_used=True,
-    )
+    ).to_stored()
 
     assert evaluation["verdict"] == "needs-work"
     assert evaluation["signalSpec"] == {"algorithm": "default", "version": 1}
@@ -47,13 +47,13 @@ def test_canonical_evaluation_removes_embedded_rubric_and_feedback_metadata() ->
 
 @pytest.mark.asyncio
 async def test_final_recall_uses_one_evaluation_flow_and_persists_its_result(monkeypatch) -> None:
-    canonical = {
+    canonical = Evaluation.model_validate({
         "version": 1,
         "verdict": "sound",
         "score": {"overall": 91.0},
         "feedback": {"affirmation": "The queue discipline is correct."},
         "provenance": {"llmUsed": True, "provider": "openai", "source": "assessor-narrator"},
-    }
+    })
     captured: dict[str, object] = {}
 
     async def _evaluate(body, spec):
@@ -92,6 +92,6 @@ async def test_final_recall_uses_one_evaluation_flow_and_persists_its_result(mon
     assert captured["evaluation_request"].exact is False
     assert captured["successful"] is True
     assert captured["evaluation"] is canonical
-    assert result["evaluation"] is canonical
+    assert result["evaluation"] == canonical.to_stored()
     assert result["successful"] is True
     assert result["feedbackUnavailable"] is None

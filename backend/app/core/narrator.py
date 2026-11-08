@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.domain.llm_resilience import SUBMISSION_LLM_MAX_RETRIES, SUBMISSION_LLM_RETRY_DELAYS_SECONDS
-from app.domain.submission_evaluation import evaluation_feedback
+from app.contracts.evaluation import evaluation_feedback
 from app.models import CoachAttemptFeedbackRequest, TemplateMode
 
 

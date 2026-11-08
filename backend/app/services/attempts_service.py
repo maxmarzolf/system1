@@ -24,8 +24,10 @@ from app.repositories.types import (
     SkillMapOverviewAttemptRow,
     SkillMapOverviewGeneratedRow,
 )
-from app.submission_rubric import coerce_json_object, compact_submission_rubric, summarize_submission_rubrics
-from app.services.evaluators.base import SubmissionRecord
+from app.contracts.coerce import coerce_json_object
+from app.contracts.evaluation import Evaluation, compact_evaluation
+from app.domain.rubric_summary import summarize_submission_rubrics
+from app.contracts.submission import SubmissionRecord
 from app.services.contracts import (
     AttemptSaveResult,
     SkillMapGhostRepActivity,
@@ -70,12 +72,12 @@ def _submission_signals(
     body: AttemptCreate,
     *,
     modality: str,
-    evaluation: dict[str, Any],
+    evaluation: Evaluation,
 ) -> dict[str, Any]:
     raw_signals = body.signals if isinstance(body.signals, dict) else {}
     signals: dict[str, Any] = {
         "elapsed_ms": body.elapsedMs,
-        "evaluation": evaluation,
+        "evaluation": evaluation.to_stored(),
     }
     flow_signals = raw_signals.get("flow")
     if isinstance(flow_signals, dict) and flow_signals:
@@ -500,7 +502,7 @@ def build_skill_map_overview(
             "modality": _submission_modality(row),
             "liveCoachUsed": bool(row["live_coach_used"]),
             "signals": {
-                "evaluation": compact_submission_rubric(stored_signals.get("evaluation")),
+                "evaluation": compact_evaluation(stored_signals.get("evaluation")),
             },
         }
         attempts_by_card_mode.setdefault((card_id, template_mode), []).append(attempt)
@@ -665,7 +667,7 @@ async def create_attempt(
     body: AttemptCreate,
     *,
     successful: bool,
-    evaluation: dict[str, Any],
+    evaluation: Evaluation,
     record: SubmissionRecord | None = None,
 ) -> AttemptSaveResult:
     now = datetime.now(tz=timezone.utc)
@@ -769,9 +771,6 @@ async def get_history_day(day: date, timezone_name: str | None = None) -> dict[s
     return {"date": day.isoformat(), "submissions": submissions}
 
 
-SCORED_SIGNAL_STATUSES = frozenset({"pass", "partial", "fail"})
-
-
 async def get_signal_history(timezone_name: str | None = None) -> dict[str, Any]:
     """Every scored signal from every submission the daily work grid counts, all time, oldest first.
 
@@ -795,20 +794,13 @@ async def get_signal_history(timezone_name: str | None = None) -> dict[str, Any]
         slugs = _matched_algorithm_slugs([str(tag) for tag in (row["category_tags"] or [])], set(algorithm_names))
         if created_at is None or not slugs:
             continue  # The grid does not count it either.
-        evaluation = coerce_json_object(coerce_json_object(row["signals"]).get("evaluation"))
-        entries = {
-            **coerce_json_object(evaluation.get("dimensions")),
-            **coerce_json_object(evaluation.get("modifiers")),
-        }
-        for key, entry in entries.items():
-            if not isinstance(entry, dict) or entry.get("status") not in SCORED_SIGNAL_STATUSES:
-                continue
-            try:
-                score = float(entry.get("score"))
-            except (TypeError, ValueError):
-                continue
-            labels.setdefault(str(key), str(entry.get("label") or key))
-            counts[str(key)] += 1
+        evaluation = Evaluation.from_stored(coerce_json_object(row["signals"]).get("evaluation"))
+        if evaluation is None:
+            continue
+        for key, entry in evaluation.scored_entries():
+            score = entry.score
+            labels.setdefault(key, entry.label or key)
+            counts[key] += 1
             points.append({
                 "submission": index,
                 "createdAt": created_at.isoformat(),

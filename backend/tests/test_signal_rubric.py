@@ -6,10 +6,10 @@ from app.core.assessor import AssessorContext, AssessorRuntime, AssessorUnavaila
 from app.core.signal_catalog import BINARY_SEARCH_SIGNAL_SPEC, DEFAULT_SIGNAL_SPEC, SLIDING_WINDOW_SIGNAL_SPEC
 from app.domain.feedback_builder import adaptive_primary_failure, submission_rubric_from_assessment
 from app.domain.llm_resilience import SubmissionFeedbackUnavailableError
-from app.domain.submission_evaluation import canonical_submission_evaluation
+from app.contracts.evaluation import build_evaluation, compact_evaluation
 from app.models import AdaptiveVariationRequest, CoachAttemptFeedbackRequest
 from app.services import variation_service
-from app.submission_rubric import compact_submission_rubric, summarize_submission_rubrics
+from app.domain.rubric_summary import summarize_submission_rubrics
 
 
 def _body() -> CoachAttemptFeedbackRequest:
@@ -92,9 +92,9 @@ def test_missing_signal_is_not_applicable_and_excluded_from_scores() -> None:
 
 def test_compacted_evaluation_keeps_spec_reference_and_order() -> None:
     rubric = submission_rubric_from_assessment(_body(), _search_assessment(), BINARY_SEARCH_SIGNAL_SPEC)
-    evaluation = canonical_submission_evaluation(rubric, BINARY_SEARCH_SIGNAL_SPEC)
+    evaluation = build_evaluation(rubric, BINARY_SEARCH_SIGNAL_SPEC)
 
-    compact = compact_submission_rubric(evaluation)
+    compact = compact_evaluation(evaluation.to_stored())
 
     assert compact["signalSpec"] == {"algorithm": "binary-search", "version": 1}
     assert list(compact["dimensions"]) == list(rubric["dimensions"])

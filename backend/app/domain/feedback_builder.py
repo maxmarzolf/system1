@@ -5,7 +5,7 @@ from typing import Any
 from app.core.signal_catalog import DEFAULT_SIGNAL_SPEC, SignalDefinition, SignalSpec, get_signal_spec
 from app.core.signals import ModalitySignalSpec, SignalResult
 from app.models import CoachAttemptFeedbackRequest
-from app.submission_rubric import coerce_json_object
+from app.contracts.coerce import coerce_json_object
 
 
 def evaluation_signal_spec(evaluation: dict[str, Any]) -> SignalSpec:

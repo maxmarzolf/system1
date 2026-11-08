@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
 
 from app.core.assessor import (
     AssessorContext,
@@ -27,7 +26,7 @@ from app.core.signal_catalog import SignalSpec
 from app.core.submission_llm_client import call_llm_json_for_submission
 from app.domain.coach_context import algorithmic_template_label as _domain_algorithmic_template_label
 from app.domain.feedback_builder import submission_rubric_from_assessment as _domain_submission_rubric_from_assessment
-from app.domain.submission_evaluation import canonical_submission_evaluation
+from app.contracts.evaluation import Evaluation, build_evaluation
 from app.domain.llm_resilience import (
     SubmissionFeedbackUnavailableError,
 )
@@ -126,7 +125,7 @@ async def _run_submission_narrator_phase(
     return feedback
 
 
-async def coach_submission_evaluation(body: CoachAttemptFeedbackRequest, spec: SignalSpec) -> dict[str, Any]:
+async def coach_submission_evaluation(body: CoachAttemptFeedbackRequest, spec: SignalSpec) -> Evaluation:
     history, history_summary = await history_service.load_feedback_context(body)
     provider = _resolve_feedback_provider(body)
     template_mode = _template_mode_value(body.templateMode)
@@ -142,7 +141,7 @@ async def coach_submission_evaluation(body: CoachAttemptFeedbackRequest, spec: S
         template_mode,
     )
     rubric = _domain_submission_rubric_from_assessment(evaluated_body, assessment, spec)
-    return canonical_submission_evaluation(
+    return build_evaluation(
         rubric,
         spec,
         feedback,

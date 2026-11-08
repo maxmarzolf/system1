@@ -121,7 +121,7 @@ async def test_one_call_carries_correctness_and_every_signal_question(patched) -
         correct_answer="A. Shrink while the window is invalid.",
         multiple_choice_problem_id="mcq-1",
     )
-    evaluation = outcome.evaluation
+    evaluation = outcome.evaluation.to_stored()
     assert evaluation["verdict"] == "sound"
     assert evaluation["signalSpec"] == default_mcq_spec("sliding-window").reference()
     assert evaluation["signalSpec"]["algorithm"] == "sliding-window"
@@ -142,12 +142,12 @@ async def test_wrong_answer_scores_incorrect_only_signals(patched) -> None:
 
     outcome = await JevMcqEvaluator(lambda: gateway).evaluate(_body(selectedChoiceId="B"))
 
-    results = outcome.evaluation["signalResults"]
+    results = outcome.evaluation.to_stored()["signalResults"]
     assert outcome.successful is False
     assert results["nearMiss"]["score"] == 100.0
     assert results["distractorMisconception"]["raw"] == "wrong_update"
     assert results["distractorMisconception"]["score"] is None
-    assert outcome.evaluation["primaryFailure"]["key"] == "correctness"
+    assert outcome.evaluation.to_stored()["primaryFailure"]["key"] == "correctness"
     assert outcome.record is not None and outcome.record.user_answer.startswith("B.")
 
 
@@ -158,8 +158,8 @@ async def test_jev_decides_and_disagreement_with_the_answer_key_is_flagged(patch
     outcome = await JevMcqEvaluator(lambda: gateway).evaluate(_body())
 
     assert outcome.successful is False
-    assert outcome.evaluation["correctness"]["answerKeyAgreement"] is False
-    assert outcome.evaluation["provenance"]["flags"] == ["answer_key_disagreement", "low_correctness_confidence"]
+    assert outcome.evaluation.to_stored()["correctness"]["answerKeyAgreement"] is False
+    assert outcome.evaluation.to_stored()["provenance"]["flags"] == ["answer_key_disagreement", "low_correctness_confidence"]
 
 
 @pytest.mark.asyncio
@@ -174,11 +174,11 @@ async def test_jev_failure_falls_back_to_the_answer_key(patched) -> None:
         "message": "Jev did not respond in time.",
         "provider": "jev",
     }
-    results = outcome.evaluation["signalResults"]
+    results = outcome.evaluation.to_stored()["signalResults"]
     assert results["conceptRecognition"]["status"] == "unavailable"
     assert results["completionTime"]["status"] == "scored"
-    assert outcome.evaluation["provenance"]["source"] == "answer-key-fallback"
-    assert outcome.evaluation["provenance"]["flags"] == ["jev_unavailable"]
+    assert outcome.evaluation.to_stored()["provenance"]["source"] == "answer-key-fallback"
+    assert outcome.evaluation.to_stored()["provenance"]["flags"] == ["jev_unavailable"]
 
 
 @pytest.mark.asyncio
@@ -208,8 +208,8 @@ async def test_needs_correctness_signals_go_in_a_second_call(patched, monkeypatc
     assert set(first_questions) == {"correctness", "conceptRecognition"}
     assert set(second_questions) == {"testFollowUp"}
     assert second_state["answeredCorrectly"] == 1
-    assert outcome.evaluation["signalResults"]["testFollowUp"]["score"] == 50.0
-    assert outcome.evaluation["provenance"]["requestIds"] == ["req-1", "req-2"]
+    assert outcome.evaluation.to_stored()["signalResults"]["testFollowUp"]["score"] == 50.0
+    assert outcome.evaluation.to_stored()["provenance"]["requestIds"] == ["req-1", "req-2"]
 
 
 @pytest.mark.asyncio
@@ -298,7 +298,7 @@ async def test_second_call_failure_marks_only_its_signals_unavailable(patched) -
 
     outcome = await JevMcqEvaluator(lambda: gateway).evaluate(_body())
 
-    results = outcome.evaluation["signalResults"]
+    results = outcome.evaluation.to_stored()["signalResults"]
     assert results["testFollowUp"]["status"] == "unavailable"
     assert results["conceptRecognition"]["status"] != "unavailable"
 

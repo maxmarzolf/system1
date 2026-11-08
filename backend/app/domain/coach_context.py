@@ -6,8 +6,8 @@ from typing import Any, TypedDict
 
 from app.models import SkillMapNode, TemplateMode
 from app.readiness import READINESS_MODE_ORDER, summarize_readiness
-from app.submission_rubric import summarize_submission_rubrics
-from app.domain.submission_evaluation import evaluation_feedback
+from app.domain.rubric_summary import summarize_submission_rubrics
+from app.contracts.evaluation import evaluation_feedback
 
 
 class AttemptHistoryEntry(TypedDict, total=False):

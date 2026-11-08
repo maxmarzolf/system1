@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.core.narrator import narrator_submission_system_prompt
 from app.core.signal_catalog import DEFAULT_SIGNAL_SPEC
-from app.domain.submission_evaluation import canonical_submission_evaluation
+from app.contracts.evaluation import build_evaluation
 from app.domain.recall_soundness import merged_submission_tuning
 
 
@@ -29,7 +29,7 @@ def test_enabled_micro_drill_preserves_correct_work_and_targets_the_mistake() ->
 
 
 def test_micro_drill_is_preserved_in_submission_feedback() -> None:
-    evaluation = canonical_submission_evaluation(
+    evaluation = build_evaluation(
         {"verdict": "needs-work"},
         DEFAULT_SIGNAL_SPEC,
         {
@@ -37,4 +37,4 @@ def test_micro_drill_is_preserved_in_submission_feedback() -> None:
         },
     )
 
-    assert evaluation["feedback"]["microDrill"] == "Fill the focused blanks."
+    assert evaluation.feedback["microDrill"] == "Fill the focused blanks."

@@ -18,6 +18,6 @@ async def create_submission(body: AttemptCreate) -> dict[str, Any]:
     return {
         **saved,
         "successful": outcome.successful,
-        "evaluation": outcome.evaluation,
+        "evaluation": outcome.evaluation.to_stored(),
         "feedbackUnavailable": outcome.feedback_unavailable,
     }

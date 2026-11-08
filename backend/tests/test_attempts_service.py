@@ -4,6 +4,7 @@ import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 
+from app.contracts.evaluation import Evaluation
 from app.models import AttemptCreate
 from app.services import attempts_service
 from app.services.attempts_service import build_skill_map_overview
@@ -27,7 +28,7 @@ def test_create_attempt_forwards_multiple_choice_metadata(monkeypatch) -> None:
         "formatControl": "user",
     })
 
-    evaluation = {"version": 1, "verdict": "needs-work"}
+    evaluation = Evaluation.model_validate({"version": 1, "verdict": "needs-work"})
     result = asyncio.run(attempts_service.create_attempt(body, successful=False, evaluation=evaluation))
 
     assert result == {"saved": True, "attemptId": 91}
@@ -35,7 +36,7 @@ def test_create_attempt_forwards_multiple_choice_metadata(monkeypatch) -> None:
     assert captured["target_source"] == "skill-map"
     assert json.loads(str(captured["signals_json"])) == {
         "elapsed_ms": 875,
-        "evaluation": {"version": 1, "verdict": "needs-work"},
+        "evaluation": evaluation.to_stored(),
         "modality": {"kind": "mcq"},
     }
 
@@ -54,7 +55,7 @@ def test_create_attempt_normalizes_legacy_activity_format(monkeypatch) -> None:
         "activityFormat": "multiple-choice",
     })
 
-    result = asyncio.run(attempts_service.create_attempt(body, successful=True, evaluation={"verdict": "sound"}))
+    result = asyncio.run(attempts_service.create_attempt(body, successful=True, evaluation=Evaluation(verdict="sound")))
 
     assert result == {"saved": True, "attemptId": 92}
     assert captured["session_id"] == "0000"
@@ -90,14 +91,14 @@ def test_create_attempt_persists_flow_and_modality_signals(monkeypatch) -> None:
         },
     })
 
-    result = asyncio.run(attempts_service.create_attempt(body, successful=True, evaluation={"verdict": "sound"}))
+    result = asyncio.run(attempts_service.create_attempt(body, successful=True, evaluation=Evaluation(verdict="sound")))
 
     assert result == {"saved": True, "attemptId": 93}
     assert captured["session_id"] == "flow-1"
     assert captured["modality"] == "ghost-rep"
     assert json.loads(str(captured["signals_json"])) == {
         "elapsed_ms": 1500,
-        "evaluation": {"verdict": "sound"},
+        "evaluation": Evaluation(verdict="sound").to_stored(),
         "flow": {
             "runId": "flow-1",
             "anchorCardId": "flow-card",
@@ -128,7 +129,7 @@ def test_create_attempt_prefers_explicit_session_id_over_flow_signal(monkeypatch
         "signals": {"flow": {"runId": "flow-signal-fallback"}},
     })
 
-    result = asyncio.run(attempts_service.create_attempt(body, successful=True, evaluation={"verdict": "sound"}))
+    result = asyncio.run(attempts_service.create_attempt(body, successful=True, evaluation=Evaluation(verdict="sound")))
 
     assert result == {"saved": True, "attemptId": 94}
     assert captured["session_id"] == "flow-session-explicit"
