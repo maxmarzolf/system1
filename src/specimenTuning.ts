@@ -1,3 +1,5 @@
+import { storedSetting } from './storedSetting'
+
 export type SpecimenTypeHints = 'omit' | 'include'
 export type SpecimenComments = 'omit' | 'brief'
 export type SpecimenVariableNames = 'readable' | 'concise' | 'descriptive'
@@ -29,29 +31,19 @@ const isSpecimenComments = (value: unknown): value is SpecimenComments =>
 const isSpecimenVariableNames = (value: unknown): value is SpecimenVariableNames =>
   typeof value === 'string' && SPECIMEN_VARIABLE_NAMES.includes(value as SpecimenVariableNames)
 
-export const loadStoredSpecimenTuning = (): SpecimenTuning => {
-  if (typeof window === 'undefined') return defaultSpecimenTuning
+export const specimenTuningSetting = storedSetting<SpecimenTuning>(
+  SPECIMEN_TUNING_STORAGE_KEY,
+  defaultSpecimenTuning,
+  (parsed) => ({
+    ...defaultSpecimenTuning,
+    ...parsed,
+    typeHints: isSpecimenTypeHints(parsed.typeHints) ? parsed.typeHints : defaultSpecimenTuning.typeHints,
+    comments: isSpecimenComments(parsed.comments) ? parsed.comments : defaultSpecimenTuning.comments,
+    variableNames: isSpecimenVariableNames(parsed.variableNames)
+      ? parsed.variableNames
+      : defaultSpecimenTuning.variableNames,
+  }),
+)
 
-  try {
-    const raw = window.localStorage.getItem(SPECIMEN_TUNING_STORAGE_KEY)
-    if (!raw) return defaultSpecimenTuning
-
-    const parsed = JSON.parse(raw) as Partial<SpecimenTuning>
-    return {
-      ...defaultSpecimenTuning,
-      ...parsed,
-      typeHints: isSpecimenTypeHints(parsed.typeHints) ? parsed.typeHints : defaultSpecimenTuning.typeHints,
-      comments: isSpecimenComments(parsed.comments) ? parsed.comments : defaultSpecimenTuning.comments,
-      variableNames: isSpecimenVariableNames(parsed.variableNames)
-        ? parsed.variableNames
-        : defaultSpecimenTuning.variableNames,
-    }
-  } catch {
-    return defaultSpecimenTuning
-  }
-}
-
-export const saveStoredSpecimenTuning = (tuning: SpecimenTuning) => {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(SPECIMEN_TUNING_STORAGE_KEY, JSON.stringify(tuning))
-}
+export const loadStoredSpecimenTuning = specimenTuningSetting.load
+export const saveStoredSpecimenTuning = specimenTuningSetting.save

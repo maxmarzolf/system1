@@ -1,3 +1,5 @@
+import { storedSetting } from './storedSetting'
+
 export type GooglePlaylistOrder = 'curated' | 'google-15' | 'solution-length' | 'family' | 'difficulty' | 'mastery'
 
 export type GooglePlaylistTuning = {
@@ -22,30 +24,14 @@ const GOOGLE_PLAYLIST_ORDERS: readonly GooglePlaylistOrder[] = [
 const isGooglePlaylistOrder = (value: unknown): value is GooglePlaylistOrder =>
   typeof value === 'string' && GOOGLE_PLAYLIST_ORDERS.includes(value as GooglePlaylistOrder)
 
-export const loadStoredGooglePlaylistTuning = (): GooglePlaylistTuning => {
-  if (typeof window === 'undefined') return defaultGooglePlaylistTuning
+const validOrder = (order: unknown) => (isGooglePlaylistOrder(order) ? order : defaultGooglePlaylistTuning.order)
 
-  try {
-    const raw = window.localStorage.getItem(GOOGLE_PLAYLIST_TUNING_STORAGE_KEY)
-    if (!raw) return defaultGooglePlaylistTuning
+export const googlePlaylistTuningSetting = storedSetting<GooglePlaylistTuning>(
+  GOOGLE_PLAYLIST_TUNING_STORAGE_KEY,
+  defaultGooglePlaylistTuning,
+  (parsed) => ({ ...defaultGooglePlaylistTuning, order: validOrder(parsed.order) }),
+  (tuning) => ({ ...tuning, order: validOrder(tuning.order) }),
+)
 
-    const parsed = JSON.parse(raw) as Partial<GooglePlaylistTuning>
-    return {
-      ...defaultGooglePlaylistTuning,
-      order: isGooglePlaylistOrder(parsed.order) ? parsed.order : defaultGooglePlaylistTuning.order,
-    }
-  } catch {
-    return defaultGooglePlaylistTuning
-  }
-}
-
-export const saveStoredGooglePlaylistTuning = (tuning: GooglePlaylistTuning) => {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(
-    GOOGLE_PLAYLIST_TUNING_STORAGE_KEY,
-    JSON.stringify({
-      ...tuning,
-      order: isGooglePlaylistOrder(tuning.order) ? tuning.order : defaultGooglePlaylistTuning.order,
-    }),
-  )
-}
+export const loadStoredGooglePlaylistTuning = googlePlaylistTuningSetting.load
+export const saveStoredGooglePlaylistTuning = googlePlaylistTuningSetting.save

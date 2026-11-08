@@ -1,20 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useStoredSetting } from './storedSetting'
 import {
   defaultSubmissionTuning,
-  loadStoredSubmissionTuning,
-  saveStoredSubmissionTuning,
+  submissionTuningSetting,
 } from './submissionTuning'
 import type { SubmissionTuning } from './submissionTuning'
 import {
   defaultSpecimenTuning,
-  loadStoredSpecimenTuning,
-  saveStoredSpecimenTuning,
+  specimenTuningSetting,
 } from './specimenTuning'
 import type { SpecimenTuning } from './specimenTuning'
 import {
   defaultCodeEditorTuning,
-  loadStoredCodeEditorTuning,
-  saveStoredCodeEditorTuning,
+  codeEditorTuningSetting,
 } from './codeEditorTuning'
 import type { CodeEditorTuning } from './codeEditorTuning'
 import {
@@ -22,14 +19,12 @@ import {
   MCQ_MIN_QUESTION_COUNT,
   clampMcqQuestionCount,
   defaultMcqTuning,
-  loadStoredMcqTuning,
-  saveStoredMcqTuning,
+  mcqTuningSetting,
 } from './mcqTuning'
 import type { McqTuning } from './mcqTuning'
 import {
   defaultGooglePlaylistTuning,
-  loadStoredGooglePlaylistTuning,
-  saveStoredGooglePlaylistTuning,
+  googlePlaylistTuningSetting,
 } from './googlePlaylistTuning'
 import type { GooglePlaylistTuning } from './googlePlaylistTuning'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
@@ -40,31 +35,11 @@ import { NumberControl, SelectControl, ToggleControl, TuneSection } from './tune
 export default function TunePage() {
   const configuredProviderLabel = useConfiguredProviderLabel()
   const hotkeyGroups = getHotkeyReferenceGroups(navigator.platform.includes('Mac'))
-  const [submissionTuning, setSubmissionTuning] = useState<SubmissionTuning>(() => loadStoredSubmissionTuning())
-  const [specimenTuning, setSpecimenTuning] = useState<SpecimenTuning>(() => loadStoredSpecimenTuning())
-  const [codeEditorTuning, setCodeEditorTuning] = useState<CodeEditorTuning>(() => loadStoredCodeEditorTuning())
-  const [mcqTuning, setMcqTuning] = useState<McqTuning>(() => loadStoredMcqTuning())
-  const [googlePlaylistTuning, setGooglePlaylistTuning] = useState<GooglePlaylistTuning>(() => loadStoredGooglePlaylistTuning())
-
-  useEffect(() => {
-    saveStoredSubmissionTuning(submissionTuning)
-  }, [submissionTuning])
-
-  useEffect(() => {
-    saveStoredSpecimenTuning(specimenTuning)
-  }, [specimenTuning])
-
-  useEffect(() => {
-    saveStoredCodeEditorTuning(codeEditorTuning)
-  }, [codeEditorTuning])
-
-  useEffect(() => {
-    saveStoredMcqTuning(mcqTuning)
-  }, [mcqTuning])
-
-  useEffect(() => {
-    saveStoredGooglePlaylistTuning(googlePlaylistTuning)
-  }, [googlePlaylistTuning])
+  const [submissionTuning, setSubmissionTuning] = useStoredSetting(submissionTuningSetting)
+  const [specimenTuning, setSpecimenTuning] = useStoredSetting(specimenTuningSetting)
+  const [codeEditorTuning, setCodeEditorTuning] = useStoredSetting(codeEditorTuningSetting)
+  const [mcqTuning, setMcqTuning] = useStoredSetting(mcqTuningSetting)
+  const [googlePlaylistTuning, setGooglePlaylistTuning] = useStoredSetting(googlePlaylistTuningSetting)
 
   const updateSubmissionTuning = <K extends keyof SubmissionTuning>(key: K, value: SubmissionTuning[K]) => {
     setSubmissionTuning((prev) => ({ ...prev, [key]: value }))

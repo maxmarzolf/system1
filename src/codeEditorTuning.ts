@@ -1,3 +1,5 @@
+import { storedSetting } from './storedSetting'
+
 export type CodeEditorLanguage =
   | 'python'
   | 'javascript'
@@ -50,45 +52,23 @@ const isCodeEditorLanguage = (value: unknown): value is CodeEditorLanguage =>
 const isCodeEditorStyleGuide = (value: unknown): value is CodeEditorStyleGuide =>
   typeof value === 'string' && CODE_EDITOR_STYLE_GUIDES.includes(value as CodeEditorStyleGuide)
 
-export const loadStoredCodeEditorTuning = (): CodeEditorTuning => {
-  if (typeof window === 'undefined') return defaultCodeEditorTuning
+const storedBoolean = (value: unknown, fallback: boolean) => (typeof value === 'boolean' ? value : fallback)
 
-  try {
-    const raw = window.localStorage.getItem(CODE_EDITOR_TUNING_STORAGE_KEY)
-    if (!raw) return defaultCodeEditorTuning
+export const codeEditorTuningSetting = storedSetting<CodeEditorTuning>(
+  CODE_EDITOR_TUNING_STORAGE_KEY,
+  defaultCodeEditorTuning,
+  (parsed) => ({
+    ...defaultCodeEditorTuning,
+    ...parsed,
+    language: isCodeEditorLanguage(parsed.language) ? parsed.language : defaultCodeEditorTuning.language,
+    intellisense: storedBoolean(parsed.intellisense, defaultCodeEditorTuning.intellisense),
+    aiCompletion: storedBoolean(parsed.aiCompletion, defaultCodeEditorTuning.aiCompletion),
+    styleGuide: isCodeEditorStyleGuide(parsed.styleGuide) ? parsed.styleGuide : defaultCodeEditorTuning.styleGuide,
+    commonPatterns: storedBoolean(parsed.commonPatterns, defaultCodeEditorTuning.commonPatterns),
+    foldControls: storedBoolean(parsed.foldControls, defaultCodeEditorTuning.foldControls),
+    showSearchPanel: storedBoolean(parsed.showSearchPanel, defaultCodeEditorTuning.showSearchPanel),
+  }),
+)
 
-    const parsed = JSON.parse(raw) as Partial<CodeEditorTuning>
-    return {
-      ...defaultCodeEditorTuning,
-      ...parsed,
-      language: isCodeEditorLanguage(parsed.language)
-        ? parsed.language
-        : defaultCodeEditorTuning.language,
-      intellisense: typeof parsed.intellisense === 'boolean'
-        ? parsed.intellisense
-        : defaultCodeEditorTuning.intellisense,
-      aiCompletion: typeof parsed.aiCompletion === 'boolean'
-        ? parsed.aiCompletion
-        : defaultCodeEditorTuning.aiCompletion,
-      styleGuide: isCodeEditorStyleGuide(parsed.styleGuide)
-        ? parsed.styleGuide
-        : defaultCodeEditorTuning.styleGuide,
-      commonPatterns: typeof parsed.commonPatterns === 'boolean'
-        ? parsed.commonPatterns
-        : defaultCodeEditorTuning.commonPatterns,
-      foldControls: typeof parsed.foldControls === 'boolean'
-        ? parsed.foldControls
-        : defaultCodeEditorTuning.foldControls,
-      showSearchPanel: typeof parsed.showSearchPanel === 'boolean'
-        ? parsed.showSearchPanel
-        : defaultCodeEditorTuning.showSearchPanel,
-    }
-  } catch {
-    return defaultCodeEditorTuning
-  }
-}
-
-export const saveStoredCodeEditorTuning = (tuning: CodeEditorTuning) => {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(CODE_EDITOR_TUNING_STORAGE_KEY, JSON.stringify(tuning))
-}
+export const loadStoredCodeEditorTuning = codeEditorTuningSetting.load
+export const saveStoredCodeEditorTuning = codeEditorTuningSetting.save
