@@ -11,7 +11,6 @@ import { loadStoredSubmissionTuning, saveStoredSubmissionTuning } from './submis
 import { loadStoredCodeEditorTuning, saveStoredCodeEditorTuning } from './codeEditorTuning'
 import { loadStoredMcqTuning } from './mcqTuning'
 import { loadStoredGooglePlaylistTuning } from './googlePlaylistTuning'
-import { api, unwrap } from './api/client'
 import { useCatalogPlaylists, useSkillMap } from './api/queries'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
@@ -25,6 +24,7 @@ import { compactFeedbackItems, flowEvaluationScore, flowEvaluationWeaknesses, fl
 import { inlineDisplayLines, normalizeTyping, splitInlineAnnotationLine } from './practice/inlineNotes'
 import { buildFlowFocusSummary, buildFlowGhostScaffold, buildFlowGhostTarget, computeLineReview, createInteractionId, extractFlowGhostFocusedInput, firstIncompleteGhostLineNumber, initialFlowFocus, nextFlowAnchor, nextGhostLineNumber, summarizeFlowFocusLine, summarizeRecallAttempt, toMultipleChoiceFocusLines } from './practice/lineReview'
 import { MarkdownCodeContent } from './practice/markdown'
+import { usePracticeSession, useSessionPlan } from './practice/hooks/usePracticeSession'
 import { useFlowMultipleChoiceDeck, useMultipleChoiceDeck, useRecallDeck } from './practice/hooks/useDecks'
 import { MULTIPLE_CHOICE_DIFFICULTY, cardSpecimen, flowMultipleChoiceRequest, multipleChoiceDeckRequest } from './practice/mcqRequests'
 import PrimaryActionIcon from './practice/components/PrimaryActionIcon'
@@ -34,7 +34,7 @@ import { INLINE_LENS, RECALL_TARGET_MODE, derivePracticeTargets } from './practi
 import { focusMicroDrillInput } from './practice/markdownText'
 import { TEMPLATE_MODE_LABELS } from './practice/patterns'
 import { postAttempt, rejectionReason } from './practice/requests'
-import { CARD_MOVE_DOUBLE_TAP_WINDOW_MS, FLOW_TRANSITION_MINIMUM_MS, FLOW_TRANSITION_SETTLE_MS, INLINE_FEEDBACK_ENABLED, emptySkillMapCard, EMPTY_FLOW_MICRODRILL_ACTION_STATE, type AnnotatedDisplayLine, type AttemptPayload, type CoachAttemptFeedback, type CoachSessionPlan, type Flashcard, type FlowMicroDrillPrimaryActionState, type LlmProviderSelection, type MultipleChoiceChoice, type MultipleChoiceSpecimenContext, type PracticeFlowState, type PracticeFlowTransitionState, type PracticeMode, type RecallAttemptSnapshot, type SubmissionFailureModalState, type SubmissionSaveResponse, type SupportLayer, type TemplateMode } from './practice/types'
+import { FLOW_TRANSITION_MINIMUM_MS, FLOW_TRANSITION_SETTLE_MS, INLINE_FEEDBACK_ENABLED, emptySkillMapCard, EMPTY_FLOW_MICRODRILL_ACTION_STATE, type AnnotatedDisplayLine, type AttemptPayload, type CoachAttemptFeedback, type Flashcard, type FlowMicroDrillPrimaryActionState, type LlmProviderSelection, type MultipleChoiceChoice, type MultipleChoiceSpecimenContext, type PracticeFlowState, type PracticeFlowTransitionState, type PracticeMode, type RecallAttemptSnapshot, type SubmissionFailureModalState, type SubmissionSaveResponse, type SupportLayer, type TemplateMode } from './practice/types'
 
 function App() {
   const { theme } = useTheme()
@@ -74,12 +74,6 @@ function App() {
   const flowMicroDrillPrimaryActionRef = useRef<() => void>(() => undefined)
   const primaryCardButtonRef = useRef<HTMLButtonElement | null>(null)
 
-  const [sessionOrder, setSessionOrder] = useState<number[]>([])
-  const [sessionPosition, setSessionPosition] = useState(0)
-  const [sessionFinished, setSessionFinished] = useState(false)
-  const [sessionResults, setSessionResults] = useState<Record<string, boolean>>({})
-  const [sessionElapsedByCard, setSessionElapsedByCard] = useState<Record<string, number>>({})
-  const [sessionPlanRequested, setSessionPlanRequested] = useState(false)
   const llmProvider: LlmProviderSelection = 'auto'
   const configuredProviderLabel = useConfiguredProviderLabel()
   const requestLlmProvider = llmProvider === 'auto' ? '' : llmProvider
@@ -108,15 +102,11 @@ function App() {
   const [coachLoading, setCoachLoading] = useState(false)
   const [coachError, setCoachError] = useState('')
   const [submissionFailureModal, setSubmissionFailureModal] = useState<SubmissionFailureModalState | null>(null)
-  const [sessionPlan, setSessionPlan] = useState<CoachSessionPlan | null>(null)
-  const [sessionPlanLoading, setSessionPlanLoading] = useState(false)
-  const [sessionPlanError, setSessionPlanError] = useState('')
   const mcqTuning = useMemo(() => loadStoredMcqTuning(), [])
   const googlePlaylistTuning = useMemo(() => loadStoredGooglePlaylistTuning(), [])
   const multipleChoiceQuestionCount = mcqTuning.questionCount
   const mainInputRef = useRef<RecallCodeEditorHandle | null>(null)
   const flowStageContentRef = useRef<HTMLDivElement | null>(null)
-  const lastCardMoveKeyRef = useRef<{ key: 'ArrowLeft' | 'ArrowRight', pressedAt: number } | null>(null)
   const shouldFocusMainInputRef = useRef(false)
   const pendingGhostFocusLineRef = useRef<number | null>(null)
   const previewCodeContainerRef = useRef<HTMLDivElement | null>(null)
@@ -141,15 +131,12 @@ function App() {
   )
   const multipleChoiceDeck = mcqDeck.deck
   const multipleChoiceLoading = mcqDeck.loading
+  const session = usePracticeSession({ disabled: practiceFlow !== null, onMove: () => setLadderActiveCardId(null) })
   const currentTemplateMode: TemplateMode = 'algorithm'
 
   const startSession = (deckLength: number) => {
-    setSessionOrder(Array.from({ length: deckLength }, (_, idx) => idx))
-    setSessionPosition(0)
-    setSessionFinished(false)
-    setSessionResults({})
-    setSessionElapsedByCard({})
-    setSessionPlanRequested(false)
+    session.start(deckLength)
+    sessionPlan.reset()
 
     setMainPhase('preview')
     setRecallMinHeight(undefined)
@@ -168,9 +155,6 @@ function App() {
     setCoachLoading(false)
     setCoachError('')
     setSubmissionFailureModal(null)
-    setSessionPlan(null)
-    setSessionPlanLoading(false)
-    setSessionPlanError('')
   }
 
   useEffect(() => {
@@ -195,7 +179,7 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [practiceMode, mcqDeck.loadedAt, multipleChoiceLoading])
 
-  const currentDeckIndex = sessionOrder[sessionPosition] ?? 0
+  const currentDeckIndex = session.currentIndex
   const card = (practiceFlow ? filteredDeck.find(item => item.id === practiceFlow.anchorCardId) : filteredDeck[currentDeckIndex]) ?? filteredDeck[0] ?? emptySkillMapCard
   const ladderTechnique = slidingWindowTechnique(card)
   const { practiceTarget, inlineTaskProgression, practicePrompt } = useMemo(() => derivePracticeTargets(card), [card])
@@ -304,7 +288,14 @@ function App() {
   const currentInlineTask = inlineEnabled && mainPhase === 'typing' && !isGhostRepsEnabled
     ? inlineTaskProgression[inlineTaskProgress]
     : undefined
-  const hasAnsweredCurrent = !isFlowActive && Boolean(activeCardId && Object.prototype.hasOwnProperty.call(sessionResults, activeCardId))
+  const hasAnsweredCurrent = !isFlowActive && session.hasResult(activeCardId)
+  const sessionPlan = useSessionPlan({
+    session,
+    enabled: currentPracticeMode !== 'multiple-choice',
+    deck: filteredDeck,
+    questionType: requestedQuestionType,
+    llmProvider: requestLlmProvider,
+  })
   const practiceHistoryHref = useMemo(() => {
     if (!hasDeck) return '/practice-history'
 
@@ -374,19 +365,7 @@ function App() {
     setRelatedDrawerOpen(false)
   }, [card.id, currentTemplateMode, relatedLeetCodeSet?.heading])
 
-  const completeCardInSession = (isCorrect: boolean, elapsedMs?: number) => {
-    if (!activeCardId) return
-    setSessionResults((prevResults) => {
-      const next = { ...prevResults, [activeCardId]: isCorrect }
-      if (Object.keys(next).length >= sessionOrder.length) {
-        setSessionFinished(true)
-      }
-      return next
-    })
-    if (elapsedMs !== undefined) {
-      setSessionElapsedByCard((prev) => ({ ...prev, [activeCardId]: elapsedMs }))
-    }
-  }
+  const completeCardInSession = (isCorrect: boolean, elapsedMs?: number) => session.complete(activeCardId, isCorrect, elapsedMs)
 
   const addFlowAttempts = (incoming: FlowAttempt[]) => {
     const merged = mergeFlowAttempts(flowAttemptsRef.current, incoming)
@@ -633,7 +612,7 @@ function App() {
   const startPracticeFlow = async () => {
     flowInteractionVersionRef.current += 1
     const flowInteractionVersion = flowInteractionVersionRef.current
-    if (!hasRecallDeck || sessionFinished) return
+    if (!hasRecallDeck || session.finished) return
     saveFlowConfig(flowConfig)
     const history = await loadFlowHistoryForCard(card)
     if (flowInteractionVersionRef.current !== flowInteractionVersion) return
@@ -728,7 +707,7 @@ function App() {
   }
 
   const activatePracticeFlowStage = async (nextStage: PracticeFlowStage) => {
-    if (!hasRecallDeck || sessionFinished || flowTransition) return
+    if (!hasRecallDeck || session.finished || flowTransition) return
     flowInteractionVersionRef.current += 1
     const flowInteractionVersion = flowInteractionVersionRef.current
 
@@ -805,7 +784,7 @@ function App() {
     }
     // Flow stages should begin as soon as they are selected; standalone recall still begins from preview.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCardId, currentPracticeMode, flowMultipleChoicePosition, practiceFlow?.cycle, practiceFlow?.stage, practiceFlow?.step, sessionPosition])
+  }, [activeCardId, currentPracticeMode, flowMultipleChoicePosition, practiceFlow?.cycle, practiceFlow?.stage, practiceFlow?.step, session.position])
 
   const flowTransitionReady = useMemo(() => {
     if (!flowTransition || !practiceFlow) return false
@@ -893,7 +872,7 @@ function App() {
   }
 
   const startMainRecall = () => {
-    if (!hasDeck || hasAnsweredCurrent || sessionFinished) return
+    if (!hasDeck || hasAnsweredCurrent || session.finished) return
     setAiCompletionShownThisAttempt(false)
     shouldFocusMainInputRef.current = true
     if (previewCodeContainerRef.current) {
@@ -935,58 +914,12 @@ function App() {
     setLadderActiveCardId((current) => current === card.id ? null : card.id)
   }
 
-  const fetchSessionPlan = async () => {
-    if (sessionPlanRequested) return
-    setSessionPlanRequested(true)
-    setSessionPlanLoading(true)
-    setSessionPlanError('')
-
-    try {
-      const weakCards = Object.entries(sessionResults)
-        .filter(([, successful]) => !successful)
-        .map(([cardId]) => {
-          const found = filteredDeck.find((item) => item.id === cardId)
-          return {
-            cardId,
-            cardTitle: found?.title ?? '',
-            elapsedMs: sessionElapsedByCard[cardId] ?? 0,
-          }
-        })
-        .slice(0, 5)
-
-      const result = await api.POST('/api/coach/session-plan', {
-        body: {
-          mode: 'main-recall',
-          questionType: requestedQuestionType,
-          attempts,
-          correctCount,
-          avgElapsedMs:
-            attempts > 0
-              ? Math.round(
-                  Object.values(sessionElapsedByCard).reduce((sum, value) => sum + value, 0) /
-                    attempts
-                )
-              : 0,
-          weakestCards: weakCards,
-          llmProvider: requestLlmProvider,
-        },
-      })
-      const plan = unwrap(result, 'Unable to load coach session plan') as unknown as CoachSessionPlan
-      setSessionPlan(plan)
-    } catch {
-      setSessionPlanError('Coach session plan unavailable right now.')
-      setSessionPlan(null)
-    } finally {
-      setSessionPlanLoading(false)
-    }
-  }
-
   const submitMainRecall = async () => {
     if (
       currentPracticeMode !== 'recall'
       || !hasDeck
       || hasAnsweredCurrent
-      || sessionFinished
+      || session.finished
       || mainPhase !== 'typing'
       || recallEvaluationPendingRef.current
     ) return
@@ -1113,7 +1046,7 @@ function App() {
       !activeMultipleChoiceCard ||
       !hasDeck ||
       hasAnsweredCurrent ||
-      sessionFinished ||
+      session.finished ||
       multipleChoiceGrading ||
       !selectedChoiceId
     ) {
@@ -1157,7 +1090,7 @@ function App() {
 
   const reviseMainRecall = () => {
     if (practiceFlow) return
-    if (!hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'submitted' || mainCloseEnough) return
+    if (!hasDeck || hasAnsweredCurrent || session.finished || mainPhase !== 'submitted' || mainCloseEnough) return
     setAiCompletionShownThisAttempt(false)
     shouldFocusMainInputRef.current = true
     setMainPhase('typing')
@@ -1170,7 +1103,7 @@ function App() {
   }
 
   const repeatGhostRep = () => {
-    if (!hasDeck || hasAnsweredCurrent || sessionFinished || mainPhase !== 'submitted') return
+    if (!hasDeck || hasAnsweredCurrent || session.finished || mainPhase !== 'submitted') return
     setAiCompletionShownThisAttempt(false)
     shouldFocusMainInputRef.current = true
     setMainPhase('typing')
@@ -1190,30 +1123,12 @@ function App() {
     setSubmissionFailureModal(null)
   }
 
-  const goNext = () => {
-    if (isFlowActive) return
-    if (sessionFinished) return
-    setLadderActiveCardId(null)
-    setSessionPosition((prev) => Math.min(prev + 1, Math.max(sessionOrder.length - 1, 0)))
-  }
-
-  const goPrev = () => {
-    if (isFlowActive) return
-    setLadderActiveCardId(null)
-    setSessionPosition((prev) => Math.max(prev - 1, 0))
-  }
-
-  const attempts = Object.keys(sessionResults).length
-  const correctCount = Object.values(sessionResults).filter(Boolean).length
-  const canGoNext = !isFlowActive && sessionPosition < sessionOrder.length - 1
-  const canGoPrev = !isFlowActive && sessionPosition > 0
-
-  useEffect(() => {
-    if (!sessionFinished) return
-    if (currentPracticeMode === 'multiple-choice') return
-    void fetchSessionPlan()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPracticeMode, sessionFinished])
+  const goNext = session.next
+  const goPrev = session.prev
+  const attempts = session.attempts
+  const correctCount = session.correctCount
+  const canGoNext = session.canGoNext
+  const canGoPrev = session.canGoPrev
 
   const currentCardRecallHistory = useMemo(
     () => mainRecallHistoryByCard[currentRecallHistoryKey] ?? [],
@@ -1252,7 +1167,7 @@ function App() {
   const selectedMultipleChoice = activeMultipleChoiceCard?.choices.find((choice) => choice.id === (isFlowActive ? flowMultipleChoiceSelectedChoiceId : multipleChoiceSelectedChoiceId)) ?? null
   const multipleChoiceSubmitted = Boolean(submittedMultipleChoiceId)
   const multipleChoiceCorrect = Boolean(submittedMultipleChoiceId && activeMultipleChoiceCard && multipleChoiceResultByCard[activeMultipleChoiceCard.id])
-  const multipleChoicePosition = isFlowActive ? flowMultipleChoicePosition + 1 : sessionPosition + 1
+  const multipleChoicePosition = isFlowActive ? flowMultipleChoicePosition + 1 : session.position + 1
   const multipleChoiceTotal = isFlowActive
     ? flowMultipleChoiceDeck.length || 1
     : multipleChoiceDeck.length || multipleChoiceQuestionCount
@@ -1273,7 +1188,7 @@ function App() {
     mcqSelected: Boolean(selectedMultipleChoice),
     mcqGrading: multipleChoiceGrading,
     hasAnsweredCurrent,
-    sessionFinished,
+    sessionFinished: session.finished,
     latestSubmittedWasGhostRep,
     recallEvaluationPending: totalRecallEvaluationPending,
     recallInputEmpty: currentRecallSubmissionInput.trim().length === 0,
@@ -1301,36 +1216,6 @@ function App() {
     window.addEventListener('keydown', handler, true)
     return () => window.removeEventListener('keydown', handler, true)
   }, [])
-
-  useEffect(() => {
-    if (isFlowActive) return
-    const handler = (event: KeyboardEvent) => {
-      if (
-        event.repeat
-        || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')
-        || (!event.metaKey && !event.ctrlKey)
-        || event.altKey
-        || event.shiftKey
-      ) return
-
-      event.preventDefault()
-      const now = performance.now()
-      const previousPress = lastCardMoveKeyRef.current
-      const doubleTapped = previousPress?.key === event.key
-        && now - previousPress.pressedAt <= CARD_MOVE_DOUBLE_TAP_WINDOW_MS
-
-      lastCardMoveKeyRef.current = doubleTapped
-        ? null
-        : { key: event.key, pressedAt: now }
-
-      if (!doubleTapped) return
-
-      if (event.key === 'ArrowLeft' && canGoPrev) goPrev()
-      if (event.key === 'ArrowRight' && canGoNext) goNext()
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [canGoNext, canGoPrev, isFlowActive, sessionOrder.length, sessionPosition])
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -1757,25 +1642,25 @@ function App() {
           )}
         </div>
 
-        {sessionFinished && (
+        {session.finished && (
           <p className="status success" style={{ marginTop: 0, marginBottom: '1.5rem' }}>
             Session complete. {correctCount} of {attempts} {currentPracticeMode === 'multiple-choice' ? 'questions were correct' : 'cards were sound'}.
           </p>
         )}
-        {sessionFinished && currentPracticeMode === 'recall' && (
+        {session.finished && currentPracticeMode === 'recall' && (
           <div className="hint" style={{ marginTop: 0, marginBottom: '1.5rem' }}>
             <strong>Coach Session Plan</strong>
-            {sessionPlanLoading && <p style={{ margin: '0.5rem 0 0' }}>Building your next-session plan...</p>}
-            {sessionPlanError && <p style={{ margin: '0.5rem 0 0' }}>{sessionPlanError}</p>}
-            {sessionPlan && (
+            {sessionPlan.loading && <p style={{ margin: '0.5rem 0 0' }}>Building your next-session plan...</p>}
+            {sessionPlan.error && <p style={{ margin: '0.5rem 0 0' }}>{sessionPlan.error}</p>}
+            {sessionPlan.plan && (
               <div style={{ marginTop: '0.6rem' }}>
-                <p style={{ margin: '0.3rem 0' }}><strong>{sessionPlan.headline}</strong></p>
-                <p style={{ margin: '0.3rem 0' }}><strong>Focus:</strong> {sessionPlan.focusTheme}</p>
-                <p style={{ margin: '0.3rem 0' }}><strong>Warmup:</strong> {sessionPlan.warmup}</p>
-                <p style={{ margin: '0.3rem 0' }}><strong>Main Set:</strong> {sessionPlan.mainSet}</p>
-                <p style={{ margin: '0.3rem 0' }}><strong>Cooldown:</strong> {sessionPlan.cooldown}</p>
-                <p style={{ margin: '0.3rem 0' }}><strong>Note:</strong> {sessionPlan.note}</p>
-                <p style={{ margin: '0.3rem 0', opacity: 0.8 }}>Generated by {sessionPlan.llmUsed ? 'LLM coach + rules' : 'rules coach'}.</p>
+                <p style={{ margin: '0.3rem 0' }}><strong>{sessionPlan.plan.headline}</strong></p>
+                <p style={{ margin: '0.3rem 0' }}><strong>Focus:</strong> {sessionPlan.plan.focusTheme}</p>
+                <p style={{ margin: '0.3rem 0' }}><strong>Warmup:</strong> {sessionPlan.plan.warmup}</p>
+                <p style={{ margin: '0.3rem 0' }}><strong>Main Set:</strong> {sessionPlan.plan.mainSet}</p>
+                <p style={{ margin: '0.3rem 0' }}><strong>Cooldown:</strong> {sessionPlan.plan.cooldown}</p>
+                <p style={{ margin: '0.3rem 0' }}><strong>Note:</strong> {sessionPlan.plan.note}</p>
+                <p style={{ margin: '0.3rem 0', opacity: 0.8 }}>Generated by {sessionPlan.plan.llmUsed ? 'LLM coach + rules' : 'rules coach'}.</p>
               </div>
             )}
           </div>
@@ -1991,7 +1876,7 @@ function App() {
                               setMultipleChoiceSelectedChoiceId(choice.id)
                             }
                           }}
-                          disabled={multipleChoiceSubmitted || hasAnsweredCurrent || sessionFinished}
+                          disabled={multipleChoiceSubmitted || hasAnsweredCurrent || session.finished}
                           role="radio"
                           aria-checked={isSelected || isSubmittedChoice}
                         >
@@ -2109,7 +1994,7 @@ function App() {
                         language={practiceLanguage}
                         theme={theme}
                         editable={mainPhase === 'typing' && !totalRecallEvaluationPending}
-                        disabled={hasAnsweredCurrent || sessionFinished || totalRecallEvaluationPending}
+                        disabled={hasAnsweredCurrent || session.finished || totalRecallEvaluationPending}
                         placeholder={mainPhase === 'typing' && (isGhostRepsEnabled || inlineEnabled) ? '' : supportedPracticePlaceholder}
                         ghostTarget={mainPhase === 'typing' && isGhostRepsEnabled ? ghostTargetCode : undefined}
                         inlineTask={currentInlineTask}
@@ -2119,7 +2004,7 @@ function App() {
                           prompt: practicePrompt,
                           provider: requestLlmProvider,
                         }}
-                        aiCompletionEnabled={codeEditorTuning.aiCompletion && mainPhase === 'typing' && !isGhostRepsEnabled && !totalRecallEvaluationPending && !hasAnsweredCurrent && !sessionFinished}
+                        aiCompletionEnabled={codeEditorTuning.aiCompletion && mainPhase === 'typing' && !isGhostRepsEnabled && !totalRecallEvaluationPending && !hasAnsweredCurrent && !session.finished}
                         onAiCompletionShown={() => setAiCompletionShownThisAttempt(true)}
                         onAiCompletionStatus={setAiCompletionStatus}
                         lineMeta={recallEditorLineMeta}
@@ -2153,7 +2038,7 @@ function App() {
                 ref={primaryCardButtonRef}
                 className="card-control-button"
                 onClick={practiceFlow ? stopPracticeFlow : startPracticeFlow}
-                disabled={!practiceFlow && (!hasRecallDeck || sessionFinished || flowHistoryLoading)}
+                disabled={!practiceFlow && (!hasRecallDeck || session.finished || flowHistoryLoading)}
               >
                 {practiceFlow ? 'Stop flow' : 'Start flow'}
               </button>
