@@ -1,8 +1,8 @@
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { vs, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useSearchParams } from 'react-router-dom'
 import FlowBuilder from './FlowBuilder'
-import { FLOW_LABELS, buildFlowTransitionCopy, buildFlowGenerationContext, expandFlow, loadFlowConfig, mergeFlowAttempts, nextFlowStep, saveFlowConfig, summarizeFlowMastery, type FlowAttempt, type FlowConfig, type FlowStage, type SubmissionModality } from './practiceFlow'
+import { loadFlowConfig, saveFlowConfig, type FlowStage } from './practiceFlow'
 import RelatedLeetCodeDrawer from './RelatedLeetCodeDrawer'
 import { skillMap, type SkillMapNode } from './data/skill-map'
 import { practicePlaylists, type PracticePlaylist } from './data/playlists'
@@ -18,12 +18,12 @@ import { useTheme } from './theme'
 import RecallCodeEditor, { type RecallEditorLineMeta } from './RecallCodeEditor'
 import SlidingWindowLadder from './WindowLadderPanel'
 import { slidingWindowTechnique } from './windowLadderPlan'
-import { matchesHotkey, type PracticeFlowStage } from './hotkeys'
+import { matchesHotkey } from './hotkeys'
 import { FlowCoachTransition, FlowMicroDrillCard } from './practice/FlowMicroDrillCard'
-import { compactFeedbackItems, flowEvaluationScore, flowEvaluationWeaknesses, flowModalityWeakness, requestFlowAttemptHistory } from './practice/flowHistory'
 import { inlineDisplayLines, splitInlineAnnotationLine } from './practice/inlineNotes'
-import { buildFlowFocusSummary, buildFlowGhostScaffold, buildFlowGhostTarget, createInteractionId, firstIncompleteGhostLineNumber, initialFlowFocus, nextFlowAnchor, summarizeFlowFocusLine, toMultipleChoiceFocusLines } from './practice/lineReview'
+import { buildFlowFocusSummary, buildFlowGhostScaffold, buildFlowGhostTarget, firstIncompleteGhostLineNumber, summarizeFlowFocusLine, toMultipleChoiceFocusLines } from './practice/lineReview'
 import { MarkdownCodeContent } from './practice/markdown'
+import { usePracticeFlowControls, usePracticeFlowState, type FlowChange } from './practice/hooks/usePracticeFlow'
 import { useMultipleChoiceAttempt } from './practice/hooks/useMultipleChoiceAttempt'
 import { useRecallAttempt, type RecallSubmitted } from './practice/hooks/useRecallAttempt'
 import { usePracticeSession, useSessionPlan } from './practice/hooks/usePracticeSession'
@@ -36,7 +36,7 @@ import { INLINE_LENS, RECALL_TARGET_MODE, derivePracticeTargets } from './practi
 import { focusMicroDrillInput } from './practice/markdownText'
 import { TEMPLATE_MODE_LABELS } from './practice/patterns'
 import { postAttempt } from './practice/requests'
-import { FLOW_TRANSITION_MINIMUM_MS, FLOW_TRANSITION_SETTLE_MS, INLINE_FEEDBACK_ENABLED, emptySkillMapCard, EMPTY_FLOW_MICRODRILL_ACTION_STATE, type AnnotatedDisplayLine, type AttemptPayload, type Flashcard, type FlowMicroDrillPrimaryActionState, type LlmProviderSelection, type MultipleChoiceChoice, type MultipleChoiceSpecimenContext, type PracticeFlowState, type PracticeFlowTransitionState, type PracticeMode, type SubmissionSaveResponse, type SupportLayer, type TemplateMode } from './practice/types'
+import { INLINE_FEEDBACK_ENABLED, emptySkillMapCard, EMPTY_FLOW_MICRODRILL_ACTION_STATE, type AnnotatedDisplayLine, type AttemptPayload, type LlmProviderSelection, type MultipleChoiceChoice, type MultipleChoiceSpecimenContext, type PracticeMode, type SupportLayer, type TemplateMode } from './practice/types'
 
 function App() {
   const { theme } = useTheme()
@@ -58,16 +58,10 @@ function App() {
   const [flowDrawerOpen, setFlowDrawerOpen] = useState(() => searchParams.get('panel') === 'flow')
   const [zenMode, setZenMode] = useState(false)
   const [headerControlsOpen, setHeaderControlsOpen] = useState(true)
-  const flowInteractionVersionRef = useRef(0)
   const [flowConfig, setFlowConfig] = useState(loadFlowConfig)
-  const [practiceFlow, setPracticeFlow] = useState<PracticeFlowState | null>(null)
-  const [flowTransition, setFlowTransition] = useState<PracticeFlowTransitionState | null>(null)
-  const [flowTransitionSettlingId, setFlowTransitionSettlingId] = useState<string | null>(null)
-  const [flowAttempts, setFlowAttempts] = useState<FlowAttempt[]>([])
-  const flowAttemptsRef = useRef<FlowAttempt[]>([])
-  const [flowHistoryLoading, setFlowHistoryLoading] = useState(false)
-  const [flowHistoryError, setFlowHistoryError] = useState('')
-  const [flowMicroDrillPrimaryActionState, setFlowMicroDrillPrimaryActionState] = useState<FlowMicroDrillPrimaryActionState>(EMPTY_FLOW_MICRODRILL_ACTION_STATE)
+  const flowState = usePracticeFlowState()
+  const practiceFlow = flowState.flow
+  const flowTransition = flowState.transition
   const flowMicroDrillPrimaryActionRef = useRef<() => void>(() => undefined)
   const primaryCardButtonRef = useRef<HTMLButtonElement | null>(null)
 
@@ -140,15 +134,9 @@ function App() {
   const card = (practiceFlow ? filteredDeck.find(item => item.id === practiceFlow.anchorCardId) : filteredDeck[currentDeckIndex]) ?? filteredDeck[0] ?? emptySkillMapCard
   const ladderTechnique = slidingWindowTechnique(card)
   const { practiceTarget, inlineTaskProgression, practicePrompt } = useMemo(() => derivePracticeTargets(card), [card])
-  const currentFlowAttempts = useMemo(
-    () => practiceFlow ? flowAttempts.filter((attempt) => attempt.anchorCardId === practiceFlow.anchorCardId) : [],
-    [flowAttempts, practiceFlow]
-  )
-  const flowMastery = useMemo(() => summarizeFlowMastery(currentFlowAttempts), [currentFlowAttempts])
-  const flowGenerationContext = useMemo(() => buildFlowGenerationContext(currentFlowAttempts), [currentFlowAttempts])
   const flowMcqDeck = useFlowMultipleChoiceDeck(
     practiceFlow?.stage === 'multiple-choice'
-      ? flowMultipleChoiceRequest({ flow: practiceFlow, card, prompt: practicePrompt, target: practiceTarget, context: flowGenerationContext, llmProvider: requestLlmProvider })
+      ? flowMultipleChoiceRequest({ flow: practiceFlow, card, prompt: practicePrompt, target: practiceTarget, context: flowState.generationContext, llmProvider: requestLlmProvider })
       : null,
     practiceFlow ? { runId: practiceFlow.runId, step: practiceFlow.step } : null,
   )
@@ -257,7 +245,7 @@ function App() {
     historyKey: currentRecallHistoryKey,
     providerLabel: configuredProviderLabel,
     save: (payload) => submitAttemptToServer(payload),
-    flowVersion: flowInteractionVersionRef,
+    flowVersion: flowState.versionRef,
     onSubmitted: (result) => handleRecallSubmitted(result),
   })
   const mainPhase = recall.phase
@@ -269,6 +257,19 @@ function App() {
   const flowMcq = useMultipleChoiceAttempt()
   const mcq = isFlowActive ? flowMcq : sessionMcq
   const mcqView = mcq.viewOf(activeMultipleChoiceCard)
+  const flowControls = usePracticeFlowControls(flowState, {
+    config: flowConfig,
+    card,
+    deck: filteredDeck,
+    canStart: hasRecallDeck && !session.finished,
+    onChange: (change) => handleFlowChange(change),
+    stageReady: {
+      recallTyping: mainPhase === 'typing',
+      mcqLoaded: flowMultipleChoiceDeck.length > 0,
+      mcqFailed: Boolean(flowMcqDeck.error && !flowMcqDeck.loading),
+    },
+    onSettled: (toStage) => focusStageEditor(toStage),
+  })
   const practiceHistoryHref = useMemo(() => {
     if (!hasDeck) return '/practice-history'
 
@@ -340,85 +341,8 @@ function App() {
 
   const completeCardInSession = (isCorrect: boolean, elapsedMs?: number) => session.complete(activeCardId, isCorrect, elapsedMs)
 
-  const addFlowAttempts = (incoming: FlowAttempt[]) => {
-    const merged = mergeFlowAttempts(flowAttemptsRef.current, incoming)
-    flowAttemptsRef.current = merged
-    setFlowAttempts(merged)
-    return merged
-  }
-
-  const loadFlowHistoryForCard = async (anchorCard: Flashcard) => {
-    setFlowHistoryLoading(true)
-    setFlowHistoryError('')
-    try {
-      const loaded = await requestFlowAttemptHistory(anchorCard)
-      return addFlowAttempts(loaded).filter((attempt) => attempt.anchorCardId === anchorCard.id)
-    } catch {
-      setFlowHistoryError('Previous attempts are unavailable; this flow will adapt from the current run.')
-      return flowAttemptsRef.current.filter((attempt) => attempt.anchorCardId === anchorCard.id)
-    } finally {
-      setFlowHistoryLoading(false)
-    }
-  }
-
-  const currentFlowSignals = (): Record<string, unknown> | undefined => {
-    if (!practiceFlow) return undefined
-    return {
-      runId: practiceFlow.runId,
-      anchorCardId: practiceFlow.anchorCardId,
-      anchorTitle: practiceFlow.anchorTitle,
-      stage: practiceFlow.stage,
-      step: practiceFlow.step,
-      cycle: practiceFlow.cycle,
-      phase: flowMastery.phase,
-      proficiency: flowMastery.proficiency,
-      successfulModalities: flowMastery.successfulModalities,
-      weaknessSummary: flowMastery.weaknesses.join('; '),
-      completedAnchorCount: practiceFlow.completedAnchorIds.length,
-    }
-  }
-
-  const recordFlowSubmission = ({
-    response,
-    flowSignals,
-    modality,
-    modalitySignals,
-    elapsedMs,
-    interactionId,
-    question,
-  }: {
-    response: SubmissionSaveResponse
-    flowSignals: Record<string, unknown>
-    modality: SubmissionModality
-    modalitySignals: Record<string, unknown>
-    elapsedMs: number
-    interactionId: string
-    question: string
-  }) => {
-    const anchorCardId = String(flowSignals.anchorCardId ?? '')
-    if (!anchorCardId || !response.saved) return
-    const missedLineCount = Number(modalitySignals.missedLineCount ?? 0)
-    const evaluation = response.evaluation as unknown as Record<string, unknown>
-    addFlowAttempts([{
-      attemptId: response.attemptId,
-      interactionId,
-      anchorCardId,
-      modality,
-      successful: response.successful,
-      score: flowEvaluationScore(evaluation),
-      elapsedMs,
-      missedLineCount: Number.isFinite(missedLineCount) ? Math.max(0, missedLineCount) : 0,
-      weaknesses: compactFeedbackItems([
-        ...flowEvaluationWeaknesses(evaluation, missedLineCount),
-        flowModalityWeakness(modality, response.successful),
-      ]),
-      question,
-      createdAt: new Date().toISOString(),
-    }])
-  }
-
   const submitAttemptToServer = async (payload: AttemptPayload) => {
-    const flowSignals = payload.outsideFlow ? null : currentFlowSignals()
+    const flowSignals = payload.outsideFlow ? null : flowState.signals()
     const categoryTags = payload.outsideFlow ? card.tags : currentSkillTags
     const requestSignals = {
       ...(payload.signals ?? {}),
@@ -451,7 +375,7 @@ function App() {
       llmProvider: requestLlmProvider,
     })
     if (flowSignals) {
-      recordFlowSubmission({
+      flowState.recordSubmission({
         response: saved,
         flowSignals,
         modality: payload.modality,
@@ -470,7 +394,7 @@ function App() {
     elapsedMs: number
   }) => {
     if (!activeMultipleChoiceCard) return null
-    const flowSignals = currentFlowSignals()
+    const flowSignals = flowState.signals()
     const requestSignals = {
       ...(flowSignals ? { flow: flowSignals } : {}),
       modality: {
@@ -505,7 +429,7 @@ function App() {
       llmProvider: requestLlmProvider,
     })
     if (flowSignals) {
-      recordFlowSubmission({
+      flowState.recordSubmission({
         response: saved,
         flowSignals,
         modality: 'mcq',
@@ -530,196 +454,27 @@ function App() {
 
   const resetFlowMultipleChoiceState = () => flowMcq.resetAll(false)
 
-  const beginPracticeFlowTransition = ({
-    fromStage,
-    toStage,
-    anchorCardId,
-    step,
-    mode,
-    latestAttempt,
-    newAnchor = false,
-  }: {
-    fromStage: FlowStage | null
-    toStage: FlowStage
-    anchorCardId: string
-    step: number
-    mode: FlowConfig['mode']
-    latestAttempt?: FlowAttempt
-    newAnchor?: boolean
-  }) => {
-    const copy = buildFlowTransitionCopy({ fromStage, toStage, mode, latestAttempt, newAnchor })
-    setFlowMicroDrillPrimaryActionState(EMPTY_FLOW_MICRODRILL_ACTION_STATE)
-    setFlowTransitionSettlingId(null)
-    setFlowTransition({
-      id: createInteractionId(),
-      fromStage,
-      toStage,
-      anchorCardId,
-      step,
-      startedAt: Date.now(),
-      ...copy,
-    })
-  }
-
-  const startPracticeFlow = async () => {
-    flowInteractionVersionRef.current += 1
-    const flowInteractionVersion = flowInteractionVersionRef.current
-    if (!hasRecallDeck || session.finished) return
-    saveFlowConfig(flowConfig)
-    const history = await loadFlowHistoryForCard(card)
-    if (flowInteractionVersionRef.current !== flowInteractionVersion) return
-    const first = nextFlowStep(flowConfig, 0, Math.random, history)
-    const runId = createInteractionId()
-    setLadderActiveCardId(null)
-    setFlowDrawerOpen(false)
-    setPracticeMode('recall')
-    setSupportLayer('none')
-    resetFlowMultipleChoiceState()
-    beginPracticeFlowTransition({
-      fromStage: null,
-      toStage: first.stage,
-      anchorCardId: card.id,
-      step: 0,
-      mode: flowConfig.mode,
-    })
-    setPracticeFlow({
-      anchorCardId: card.id,
-      anchorTitle: card.title,
-      ...first,
-      config: structuredClone(flowConfig),
-      step: 0,
-      runId,
-      focus: initialFlowFocus(card),
-      completedAnchorIds: [],
-    })
-    resetPerCardInteraction()
-  }
-
-  const stopPracticeFlow = () => {
-    flowInteractionVersionRef.current += 1
-    setPracticeFlow(null)
-    setFlowTransition(null)
-    setFlowTransitionSettlingId(null)
-    setSupportLayer('none')
-    resetFlowMultipleChoiceState()
-    setPracticeMode('recall')
-    resetPerCardInteraction()
-  }
-
-  const advancePracticeFlow = async () => {
-    if (!practiceFlow || flowTransition) return
-    flowInteractionVersionRef.current += 1
-    const flowInteractionVersion = flowInteractionVersionRef.current
-    const step = practiceFlow.step + 1
-    const anchorHistory = flowAttemptsRef.current.filter((attempt) => attempt.anchorCardId === practiceFlow.anchorCardId)
-    const mastery = summarizeFlowMastery(anchorHistory)
-    if (practiceFlow.config.mode === 'adaptive' && mastery.mastered) {
-      const nextAnchor = nextFlowAnchor(filteredDeck, practiceFlow.anchorCardId, practiceFlow.completedAnchorIds)
-      if (nextAnchor) {
-        beginPracticeFlowTransition({
-          fromStage: practiceFlow.stage,
-          toStage: 'recall',
-          anchorCardId: nextAnchor.id,
-          step,
-          mode: practiceFlow.config.mode,
-          latestAttempt: anchorHistory.at(-1),
-          newAnchor: true,
-        })
-        await loadFlowHistoryForCard(nextAnchor)
-        if (flowInteractionVersionRef.current !== flowInteractionVersion) return
-        setPracticeFlow({
-          ...practiceFlow,
-          anchorCardId: nextAnchor.id,
-          anchorTitle: nextAnchor.title,
-          stage: 'recall',
-          cycle: practiceFlow.cycle + 1,
-          step,
-          focus: initialFlowFocus(nextAnchor),
-          completedAnchorIds: [...practiceFlow.completedAnchorIds, practiceFlow.anchorCardId],
-        })
-        setSupportLayer('none')
-        resetFlowMultipleChoiceState()
-        resetPerCardInteraction()
-        return
-      }
-    }
-    const next = nextFlowStep(practiceFlow.config, step, Math.random, anchorHistory)
-    beginPracticeFlowTransition({
-      fromStage: practiceFlow.stage,
-      toStage: next.stage,
-      anchorCardId: practiceFlow.anchorCardId,
-      step,
-      mode: practiceFlow.config.mode,
-      latestAttempt: anchorHistory.at(-1),
-    })
-    setPracticeFlow({ ...practiceFlow, ...next, step })
+  /** Reset the card on screen whenever the flow starts, moves or stops. */
+  const handleFlowChange = (change: FlowChange) => {
+    if (change !== 'stop') setFlowDrawerOpen(false)
+    if (change === 'start') setLadderActiveCardId(null)
+    if (change !== 'move') setPracticeMode('recall')
     setSupportLayer('none')
     resetFlowMultipleChoiceState()
     resetPerCardInteraction()
   }
 
-  const activatePracticeFlowStage = async (nextStage: PracticeFlowStage) => {
-    if (!hasRecallDeck || session.finished || flowTransition) return
-    flowInteractionVersionRef.current += 1
-    const flowInteractionVersion = flowInteractionVersionRef.current
-
-    if (practiceFlow) {
-      const step = practiceFlow.step + 1
-      const anchorHistory = flowAttemptsRef.current.filter((attempt) => attempt.anchorCardId === practiceFlow.anchorCardId)
-      beginPracticeFlowTransition({
-        fromStage: practiceFlow.stage,
-        toStage: nextStage,
-        anchorCardId: practiceFlow.anchorCardId,
-        step,
-        mode: practiceFlow.config.mode,
-        latestAttempt: anchorHistory.at(-1),
-      })
-      setFlowDrawerOpen(false)
-      setPracticeFlow({ ...practiceFlow, stage: nextStage, step })
-      setSupportLayer('none')
-      resetFlowMultipleChoiceState()
-      resetPerCardInteraction()
-      return
-    }
-
-    const anchorCard = card
-    const anchorHistory = await loadFlowHistoryForCard(anchorCard)
-    if (flowInteractionVersionRef.current !== flowInteractionVersion) return
-
-    const hotkeyFlowConfig: FlowConfig = {
-      ...structuredClone(flowConfig),
-      mode: 'adaptive',
-    }
-    setLadderActiveCardId(null)
-    setFlowDrawerOpen(false)
-    setPracticeMode('recall')
-    setSupportLayer('none')
-    resetFlowMultipleChoiceState()
-    beginPracticeFlowTransition({
-      fromStage: null,
-      toStage: nextStage,
-      anchorCardId: anchorCard.id,
-      step: 0,
-      mode: hotkeyFlowConfig.mode,
-      latestAttempt: anchorHistory.at(-1),
-    })
-    setPracticeFlow({
-      anchorCardId: anchorCard.id,
-      anchorTitle: anchorCard.title,
-      stage: nextStage,
-      cycle: 1,
-      config: hotkeyFlowConfig,
-      step: 0,
-      runId: createInteractionId(),
-      focus: initialFlowFocus(anchorCard),
-      completedAnchorIds: [],
-    })
-    resetPerCardInteraction()
+  /** Once the transition card has gone, put the cursor where the new recall or ghost stage starts. */
+  const focusStageEditor = (toStage: FlowStage) => {
+    if (toStage !== 'recall' && toStage !== 'ghost') return
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const firstTargetLine = toStage === 'ghost'
+        ? firstIncompleteGhostLineNumber(flowGhostScaffold, practiceFlow?.focus.missedLines ?? [])
+        : null
+      if (firstTargetLine) recall.editorRef.current?.focusLine(firstTargetLine)
+      else recall.editorRef.current?.focusEnd()
+    }))
   }
-
-  const activatePracticeFlowStageFromHotkey = useEffectEvent((nextStage: PracticeFlowStage) => {
-    void activatePracticeFlowStage(nextStage)
-  })
 
   const toggleInlineHelper = () => {
     if (!INLINE_FEEDBACK_ENABLED) return
@@ -738,65 +493,6 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCardId, currentPracticeMode, practiceFlow?.cycle, practiceFlow?.stage, practiceFlow?.step, session.position])
 
-  const flowTransitionReady = useMemo(() => {
-    if (!flowTransition || !practiceFlow) return false
-    if (
-      practiceFlow.anchorCardId !== flowTransition.anchorCardId
-      || practiceFlow.step !== flowTransition.step
-      || practiceFlow.stage !== flowTransition.toStage
-    ) return false
-
-    if (flowTransition.toStage === 'recall' || flowTransition.toStage === 'ghost') {
-      return mainPhase === 'typing'
-    }
-    if (flowTransition.toStage === 'multiple-choice') {
-      return flowMultipleChoiceDeck.length > 0
-        || Boolean(flowMcqDeck.error && !flowMcqDeck.loading)
-    }
-
-    const interactionKey = `${practiceFlow.runId}-${practiceFlow.step}`
-    return flowMicroDrillPrimaryActionState.interactionKey === interactionKey
-      && (flowMicroDrillPrimaryActionState.ready || flowMicroDrillPrimaryActionState.failed)
-  }, [
-    flowMicroDrillPrimaryActionState,
-    flowMultipleChoiceDeck.length,
-    flowMcqDeck.error,
-    flowMcqDeck.loading,
-    flowTransition,
-    mainPhase,
-    practiceFlow,
-  ])
-
-  useEffect(() => {
-    if (!flowTransition || !flowTransitionReady) return
-    const transitionId = flowTransition.id
-    const delay = Math.max(0, FLOW_TRANSITION_MINIMUM_MS - (Date.now() - flowTransition.startedAt))
-    let settleTimeoutId: number | undefined
-    const readyTimeoutId = window.setTimeout(() => {
-      setFlowTransitionSettlingId(transitionId)
-      settleTimeoutId = window.setTimeout(() => {
-        setFlowTransition((current) => current?.id === transitionId ? null : current)
-        setFlowTransitionSettlingId((current) => current === transitionId ? null : current)
-        if (flowTransition.toStage === 'recall' || flowTransition.toStage === 'ghost') {
-          window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-            if (flowTransition.toStage === 'ghost') {
-              const firstTargetLine = firstIncompleteGhostLineNumber(flowGhostScaffold, practiceFlow?.focus.missedLines ?? [])
-              if (firstTargetLine) {
-                recall.editorRef.current?.focusLine(firstTargetLine)
-                return
-              }
-            }
-            recall.editorRef.current?.focusEnd()
-          }))
-        }
-      }, FLOW_TRANSITION_SETTLE_MS)
-    }, delay)
-    return () => {
-      window.clearTimeout(readyTimeoutId)
-      if (settleTimeoutId !== undefined) window.clearTimeout(settleTimeoutId)
-    }
-  }, [flowGhostScaffold, flowTransition, flowTransitionReady, practiceFlow?.focus.missedLines, recall.editorRef])
-
   const toggleAiCompletion = () => {
     setCodeEditorTuning((prev) => ({ ...prev, aiCompletion: !prev.aiCompletion }))
   }
@@ -811,10 +507,7 @@ function App() {
     if (practiceFlow) {
       if (practiceFlow.stage === 'recall') {
         const missedLines = toMultipleChoiceFocusLines(lineReviews)
-        setPracticeFlow((current) => current ? {
-          ...current,
-          focus: { sequenceStage: 'recall', focusSummary: buildFlowFocusSummary(card.title, missedLines), missedLines },
-        } : current)
+        flowState.setFocus({ sequenceStage: 'recall', focusSummary: buildFlowFocusSummary(card.title, missedLines), missedLines })
       }
       return
     }
@@ -875,8 +568,8 @@ function App() {
   const primaryCardAction = resolvePrimaryAction({
     ladderActive,
     flowStage: practiceFlow?.stage ?? null,
-    microDrill: flowMicroDrillPrimaryActionState.interactionKey === flowMicroDrillActionKey
-      ? flowMicroDrillPrimaryActionState
+    microDrill: flowState.microDrillAction.interactionKey === flowMicroDrillActionKey
+      ? flowState.microDrillAction
       : EMPTY_FLOW_MICRODRILL_ACTION_STATE,
     hasDeck,
     practiceMode: currentPracticeMode,
@@ -893,7 +586,7 @@ function App() {
     mainCloseEnough: recall.closeEnough,
   })
   const primaryActionHandlers: Record<PrimaryActionKind, () => void> = {
-    'flow-next': () => void advancePracticeFlow(),
+    'flow-next': () => void flowControls.advance(),
     'microdrill-submit': () => flowMicroDrillPrimaryActionRef.current(),
     'mcq-submit': () => void submitMultipleChoice(),
     'recall-start': recall.start,
@@ -938,29 +631,6 @@ function App() {
   }, [currentPracticeMode, isFlowActive, toggleInlineHelper])
 
   useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if (event.repeat || event.altKey || event.shiftKey) return
-
-      const nextStage = matchesHotkey(event, 'flow-full-recall')
-        ? 'recall'
-        : matchesHotkey(event, 'flow-targeted-ghost')
-          ? 'ghost'
-          : matchesHotkey(event, 'flow-targeted-mcq')
-            ? 'multiple-choice'
-            : matchesHotkey(event, 'flow-targeted-microdrill')
-              ? 'microdrill'
-              : null
-      if (!nextStage) return
-
-      event.preventDefault()
-      event.stopPropagation()
-      activatePracticeFlowStageFromHotkey(nextStage)
-    }
-    window.addEventListener('keydown', handler, true)
-    return () => window.removeEventListener('keydown', handler, true)
-  }, [])
-
-  useEffect(() => {
     if (!zenMode) return
     const handler = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
@@ -982,13 +652,6 @@ function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [flowDrawerOpen])
 
-  const flowStatusText = !practiceFlow
-    ? flowHistoryLoading ? 'Loading prior attempts…' : 'Choose Adaptive to sequence from prior results and cross-modality weaknesses.'
-    : practiceFlow.config.mode === 'adaptive'
-      ? `${flowMastery.phase === 'mastered' ? 'Mastered' : flowMastery.phase[0].toUpperCase() + flowMastery.phase.slice(1)} · ${flowMastery.proficiency}% proficiency · evidence across ${flowMastery.successfulModalities} modalities · ${FLOW_LABELS[practiceFlow.stage]}`
-    : practiceFlow.config.mode === 'random'
-      ? `Rep ${practiceFlow.step + 1} · ${FLOW_LABELS[practiceFlow.stage]}. The next modality is chosen when you continue.`
-      : `Cycle ${practiceFlow.cycle} · Rep ${practiceFlow.step % expandFlow(practiceFlow.config.blocks).length + 1} of ${expandFlow(practiceFlow.config.blocks).length} · ${FLOW_LABELS[practiceFlow.stage]}`
   const flowFocusPreviewLines = practiceFlow?.focus.missedLines.slice(0, 3) ?? []
   const recallEditorLineMeta = useMemo<RecallEditorLineMeta[]>(() => {
     const lineCount = Math.max((mainInput || '').split('\n').length, displayLines.length, 1)
@@ -1018,9 +681,9 @@ function App() {
 
   const microDrillEditorReady = !flowTransition && !flowDrawerOpen
     && practiceFlow?.stage === 'microdrill'
-    && flowMicroDrillPrimaryActionState.interactionKey === flowMicroDrillActionKey
-    && flowMicroDrillPrimaryActionState.ready
-    && !flowMicroDrillPrimaryActionState.submitted
+    && flowState.microDrillAction.interactionKey === flowMicroDrillActionKey
+    && flowState.microDrillAction.ready
+    && !flowState.microDrillAction.submitted
 
   useEffect(() => {
     if (!microDrillEditorReady) return
@@ -1090,7 +753,7 @@ function App() {
                 <h3>Flow</h3>
                 <p className="card-flow-header-subtitle">
                   {practiceFlow
-                    ? `${practiceFlow.config.mode === 'adaptive' ? `Adaptive · ${flowMastery.proficiency}%` : practiceFlow.config.mode === 'random' ? 'Random flow' : `Cycle ${practiceFlow.cycle}`} on ${practiceFlow.anchorTitle}`
+                    ? `${practiceFlow.config.mode === 'adaptive' ? `Adaptive · ${flowState.mastery.proficiency}%` : practiceFlow.config.mode === 'random' ? 'Random flow' : `Cycle ${practiceFlow.cycle}`} on ${practiceFlow.anchorTitle}`
                     : card.title}
                 </p>
               </>
@@ -1368,7 +1031,7 @@ function App() {
         {flowTransition && (
           <FlowCoachTransition
             transition={flowTransition}
-            settling={flowTransitionSettlingId === flowTransition.id}
+            settling={flowState.settlingId === flowTransition.id}
           />
         )}
         <div
@@ -1377,7 +1040,7 @@ function App() {
             'flow-stage-content',
             practiceFlow ? `flow-stage-content-${practiceFlow.stage}` : '',
             flowTransition
-              ? flowTransitionSettlingId === flowTransition.id
+              ? flowState.settlingId === flowTransition.id
                 ? 'flow-stage-content-settling'
                 : 'flow-stage-content-preparing'
               : '',
@@ -1411,11 +1074,11 @@ function App() {
             key={flowMicroDrillActionKey}
             title={card.title} prompt={practicePrompt} target={practiceTarget}
             focus={practiceFlow.focus.focusSummary} rep={practiceFlow.step + 1}
-            context={flowGenerationContext}
+            context={flowState.generationContext}
             provider={requestLlmProvider} theme={theme} syntaxTheme={syntaxTheme}
             actionKey={flowMicroDrillActionKey}
             primaryActionRef={flowMicroDrillPrimaryActionRef}
-            onPrimaryActionStateChange={setFlowMicroDrillPrimaryActionState}
+            onPrimaryActionStateChange={flowState.setMicroDrillAction}
             onSave={(drill, answer, elapsedMs, interactionId) => submitAttemptToServer({
               mode: 'main-recall', correctAnswer: drill.solution, userAnswer: answer, question: drill.prompt,
               microdrill: true, elapsedMs, interactionId,
@@ -1438,8 +1101,8 @@ function App() {
           >
             <div className="related-problems-body card-flow-body">
               <FlowBuilder config={flowConfig} disabled={isFlowActive} onChange={(config) => { setFlowConfig(config); saveFlowConfig(config) }} />
-              <p className="card-flow-status">{flowStatusText}</p>
-              {flowHistoryError && <p className="card-flow-summary" role="status">{flowHistoryError}</p>}
+              <p className="card-flow-status">{flowControls.statusText}</p>
+              {flowState.historyError && <p className="card-flow-summary" role="status">{flowState.historyError}</p>}
               {practiceFlow?.focus.focusSummary && (
                 <p className="card-flow-summary">{practiceFlow.focus.focusSummary}</p>
               )}
@@ -1729,8 +1392,8 @@ function App() {
                 type="button"
                 ref={primaryCardButtonRef}
                 className="card-control-button"
-                onClick={practiceFlow ? stopPracticeFlow : startPracticeFlow}
-                disabled={!practiceFlow && (!hasRecallDeck || session.finished || flowHistoryLoading)}
+                onClick={practiceFlow ? flowControls.stop : flowControls.start}
+                disabled={!practiceFlow && (!hasRecallDeck || session.finished || flowState.historyLoading)}
               >
                 {practiceFlow ? 'Stop flow' : 'Start flow'}
               </button>
