@@ -25,6 +25,7 @@ erDiagram
     problem |o--o{ submission : "problem_slug"
     multiple_choice_problem |o--o{ submission : "multiple_choice_problem_id"
 
+    algorithm |o--o{ multiple_choice_problem : "algorithm_slug"
     algorithm |o..o{ signal_definition : "scope (or 'general')"
     signal_definition ||..o{ signal_definition_revision : "subject = key"
     signal_evaluation_directive ||..o{ signal_definition_revision : "subject = directive:mcq"
@@ -50,8 +51,9 @@ erDiagram
         varchar algorithm_slug FK
         varchar title
         varchar difficulty "Easy | Med. | Hard"
+        text description "shown as the card prompt"
         text code
-        text prompt
+        varchar source_type "core-catalog | core-meta | static-playlist | generated-llm"
         text_arr tags
         jsonb leetcode_examples
         int display_order
@@ -77,17 +79,17 @@ erDiagram
         varchar order_slug PK
         varchar problem_slug PK,FK
         int position "unique per playlist + order"
-        varchar tier
-        varchar family
-        jsonb metadata
+        jsonb metadata "tier, family, ..."
     }
     multiple_choice_problem {
         varchar id PK
         text question_text
-        varchar choice_labels_1_to_4
-        text choice_texts_1_to_4
-        varchar correct_answer_label
+        text explanation
+        jsonb choices "[{id, text}], in served order"
+        varchar correct_choice_id
+        varchar algorithm_slug FK "nullable"
         varchar fingerprint UK
+        timestamptz created_at
     }
     submission {
         bigserial id PK
@@ -146,16 +148,16 @@ erDiagram
 | Table | Holds | Written by |
 |---|---|---|
 | `algorithm` | One row per algorithm family (sliding window, heap, …). `signal_spec` is the recall signal spec used by the legacy LLM evaluators. | Seed (overwrites) |
-| `problem` | A practice card: its code, prompt, hint and tags. Every problem belongs to one algorithm. | Seed |
+| `problem` | A practice card: its code, description (served as the prompt), hint and tags. Every problem belongs to one algorithm. | Seed |
 | `skill`, `technique` | Finer-grained labels. | Seed |
 | `problem_skill`, `problem_technique` | Many-to-many links from problems to skills and techniques. | Seed |
 | `playlist`, `playlist_problem_order` | Ordered decks of problems. A playlist can have several named orders (`order_slug`). | Seed |
-| `multiple_choice_problem` | A generated MCQ with up to four choices and the answer key. `fingerprint` deduplicates identical questions. | Generated during practice |
+| `multiple_choice_problem` | A generated MCQ: its `choices` array (four `{id, text}` objects, in served order), the answer key (`correct_choice_id`), and the algorithm it was generated for (`algorithm_slug`, when known). `fingerprint` deduplicates identical questions. MCQ grading scopes signals by `algorithm_slug`, falling back to the submission's tags. | Generated during practice |
 
 ### Content rules
 
 - **`problem` is the single home for practice content:** core algorithms, meta questions, static playlist cards and generated cards. Do not add another table that stores titles, prompts, code, difficulty or tags; the architecture tests guard this.
-- **`source_type` records where a row came from:** `core-catalog`, `core-meta`, `static-playlist` or `generated-llm`. Generated cards are written straight to `problem`, with `generation_context` and `llm_used`.
+- **`source_type` records where a row came from:** `core-catalog`, `core-meta`, `static-playlist` or `generated-llm`. Generated cards are written straight to `problem`, with `generation_context` (which also records `llmUsed`).
 - **Playlists only organize:** `playlist` and `playlist_problem_order` reference problems by slug and never copy their content.
 - **Submissions keep a snapshot:** `submission.generated_card` stores the card exactly as shown, so history renders correctly even if the problem later changes.
 - **Resetting practice history** deletes `generated-llm` problems but never core or playlist rows.
@@ -217,3 +219,12 @@ Rules:
 - Revision numbers are zero-padded and sequential (`--rev-id`), so `versions/` reads in order.
 
 Databases created before Alembic need nothing special: the baseline is all `IF NOT EXISTS`, and revisions `0002`–`0006` replay the old in-place upgrades (add `algorithm.signal_spec`, drop `submission.migration_key`, stamp evaluations missing `signalSpec`, add `signal_definition.description`, backfill `submission.problem_slug`). `0007` adds `seed_state`.
+
+Cleanup revisions:
+
+- **`0008`** drops columns nothing read: `submission.user_id`, `target_source`, `target_control`, `format_control` and `updated_at`; `problem.prompt` and `llm_used`; `playlist_problem_order.tier` and `family`. It also drops unused submission indexes, and adds an expression index for the card-id lookup.
+- **`0009`** normalizes `multiple_choice_problem`:
+  - the choices become one `choices` array, and the answer key is stored once;
+  - `question_help_text` is renamed `explanation`;
+  - timestamps become `TIMESTAMPTZ`;
+  - a nullable `algorithm_slug` links each MCQ to its algorithm.
