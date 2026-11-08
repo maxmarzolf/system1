@@ -1,16 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { vs, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { useSearchParams } from 'react-router-dom'
 import { loadFlowConfig, saveFlowConfig, type FlowStage } from './practiceFlow'
 import RelatedLeetCodeDrawer from './RelatedLeetCodeDrawer'
-import { skillMap, type SkillMapNode } from './data/skill-map'
-import { practicePlaylists, type PracticePlaylist } from './data/playlists'
 import { resolveRelatedLeetCodeSet } from './data/related-leetcode'
 import { loadStoredSubmissionTuning, saveStoredSubmissionTuning } from './submissionTuning'
 import { loadStoredCodeEditorTuning, saveStoredCodeEditorTuning } from './codeEditorTuning'
 import { loadStoredMcqTuning } from './mcqTuning'
 import { loadStoredGooglePlaylistTuning } from './googlePlaylistTuning'
-import { useCatalogPlaylists, useSkillMap } from './api/queries'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 import { useTheme } from './theme'
@@ -24,6 +20,7 @@ import { useRecallAttempt, type RecallSubmitted } from './practice/hooks/useReca
 import { usePracticeSession, useSessionPlan } from './practice/hooks/usePracticeSession'
 import { usePracticeHotkeys } from './practice/hooks/usePracticeHotkeys'
 import { usePracticePanels } from './practice/hooks/usePracticePanels'
+import { usePracticeFocus } from './practice/hooks/usePracticeFocus'
 import CardHeader from './practice/components/CardHeader'
 import FlowPanel from './practice/components/FlowPanel'
 import MultipleChoicePanel from './practice/components/MultipleChoicePanel'
@@ -34,28 +31,21 @@ import SessionSummary from './practice/components/SessionSummary'
 import SubmissionFailureModal from './practice/components/SubmissionFailureModal'
 import { useFlowMultipleChoiceDeck, useMultipleChoiceDeck, useRecallDeck } from './practice/hooks/useDecks'
 import { cardSpecimen, flowMultipleChoiceRequest, multipleChoiceDeckRequest } from './practice/mcqRequests'
-import { resolvePracticeFocus } from './practice/focus'
 import { resolvePrimaryAction, type PrimaryActionKind } from './practice/primaryAction'
 import { derivePracticeTargets } from './practice/targets'
 import { focusMicroDrillInput } from './practice/markdownText'
 import { postAttempt } from './practice/requests'
 import { describeCard } from './practice/cardMeta'
 import { multipleChoiceAttemptBody, recallAttemptBody } from './practice/attemptBodies'
-import { INLINE_FEEDBACK_ENABLED, emptySkillMapCard, EMPTY_FLOW_MICRODRILL_ACTION_STATE, type AttemptPayload, type LlmProviderSelection, type MultipleChoiceCard, type MultipleChoiceSpecimenContext, type PracticeMode, type SupportLayer, type TemplateMode } from './practice/types'
+import { INLINE_FEEDBACK_ENABLED, emptySkillMapCard, EMPTY_FLOW_MICRODRILL_ACTION_STATE, type AttemptPayload, type MultipleChoiceCard, type MultipleChoiceSpecimenContext, type PracticeMode, type SupportLayer, type TemplateMode } from './practice/types'
 
 function App() {
   const { theme } = useTheme()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const { focus: practiceFocus, flowPanelRequested, toggleTag } = usePracticeFocus()
   const [practiceMode, setPracticeMode] = useState<PracticeMode>('recall')
   const [mcqSourceSpecimen, setMcqSourceSpecimen] = useState<MultipleChoiceSpecimenContext | null>(null)
   const [mcqRequestId, setMcqRequestId] = useState(0)
   const [supportLayer, setSupportLayer] = useState<SupportLayer>('none')
-  // The served catalog and taxonomy; the bundled copies stay the fallback when the API is unavailable or empty.
-  const servedPlaylists = useCatalogPlaylists<{ playlists?: PracticePlaylist[] }>().data?.playlists
-  const catalogPlaylists = Array.isArray(servedPlaylists) && servedPlaylists.length > 0 ? servedPlaylists : null
-  const skillMapQuery = useSkillMap<SkillMapNode[]>()
-  const catalogSkillMap = Array.isArray(skillMapQuery.data) && skillMapQuery.data.length > 0 ? skillMapQuery.data : null
-  const catalogSkillMapResolved = !skillMapQuery.isPending
   const [inlineEnabled, setInlineEnabled] = useState(false)
   const [flowConfig, setFlowConfig] = useState(loadFlowConfig)
   const flowState = usePracticeFlowState()
@@ -64,11 +54,9 @@ function App() {
   const flowMicroDrillPrimaryActionRef = useRef<() => void>(() => undefined)
   const primaryCardButtonRef = useRef<HTMLButtonElement | null>(null)
 
-  const llmProvider: LlmProviderSelection = 'auto'
   const configuredProviderLabel = useConfiguredProviderLabel()
-  const requestLlmProvider = llmProvider === 'auto' ? '' : llmProvider
-
-
+  // Always "Auto": an empty provider lets the server use its configured one.
+  const requestLlmProvider = ''
   const [submissionTuning] = useState(() => loadStoredSubmissionTuning())
   const [codeEditorTuning, setCodeEditorTuning] = useState(() => loadStoredCodeEditorTuning())
   const syntaxTheme = theme === 'light-high-contrast' ? vs : vscDarkPlus
@@ -76,12 +64,6 @@ function App() {
   const googlePlaylistTuning = useMemo(() => loadStoredGooglePlaylistTuning(), [])
   const multipleChoiceQuestionCount = mcqTuning.questionCount
   const flowStageContentRef = useRef<HTMLDivElement | null>(null)
-  const availablePlaylists = catalogPlaylists ?? practicePlaylists
-  const availableSkillMap = catalogSkillMap ?? skillMap
-  const practiceFocus = useMemo(
-    () => resolvePracticeFocus({ searchParams, playlists: availablePlaylists, skillMap: availableSkillMap, skillMapResolved: catalogSkillMapResolved }),
-    [availablePlaylists, availableSkillMap, catalogSkillMapResolved, searchParams],
-  )
   const { focusedPatternSlug, focusedTagSlug, focusedPatternLabel, requestedPlaylist, focusedCardPending, focusedCardNotFound, requestedQuestionType } = practiceFocus
   const recallDeck = useRecallDeck(practiceFocus, googlePlaylistTuning.order, requestLlmProvider)
   const filteredDeck = recallDeck.deck
@@ -161,7 +143,7 @@ function App() {
   const activeRecallTarget = practiceFlow?.stage === 'ghost' && flowGhostTarget ? flowGhostTarget : practiceTarget
   const handleTagClick = (tag: string) => {
     panels.closeTags()
-    setSearchParams(tag === focusedTagSlug ? {} : { focusTag: tag })
+    toggleTag(tag)
   }
 
   const hasRecallDeck = filteredDeck.length > 0
@@ -238,7 +220,7 @@ function App() {
   )
 
   const panels = usePracticePanels({
-    flowOpenOnArrival: searchParams.get('panel') === 'flow',
+    flowOpenOnArrival: flowPanelRequested,
     relatedKey: `${card.id}:${relatedLeetCodeSet?.heading ?? ''}`,
   })
   const ladderActive = panels.ladderCardId === card.id && ladderTechnique !== null
@@ -424,7 +406,6 @@ function App() {
     const frame = window.requestAnimationFrame(() => focusMicroDrillInput(flowStageContentRef.current))
     return () => window.cancelAnimationFrame(frame)
   }, [microDrillEditorReady, flowMicroDrillActionKey])
-
 
   const chooseMultipleChoice = () => {
     if (practiceMode === 'multiple-choice') return

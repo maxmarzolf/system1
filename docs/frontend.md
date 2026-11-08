@@ -30,21 +30,25 @@ The practice screen reads its starting deck from the URL:
 
 | Files | Role |
 |---|---|
-| `App.tsx` | The practice screen and its sub-components (MCQ, microdrill, flow transition card) |
+| `App.tsx` | The practice screen. It only composes: the hooks, components and pure modules below hold the logic |
+| `practice/hooks/` | One hook per concern: `useDecks` (the three decks, on TanStack Query), `usePracticeSession` (moving through a deck; the coach's session plan), `useRecallAttempt` and `useMultipleChoiceAttempt` (answering a card), `usePracticeFlow` (the flow's state, controls, transition timing and stage hotkeys), `usePracticeHotkeys`, `usePracticePanels` (Zen, Flow, related drawer, tags, Ladder), `usePracticeFocus` (the URL focus) |
+| `practice/components/` | Presentational pieces of the screen: `CardHeader`, `PromptPanel`, `RecallPanel`, `MultipleChoicePanel`, `FlowPanel`, `SessionSummary`, `PracticeControlBar`, `SubmissionFailureModal`; they take props and fetch nothing |
+| `practice/*.ts` | Pure logic, unit-tested without rendering: `focus` (URL to deck request), `targets` (what to type), `cardMeta` (header, tags, question types, History link), `primaryAction` (what the primary button does), `flowReducer` (the flow as actions and planners), `mcqRequests` and `attemptBodies` (request bodies), plus the editor helpers (`inlineNotes`, `lineReview`, `markdownText`) |
 | `RecallCodeEditor.tsx` | CodeMirror editor: line status decorations, ghost text, inline notes, autocompletion, AI completion via `/api/coach/inline-completion` |
 | `FlowBuilder.tsx`, `practiceFlow.ts` | Flow configuration UI and the flow engine (next step, mastery summary, transition copy) |
 | `WindowLadderPanel.tsx`, `windowLadderPlan.ts` | The five-rung Sliding Window Ladder |
 | `PracticeHistoryPage.tsx`, `DailyWorkHistory.tsx`, `HistoryDayDetail.tsx`, `SubmissionSignalDetails.tsx` | Journey |
-| `SignalHologram.tsx` | The Signal Score Terrain (three.js, loaded lazily) |
+| `SignalHologram.tsx`, `signalTerrain.ts` | The Signal Score Terrain (three.js, loaded lazily) and its surface maths |
 | `AdminPage.tsx`, `signalAdmin.ts`, `signalFieldHelp.tsx` | `/admin`, its API client and its field help |
 | `TunePage.tsx`, `tuneControls.tsx`, `*Tuning.ts` | Tune and the stored settings it edits |
 | `TopNav.tsx`, `InfoTip.tsx`, `theme.tsx` | Shared UI: nav, `?` tooltips, light/dark theme |
-| `api.ts`, `signalSpecs.ts`, `llmProviderDefault.ts`, `dailyWork.ts`, `hotkeys.ts` | API base URL, small fetch helpers, date formatting, keyboard shortcuts |
+| `api/` | The typed API client (`client.ts`) and the shared TanStack Query reads (`queries.ts`) |
+| `signalSpecs.ts`, `llmProviderDefault.ts`, `dailyWork.ts`, `hotkeys.ts`, `storedSetting.ts` | Small API helpers, date formatting, keyboard shortcuts, the `localStorage` setting helper |
 | `data/` | Local catalogs (skill map, playlists, related LeetCode problems), used when the API has none |
 
 ## State
 
-There is no global store. Server data is fetched by the component that shows it. Preferences live in `localStorage`, read with a validating loader that falls back to defaults for missing or invalid values:
+There is no global store. Server data goes through TanStack Query (`src/api/queries.ts` for shared reads, `practice/hooks/useDecks.ts` for practice decks), so two components asking for the same data make one request. Preferences live in `localStorage`, read through `storedSetting.ts` with a validating loader that falls back to defaults for missing or invalid values:
 
 | Key | Holds |
 |---|---|

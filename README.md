@@ -86,7 +86,7 @@ Docs ([index](docs/README.md)):
 | `backend/app/contracts/` | Shapes shared across layers, including the versioned `Evaluation` |
 | `backend/app/services/read_models/` | Readiness, daily activity, day detail and signal history |
 | `src/api/` | The typed API client: `client.ts` (openapi-fetch typed from the generated `schema.d.ts`, one `ApiError` for every error shape) and `queries.ts` (TanStack Query hooks for shared reads) |
-| `src/App.tsx` | The practice screen |
+| `src/App.tsx`, `src/practice/` | The practice screen: App composes hooks (`practice/hooks/`), presentational components (`practice/components/`) and pure, unit-tested logic (`practice/*.ts`, e.g. the flow reducer) |
 | `src/PracticeHistoryPage.tsx`, `src/SignalHologram.tsx` | Journey and the score terrain |
 | `src/AdminPage.tsx`, `src/signalAdmin.ts` | `/admin` and its API client |
 
