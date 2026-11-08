@@ -16,8 +16,14 @@ export type FetchMock = ReturnType<typeof vi.fn> & { calls: { url: string; init?
 /** Stub ``fetch`` with a list of routes; unmatched requests fail loudly with 404. */
 export function mockFetch(routes: Route[]): FetchMock {
   const calls: { url: string; init?: RequestInit }[] = []
-  const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const fn = vi.fn(async (input: RequestInfo | URL, givenInit?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    let init = givenInit
+    if (input instanceof Request && !givenInit) {
+      // The typed client (openapi-fetch) passes one Request; expose it like (url, init) for assertions.
+      const body = input.method === 'GET' || input.method === 'HEAD' ? undefined : await input.clone().text()
+      init = { method: input.method, headers: input.headers, body: body || undefined, signal: input.signal }
+    }
     const method = (init?.method ?? 'GET').toUpperCase()
     calls.push({ url, init })
     const route = routes.find((candidate) =>

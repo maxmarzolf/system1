@@ -528,21 +528,21 @@ export interface components {
              * After
              * @default {}
              */
-            after: {
+            after?: {
                 [key: string]: number;
             };
             /**
              * Before
              * @default {}
              */
-            before: {
+            before?: {
                 [key: string]: number;
             };
             /**
              * Clearedtables
              * @default []
              */
-            clearedTables: string[];
+            clearedTables?: string[];
         };
         /** AdminSignal */
         AdminSignal: {
@@ -560,7 +560,7 @@ export interface components {
              * Description
              * @default
              */
-            description: string;
+            description?: string;
             /** Displayorder */
             displayOrder: number;
             /** Effectiveshare */
@@ -571,7 +571,7 @@ export interface components {
              * Instructions
              * @default
              */
-            instructions: string;
+            instructions?: string;
             /** Jevquestion */
             jevQuestion?: {
                 [key: string]: unknown;
@@ -633,14 +633,14 @@ export interface components {
              * Categorytags
              * @default []
              */
-            categoryTags: string[];
+            categoryTags?: string[];
             /** Correctanswer */
             correctAnswer?: string | null;
             /**
              * Elapsedms
              * @default 0
              */
-            elapsedMs: number;
+            elapsedMs?: number;
             /** Flowrunid */
             flowRunId?: string | null;
             /** Generatedcard */
@@ -655,12 +655,12 @@ export interface components {
              * Livecoachused
              * @default false
              */
-            liveCoachUsed: boolean;
+            liveCoachUsed?: boolean;
             /**
              * Llmprovider
              * @default openai
              */
-            llmProvider: string;
+            llmProvider?: string;
             modality?: components["schemas"]["SubmissionModality"] | null;
             mode: components["schemas"]["GameMode"];
             /** Multiplechoiceproblemid */
@@ -671,7 +671,7 @@ export interface components {
              * Questiontype
              * @default
              */
-            questionType: string;
+            questionType?: string;
             /** Selectedchoiceid */
             selectedChoiceId?: string | null;
             /** Sessionid */
@@ -685,9 +685,9 @@ export interface components {
                 [key: string]: unknown;
             };
             /** @default none */
-            supportLayer: components["schemas"]["SupportLayer"];
+            supportLayer?: components["schemas"]["SupportLayer"];
             /** @default algorithm */
-            templateMode: components["schemas"]["TemplateMode"];
+            templateMode?: components["schemas"]["TemplateMode"];
             /** Useranswer */
             userAnswer?: string | null;
         };
@@ -715,85 +715,85 @@ export interface components {
              * Cardid
              * @default
              */
-            cardId: string;
+            cardId?: string;
             /**
              * Cardtitle
              * @default
              */
-            cardTitle: string;
+            cardTitle?: string;
             /**
              * Categorytags
              * @default []
              */
-            categoryTags: string[];
+            categoryTags?: string[];
             /**
              * Correctanswer
              * @default
              */
-            correctAnswer: string;
+            correctAnswer?: string;
             /**
              * Createdat
              * @default
              */
-            createdAt: string;
+            createdAt?: string;
             /**
              * Generatedcard
              * @default {}
              */
-            generatedCard: {
+            generatedCard?: {
                 [key: string]: unknown;
             };
             /**
              * Interactionid
              * @default
              */
-            interactionId: string;
+            interactionId?: string;
             /**
              * Livecoachused
              * @default false
              */
-            liveCoachUsed: boolean;
+            liveCoachUsed?: boolean;
             /**
              * Modality
              * @default total-recall
              */
-            modality: string;
+            modality?: string;
             /**
              * Question
              * @default
              */
-            question: string;
+            question?: string;
             /**
              * Questiontype
              * @default
              */
-            questionType: string;
+            questionType?: string;
             /**
              * Sessionid
              * @default
              */
-            sessionId: string;
+            sessionId?: string;
             signals?: components["schemas"]["SubmissionSignals"];
             /**
              * Successful
              * @default false
              */
-            successful: boolean;
+            successful?: boolean;
             /**
              * Supportlayer
              * @default none
              */
-            supportLayer: string;
+            supportLayer?: string;
             /**
              * Templatemode
              * @default algorithm
              */
-            templateMode: string;
+            templateMode?: string;
             /**
              * Useranswer
              * @default
              */
-            userAnswer: string;
+            userAnswer?: string;
         };
         /** CoachPracticeHistoryRequest */
         CoachPracticeHistoryRequest: {
@@ -801,22 +801,22 @@ export interface components {
              * Cardid
              * @default
              */
-            cardId: string;
+            cardId?: string;
             /**
              * Limit
              * @default 6
              */
-            limit: number;
+            limit?: number;
             /**
              * Questiontype
              * @default
              */
-            questionType: string;
+            questionType?: string;
             /**
              * Skilltags
              * @default []
              */
-            skillTags: string[];
+            skillTags?: string[];
         };
         /** CoachPracticeHistoryResponse */
         CoachPracticeHistoryResponse: {
@@ -824,12 +824,12 @@ export interface components {
              * Entries
              * @default []
              */
-            entries: components["schemas"]["CoachPracticeHistoryEntry"][];
+            entries?: components["schemas"]["CoachPracticeHistoryEntry"][];
             /**
              * Summary
              * @default {}
              */
-            summary: {
+            summary?: {
                 [key: string]: unknown;
             };
         };
@@ -839,7 +839,7 @@ export interface components {
              * Provider
              * @default openai
              */
-            provider: string;
+            provider?: string;
         };
         /** CoachSessionPlanRequest */
         CoachSessionPlanRequest: {
@@ -847,39 +847,39 @@ export interface components {
              * Attempts
              * @default 0
              */
-            attempts: number;
+            attempts?: number;
             /**
              * Avgelapsedms
              * @default 0
              */
-            avgElapsedMs: number;
+            avgElapsedMs?: number;
             /**
              * Correctcount
              * @default 0
              */
-            correctCount: number;
+            correctCount?: number;
             /**
              * Llmprovider
              * @default openai
              */
-            llmProvider: string;
+            llmProvider?: string;
             /** @default main-recall */
-            mode: components["schemas"]["GameMode"];
+            mode?: components["schemas"]["GameMode"];
             /**
              * Ordertype
              * @default original
              */
-            orderType: string;
+            orderType?: string;
             /**
              * Questiontype
              * @default
              */
-            questionType: string;
+            questionType?: string;
             /**
              * Weakestcards
              * @default []
              */
-            weakestCards: components["schemas"]["SessionWeakCard"][];
+            weakestCards?: components["schemas"]["SessionWeakCard"][];
         };
         /** CoachSessionPlanResponse */
         CoachSessionPlanResponse: {
@@ -893,7 +893,7 @@ export interface components {
              * Llmused
              * @default false
              */
-            llmUsed: boolean;
+            llmUsed?: boolean;
             /** Mainset */
             mainSet: string;
             /** Note */
@@ -969,7 +969,7 @@ export interface components {
              * Recommendedaction
              * @default
              */
-            recommendedAction: string;
+            recommendedAction?: string;
             /** Score */
             score?: {
                 [key: string]: number;
@@ -987,12 +987,12 @@ export interface components {
              * Verdict
              * @default needs-work
              */
-            verdict: string;
+            verdict?: string;
             /**
              * Version
              * @default 1
              */
-            version: number;
+            version?: number;
         } & {
             [key: string]: unknown;
         };
@@ -1003,22 +1003,22 @@ export interface components {
              * Question
              * @default
              */
-            question: string;
+            question?: string;
             /**
              * Score
              * @default 0
              */
-            score: number;
+            score?: number;
             /**
              * Successful
              * @default false
              */
-            successful: boolean;
+            successful?: boolean;
             /**
              * Weakness
              * @default
              */
-            weakness: string;
+            weakness?: string;
         };
         /** FlowMicroDrillRequest */
         FlowMicroDrillRequest: {
@@ -1028,23 +1028,23 @@ export interface components {
              * Focus
              * @default
              */
-            focus: string;
+            focus?: string;
             /**
              * Llmprovider
              * @default openai
              */
-            llmProvider: string;
+            llmProvider?: string;
             /**
              * Phase
              * @default establish
              * @enum {string}
              */
-            phase: "establish" | "remediate" | "consolidate" | "challenge" | "mastered";
+            phase?: "establish" | "remediate" | "consolidate" | "challenge" | "mastered";
             /**
              * Proficiency
              * @default 0
              */
-            proficiency: number;
+            proficiency?: number;
             /** Prompt */
             prompt: string;
             /** Recentattempts */
@@ -1053,14 +1053,14 @@ export interface components {
              * Rep
              * @default 1
              */
-            rep: number;
+            rep?: number;
             /** Target */
             target: string;
             /**
              * Weaknesssummary
              * @default
              */
-            weaknessSummary: string;
+            weaknessSummary?: string;
         };
         /** FlowMicroDrillResponse */
         FlowMicroDrillResponse: {
@@ -1160,24 +1160,24 @@ export interface components {
              * Cardtitle
              * @default
              */
-            cardTitle: string;
+            cardTitle?: string;
             /**
              * Language
              * @default python
              */
-            language: string;
+            language?: string;
             /**
              * Llmprovider
              * @default
              */
-            llmProvider: string;
+            llmProvider?: string;
             /** Prefix */
             prefix: string;
             /**
              * Prompt
              * @default
              */
-            prompt: string;
+            prompt?: string;
             /** Suffix */
             suffix: string;
         };
@@ -1187,7 +1187,7 @@ export interface components {
              * Prediction
              * @default
              */
-            prediction: string;
+            prediction?: string;
         };
         /** McqChoice */
         McqChoice: {
@@ -1208,7 +1208,7 @@ export interface components {
              * Explanation
              * @default
              */
-            explanation: string;
+            explanation?: string;
             /** Id */
             id: string;
             /** Question */
@@ -1228,12 +1228,12 @@ export interface components {
              * Difficulty
              * @default Med.
              */
-            difficulty: string;
+            difficulty?: string;
             /**
              * Explanation
              * @default
              */
-            explanation: string;
+            explanation?: string;
             /** Id */
             id: string;
             /** Question */
@@ -1242,12 +1242,12 @@ export interface components {
              * Skill
              * @default
              */
-            skill: string;
+            skill?: string;
             /**
              * Tags
              * @default []
              */
-            tags: string[];
+            tags?: string[];
             /** Title */
             title: string;
         };
@@ -1264,39 +1264,39 @@ export interface components {
              * Count
              * @default 12
              */
-            count: number;
+            count?: number;
             /**
              * Difficulty
              * @default Med.
              */
-            difficulty: string;
+            difficulty?: string;
             /**
              * Flowmode
              * @default random
              * @enum {string}
              */
-            flowMode: "random" | "progressive";
+            flowMode?: "random" | "progressive";
             /**
              * Llmprovider
              * @default openai
              */
-            llmProvider: string;
+            llmProvider?: string;
             /**
              * Questiontype
              * @default skill-map-mcq
              */
-            questionType: string;
+            questionType?: string;
             /**
              * Skillmap
              * @default []
              */
-            skillMap: components["schemas"]["SkillMapNode"][];
+            skillMap?: components["schemas"]["SkillMapNode"][];
             /**
              * Sourcemode
              * @default algorithm
              * @enum {string}
              */
-            sourceMode: "algorithm" | "skill-map" | "card";
+            sourceMode?: "algorithm" | "skill-map" | "card";
             specimen?: components["schemas"]["MultipleChoiceSpecimenContext"] | null;
         };
         /** MultipleChoiceDrillsResponse */
@@ -1307,7 +1307,7 @@ export interface components {
              * Llmused
              * @default false
              */
-            llmUsed: boolean;
+            llmUsed?: boolean;
         };
         /** MultipleChoiceSpecimenContext */
         MultipleChoiceSpecimenContext: {
@@ -1315,30 +1315,30 @@ export interface components {
              * Algorithm
              * @default
              */
-            algorithm: string;
+            algorithm?: string;
             /**
              * Cardid
              * @default
              */
-            cardId: string;
+            cardId?: string;
             /**
              * Cardtitle
              * @default
              */
-            cardTitle: string;
+            cardTitle?: string;
             focus?: components["schemas"]["MultipleChoiceSpecimenFocus"] | null;
             /**
              * Prompt
              * @default
              */
-            prompt: string;
+            prompt?: string;
             /** Tags */
             tags?: string[];
             /**
              * Target
              * @default
              */
-            target: string;
+            target?: string;
         };
         /** MultipleChoiceSpecimenFocus */
         MultipleChoiceSpecimenFocus: {
@@ -1346,7 +1346,7 @@ export interface components {
              * Focussummary
              * @default
              */
-            focusSummary: string;
+            focusSummary?: string;
             /** Missedlines */
             missedLines?: components["schemas"]["MultipleChoiceSpecimenFocusLine"][];
             /**
@@ -1354,12 +1354,12 @@ export interface components {
              * @default establish
              * @enum {string}
              */
-            phase: "establish" | "remediate" | "consolidate" | "challenge" | "mastered";
+            phase?: "establish" | "remediate" | "consolidate" | "challenge" | "mastered";
             /**
              * Proficiency
              * @default 0
              */
-            proficiency: number;
+            proficiency?: number;
             /** Recentattempts */
             recentAttempts?: components["schemas"]["FlowAttemptContext"][];
             /**
@@ -1367,12 +1367,12 @@ export interface components {
              * @default multiple-choice
              * @enum {string}
              */
-            sequenceStage: "recall" | "ghost" | "multiple-choice";
+            sequenceStage?: "recall" | "ghost" | "multiple-choice";
             /**
              * Weaknesssummary
              * @default
              */
-            weaknessSummary: string;
+            weaknessSummary?: string;
         };
         /** MultipleChoiceSpecimenFocusLine */
         MultipleChoiceSpecimenFocusLine: {
@@ -1380,23 +1380,23 @@ export interface components {
              * Actual
              * @default
              */
-            actual: string;
+            actual?: string;
             /**
              * Expected
              * @default
              */
-            expected: string;
+            expected?: string;
             /**
              * Linenumber
              * @default 1
              */
-            lineNumber: number;
+            lineNumber?: number;
             /**
              * Status
              * @default mismatch
              * @enum {string}
              */
-            status: "mismatch" | "missing" | "extra";
+            status?: "mismatch" | "missing" | "extra";
         };
         /** PlainEnglishPromptDetail */
         PlainEnglishPromptDetail: {
@@ -1404,37 +1404,37 @@ export interface components {
              * Brasstacks
              * @default
              */
-            brassTacks: string;
+            brassTacks?: string;
             /**
              * Explanation
              * @default
              */
-            explanation: string;
+            explanation?: string;
             /**
              * Inputexample
              * @default
              */
-            inputExample: string;
+            inputExample?: string;
             /**
              * Interviewquestion
              * @default
              */
-            interviewQuestion: string;
+            interviewQuestion?: string;
             /**
              * Leetcodeexamples
              * @default []
              */
-            leetcodeExamples: string[];
+            leetcodeExamples?: string[];
             /**
              * Outputexample
              * @default
              */
-            outputExample: string;
+            outputExample?: string;
             /**
              * Plainenglish
              * @default
              */
-            plainEnglish: string;
+            plainEnglish?: string;
         };
         /** PlaylistCatalogEntry */
         PlaylistCatalogEntry: {
@@ -1479,17 +1479,17 @@ export interface components {
              * Key
              * @default
              */
-            key: string;
+            key?: string;
             /**
              * Label
              * @default
              */
-            label: string;
+            label?: string;
             /**
              * Severity
              * @default
              */
-            severity: string;
+            severity?: string;
         } & {
             [key: string]: unknown;
         };
@@ -1502,17 +1502,17 @@ export interface components {
              * Llmused
              * @default false
              */
-            llmUsed: boolean;
+            llmUsed?: boolean;
             /**
              * Provider
              * @default
              */
-            provider: string;
+            provider?: string;
             /**
              * Source
              * @default
              */
-            source: string;
+            source?: string;
         } & {
             [key: string]: unknown;
         };
@@ -1561,24 +1561,24 @@ export interface components {
              * Key
              * @default
              */
-            key: string;
+            key?: string;
             /**
              * Label
              * @default
              */
-            label: string;
+            label?: string;
             /** Missing */
             missing?: string[];
             /**
              * Score
              * @default 0
              */
-            score: number;
+            score?: number;
             /**
              * Status
              * @default
              */
-            status: string;
+            status?: string;
         } & {
             [key: string]: unknown;
         };
@@ -1590,12 +1590,12 @@ export interface components {
              * Cardtitle
              * @default
              */
-            cardTitle: string;
+            cardTitle?: string;
             /**
              * Elapsedms
              * @default 0
              */
-            elapsedMs: number;
+            elapsedMs?: number;
         };
         /** SignalAdminCatalog */
         SignalAdminCatalog: {
@@ -1622,7 +1622,7 @@ export interface components {
              * Applieswhen
              * @default always
              */
-            appliesWhen: string;
+            appliesWhen?: string;
             /** Axis */
             axis?: string | null;
             /** Criteria */
@@ -1631,46 +1631,46 @@ export interface components {
              * Description
              * @default
              */
-            description: string;
+            description?: string;
             /**
              * Displayorder
              * @default 0
              */
-            displayOrder: number;
+            displayOrder?: number;
             /** Implementation */
             implementation?: string | null;
             /**
              * Instructions
              * @default
              */
-            instructions: string;
+            instructions?: string;
             /**
              * Key
              * @default
              */
-            key: string;
+            key?: string;
             /**
              * Label
              * @default
              */
-            label: string;
+            label?: string;
             /**
              * Needscorrectness
              * @default false
              */
-            needsCorrectness: boolean;
+            needsCorrectness?: boolean;
             /** Primitive */
             primitive?: string | null;
             /**
              * Role
              * @default dimension
              */
-            role: string;
+            role?: string;
             /**
              * Scope
              * @default general
              */
-            scope: string;
+            scope?: string;
             /** Scoremap */
             scoreMap?: {
                 [key: string]: unknown;
@@ -1679,12 +1679,12 @@ export interface components {
              * Source
              * @default jev
              */
-            source: string;
+            source?: string;
             /**
              * Weight
              * @default 0
              */
-            weight: number;
+            weight?: number;
         };
         /** SignalDefinitionUpdate */
         SignalDefinitionUpdate: {
@@ -1692,7 +1692,7 @@ export interface components {
              * Applieswhen
              * @default always
              */
-            appliesWhen: string;
+            appliesWhen?: string;
             /** Axis */
             axis?: string | null;
             /** Criteria */
@@ -1701,46 +1701,46 @@ export interface components {
              * Description
              * @default
              */
-            description: string;
+            description?: string;
             /**
              * Displayorder
              * @default 0
              */
-            displayOrder: number;
+            displayOrder?: number;
             /** Implementation */
             implementation?: string | null;
             /**
              * Instructions
              * @default
              */
-            instructions: string;
+            instructions?: string;
             /**
              * Key
              * @default
              */
-            key: string;
+            key?: string;
             /**
              * Label
              * @default
              */
-            label: string;
+            label?: string;
             /**
              * Needscorrectness
              * @default false
              */
-            needsCorrectness: boolean;
+            needsCorrectness?: boolean;
             /** Primitive */
             primitive?: string | null;
             /**
              * Role
              * @default dimension
              */
-            role: string;
+            role?: string;
             /**
              * Scope
              * @default general
              */
-            scope: string;
+            scope?: string;
             /** Scoremap */
             scoreMap?: {
                 [key: string]: unknown;
@@ -1749,14 +1749,14 @@ export interface components {
              * Source
              * @default jev
              */
-            source: string;
+            source?: string;
             /** Version */
             version: number;
             /**
              * Weight
              * @default 0
              */
-            weight: number;
+            weight?: number;
         };
         /** SignalDirectiveUpdate */
         SignalDirectiveUpdate: {
@@ -1764,7 +1764,7 @@ export interface components {
              * Correctnessweight
              * @default 0.6
              */
-            correctnessWeight: number;
+            correctnessWeight?: number;
             /** Criteria */
             criteria?: {
                 [key: string]: string;
@@ -1773,7 +1773,7 @@ export interface components {
              * Instructions
              * @default
              */
-            instructions: string;
+            instructions?: string;
             /** Version */
             version: number;
         };
@@ -1826,24 +1826,24 @@ export interface components {
              * Key
              * @default
              */
-            key: string;
+            key?: string;
             /**
              * Label
              * @default
              */
-            label: string;
+            label?: string;
             /**
              * Note
              * @default
              */
-            note: string;
+            note?: string;
             /** Raw */
             raw?: unknown;
             /**
              * Role
              * @default
              */
-            role: string;
+            role?: string;
             /** Score */
             score?: number | null;
             /** Status */
@@ -1942,17 +1942,17 @@ export interface components {
              * Count
              * @default 0
              */
-            count: number;
+            count?: number;
             /**
              * Date
              * @default
              */
-            date: string;
+            date?: string;
             /**
              * Infuture
              * @default false
              */
-            inFuture: boolean;
+            inFuture?: boolean;
         };
         /** SkillMapAlgorithmReadiness */
         SkillMapAlgorithmReadiness: {
@@ -1962,68 +1962,68 @@ export interface components {
              * Dimensionsummary
              * @default {}
              */
-            dimensionSummary: {
+            dimensionSummary?: {
                 [key: string]: unknown;
             };
             /**
              * Ghostrepcount
              * @default 0
              */
-            ghostRepCount: number;
+            ghostRepCount?: number;
             /**
              * Modes
              * @default {}
              */
-            modes: {
+            modes?: {
                 [key: string]: components["schemas"]["SkillMapModeReadiness"];
             };
             /**
              * Overallattemptcount
              * @default 0
              */
-            overallAttemptCount: number;
+            overallAttemptCount?: number;
             /**
              * Overallreadiness
              * @default 0
              */
-            overallReadiness: number;
+            overallReadiness?: number;
             /**
              * Practicedcards
              * @default 0
              */
-            practicedCards: number;
+            practicedCards?: number;
             /**
              * Skills
              * @default []
              */
-            skills: string[];
+            skills?: string[];
             /** Slug */
             slug: string;
             /**
              * Stalecards
              * @default 0
              */
-            staleCards: number;
+            staleCards?: number;
             /**
              * Totalcards
              * @default 0
              */
-            totalCards: number;
+            totalCards?: number;
             /**
              * Unsupportedattemptcount
              * @default 0
              */
-            unsupportedAttemptCount: number;
+            unsupportedAttemptCount?: number;
             /**
              * Untouchedcards
              * @default 0
              */
-            untouchedCards: number;
+            untouchedCards?: number;
             /**
              * Workcount
              * @default 0
              */
-            workCount: number;
+            workCount?: number;
         };
         /** SkillMapDrillCard */
         SkillMapDrillCard: {
@@ -2031,17 +2031,17 @@ export interface components {
              * Difficulty
              * @default Med.
              */
-            difficulty: string;
+            difficulty?: string;
             /**
              * Explanation
              * @default
              */
-            explanation: string;
+            explanation?: string;
             /**
              * Hint
              * @default
              */
-            hint: string;
+            hint?: string;
             /** Id */
             id: string;
             /** Missing */
@@ -2056,7 +2056,7 @@ export interface components {
              * Tags
              * @default []
              */
-            tags: string[];
+            tags?: string[];
             /** Templateprompts */
             templatePrompts?: {
                 [key: string]: string;
@@ -2074,28 +2074,28 @@ export interface components {
              * Count
              * @default 12
              */
-            count: number;
+            count?: number;
             /**
              * Llmprovider
              * @default openai
              */
-            llmProvider: string;
+            llmProvider?: string;
             /**
              * Questiontype
              * @default skill-map
              */
-            questionType: string;
+            questionType?: string;
             /**
              * Skillmap
              * @default []
              */
-            skillMap: components["schemas"]["SkillMapNode"][];
+            skillMap?: components["schemas"]["SkillMapNode"][];
             /** Specimentuning */
             specimenTuning?: {
                 [key: string]: unknown;
             };
             /** @default algorithm */
-            templateMode: components["schemas"]["TemplateMode"];
+            templateMode?: components["schemas"]["TemplateMode"];
             /** Templatetargets */
             templateTargets?: {
                 [key: string]: {
@@ -2111,7 +2111,7 @@ export interface components {
              * Llmused
              * @default false
              */
-            llmUsed: boolean;
+            llmUsed?: boolean;
         };
         /** SkillMapGhostRepActivity */
         SkillMapGhostRepActivity: {
@@ -2119,52 +2119,52 @@ export interface components {
              * Activedays
              * @default 0
              */
-            activeDays: number;
+            activeDays?: number;
             /**
              * Algorithms
              * @default []
              */
-            algorithms: components["schemas"]["SkillMapGhostRepAlgorithm"][];
+            algorithms?: components["schemas"]["SkillMapGhostRepAlgorithm"][];
             /**
              * Days
              * @default []
              */
-            days: components["schemas"]["SkillMapGhostRepActivityDay"][];
+            days?: components["schemas"]["SkillMapGhostRepActivityDay"][];
             /**
              * Peakdailycount
              * @default 0
              */
-            peakDailyCount: number;
+            peakDailyCount?: number;
             /**
              * Totalghostreps
              * @default 0
              */
-            totalGhostReps: number;
+            totalGhostReps?: number;
             /**
              * Totalmultiplechoice
              * @default 0
              */
-            totalMultipleChoice: number;
+            totalMultipleChoice?: number;
             /**
              * Totalperfectrecalls
              * @default 0
              */
-            totalPerfectRecalls: number;
+            totalPerfectRecalls?: number;
             /**
              * Windowend
              * @default
              */
-            windowEnd: string;
+            windowEnd?: string;
             /**
              * Windowstart
              * @default
              */
-            windowStart: string;
+            windowStart?: string;
             /**
              * Workcount
              * @default 0
              */
-            workCount: number;
+            workCount?: number;
         };
         /** SkillMapGhostRepActivityDay */
         SkillMapGhostRepActivityDay: {
@@ -2172,32 +2172,32 @@ export interface components {
              * Date
              * @default
              */
-            date: string;
+            date?: string;
             /**
              * Ghostrepcount
              * @default 0
              */
-            ghostRepCount: number;
+            ghostRepCount?: number;
             /**
              * Multiplechoicecount
              * @default 0
              */
-            multipleChoiceCount: number;
+            multipleChoiceCount?: number;
             /**
              * Segments
              * @default []
              */
-            segments: components["schemas"]["SkillMapGhostRepSegment"][];
+            segments?: components["schemas"]["SkillMapGhostRepSegment"][];
             /**
              * Total
              * @default 0
              */
-            total: number;
+            total?: number;
             /**
              * Totalrecallcount
              * @default 0
              */
-            totalRecallCount: number;
+            totalRecallCount?: number;
         };
         /** SkillMapGhostRepAlgorithm */
         SkillMapGhostRepAlgorithm: {
@@ -2205,12 +2205,12 @@ export interface components {
              * Algorithm
              * @default
              */
-            algorithm: string;
+            algorithm?: string;
             /**
              * Corecardcount
              * @default 0
              */
-            coreCardCount: number;
+            coreCardCount?: number;
             /** Dayssincelastghostrep */
             daysSinceLastGhostRep?: number | null;
             /** Dayssincelastpractice */
@@ -2219,27 +2219,27 @@ export interface components {
              * Slug
              * @default
              */
-            slug: string;
+            slug?: string;
             /**
              * Totalghostreps
              * @default 0
              */
-            totalGhostReps: number;
+            totalGhostReps?: number;
             /**
              * Totalmultiplechoice
              * @default 0
              */
-            totalMultipleChoice: number;
+            totalMultipleChoice?: number;
             /**
              * Totalperfectrecalls
              * @default 0
              */
-            totalPerfectRecalls: number;
+            totalPerfectRecalls?: number;
             /**
              * Totalwork
              * @default 0
              */
-            totalWork: number;
+            totalWork?: number;
         };
         /** SkillMapGhostRepSegment */
         SkillMapGhostRepSegment: {
@@ -2247,27 +2247,27 @@ export interface components {
              * Algorithm
              * @default
              */
-            algorithm: string;
+            algorithm?: string;
             /**
              * Count
              * @default 0
              */
-            count: number;
+            count?: number;
             /**
              * Skills
              * @default []
              */
-            skills: components["schemas"]["SkillMapGhostRepSkillSegment"][];
+            skills?: components["schemas"]["SkillMapGhostRepSkillSegment"][];
             /**
              * Slug
              * @default
              */
-            slug: string;
+            slug?: string;
             /**
              * Worktype
              * @default ghost-reps
              */
-            workType: string;
+            workType?: string;
         };
         /** SkillMapGhostRepSkillSegment */
         SkillMapGhostRepSkillSegment: {
@@ -2275,17 +2275,17 @@ export interface components {
              * Count
              * @default 0
              */
-            count: number;
+            count?: number;
             /**
              * Skill
              * @default
              */
-            skill: string;
+            skill?: string;
             /**
              * Slug
              * @default
              */
-            slug: string;
+            slug?: string;
         };
         /** SkillMapModeActivity */
         SkillMapModeActivity: {
@@ -2293,47 +2293,47 @@ export interface components {
              * Activedays
              * @default 0
              */
-            activeDays: number;
+            activeDays?: number;
             /**
              * Currentstreak
              * @default 0
              */
-            currentStreak: number;
+            currentStreak?: number;
             /**
              * Days
              * @default []
              */
-            days: components["schemas"]["SkillMapActivityDay"][];
+            days?: components["schemas"]["SkillMapActivityDay"][];
             /**
              * Lastsevendaysubmitcount
              * @default 0
              */
-            lastSevenDaySubmitCount: number;
+            lastSevenDaySubmitCount?: number;
             /**
              * Longeststreak
              * @default 0
              */
-            longestStreak: number;
+            longestStreak?: number;
             /**
              * Peakdailycount
              * @default 0
              */
-            peakDailyCount: number;
+            peakDailyCount?: number;
             /**
              * Recentsubmitcount
              * @default 0
              */
-            recentSubmitCount: number;
+            recentSubmitCount?: number;
             /**
              * Windowend
              * @default
              */
-            windowEnd: string;
+            windowEnd?: string;
             /**
              * Windowstart
              * @default
              */
-            windowStart: string;
+            windowStart?: string;
         };
         /** SkillMapModeReadiness */
         SkillMapModeReadiness: {
@@ -2350,86 +2350,86 @@ export interface components {
              *       "windowStart": ""
              *     }
              */
-            activity: components["schemas"]["SkillMapModeActivity"];
+            activity?: components["schemas"]["SkillMapModeActivity"];
             /**
              * Attemptcount
              * @default 0
              */
-            attemptCount: number;
+            attemptCount?: number;
             /** Dayssincelastsubmit */
             daysSinceLastSubmit?: number | null;
             /**
              * Dimensionsummary
              * @default {}
              */
-            dimensionSummary: {
+            dimensionSummary?: {
                 [key: string]: unknown;
             };
             /**
              * Ghostrepcount
              * @default 0
              */
-            ghostRepCount: number;
+            ghostRepCount?: number;
             /**
              * Lastsubmittedat
              * @default
              */
-            lastSubmittedAt: string;
+            lastSubmittedAt?: string;
             /**
              * Livecoachusedcount
              * @default 0
              */
-            liveCoachUsedCount: number;
+            liveCoachUsedCount?: number;
             /**
              * Practicedcards
              * @default 0
              */
-            practicedCards: number;
+            practicedCards?: number;
             /**
              * Readiness
              * @default 0
              */
-            readiness: number;
+            readiness?: number;
             /**
              * Stale
              * @default false
              */
-            stale: boolean;
+            stale?: boolean;
             /**
              * Stalecards
              * @default 0
              */
-            staleCards: number;
+            staleCards?: number;
             /**
              * Successrate
              * @default 0
              */
-            successRate: number;
+            successRate?: number;
             /**
              * Successfulattempts
              * @default 0
              */
-            successfulAttempts: number;
+            successfulAttempts?: number;
             /**
              * Totalcards
              * @default 0
              */
-            totalCards: number;
+            totalCards?: number;
             /**
              * Unsupportedattemptcount
              * @default 0
              */
-            unsupportedAttemptCount: number;
+            unsupportedAttemptCount?: number;
             /**
              * Untouchedcards
              * @default 0
              */
-            untouchedCards: number;
+            untouchedCards?: number;
             /**
              * Workcount
              * @default 0
              */
-            workCount: number;
+            workCount?: number;
         };
         /** SkillMapNode */
         SkillMapNode: {
@@ -2439,22 +2439,22 @@ export interface components {
              * Playlistslug
              * @default
              */
-            playlistSlug: string;
+            playlistSlug?: string;
             /**
              * Questiontitle
              * @default
              */
-            questionTitle: string;
+            questionTitle?: string;
             /**
              * Skills
              * @default []
              */
-            skills: string[];
+            skills?: string[];
             /**
              * Techniques
              * @default []
              */
-            techniques: string[];
+            techniques?: string[];
         };
         /** SkillMapOverviewResponse */
         SkillMapOverviewResponse: {
@@ -2462,7 +2462,7 @@ export interface components {
              * Algorithms
              * @default []
              */
-            algorithms: components["schemas"]["SkillMapAlgorithmReadiness"][];
+            algorithms?: components["schemas"]["SkillMapAlgorithmReadiness"][];
             /**
              * @default {
              *       "activeDays": 0,
@@ -2477,7 +2477,7 @@ export interface components {
              *       "workCount": 0
              *     }
              */
-            ghostRepActivity: components["schemas"]["SkillMapGhostRepActivity"];
+            ghostRepActivity?: components["schemas"]["SkillMapGhostRepActivity"];
         };
         /** SlidingWindowLadderAttempt */
         SlidingWindowLadderAttempt: {
@@ -2485,21 +2485,21 @@ export interface components {
              * Question
              * @default
              */
-            question: string;
+            question?: string;
             /** Rungindex */
             rungIndex: number;
             /**
              * Strength
              * @default
              */
-            strength: string;
+            strength?: string;
             /** Successful */
             successful: boolean;
             /**
              * Weakness
              * @default
              */
-            weakness: string;
+            weakness?: string;
         };
         /** SlidingWindowLadderRequest */
         SlidingWindowLadderRequest: {
@@ -2507,19 +2507,19 @@ export interface components {
              * Cardprompt
              * @default
              */
-            cardPrompt: string;
+            cardPrompt?: string;
             /**
              * Cardtarget
              * @default
              */
-            cardTarget: string;
+            cardTarget?: string;
             /** Cardtitle */
             cardTitle: string;
             /**
              * Llmprovider
              * @default
              */
-            llmProvider: string;
+            llmProvider?: string;
             /** Recentattempts */
             recentAttempts?: components["schemas"]["SlidingWindowLadderAttempt"][];
             /** Rep */
@@ -2538,7 +2538,7 @@ export interface components {
              * Language
              * @default python
              */
-            language: string;
+            language?: string;
             /** Question */
             question: string;
             /** Rungtitle */
@@ -2557,7 +2557,7 @@ export interface components {
              * Algorithm
              * @default
              */
-            algorithm: string;
+            algorithm?: string;
             /** Hash */
             hash?: string | null;
             /** Modality */
@@ -2566,7 +2566,7 @@ export interface components {
              * Version
              * @default 0
              */
-            version: number;
+            version?: number;
         } & {
             [key: string]: unknown;
         };
@@ -2581,7 +2581,7 @@ export interface components {
              * Elapsedms
              * @default 0
              */
-            elapsedMs: number;
+            elapsedMs?: number;
             evaluation?: components["schemas"]["Evaluation"] | null;
             /** Flow */
             flow?: {

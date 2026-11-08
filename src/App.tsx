@@ -30,7 +30,9 @@ import type { SpecimenTuning } from './specimenTuning'
 import { loadStoredCodeEditorTuning, saveStoredCodeEditorTuning } from './codeEditorTuning'
 import { loadStoredMcqTuning, type McqFlowMode, type McqSourceMode } from './mcqTuning'
 import { loadStoredGooglePlaylistTuning, type GooglePlaylistOrder } from './googlePlaylistTuning'
-import { apiUrl } from './api'
+import { api, ApiError, queryClient, unwrap } from './api/client'
+import type { components } from './api/schema'
+import { useCatalogPlaylists, useSkillMap } from './api/queries'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 import { useTheme, type AppTheme } from './theme'
@@ -309,13 +311,10 @@ const flowAttemptFromHistoryEntry = (entry: FlowHistoryEntry, anchorCardId: stri
 }
 
 const requestFlowAttemptHistory = async (anchorCard: Flashcard): Promise<FlowAttempt[]> => {
-  const response = await fetch(apiUrl('/api/coach/history'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cardId: anchorCard.id, questionType: '', skillTags: [], limit: 20 }),
+  const result = await api.POST('/api/coach/history', {
+    body: { cardId: anchorCard.id, questionType: '', skillTags: [], limit: 20 },
   })
-  if (!response.ok) throw new Error('Unable to load flow history')
-  const payload = await response.json() as FlowHistoryResponse
+  const payload = unwrap(result, 'Unable to load flow history') as unknown as FlowHistoryResponse
   return payload.entries
     .map((entry) => flowAttemptFromHistoryEntry(entry, anchorCard.id))
     .filter((entry): entry is FlowAttempt => entry !== null)
@@ -340,14 +339,6 @@ type SkillMapDrillsResponse = {
 type MultipleChoiceDrillsResponse = {
   drills: MultipleChoiceCard[]
   llmUsed: boolean
-}
-
-type ApiErrorDetail = {
-  code?: string
-  message?: string
-  provider?: string
-  providerLabel?: string
-  apiErrorCode?: string
 }
 
 type SkillMapDrillsRequest = {
@@ -420,198 +411,76 @@ type RecallAttemptSnapshot = {
 type LlmProvider = 'openai' | 'claude' | 'gemma'
 type LlmProviderSelection = 'auto' | LlmProvider
 
-const skillMapDeckRequestCache = new Map<string, Promise<SkillMapDrillsResponse>>()
-const multipleChoiceDeckRequestCache = new Map<string, Promise<MultipleChoiceDrillsResponse>>()
+/**
+ * Deck loaders. `fetchQuery` with `staleTime: 0` always asks the server, but concurrent calls
+ * with the same key share one request (a deck can be requested by several effects at once).
+ */
+const fetchOnce = <T,>(queryKey: readonly unknown[], load: () => Promise<T>) =>
+  queryClient.fetchQuery({ queryKey: ['deck', ...queryKey], queryFn: load, staleTime: 0, gcTime: 0 })
 
-const requestSkillMapDrills = (body: SkillMapDrillsRequest) => {
-  const requestKey = JSON.stringify(body)
-  const existingRequest = skillMapDeckRequestCache.get(requestKey)
-  if (existingRequest) return existingRequest
+const requestSkillMapDrills = (body: SkillMapDrillsRequest) =>
+  fetchOnce(['skill-map', body], async () =>
+    unwrap(await api.POST('/api/coach/skill-map-drills', { body }), 'Unable to generate skill map drills') as unknown as SkillMapDrillsResponse)
 
-  const request = fetch(apiUrl('/api/coach/skill-map-drills'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: requestKey,
-  })
-    .then(async (response) => {
-      if (!response.ok) {
-        let parsedError: unknown = null
-        try {
-          parsedError = await response.json()
-        } catch {
-          parsedError = null
-        }
+const requestCoreAlgorithmDrills = (algorithmSlug: string) =>
+  fetchOnce(['core-algorithm', algorithmSlug], async () =>
+    unwrap(
+      await api.GET('/api/coach/problem-drills/{algorithm_slug}', { params: { path: { algorithm_slug: algorithmSlug } } }),
+      'Unable to load core algorithms',
+    ) as unknown as SkillMapDrillsResponse)
 
-        const detail =
-          parsedError &&
-          typeof parsedError === 'object' &&
-          parsedError !== null &&
-          'detail' in parsedError &&
-          typeof (parsedError as { detail?: unknown }).detail === 'object' &&
-          (parsedError as { detail?: unknown }).detail !== null
-            ? ((parsedError as { detail: ApiErrorDetail }).detail)
-            : null
+const requestRandomCoreAlgorithmDrills = (count = 10) =>
+  fetchOnce(['core-algorithm-random', count], async () =>
+    unwrap(await api.GET('/api/coach/problem-drills', { params: { query: { count } } }), 'Unable to load core algorithms') as unknown as SkillMapDrillsResponse)
 
-        throw new Error(
-          detail?.message?.trim() || 'Unable to generate skill map drills'
-        )
-      }
-      return (await response.json()) as SkillMapDrillsResponse
-    })
-    .finally(() => {
-      if (skillMapDeckRequestCache.get(requestKey) === request) {
-        skillMapDeckRequestCache.delete(requestKey)
-      }
-    })
+const requestCoreAlgorithmDrillsByTag = (tagSlug: string, count = 10) =>
+  fetchOnce(['core-algorithm-tag', tagSlug, count], async () =>
+    unwrap(
+      await api.GET('/api/coach/problem-drills', { params: { query: { tag: tagSlug, count } } }),
+      'Unable to load tagged core algorithms',
+    ) as unknown as SkillMapDrillsResponse)
 
-  skillMapDeckRequestCache.set(requestKey, request)
-  return request
+const requestStaticPlaylistDrills = (playlistSlug: string, order: GooglePlaylistOrder) =>
+  fetchOnce(['static-playlist', playlistSlug, order], async () =>
+    unwrap(
+      await api.GET('/api/coach/playlist-drills/{playlist_slug}', {
+        params: { path: { playlist_slug: playlistSlug }, query: { order } },
+      }),
+      'Unable to load static playlist',
+    ) as unknown as SkillMapDrillsResponse)
+
+const requestMultipleChoiceDrills = (body: MultipleChoiceDrillsRequest) =>
+  fetchOnce(['multiple-choice', body], async () =>
+    unwrap(
+      await api.POST('/api/coach/multiple-choice-drills', { body }),
+      'Unable to generate multiple choice questions',
+    ) as unknown as MultipleChoiceDrillsResponse)
+
+type AttemptBody = components['schemas']['AttemptCreate']
+
+/**
+ * Save an attempt and return the graded result. Throws an ApiError when the server rejects it
+ * (a 4xx carries the server's reason) or cannot be reached.
+ */
+const postAttempt = async (body: AttemptBody): Promise<SubmissionSaveResponse> => {
+  let result
+  try {
+    result = await api.POST('/api/attempts', { body })
+  } catch {
+    throw new ApiError(0, 'network_error', 'Could not reach the server.')
+  }
+  return unwrap(result, `Unable to submit attempt (${result.response.status})`) as unknown as SubmissionSaveResponse
 }
 
-const requestCoreAlgorithmDrills = (algorithmSlug: string) => {
-  const requestKey = `core-algorithm:${algorithmSlug}`
-  const existingRequest = skillMapDeckRequestCache.get(requestKey)
-  if (existingRequest) return existingRequest
-
-  const request = fetch(apiUrl(`/api/coach/problem-drills/${encodeURIComponent(algorithmSlug)}`))
-    .then(async (response) => {
-      if (!response.ok) {
-        throw new Error('Unable to load core algorithms')
-      }
-      return (await response.json()) as SkillMapDrillsResponse
-    })
-    .finally(() => {
-      if (skillMapDeckRequestCache.get(requestKey) === request) {
-        skillMapDeckRequestCache.delete(requestKey)
-      }
-    })
-
-  skillMapDeckRequestCache.set(requestKey, request)
-  return request
-}
-
-const requestRandomCoreAlgorithmDrills = (count = 10) => {
-  const requestKey = `core-algorithm-random:${count}`
-  const existingRequest = skillMapDeckRequestCache.get(requestKey)
-  if (existingRequest) return existingRequest
-
-  const request = fetch(apiUrl(`/api/coach/problem-drills?count=${count}`))
-    .then(async (response) => {
-      if (!response.ok) {
-        throw new Error('Unable to load core algorithms')
-      }
-      return (await response.json()) as SkillMapDrillsResponse
-    })
-    .finally(() => {
-      if (skillMapDeckRequestCache.get(requestKey) === request) {
-        skillMapDeckRequestCache.delete(requestKey)
-      }
-    })
-
-  skillMapDeckRequestCache.set(requestKey, request)
-  return request
-}
-
-const requestCoreAlgorithmDrillsByTag = (tagSlug: string, count = 10) => {
-  const requestKey = `core-algorithm-tag:${tagSlug}:${count}`
-  const existingRequest = skillMapDeckRequestCache.get(requestKey)
-  if (existingRequest) return existingRequest
-
-  const request = fetch(apiUrl(`/api/coach/problem-drills?tag=${encodeURIComponent(tagSlug)}&count=${count}`))
-    .then(async (response) => {
-      if (!response.ok) {
-        throw new Error('Unable to load tagged core algorithms')
-      }
-      return (await response.json()) as SkillMapDrillsResponse
-    })
-    .finally(() => {
-      if (skillMapDeckRequestCache.get(requestKey) === request) {
-        skillMapDeckRequestCache.delete(requestKey)
-      }
-    })
-
-  skillMapDeckRequestCache.set(requestKey, request)
-  return request
-}
-
-const requestStaticPlaylistDrills = (playlistSlug: string, order: GooglePlaylistOrder) => {
-  const requestKey = `static-playlist:${playlistSlug}:${order}`
-  const existingRequest = skillMapDeckRequestCache.get(requestKey)
-  if (existingRequest) return existingRequest
-
-  const params = new URLSearchParams({ order })
-  const request = fetch(apiUrl(`/api/coach/playlist-drills/${encodeURIComponent(playlistSlug)}?${params.toString()}`))
-    .then(async (response) => {
-      if (!response.ok) {
-        throw new Error('Unable to load static playlist')
-      }
-      return (await response.json()) as SkillMapDrillsResponse
-    })
-    .finally(() => {
-      if (skillMapDeckRequestCache.get(requestKey) === request) {
-        skillMapDeckRequestCache.delete(requestKey)
-      }
-    })
-
-  skillMapDeckRequestCache.set(requestKey, request)
-  return request
-}
-
-
-const requestMultipleChoiceDrills = (body: MultipleChoiceDrillsRequest) => {
-  const requestKey = JSON.stringify(body)
-  const existingRequest = multipleChoiceDeckRequestCache.get(requestKey)
-  if (existingRequest) return existingRequest
-
-  const request = fetch(apiUrl('/api/coach/multiple-choice-drills'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: requestKey,
-  })
-    .then(async (response) => {
-      if (!response.ok) {
-        let parsedError: unknown = null
-        try {
-          parsedError = await response.json()
-        } catch {
-          parsedError = null
-        }
-
-        const detail =
-          parsedError &&
-          typeof parsedError === 'object' &&
-          parsedError !== null &&
-          'detail' in parsedError &&
-          typeof (parsedError as { detail?: unknown }).detail === 'object' &&
-          (parsedError as { detail?: unknown }).detail !== null
-            ? ((parsedError as { detail: ApiErrorDetail }).detail)
-            : null
-
-        throw new Error(
-          detail?.message?.trim() || 'Unable to generate multiple choice questions'
-        )
-      }
-      return (await response.json()) as MultipleChoiceDrillsResponse
-    })
-    .finally(() => {
-      if (multipleChoiceDeckRequestCache.get(requestKey) === request) {
-        multipleChoiceDeckRequestCache.delete(requestKey)
-      }
-    })
-
-  multipleChoiceDeckRequestCache.set(requestKey, request)
-  return request
-}
+/** The server's reason when it rejected the request itself (4xx); '' for outages and network errors. */
+const rejectionReason = (error: unknown) =>
+  error instanceof ApiError && error.status >= 400 && error.status < 500 ? error.message : ''
 
 const requestSkillMapDrillsStream = async (
   body: SkillMapDrillsRequest,
   onDrill: (drill: Flashcard, index: number, total: number) => void,
 ): Promise<SkillMapDrillsResponse> => {
-  const response = await fetch(apiUrl('/api/coach/skill-map-drills-stream'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+  const { response } = await api.POST('/api/coach/skill-map-drills-stream', { body, parseAs: 'stream' })
   if (!response.ok || !response.body) throw new Error('Streaming unavailable')
 
   const reader = response.body.getReader()
@@ -1800,14 +1669,15 @@ function FlowMicroDrillCard({ title, prompt, target, focus, rep, context, provid
     setError('')
     void (async () => {
       try {
-        const response = await fetch(apiUrl('/api/coach/micro-drill'), {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
-          body: JSON.stringify({ cardTitle: title, prompt, target, focus, rep, ...generationContext, llmProvider: provider }),
-        })
-        const payload = await response.json()
-        if (!response.ok) throw new Error(typeof payload.detail === 'string' ? payload.detail : 'Microdrill generation failed. Try again.')
+        const payload = unwrap(
+          await api.POST('/api/coach/micro-drill', {
+            signal: controller.signal,
+            body: { cardTitle: title, prompt, target, focus, rep, ...generationContext, llmProvider: provider },
+          }),
+          'Microdrill generation failed. Try again.',
+        )
         if (!controller.signal.aborted) {
-          setDrill(payload as FlowMicroDrill)
+          setDrill(payload as unknown as FlowMicroDrill)
           startedAt.current = Date.now()
         }
       } catch (error) {
@@ -1950,9 +1820,12 @@ function App() {
   const [multipleChoiceDifficulty] = useState<MultipleChoiceDifficulty>('Med.')
   const [supportLayer, setSupportLayer] = useState<SupportLayer>('none')
   const [skillMapDeck, setSkillMapDeck] = useState<Flashcard[]>([])
-  const [catalogPlaylists, setCatalogPlaylists] = useState<PracticePlaylist[] | null>(null)
-  const [catalogSkillMap, setCatalogSkillMap] = useState<SkillMapNode[] | null>(null)
-  const [catalogSkillMapResolved, setCatalogSkillMapResolved] = useState(false)
+  // The served catalog and taxonomy; the bundled copies stay the fallback when the API is unavailable or empty.
+  const servedPlaylists = useCatalogPlaylists<{ playlists?: PracticePlaylist[] }>().data?.playlists
+  const catalogPlaylists = Array.isArray(servedPlaylists) && servedPlaylists.length > 0 ? servedPlaylists : null
+  const skillMapQuery = useSkillMap<SkillMapNode[]>()
+  const catalogSkillMap = Array.isArray(skillMapQuery.data) && skillMapQuery.data.length > 0 ? skillMapQuery.data : null
+  const catalogSkillMapResolved = !skillMapQuery.isPending
   const [skillMapLoading, setSkillMapLoading] = useState(false)
   const [skillMapError, setSkillMapError] = useState('')
   const [skillMapSessionVersion, setSkillMapSessionVersion] = useState(0)
@@ -2046,50 +1919,6 @@ function App() {
   const focusedModeParam = searchParams.get('focusMode')?.trim() || ''
   const requestedPlaylistSlug = searchParams.get('playlist')?.trim() || ''
   const focusedMethodParams = searchParams.getAll('focusMethod').map((method) => method.trim()).filter(Boolean)
-  useEffect(() => {
-    let cancelled = false
-    const loadCatalogPlaylists = async () => {
-      try {
-        const response = await fetch(apiUrl('/api/catalog/playlists'))
-        if (!response.ok) return
-        const payload = await response.json() as { playlists?: PracticePlaylist[] }
-        if (!cancelled && Array.isArray(payload.playlists) && payload.playlists.length > 0) {
-          setCatalogPlaylists(payload.playlists)
-        }
-      } catch {
-        // Keep the local catalog fallback available when the API is unavailable.
-      }
-    }
-
-    void loadCatalogPlaylists()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    const loadSkillMap = async () => {
-      try {
-        const response = await fetch(apiUrl('/api/skill-map'))
-        if (!response.ok) return
-        const payload = await response.json() as SkillMapNode[]
-        if (!cancelled && Array.isArray(payload) && payload.length > 0) {
-          setCatalogSkillMap(payload)
-        }
-      } catch {
-        // Keep the local taxonomy fallback available when the API is unavailable.
-      } finally {
-        if (!cancelled) setCatalogSkillMapResolved(true)
-      }
-    }
-
-    void loadSkillMap()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
   const availablePlaylists = catalogPlaylists ?? practicePlaylists
   const availableSkillMap = catalogSkillMap ?? skillMap
   const requestedPlaylist = useMemo(
@@ -2759,50 +2588,40 @@ function App() {
         kind: payload.modality,
       },
     }
-    try {
-      const response = await fetch(apiUrl('/api/attempts'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cardId: card.id,
-          cardTitle: card.title,
-          question: payload.question ?? practicePrompt,
-          questionType: payload.microdrill ? `${currentQuestionType}:microdrill` : currentQuestionType,
-          categoryTags,
-          correctAnswer: payload.correctAnswer,
-          userAnswer: payload.userAnswer,
-          mode: payload.mode,
-          elapsedMs: payload.elapsedMs,
-          sessionId: payload.sessionId ?? (flowSignals?.runId as string | undefined),
-          interactionId: payload.interactionId,
-          generatedCardId: card.id,
-          generatedCard: { ...card, prompt: payload.question ?? practicePrompt },
-          templateMode: payload.templateMode,
-          supportLayer: payload.supportLayer,
-          modality: payload.modality,
-          signals: requestSignals,
-          liveCoachUsed: payload.liveCoachUsed,
-          submissionTuning: { ...submissionTuning, microDrillEnabled: false },
-          llmProvider: requestLlmProvider,
-        }),
+    const saved = await postAttempt({
+      cardId: card.id,
+      cardTitle: card.title,
+      question: payload.question ?? practicePrompt,
+      questionType: payload.microdrill ? `${currentQuestionType}:microdrill` : currentQuestionType,
+      categoryTags,
+      correctAnswer: payload.correctAnswer,
+      userAnswer: payload.userAnswer,
+      mode: payload.mode,
+      elapsedMs: payload.elapsedMs,
+      sessionId: payload.sessionId ?? (flowSignals?.runId as string | undefined),
+      interactionId: payload.interactionId,
+      generatedCardId: card.id,
+      generatedCard: { ...card, prompt: payload.question ?? practicePrompt },
+      templateMode: payload.templateMode,
+      supportLayer: payload.supportLayer,
+      modality: payload.modality,
+      signals: requestSignals,
+      liveCoachUsed: payload.liveCoachUsed,
+      submissionTuning: { ...submissionTuning, microDrillEnabled: false },
+      llmProvider: requestLlmProvider,
+    })
+    if (flowSignals) {
+      recordFlowSubmission({
+        response: saved,
+        flowSignals,
+        modality: payload.modality,
+        modalitySignals: payload.signals?.modality ?? {},
+        elapsedMs: payload.elapsedMs,
+        interactionId: payload.interactionId,
+        question: payload.question ?? practicePrompt,
       })
-      if (!response.ok) throw new Error(`Unable to submit attempt (${response.status})`)
-      const saved = (await response.json()) as SubmissionSaveResponse
-      if (flowSignals) {
-        recordFlowSubmission({
-          response: saved,
-          flowSignals,
-          modality: payload.modality,
-          modalitySignals: payload.signals?.modality ?? {},
-          elapsedMs: payload.elapsedMs,
-          interactionId: payload.interactionId,
-          question: payload.question ?? practicePrompt,
-        })
-      }
-      return saved
-    } catch {
-      return null
     }
+    return saved
   }
 
   const submitMultipleChoiceAttemptToServer = async (payload: {
@@ -2819,57 +2638,47 @@ function App() {
         selectedChoiceId: payload.selectedChoice.id,
       },
     }
-    try {
-      const response = await fetch(apiUrl('/api/attempts'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cardId: activeMultipleChoiceCard.id,
-          cardTitle: activeMultipleChoiceCard.title,
-          question: activeMultipleChoiceCard.question,
-          questionType: currentMultipleChoiceQuestionType,
-          categoryTags: currentMultipleChoiceSkillTags,
-          multipleChoiceProblemId: activeMultipleChoiceCard.id,
+    const saved = await postAttempt({
+      cardId: activeMultipleChoiceCard.id,
+      cardTitle: activeMultipleChoiceCard.title,
+      question: activeMultipleChoiceCard.question,
+      questionType: currentMultipleChoiceQuestionType,
+      categoryTags: currentMultipleChoiceSkillTags,
+      multipleChoiceProblemId: activeMultipleChoiceCard.id,
+      selectedChoiceId: payload.selectedChoice.id,
+      mode: 'main-recall',
+      elapsedMs: payload.elapsedMs,
+      sessionId: flowSignals?.runId as string | undefined,
+      interactionId: payload.interactionId,
+      generatedCardId: activeMultipleChoiceCard.id,
+      generatedCard: {
+        ...activeMultipleChoiceCard,
+        cardMode: 'multiple-choice',
+        prompt: activeMultipleChoiceCard.question,
+      },
+      templateMode: 'algorithm',
+      supportLayer: 'none',
+      modality: 'mcq',
+      signals: requestSignals,
+      liveCoachUsed: false,
+      submissionTuning,
+      llmProvider: requestLlmProvider,
+    })
+    if (flowSignals) {
+      recordFlowSubmission({
+        response: saved,
+        flowSignals,
+        modality: 'mcq',
+        modalitySignals: {
+          correct: saved.successful,
           selectedChoiceId: payload.selectedChoice.id,
-          mode: 'main-recall',
-          elapsedMs: payload.elapsedMs,
-          sessionId: flowSignals?.runId,
-          interactionId: payload.interactionId,
-          generatedCardId: activeMultipleChoiceCard.id,
-          generatedCard: {
-            ...activeMultipleChoiceCard,
-            cardMode: 'multiple-choice',
-            prompt: activeMultipleChoiceCard.question,
-          },
-          templateMode: 'algorithm',
-          supportLayer: 'none',
-          modality: 'mcq',
-          signals: requestSignals,
-          liveCoachUsed: false,
-          submissionTuning,
-          llmProvider: requestLlmProvider,
-        }),
+        },
+        elapsedMs: payload.elapsedMs,
+        interactionId: payload.interactionId,
+        question: activeMultipleChoiceCard.question,
       })
-      if (!response.ok) throw new Error(`Unable to submit attempt (${response.status})`)
-      const saved = (await response.json()) as SubmissionSaveResponse
-      if (flowSignals) {
-        recordFlowSubmission({
-          response: saved,
-          flowSignals,
-          modality: 'mcq',
-          modalitySignals: {
-            correct: saved.successful,
-            selectedChoiceId: payload.selectedChoice.id,
-          },
-          elapsedMs: payload.elapsedMs,
-          interactionId: payload.interactionId,
-          question: activeMultipleChoiceCard.question,
-        })
-      }
-      return saved
-    } catch {
-      return null
     }
+    return saved
   }
 
   const resetPerCardInteraction = () => {
@@ -3262,10 +3071,8 @@ function App() {
         })
         .slice(0, 5)
 
-      const response = await fetch(apiUrl('/api/coach/session-plan'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const result = await api.POST('/api/coach/session-plan', {
+        body: {
           mode: 'main-recall',
           questionType: requestedQuestionType,
           attempts,
@@ -3279,10 +3086,9 @@ function App() {
               : 0,
           weakestCards: weakCards,
           llmProvider: requestLlmProvider,
-        }),
+        },
       })
-      if (!response.ok) throw new Error('Unable to load coach session plan')
-      const plan = (await response.json()) as CoachSessionPlan
+      const plan = unwrap(result, 'Unable to load coach session plan') as unknown as CoachSessionPlan
       setSessionPlan(plan)
     } catch {
       setSessionPlanError('Coach session plan unavailable right now.')
@@ -3320,6 +3126,7 @@ function App() {
       setCoachError('')
       setSubmissionFailureModal(null)
     }
+    let submitRejection = ''
     const submission = await submitAttemptToServer({
       mode: 'main-recall',
       correctAnswer: normalizedTarget,
@@ -3344,13 +3151,19 @@ function App() {
         },
       },
     })
+      .catch((error: unknown) => {
+        submitRejection = rejectionReason(error)
+        return null
+      })
       .finally(() => {
         recallEvaluationPendingRef.current = false
         if (flowInteractionVersionRef.current === flowInteractionVersion) setCoachLoading(false)
       })
     if (flowInteractionVersionRef.current !== flowInteractionVersion) return
     if (practiceFlow && !submission?.saved) {
-      setCoachError('Your rep could not be saved. Submit again to continue.')
+      setCoachError(submitRejection
+        ? `Your rep could not be saved: ${submitRejection}`
+        : 'Your rep could not be saved. Submit again to continue.')
       return
     }
     const sound = submission?.successful ?? normalizedInput === normalizedTarget
@@ -3361,7 +3174,9 @@ function App() {
     if (!isGhostRep) {
       setCoachFeedback(feedback)
       if (!submission) {
-        setCoachError('Submission evaluation unavailable for this attempt.')
+        setCoachError(submitRejection
+          ? `This attempt was rejected: ${submitRejection}`
+          : 'Submission evaluation unavailable for this attempt.')
       }
       if (submission?.feedbackUnavailable) {
         setSubmissionFailureModal({
@@ -3432,11 +3247,18 @@ function App() {
 
     setMultipleChoiceGrading(true)
     setMultipleChoiceSubmitError('')
+    let submitRejection = ''
     const saved = await submitMultipleChoiceAttemptToServer({ interactionId, selectedChoice, elapsedMs })
+      .catch((error: unknown) => {
+        submitRejection = rejectionReason(error)
+        return null
+      })
     setMultipleChoiceGrading(false)
 
     if (!saved?.saved) {
-      const message = 'Your answer could not be graded. Submit again before continuing.'
+      const message = submitRejection
+        ? `Your answer could not be graded: ${submitRejection}`
+        : 'Your answer could not be graded. Submit again before continuing.'
       if (isFlowActive) setFlowMultipleChoiceError(message)
       else setMultipleChoiceSubmitError(message)
       return
@@ -4497,6 +4319,9 @@ function App() {
                               <span className="recall-submit-metric-value">{(latestSubmittedAttempt.elapsedMs / 1000).toFixed(1)}s</span>
                             </span>
                           </div>
+                        ) : null}
+                        {!isFlowActive && mainPhase === 'submitted' && coachError ? (
+                          <p className="flow-submit-error" role="alert">{coachError}</p>
                         ) : null}
                       </div>
                       <RecallCodeEditor

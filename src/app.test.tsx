@@ -95,6 +95,31 @@ describe('practice: recall', () => {
     expect(within(panel).getByText(/Claude timed out/)).toBeInTheDocument()
   })
 
+  it('shows why the server rejected an attempt instead of hiding it', async () => {
+    setup({
+      attemptStatus: 422,
+      attempt: () => ({ detail: [{ loc: ['body', 'cardId'], msg: 'String should have at least 1 character' }] }),
+    })
+    renderApp()
+    await screen.findByText('Window a')
+    await userEvent.click(button('Start'))
+    typeCode('x = 1')
+    await userEvent.click(button('Submit'))
+    expect(
+      await screen.findByText('This attempt was rejected: Invalid request: cardId: String should have at least 1 character'),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps the generic message when the server is down', async () => {
+    setup({ attemptStatus: 503, attempt: () => ({ detail: 'down' }) })
+    renderApp()
+    await screen.findByText('Window a')
+    await userEvent.click(button('Start'))
+    typeCode('x = 1')
+    await userEvent.click(button('Submit'))
+    expect(await screen.findByText('Submission evaluation unavailable for this attempt.')).toBeInTheDocument()
+  })
+
   it('moves between cards', async () => {
     renderApp()
     await screen.findByText('Window a')
@@ -179,6 +204,23 @@ describe('practice: multiple choice', () => {
     const submit = screen.queryByRole('button', { name: /Submit|Check/ })
     if (submit) await userEvent.click(submit)
     await waitFor(() => expect(attempts[0]).toMatchObject({ selectedChoiceId: 'A' }))
+  })
+
+  it('shows why the server would not grade an answer', async () => {
+    setup({
+      attemptStatus: 422,
+      attempt: () => ({ detail: { code: 'mcq_unknown_problem', message: "Unknown multiple-choice problem '1'." } }),
+    })
+    renderApp()
+    await screen.findByText('Window a')
+    await userEvent.click(button('MCQ'))
+    const choices = await screen.findByRole('radiogroup', { name: 'Answer choices' })
+    await userEvent.click(within(choices).getByText('A min-heap of size k'))
+    const submit = screen.queryByRole('button', { name: /Submit|Check/ })
+    if (submit) await userEvent.click(submit)
+    expect(
+      await screen.findByText("Your answer could not be graded: Unknown multiple-choice problem '1'."),
+    ).toBeInTheDocument()
   })
 })
 

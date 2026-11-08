@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { apiUrl } from './api'
-import { formatLongCalendarDate, viewerTimeZone } from './dailyWork'
+import { errorMessage } from './api/client'
+import { useHistoryDay } from './api/queries'
+import { formatLongCalendarDate } from './dailyWork'
 import SubmissionSignalDetails from './SubmissionSignalDetails'
 
 type HistoryChoice = { id: string; text: string; correct: boolean }
@@ -146,25 +146,9 @@ export default function HistoryDayDetail({
   algorithmFilter: string
   algorithmNames: Record<string, string>
 }) {
-  const [day, setDay] = useState<HistoryDay | null>(null)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    if (!date) return
-    const controller = new AbortController()
-    fetch(apiUrl(`/api/history/day?date=${encodeURIComponent(date)}&tz=${encodeURIComponent(viewerTimeZone())}`), {
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`Unable to load this day (${response.status})`)
-        setDay((await response.json()) as HistoryDay)
-        setError('')
-      })
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Unable to load this day')
-      })
-    return () => controller.abort()
-  }, [date])
+  const dayQuery = useHistoryDay<HistoryDay>(date)
+  const error = date && dayQuery.error ? errorMessage(dayQuery.error, 'Unable to load this day') : ''
+  const day = error ? null : dayQuery.data ?? null
 
   const loaded = day && day.date === date ? day : null
   const submissions = (loaded?.submissions ?? []).filter(

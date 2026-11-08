@@ -85,6 +85,7 @@ Docs ([index](docs/README.md)):
 | `backend/app/services/signal_admin_service.py` | `/admin`: list, create, edit, archive, restore, try |
 | `backend/app/contracts/` | Shapes shared across layers, including the versioned `Evaluation` |
 | `backend/app/services/read_models/` | Readiness, daily activity, day detail and signal history |
+| `src/api/` | The typed API client: `client.ts` (openapi-fetch typed from the generated `schema.d.ts`, one `ApiError` for every error shape) and `queries.ts` (TanStack Query hooks for shared reads) |
 | `src/App.tsx` | The practice screen |
 | `src/PracticeHistoryPage.tsx`, `src/SignalHologram.tsx` | Journey and the score terrain |
 | `src/AdminPage.tsx`, `src/signalAdmin.ts` | `/admin` and its API client |

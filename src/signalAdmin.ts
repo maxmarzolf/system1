@@ -1,4 +1,4 @@
-import { apiUrl } from './api'
+import { api, ApiError, unwrap } from './api/client'
 
 export type SignalPrimitive = 'choice' | 'score' | 'noul'
 export type SignalRole = 'dimension' | 'modifier' | 'diagnostic'
@@ -87,77 +87,42 @@ export type SignalTryResult = {
   requestId?: string
 }
 
-export class SignalAdminError extends Error {
-  status: number
-  code: string
-  fieldErrors: Record<string, string>
+/** Admin calls fail with an ApiError; 422s carry per-field messages in `fieldErrors`. */
+export { ApiError as SignalAdminError }
 
-  constructor(status: number, code: string, message: string, fieldErrors: Record<string, string> = {}) {
-    super(message)
-    this.status = status
-    this.code = code
-    this.fieldErrors = fieldErrors
-  }
+export const fetchSignalAdminCatalog = async (signal?: AbortSignal) =>
+  unwrap(await api.GET('/api/admin/signals', { signal })) as unknown as SignalAdminCatalog
+
+export const createSignal = async (draft: SignalDraft) =>
+  unwrap(await api.POST('/api/admin/signals', { body: draft })) as unknown as AdminSignal
+
+export const updateSignal = async (key: string, draft: SignalDraft, version: number) =>
+  unwrap(
+    await api.PUT('/api/admin/signals/{key}', { params: { path: { key } }, body: { ...draft, version } }),
+  ) as unknown as AdminSignal
+
+export const setSignalArchived = async (key: string, archived: boolean, version: number) => {
+  const options = { params: { path: { key } }, body: { version } }
+  const result = archived
+    ? await api.POST('/api/admin/signals/{key}/archive', options)
+    : await api.POST('/api/admin/signals/{key}/restore', options)
+  return unwrap(result) as unknown as AdminSignal
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(apiUrl(path), {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init.headers ?? {}),
-    },
-  })
-  if (!response.ok) {
-    let detail: { code?: string; message?: string; errors?: Record<string, string> } = {}
-    try {
-      const body = (await response.json()) as { detail?: unknown }
-      detail = typeof body.detail === 'object' && body.detail ? body.detail as typeof detail : { message: String(body.detail ?? '') }
-    } catch {
-      // Non-JSON error body.
-    }
-    throw new SignalAdminError(
-      response.status,
-      detail.code ?? 'error',
-      detail.message || `Request failed (${response.status})`,
-      detail.errors ?? {},
-    )
-  }
-  return (await response.json()) as T
-}
-
-export const fetchSignalAdminCatalog = (signal?: AbortSignal) =>
-  request<SignalAdminCatalog>('/api/admin/signals', { signal })
-
-export const createSignal = (draft: SignalDraft) =>
-  request<AdminSignal>('/api/admin/signals', { method: 'POST', body: JSON.stringify(draft) })
-
-export const updateSignal = (key: string, draft: SignalDraft, version: number) =>
-  request<AdminSignal>(
-    `/api/admin/signals/${encodeURIComponent(key)}`,
-    { method: 'PUT', body: JSON.stringify({ ...draft, version }) },
-  )
-
-export const setSignalArchived = (key: string, archived: boolean, version: number) =>
-  request<AdminSignal>(
-    `/api/admin/signals/${encodeURIComponent(key)}/${archived ? 'archive' : 'restore'}`,
-    { method: 'POST', body: JSON.stringify({ version }) },
-  )
-
-export const updateDirective = (
+export const updateDirective = async (
   directive: Pick<CorrectnessDirective, 'instructions' | 'criteria' | 'correctnessWeight' | 'version'>,
-) => request<CorrectnessDirective>('/api/admin/signals/directive/mcq', { method: 'PUT', body: JSON.stringify(directive) })
+) => unwrap(await api.PUT('/api/admin/signals/directive/mcq', { body: directive })) as unknown as CorrectnessDirective
 
-export const fetchSignalRevisions = (subject: string) =>
-  request<SignalRevision[]>(`/api/admin/signals/revisions/${encodeURIComponent(subject)}`)
+export const fetchSignalRevisions = async (subject: string) =>
+  unwrap(
+    await api.GET('/api/admin/signals/revisions/{subject}', { params: { path: { subject } } }),
+  ) as unknown as SignalRevision[]
 
-export const fetchMcqSamples = () => request<McqSample[]>('/api/admin/signals/samples')
+export const fetchMcqSamples = async () =>
+  unwrap(await api.GET('/api/admin/signals/samples')) as unknown as McqSample[]
 
-export const trySignal = (draft: SignalDraft, problemId: string, choiceId: string) =>
-  request<SignalTryResult>(
-    '/api/admin/signals/try',
-    { method: 'POST', body: JSON.stringify({ draft, problemId, choiceId }) },
-  )
+export const trySignal = async (draft: SignalDraft, problemId: string, choiceId: string) =>
+  unwrap(await api.POST('/api/admin/signals/try', { body: { draft, problemId, choiceId } })) as unknown as SignalTryResult
 
 export const emptySignalDraft = (): SignalDraft => ({
   key: '',

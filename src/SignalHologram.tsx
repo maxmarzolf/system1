@@ -2,8 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { apiUrl } from './api'
-import { formatCalendarDate, viewerTimeZone } from './dailyWork'
+import { errorMessage } from './api/client'
+import { useSignalHistory } from './api/queries'
+import { formatCalendarDate } from './dailyWork'
 import SignalHologramHeader from './SignalHologramHeader'
 import { Link } from 'react-router-dom'
 import { useTheme } from './theme'
@@ -489,23 +490,11 @@ export default function SignalHologram() {
   const { theme } = useTheme()
   const containerRef = useRef<HTMLDivElement>(null)
   const sectionRef = useRef<HTMLElement>(null)
-  const [history, setHistory] = useState<SignalHistory | null>(null)
-  const [error, setError] = useState('')
+  const signalHistory = useSignalHistory<SignalHistory>()
+  const history = signalHistory.error ? null : signalHistory.data ?? null
+  const error = signalHistory.error ? errorMessage(signalHistory.error, 'Signal history unavailable') : ''
   const [tooltip, setTooltip] = useState<Tooltip | null>(null)
   const [webgl] = useState(webglAvailable)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    fetch(apiUrl(`/api/history/signals?tz=${encodeURIComponent(viewerTimeZone())}`), { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`Signal history unavailable (${response.status})`)
-        setHistory((await response.json()) as SignalHistory)
-      })
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Signal history unavailable')
-      })
-    return () => controller.abort()
-  }, [])
 
   useEffect(() => {
     const container = containerRef.current

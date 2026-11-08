@@ -1,9 +1,5 @@
-import { useEffect, useState } from 'react'
-import { apiUrl } from './api'
-
-type CoachProviderDefaultResponse = {
-  provider: string
-}
+import { useQuery } from '@tanstack/react-query'
+import { api, queryClient, unwrap } from './api/client'
 
 export const providerDisplayLabel = (provider: string): string => {
   if (provider === 'claude') return 'Claude'
@@ -11,29 +7,15 @@ export const providerDisplayLabel = (provider: string): string => {
   return 'OpenAI'
 }
 
+/** The coach provider configured on the server, as a display label (OpenAI until it loads, or if it can't). */
 export const useConfiguredProviderLabel = () => {
-  const [configuredProviderLabel, setConfiguredProviderLabel] = useState('OpenAI')
-
-  useEffect(() => {
-    let cancelled = false
-
-    const loadProviderDefault = async () => {
-      try {
-        const response = await fetch(apiUrl('/api/coach/provider-default'))
-        if (!response.ok) return
-        const payload = (await response.json()) as CoachProviderDefaultResponse
-        if (cancelled) return
-        setConfiguredProviderLabel(providerDisplayLabel(payload.provider))
-      } catch {
-        // Keep fallback label when endpoint is unavailable.
-      }
-    }
-
-    void loadProviderDefault()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  return configuredProviderLabel
+  const { data } = useQuery(
+    {
+      queryKey: ['coach', 'provider-default'],
+      queryFn: async () => unwrap(await api.GET('/api/coach/provider-default')),
+      staleTime: Infinity,
+    },
+    queryClient,
+  )
+  return data?.provider ? providerDisplayLabel(String(data.provider)) : 'OpenAI'
 }

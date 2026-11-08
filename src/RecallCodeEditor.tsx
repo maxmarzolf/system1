@@ -51,7 +51,7 @@ import { clearLocalCache, inlineCopilot } from 'codemirror-copilot'
 import type { AppTheme } from './theme'
 import type { CodeEditorStyleGuide } from './codeEditorTuning'
 import { getEditorHotkeyKey } from './hotkeys'
-import { apiUrl } from './api'
+import { api } from './api/client'
 
 export type RecallEditorLineStatus = 'match' | 'mismatch' | 'missing' | 'extra'
 export type RecallEditorLiveTone = 'positive' | 'negative' | 'neutral'
@@ -661,27 +661,24 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
     const controller = new AbortController()
     aiCompletionRequestRef.current = controller
     try {
-      const response = await fetch(apiUrl('/api/coach/inline-completion'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const { data: payload, response } = await api.POST('/api/coach/inline-completion', {
         signal: controller.signal,
-        body: JSON.stringify({
+        body: {
           prefix: prefix.slice(-8000),
           suffix: suffix.slice(0, 4000),
           language,
           cardTitle: context.cardTitle.slice(0, 200),
           prompt: context.prompt.slice(0, 3000),
           llmProvider: context.provider,
-        }),
+        },
       })
       if (controller.signal.aborted || requestContextKey !== aiCompletionContextKeyRef.current) return ''
-      if (!response.ok) {
+      if (!response.ok || !payload) {
         onAiCompletionStatusRef.current?.(response.status === 503
           ? 'Configure a model provider for AI completion.'
           : 'AI completion is unavailable right now.')
         return ''
       }
-      const payload = await response.json() as { prediction?: string }
       if (controller.signal.aborted || requestContextKey !== aiCompletionContextKeyRef.current) return ''
       const prediction = typeof payload.prediction === 'string' ? payload.prediction : ''
       onAiCompletionStatusRef.current?.('')

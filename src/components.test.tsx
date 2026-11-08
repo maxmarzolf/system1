@@ -1,4 +1,4 @@
-import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
@@ -7,6 +7,7 @@ import RelatedLeetCodeDrawer from './RelatedLeetCodeDrawer'
 import SignalSpecTable from './SignalSpecTable'
 import SubmissionSignalDetails from './SubmissionSignalDetails'
 import TopNav from './TopNav'
+import { queryClient } from './api/client'
 import { providerDisplayLabel, useConfiguredProviderLabel } from './llmProviderDefault'
 import { SIGNAL_FIELD_HELP } from './signalFieldHelp'
 import { ThemeProvider, useTheme } from './theme'
@@ -248,8 +249,12 @@ describe('provider default', () => {
 
   it('loads the configured provider and tolerates failures', async () => {
     mockFetch([{ match: '/api/coach/provider-default', body: { provider: 'claude' } }])
-    const { result } = renderHook(() => useConfiguredProviderLabel())
-    await waitFor(() => expect(result.current).toBe('Claude'))
+    const loaded = renderHook(() => useConfiguredProviderLabel())
+    await waitFor(() => expect(loaded.result.current).toBe('Claude'))
+    // A second component reuses the cached label instead of asking again.
+    expect(renderHook(() => useConfiguredProviderLabel()).result.current).toBe('Claude')
+    cleanup()
+    queryClient.clear()
 
     mockFetch([{ match: '/api/coach/provider-default', status: 500 }])
     const failed = renderHook(() => useConfiguredProviderLabel())

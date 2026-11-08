@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
-import { apiUrl } from './api'
+import { useSkillMapOverview } from './api/queries'
 import DailyWorkHistory, {
   type DailyWorkActivity,
   type DailyWorkAlgorithm,
@@ -24,9 +24,11 @@ const latestActiveDate = (activity: DailyWorkActivity) =>
 export default function PracticeHistoryPage() {
   const configuredProviderLabel = useConfiguredProviderLabel()
   const [range, setRange] = useState<DailyWorkRange>('month')
-  const [skillMapOverview, setSkillMapOverview] = useState<SkillMapOverview | null>(null)
-  const [skillMapOverviewError, setSkillMapOverviewError] = useState('')
-  const [loading, setLoading] = useState(true)
+  const historyDays = DAILY_WORK_RANGES.find(option => option.value === range)?.days ?? 30
+  const overviewQuery = useSkillMapOverview<SkillMapOverview>(historyDays, viewerTimeZone())
+  const skillMapOverview = overviewQuery.error ? null : overviewQuery.data ?? null
+  const skillMapOverviewError = overviewQuery.error ? 'Daily work history is unavailable right now.' : ''
+  const loading = overviewQuery.isFetching
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   // Algorithm slug the day detail shows; '' shows every algorithm.
   const [selectedAlgorithm, setSelectedAlgorithm] = useState('')
@@ -104,38 +106,15 @@ export default function PracticeHistoryPage() {
     }
   }, [])
 
-  useEffect(() => {
-    const controller = new AbortController()
-    const historyDays = DAILY_WORK_RANGES.find(option => option.value === range)?.days ?? 30
-    const loadSkillMapOverview = async () => {
-      setLoading(true)
-      setSkillMapOverviewError('')
-      try {
-        const response = await fetch(
-          apiUrl(`/api/skill-map-overview?historyDays=${historyDays}&tz=${encodeURIComponent(viewerTimeZone())}`),
-          { signal: controller.signal },
-        )
-        if (!response.ok) throw new Error('Unable to load skill map overview')
-        const payload = (await response.json()) as SkillMapOverview
-        setSkillMapOverview(payload)
-        // Keep the selected day while it is in range; otherwise show the most recent day with work.
-        setSelectedDate(current =>
-          current && payload.ghostRepActivity.days.some(day => day.date === current)
-            ? current
-            : latestActiveDate(payload.ghostRepActivity),
-        )
-      } catch {
-        if (controller.signal.aborted) return
-        setSkillMapOverview(null)
-        setSkillMapOverviewError('Daily work history is unavailable right now.')
-      } finally {
-        if (!controller.signal.aborted) setLoading(false)
-      }
-    }
-
-    void loadSkillMapOverview()
-    return () => controller.abort()
-  }, [range])
+  // When a new window loads, keep the selected day while it is in range; otherwise show the most recent day with work.
+  const loadedActivity = overviewQuery.isPlaceholderData ? undefined : overviewQuery.data?.ghostRepActivity
+  const [activitySeen, setActivitySeen] = useState(loadedActivity)
+  if (loadedActivity && loadedActivity !== activitySeen) {
+    setActivitySeen(loadedActivity)
+    setSelectedDate(current =>
+      current && loadedActivity.days.some(day => day.date === current) ? current : latestActiveDate(loadedActivity),
+    )
+  }
 
   return (
     <div className="app app-history">

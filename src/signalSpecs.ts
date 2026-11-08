@@ -1,4 +1,4 @@
-import { apiUrl } from './api'
+import { api, unwrap } from './api/client'
 
 export type SignalDefinition = {
   key: string
@@ -32,7 +32,6 @@ export type SignalSpecCatalog = {
 }
 
 export async function fetchSignalSpecCatalog(signal?: AbortSignal): Promise<SignalSpecCatalog> {
-  const response = await fetch(apiUrl('/api/catalog/signal-specs'), { signal })
-  if (!response.ok) throw new Error(`Signal specs unavailable (${response.status})`)
-  return (await response.json()) as SignalSpecCatalog
+  const result = await api.GET('/api/catalog/signal-specs', { signal })
+  return unwrap(result, `Signal specs unavailable (${result.response.status})`) as unknown as SignalSpecCatalog
 }

@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest'
-import { apiUrl } from './api'
 import {
   CODE_EDITOR_TUNING_STORAGE_KEY,
   defaultCodeEditorTuning,
@@ -48,12 +47,6 @@ import {
 } from './submissionTuning'
 import { LADDER_RUNGS, slidingWindowTechnique } from './windowLadderPlan'
 import { mockFetch } from './test/fetch'
-
-describe('api', () => {
-  it('prefixes paths with the configured base url', () => {
-    expect(apiUrl('/api/health')).toBe('/api/health')
-  })
-})
 
 describe('daily work', () => {
   it('formats calendar dates without shifting the day', () => {

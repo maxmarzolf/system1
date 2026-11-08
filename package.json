@@ -15,7 +15,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "gen:api": "openapi-typescript src/api/openapi.json -o src/api/schema.d.ts"
+    "gen:api": "openapi-typescript src/api/openapi.json -o src/api/schema.d.ts --default-non-nullable false"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.2",
@@ -30,9 +30,11 @@
     "@codemirror/lang-python": "^6.2.1",
     "@codemirror/lang-rust": "^6.0.2",
     "@codemirror/lang-sql": "^6.10.0",
+    "@tanstack/react-query": "5.104.5",
     "@types/react-syntax-highlighter": "^15.5.13",
     "codemirror": "^6.0.2",
     "codemirror-copilot": "^0.0.7",
+    "openapi-fetch": "0.17.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.1",
