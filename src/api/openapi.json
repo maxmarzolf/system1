@@ -1,0 +1,5175 @@
+{
+  "components": {
+    "schemas": {
+      "AdminAlgorithm": {
+        "additionalProperties": true,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name"
+        ],
+        "title": "AdminAlgorithm",
+        "type": "object"
+      },
+      "AdminResetPracticeHistoryRequest": {
+        "properties": {
+          "confirm": {
+            "minLength": 1,
+            "title": "Confirm",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirm"
+        ],
+        "title": "AdminResetPracticeHistoryRequest",
+        "type": "object"
+      },
+      "AdminResetPracticeHistoryResponse": {
+        "properties": {
+          "after": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "After",
+            "type": "object"
+          },
+          "before": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Before",
+            "type": "object"
+          },
+          "clearedTables": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Clearedtables",
+            "type": "array"
+          }
+        },
+        "title": "AdminResetPracticeHistoryResponse",
+        "type": "object"
+      },
+      "AdminSignal": {
+        "additionalProperties": true,
+        "properties": {
+          "appliesWhen": {
+            "title": "Applieswhen",
+            "type": "string"
+          },
+          "archivedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archivedat"
+          },
+          "axis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Axis"
+          },
+          "createdAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdat"
+          },
+          "criteria": {
+            "title": "Criteria"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "displayOrder": {
+            "title": "Displayorder",
+            "type": "integer"
+          },
+          "effectiveShare": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effectiveshare"
+          },
+          "implementation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Implementation"
+          },
+          "instructions": {
+            "default": "",
+            "title": "Instructions",
+            "type": "string"
+          },
+          "jevQuestion": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jevquestion"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "modality": {
+            "title": "Modality",
+            "type": "string"
+          },
+          "needsCorrectness": {
+            "title": "Needscorrectness",
+            "type": "boolean"
+          },
+          "primitive": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primitive"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "scoreMap": {
+            "additionalProperties": true,
+            "title": "Scoremap",
+            "type": "object"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updatedat"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "modality",
+          "scope",
+          "label",
+          "source",
+          "role",
+          "appliesWhen",
+          "needsCorrectness",
+          "weight",
+          "displayOrder",
+          "status",
+          "version"
+        ],
+        "title": "AdminSignal",
+        "type": "object"
+      },
+      "AlgorithmSignalSpec": {
+        "additionalProperties": true,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "seeded": {
+            "title": "Seeded",
+            "type": "boolean"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/RecallSignalSpecJson"
+          },
+          "usesDefault": {
+            "title": "Usesdefault",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "usesDefault",
+          "seeded",
+          "spec"
+        ],
+        "title": "AlgorithmSignalSpec",
+        "type": "object"
+      },
+      "AttemptCreate": {
+        "properties": {
+          "activityFormat": {
+            "anyOf": [
+              {
+                "enum": [
+                  "recall",
+                  "multiple-choice",
+                  "code-completion"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activityformat"
+          },
+          "cardId": {
+            "minLength": 1,
+            "title": "Cardid",
+            "type": "string"
+          },
+          "cardTitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cardtitle"
+          },
+          "categoryTags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Categorytags",
+            "type": "array"
+          },
+          "correctAnswer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correctanswer"
+          },
+          "elapsedMs": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Elapsedms",
+            "type": "integer"
+          },
+          "flowRunId": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flowrunid"
+          },
+          "formatControl": {
+            "anyOf": [
+              {
+                "enum": [
+                  "user",
+                  "system"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formatcontrol"
+          },
+          "generatedCard": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generatedcard"
+          },
+          "generatedCardId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generatedcardid"
+          },
+          "interactionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interactionid"
+          },
+          "liveCoachUsed": {
+            "default": false,
+            "title": "Livecoachused",
+            "type": "boolean"
+          },
+          "llmProvider": {
+            "default": "openai",
+            "title": "Llmprovider",
+            "type": "string"
+          },
+          "modality": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubmissionModality"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mode": {
+            "$ref": "#/components/schemas/GameMode"
+          },
+          "multipleChoiceProblemId": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Multiplechoiceproblemid"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          },
+          "questionType": {
+            "default": "",
+            "title": "Questiontype",
+            "type": "string"
+          },
+          "selectedChoiceId": {
+            "anyOf": [
+              {
+                "maxLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selectedchoiceid"
+          },
+          "sessionId": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessionid"
+          },
+          "signals": {
+            "additionalProperties": true,
+            "title": "Signals",
+            "type": "object"
+          },
+          "submissionTuning": {
+            "additionalProperties": true,
+            "title": "Submissiontuning",
+            "type": "object"
+          },
+          "supportLayer": {
+            "$ref": "#/components/schemas/SupportLayer",
+            "default": "none"
+          },
+          "targetControl": {
+            "anyOf": [
+              {
+                "enum": [
+                  "user",
+                  "system"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetcontrol"
+          },
+          "targetSource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "recall-miss",
+                  "algorithm",
+                  "skill-map"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetsource"
+          },
+          "templateMode": {
+            "$ref": "#/components/schemas/TemplateMode",
+            "default": "algorithm"
+          },
+          "userAnswer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Useranswer"
+          }
+        },
+        "required": [
+          "cardId",
+          "mode"
+        ],
+        "title": "AttemptCreate",
+        "type": "object"
+      },
+      "AttemptSubmitResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "attemptId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attemptid"
+          },
+          "evaluation": {
+            "$ref": "#/components/schemas/Evaluation"
+          },
+          "feedbackUnavailable": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedbackunavailable"
+          },
+          "saved": {
+            "title": "Saved",
+            "type": "boolean"
+          },
+          "successful": {
+            "title": "Successful",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "saved",
+          "successful",
+          "evaluation"
+        ],
+        "title": "AttemptSubmitResponse",
+        "type": "object"
+      },
+      "CoachPracticeHistoryEntry": {
+        "properties": {
+          "attemptId": {
+            "title": "Attemptid",
+            "type": "integer"
+          },
+          "cardId": {
+            "default": "",
+            "title": "Cardid",
+            "type": "string"
+          },
+          "cardTitle": {
+            "default": "",
+            "title": "Cardtitle",
+            "type": "string"
+          },
+          "categoryTags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Categorytags",
+            "type": "array"
+          },
+          "correctAnswer": {
+            "default": "",
+            "title": "Correctanswer",
+            "type": "string"
+          },
+          "createdAt": {
+            "default": "",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "generatedCard": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Generatedcard",
+            "type": "object"
+          },
+          "interactionId": {
+            "default": "",
+            "title": "Interactionid",
+            "type": "string"
+          },
+          "liveCoachUsed": {
+            "default": false,
+            "title": "Livecoachused",
+            "type": "boolean"
+          },
+          "modality": {
+            "default": "total-recall",
+            "title": "Modality",
+            "type": "string"
+          },
+          "question": {
+            "default": "",
+            "title": "Question",
+            "type": "string"
+          },
+          "questionType": {
+            "default": "",
+            "title": "Questiontype",
+            "type": "string"
+          },
+          "sessionId": {
+            "default": "",
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "signals": {
+            "$ref": "#/components/schemas/SubmissionSignals"
+          },
+          "successful": {
+            "default": false,
+            "title": "Successful",
+            "type": "boolean"
+          },
+          "supportLayer": {
+            "default": "none",
+            "title": "Supportlayer",
+            "type": "string"
+          },
+          "templateMode": {
+            "default": "algorithm",
+            "title": "Templatemode",
+            "type": "string"
+          },
+          "userAnswer": {
+            "default": "",
+            "title": "Useranswer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attemptId"
+        ],
+        "title": "CoachPracticeHistoryEntry",
+        "type": "object"
+      },
+      "CoachPracticeHistoryRequest": {
+        "properties": {
+          "cardId": {
+            "default": "",
+            "title": "Cardid",
+            "type": "string"
+          },
+          "limit": {
+            "default": 6,
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "questionType": {
+            "default": "",
+            "title": "Questiontype",
+            "type": "string"
+          },
+          "skillTags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Skilltags",
+            "type": "array"
+          }
+        },
+        "title": "CoachPracticeHistoryRequest",
+        "type": "object"
+      },
+      "CoachPracticeHistoryResponse": {
+        "properties": {
+          "entries": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CoachPracticeHistoryEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Summary",
+            "type": "object"
+          }
+        },
+        "title": "CoachPracticeHistoryResponse",
+        "type": "object"
+      },
+      "CoachProviderDefaultResponse": {
+        "properties": {
+          "provider": {
+            "default": "openai",
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "title": "CoachProviderDefaultResponse",
+        "type": "object"
+      },
+      "CoachSessionPlanRequest": {
+        "properties": {
+          "attempts": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "avgElapsedMs": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Avgelapsedms",
+            "type": "integer"
+          },
+          "correctCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Correctcount",
+            "type": "integer"
+          },
+          "llmProvider": {
+            "default": "openai",
+            "title": "Llmprovider",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/GameMode",
+            "default": "main-recall"
+          },
+          "orderType": {
+            "default": "original",
+            "title": "Ordertype",
+            "type": "string"
+          },
+          "questionType": {
+            "default": "",
+            "title": "Questiontype",
+            "type": "string"
+          },
+          "weakestCards": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SessionWeakCard"
+            },
+            "title": "Weakestcards",
+            "type": "array"
+          }
+        },
+        "title": "CoachSessionPlanRequest",
+        "type": "object"
+      },
+      "CoachSessionPlanResponse": {
+        "properties": {
+          "cooldown": {
+            "title": "Cooldown",
+            "type": "string"
+          },
+          "focusTheme": {
+            "title": "Focustheme",
+            "type": "string"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "llmUsed": {
+            "default": false,
+            "title": "Llmused",
+            "type": "boolean"
+          },
+          "mainSet": {
+            "title": "Mainset",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "warmup": {
+            "title": "Warmup",
+            "type": "string"
+          }
+        },
+        "required": [
+          "headline",
+          "focusTheme",
+          "warmup",
+          "mainSet",
+          "cooldown",
+          "note"
+        ],
+        "title": "CoachSessionPlanResponse",
+        "type": "object"
+      },
+      "CorrectnessDirective": {
+        "additionalProperties": true,
+        "properties": {
+          "correctnessWeight": {
+            "title": "Correctnessweight",
+            "type": "number"
+          },
+          "criteria": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Criteria",
+            "type": "object"
+          },
+          "instructions": {
+            "title": "Instructions",
+            "type": "string"
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labels"
+          },
+          "modality": {
+            "title": "Modality",
+            "type": "string"
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updatedat"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "weightShare": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weightshare"
+          }
+        },
+        "required": [
+          "modality",
+          "instructions",
+          "criteria",
+          "correctnessWeight",
+          "version"
+        ],
+        "title": "CorrectnessDirective",
+        "type": "object"
+      },
+      "DeterministicImplementation": {
+        "additionalProperties": true,
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "description"
+        ],
+        "title": "DeterministicImplementation",
+        "type": "object"
+      },
+      "Evaluation": {
+        "additionalProperties": true,
+        "description": "A stored evaluation. Dimension and modifier keys are the referenced spec's signal keys.\n\nJev MCQ evaluations also carry ``correctness``, ``signalResults``,\n``signalSpecSnapshot`` and ``jevTrace``.",
+        "properties": {
+          "correctness": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correctness"
+          },
+          "dimensions": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RubricEntry"
+            },
+            "title": "Dimensions",
+            "type": "object"
+          },
+          "feedback": {
+            "additionalProperties": true,
+            "title": "Feedback",
+            "type": "object"
+          },
+          "jevTrace": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jevtrace"
+          },
+          "modifiers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RubricEntry"
+            },
+            "title": "Modifiers",
+            "type": "object"
+          },
+          "primaryFailure": {
+            "$ref": "#/components/schemas/PrimaryFailure"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          },
+          "recommendedAction": {
+            "default": "",
+            "title": "Recommendedaction",
+            "type": "string"
+          },
+          "score": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Score",
+            "type": "object"
+          },
+          "signalResults": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signalresults"
+          },
+          "signalSpec": {
+            "$ref": "#/components/schemas/SpecRef"
+          },
+          "signalSpecSnapshot": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signalspecsnapshot"
+          },
+          "verdict": {
+            "default": "needs-work",
+            "title": "Verdict",
+            "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "title": "Evaluation",
+        "type": "object"
+      },
+      "FlowAttemptContext": {
+        "properties": {
+          "modality": {
+            "$ref": "#/components/schemas/SubmissionModality"
+          },
+          "question": {
+            "default": "",
+            "title": "Question",
+            "type": "string"
+          },
+          "score": {
+            "default": 0,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          },
+          "successful": {
+            "default": false,
+            "title": "Successful",
+            "type": "boolean"
+          },
+          "weakness": {
+            "default": "",
+            "title": "Weakness",
+            "type": "string"
+          }
+        },
+        "required": [
+          "modality"
+        ],
+        "title": "FlowAttemptContext",
+        "type": "object"
+      },
+      "FlowMicroDrillRequest": {
+        "properties": {
+          "cardTitle": {
+            "title": "Cardtitle",
+            "type": "string"
+          },
+          "focus": {
+            "default": "",
+            "title": "Focus",
+            "type": "string"
+          },
+          "llmProvider": {
+            "default": "openai",
+            "title": "Llmprovider",
+            "type": "string"
+          },
+          "phase": {
+            "default": "establish",
+            "enum": [
+              "establish",
+              "remediate",
+              "consolidate",
+              "challenge",
+              "mastered"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "proficiency": {
+            "default": 0,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Proficiency",
+            "type": "integer"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "recentAttempts": {
+            "items": {
+              "$ref": "#/components/schemas/FlowAttemptContext"
+            },
+            "maxItems": 8,
+            "title": "Recentattempts",
+            "type": "array"
+          },
+          "rep": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Rep",
+            "type": "integer"
+          },
+          "target": {
+            "minLength": 1,
+            "title": "Target",
+            "type": "string"
+          },
+          "weaknessSummary": {
+            "default": "",
+            "title": "Weaknesssummary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cardTitle",
+          "prompt",
+          "target"
+        ],
+        "title": "FlowMicroDrillRequest",
+        "type": "object"
+      },
+      "FlowMicroDrillResponse": {
+        "properties": {
+          "language": {
+            "title": "Language",
+            "type": "string"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "solution": {
+            "title": "Solution",
+            "type": "string"
+          },
+          "template": {
+            "title": "Template",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt",
+          "language",
+          "template",
+          "solution"
+        ],
+        "title": "FlowMicroDrillResponse",
+        "type": "object"
+      },
+      "GameMode": {
+        "enum": [
+          "main-recall"
+        ],
+        "title": "GameMode",
+        "type": "string"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "HistoryAlgorithm": {
+        "additionalProperties": true,
+        "properties": {
+          "algorithm": {
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "algorithm"
+        ],
+        "title": "HistoryAlgorithm",
+        "type": "object"
+      },
+      "HistoryChoice": {
+        "additionalProperties": true,
+        "properties": {
+          "correct": {
+            "title": "Correct",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "correct"
+        ],
+        "title": "HistoryChoice",
+        "type": "object"
+      },
+      "HistoryDayResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "submissions": {
+            "items": {
+              "$ref": "#/components/schemas/HistorySubmission"
+            },
+            "title": "Submissions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "date",
+          "submissions"
+        ],
+        "title": "HistoryDayResponse",
+        "type": "object"
+      },
+      "HistorySubmission": {
+        "additionalProperties": true,
+        "properties": {
+          "algorithms": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryAlgorithm"
+            },
+            "title": "Algorithms",
+            "type": "array"
+          },
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryChoice"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "correctAnswer": {
+            "title": "Correctanswer",
+            "type": "string"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "elapsedMs": {
+            "title": "Elapsedms",
+            "type": "integer"
+          },
+          "evaluation": {
+            "additionalProperties": true,
+            "title": "Evaluation",
+            "type": "object"
+          },
+          "flow": {
+            "additionalProperties": true,
+            "title": "Flow",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "modality": {
+            "title": "Modality",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "successful": {
+            "title": "Successful",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "userAnswer": {
+            "title": "Useranswer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "createdAt",
+          "modality",
+          "title",
+          "question",
+          "choices",
+          "userAnswer",
+          "correctAnswer",
+          "successful",
+          "elapsedMs",
+          "algorithms",
+          "evaluation",
+          "flow"
+        ],
+        "title": "HistorySubmission",
+        "type": "object"
+      },
+      "InlineCompletionRequest": {
+        "properties": {
+          "cardTitle": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Cardtitle",
+            "type": "string"
+          },
+          "language": {
+            "default": "python",
+            "maxLength": 40,
+            "title": "Language",
+            "type": "string"
+          },
+          "llmProvider": {
+            "default": "",
+            "title": "Llmprovider",
+            "type": "string"
+          },
+          "prefix": {
+            "maxLength": 8000,
+            "title": "Prefix",
+            "type": "string"
+          },
+          "prompt": {
+            "default": "",
+            "maxLength": 3000,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "suffix": {
+            "maxLength": 4000,
+            "title": "Suffix",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prefix",
+          "suffix"
+        ],
+        "title": "InlineCompletionRequest",
+        "type": "object"
+      },
+      "InlineCompletionResponse": {
+        "properties": {
+          "prediction": {
+            "default": "",
+            "title": "Prediction",
+            "type": "string"
+          }
+        },
+        "title": "InlineCompletionResponse",
+        "type": "object"
+      },
+      "McqChoice": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "title": "McqChoice",
+        "type": "object"
+      },
+      "McqSample": {
+        "additionalProperties": true,
+        "properties": {
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/McqChoice"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "correctChoiceId": {
+            "title": "Correctchoiceid",
+            "type": "string"
+          },
+          "explanation": {
+            "default": "",
+            "title": "Explanation",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "question",
+          "choices",
+          "correctChoiceId"
+        ],
+        "title": "McqSample",
+        "type": "object"
+      },
+      "MultipleChoiceCard": {
+        "properties": {
+          "algorithm": {
+            "minLength": 1,
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/MultipleChoiceChoice"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Choices",
+            "type": "array"
+          },
+          "correctChoiceId": {
+            "minLength": 1,
+            "title": "Correctchoiceid",
+            "type": "string"
+          },
+          "difficulty": {
+            "default": "Med.",
+            "title": "Difficulty",
+            "type": "string"
+          },
+          "explanation": {
+            "default": "",
+            "title": "Explanation",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "question": {
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "skill": {
+            "default": "",
+            "title": "Skill",
+            "type": "string"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "algorithm",
+          "question",
+          "choices",
+          "correctChoiceId"
+        ],
+        "title": "MultipleChoiceCard",
+        "type": "object"
+      },
+      "MultipleChoiceChoice": {
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "text": {
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "title": "MultipleChoiceChoice",
+        "type": "object"
+      },
+      "MultipleChoiceDrillsRequest": {
+        "properties": {
+          "count": {
+            "default": 12,
+            "maximum": 30.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "difficulty": {
+            "default": "Med.",
+            "title": "Difficulty",
+            "type": "string"
+          },
+          "flowMode": {
+            "default": "random",
+            "enum": [
+              "random",
+              "progressive"
+            ],
+            "title": "Flowmode",
+            "type": "string"
+          },
+          "llmProvider": {
+            "default": "openai",
+            "title": "Llmprovider",
+            "type": "string"
+          },
+          "questionType": {
+            "default": "skill-map-mcq",
+            "title": "Questiontype",
+            "type": "string"
+          },
+          "skillMap": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SkillMapNode"
+            },
+            "title": "Skillmap",
+            "type": "array"
+          },
+          "sourceMode": {
+            "default": "algorithm",
+            "enum": [
+              "algorithm",
+              "skill-map",
+              "card"
+            ],
+            "title": "Sourcemode",
+            "type": "string"
+          },
+          "specimen": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MultipleChoiceSpecimenContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "MultipleChoiceDrillsRequest",
+        "type": "object"
+      },
+      "MultipleChoiceDrillsResponse": {
+        "properties": {
+          "drills": {
+            "items": {
+              "$ref": "#/components/schemas/MultipleChoiceCard"
+            },
+            "title": "Drills",
+            "type": "array"
+          },
+          "llmUsed": {
+            "default": false,
+            "title": "Llmused",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "drills"
+        ],
+        "title": "MultipleChoiceDrillsResponse",
+        "type": "object"
+      },
+      "MultipleChoiceSpecimenContext": {
+        "properties": {
+          "algorithm": {
+            "default": "",
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "cardId": {
+            "default": "",
+            "title": "Cardid",
+            "type": "string"
+          },
+          "cardTitle": {
+            "default": "",
+            "title": "Cardtitle",
+            "type": "string"
+          },
+          "focus": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MultipleChoiceSpecimenFocus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prompt": {
+            "default": "",
+            "title": "Prompt",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "target": {
+            "default": "",
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "title": "MultipleChoiceSpecimenContext",
+        "type": "object"
+      },
+      "MultipleChoiceSpecimenFocus": {
+        "properties": {
+          "focusSummary": {
+            "default": "",
+            "title": "Focussummary",
+            "type": "string"
+          },
+          "missedLines": {
+            "items": {
+              "$ref": "#/components/schemas/MultipleChoiceSpecimenFocusLine"
+            },
+            "title": "Missedlines",
+            "type": "array"
+          },
+          "phase": {
+            "default": "establish",
+            "enum": [
+              "establish",
+              "remediate",
+              "consolidate",
+              "challenge",
+              "mastered"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "proficiency": {
+            "default": 0,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Proficiency",
+            "type": "integer"
+          },
+          "recentAttempts": {
+            "items": {
+              "$ref": "#/components/schemas/FlowAttemptContext"
+            },
+            "maxItems": 8,
+            "title": "Recentattempts",
+            "type": "array"
+          },
+          "sequenceStage": {
+            "default": "multiple-choice",
+            "enum": [
+              "recall",
+              "ghost",
+              "multiple-choice"
+            ],
+            "title": "Sequencestage",
+            "type": "string"
+          },
+          "weaknessSummary": {
+            "default": "",
+            "title": "Weaknesssummary",
+            "type": "string"
+          }
+        },
+        "title": "MultipleChoiceSpecimenFocus",
+        "type": "object"
+      },
+      "MultipleChoiceSpecimenFocusLine": {
+        "properties": {
+          "actual": {
+            "default": "",
+            "title": "Actual",
+            "type": "string"
+          },
+          "expected": {
+            "default": "",
+            "title": "Expected",
+            "type": "string"
+          },
+          "lineNumber": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Linenumber",
+            "type": "integer"
+          },
+          "status": {
+            "default": "mismatch",
+            "enum": [
+              "mismatch",
+              "missing",
+              "extra"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "MultipleChoiceSpecimenFocusLine",
+        "type": "object"
+      },
+      "PlainEnglishPromptDetail": {
+        "properties": {
+          "brassTacks": {
+            "default": "",
+            "title": "Brasstacks",
+            "type": "string"
+          },
+          "explanation": {
+            "default": "",
+            "title": "Explanation",
+            "type": "string"
+          },
+          "inputExample": {
+            "default": "",
+            "title": "Inputexample",
+            "type": "string"
+          },
+          "interviewQuestion": {
+            "default": "",
+            "title": "Interviewquestion",
+            "type": "string"
+          },
+          "leetcodeExamples": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Leetcodeexamples",
+            "type": "array"
+          },
+          "outputExample": {
+            "default": "",
+            "title": "Outputexample",
+            "type": "string"
+          },
+          "plainEnglish": {
+            "default": "",
+            "title": "Plainenglish",
+            "type": "string"
+          }
+        },
+        "title": "PlainEnglishPromptDetail",
+        "type": "object"
+      },
+      "PlaylistCatalogEntry": {
+        "additionalProperties": true,
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/PlaylistQuestion"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "showOnSkillMap": {
+            "title": "Showonskillmap",
+            "type": "boolean"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "staticDeck": {
+            "title": "Staticdeck",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "title",
+          "description",
+          "showOnSkillMap",
+          "staticDeck",
+          "questions"
+        ],
+        "title": "PlaylistCatalogEntry",
+        "type": "object"
+      },
+      "PlaylistCatalogResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "playlists": {
+            "items": {
+              "$ref": "#/components/schemas/PlaylistCatalogEntry"
+            },
+            "title": "Playlists",
+            "type": "array"
+          }
+        },
+        "required": [
+          "playlists"
+        ],
+        "title": "PlaylistCatalogResponse",
+        "type": "object"
+      },
+      "PlaylistQuestion": {
+        "additionalProperties": true,
+        "properties": {
+          "coreShape": {
+            "title": "Coreshape",
+            "type": "string"
+          },
+          "methods": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Methods",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "coreShape",
+          "methods"
+        ],
+        "title": "PlaylistQuestion",
+        "type": "object"
+      },
+      "PrimaryFailure": {
+        "additionalProperties": true,
+        "properties": {
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "key": {
+            "default": "",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "severity": {
+            "default": "",
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "title": "PrimaryFailure",
+        "type": "object"
+      },
+      "Provenance": {
+        "additionalProperties": true,
+        "description": "Who graded it. Evaluators add their own fields (``engine``, ``model``, ``flags``\u2026).",
+        "properties": {
+          "llmUsed": {
+            "default": false,
+            "title": "Llmused",
+            "type": "boolean"
+          },
+          "provider": {
+            "default": "",
+            "title": "Provider",
+            "type": "string"
+          },
+          "source": {
+            "default": "",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "title": "Provenance",
+        "type": "object"
+      },
+      "RecallSignalJson": {
+        "additionalProperties": true,
+        "properties": {
+          "axis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Axis"
+          },
+          "guidance": {
+            "title": "Guidance",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "variationStrategy": {
+            "title": "Variationstrategy",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "kind",
+          "role",
+          "weight",
+          "guidance",
+          "variationStrategy"
+        ],
+        "title": "RecallSignalJson",
+        "type": "object"
+      },
+      "RecallSignalSpecJson": {
+        "additionalProperties": true,
+        "properties": {
+          "algorithm": {
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "signals": {
+            "items": {
+              "$ref": "#/components/schemas/RecallSignalJson"
+            },
+            "title": "Signals",
+            "type": "array"
+          },
+          "structuralElements": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Structuralelements",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "algorithm",
+          "version",
+          "signals",
+          "structuralElements"
+        ],
+        "title": "RecallSignalSpecJson",
+        "type": "object"
+      },
+      "RubricEntry": {
+        "additionalProperties": true,
+        "description": "One graded signal: a dimension or a modifier.",
+        "properties": {
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "key": {
+            "default": "",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "score": {
+            "default": 0.0,
+            "title": "Score",
+            "type": "number"
+          },
+          "status": {
+            "default": "",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "RubricEntry",
+        "type": "object"
+      },
+      "SessionWeakCard": {
+        "properties": {
+          "cardId": {
+            "minLength": 1,
+            "title": "Cardid",
+            "type": "string"
+          },
+          "cardTitle": {
+            "default": "",
+            "title": "Cardtitle",
+            "type": "string"
+          },
+          "elapsedMs": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Elapsedms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cardId"
+        ],
+        "title": "SessionWeakCard",
+        "type": "object"
+      },
+      "SignalAdminCatalog": {
+        "additionalProperties": true,
+        "properties": {
+          "algorithms": {
+            "items": {
+              "$ref": "#/components/schemas/AdminAlgorithm"
+            },
+            "title": "Algorithms",
+            "type": "array"
+          },
+          "directive": {
+            "$ref": "#/components/schemas/CorrectnessDirective"
+          },
+          "implementations": {
+            "items": {
+              "$ref": "#/components/schemas/DeterministicImplementation"
+            },
+            "title": "Implementations",
+            "type": "array"
+          },
+          "modality": {
+            "title": "Modality",
+            "type": "string"
+          },
+          "signals": {
+            "items": {
+              "$ref": "#/components/schemas/AdminSignal"
+            },
+            "title": "Signals",
+            "type": "array"
+          },
+          "stateFields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Statefields",
+            "type": "array"
+          }
+        },
+        "required": [
+          "modality",
+          "stateFields",
+          "directive",
+          "signals",
+          "algorithms",
+          "implementations"
+        ],
+        "title": "SignalAdminCatalog",
+        "type": "object"
+      },
+      "SignalDefinitionDraft": {
+        "description": "A signal as edited on /admin; the service validates it field by field.",
+        "properties": {
+          "appliesWhen": {
+            "default": "always",
+            "title": "Applieswhen",
+            "type": "string"
+          },
+          "axis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Axis"
+          },
+          "criteria": {
+            "title": "Criteria"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "displayOrder": {
+            "default": 0,
+            "title": "Displayorder",
+            "type": "integer"
+          },
+          "implementation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Implementation"
+          },
+          "instructions": {
+            "default": "",
+            "title": "Instructions",
+            "type": "string"
+          },
+          "key": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "needsCorrectness": {
+            "default": false,
+            "title": "Needscorrectness",
+            "type": "boolean"
+          },
+          "primitive": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primitive"
+          },
+          "role": {
+            "default": "dimension",
+            "title": "Role",
+            "type": "string"
+          },
+          "scope": {
+            "default": "general",
+            "title": "Scope",
+            "type": "string"
+          },
+          "scoreMap": {
+            "additionalProperties": true,
+            "title": "Scoremap",
+            "type": "object"
+          },
+          "source": {
+            "default": "jev",
+            "title": "Source",
+            "type": "string"
+          },
+          "weight": {
+            "default": 0.0,
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "title": "SignalDefinitionDraft",
+        "type": "object"
+      },
+      "SignalDefinitionUpdate": {
+        "properties": {
+          "appliesWhen": {
+            "default": "always",
+            "title": "Applieswhen",
+            "type": "string"
+          },
+          "axis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Axis"
+          },
+          "criteria": {
+            "title": "Criteria"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "displayOrder": {
+            "default": 0,
+            "title": "Displayorder",
+            "type": "integer"
+          },
+          "implementation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Implementation"
+          },
+          "instructions": {
+            "default": "",
+            "title": "Instructions",
+            "type": "string"
+          },
+          "key": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "needsCorrectness": {
+            "default": false,
+            "title": "Needscorrectness",
+            "type": "boolean"
+          },
+          "primitive": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primitive"
+          },
+          "role": {
+            "default": "dimension",
+            "title": "Role",
+            "type": "string"
+          },
+          "scope": {
+            "default": "general",
+            "title": "Scope",
+            "type": "string"
+          },
+          "scoreMap": {
+            "additionalProperties": true,
+            "title": "Scoremap",
+            "type": "object"
+          },
+          "source": {
+            "default": "jev",
+            "title": "Source",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "weight": {
+            "default": 0.0,
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "SignalDefinitionUpdate",
+        "type": "object"
+      },
+      "SignalDirectiveUpdate": {
+        "properties": {
+          "correctnessWeight": {
+            "default": 0.6,
+            "title": "Correctnessweight",
+            "type": "number"
+          },
+          "criteria": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Criteria",
+            "type": "object"
+          },
+          "instructions": {
+            "default": "",
+            "title": "Instructions",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "SignalDirectiveUpdate",
+        "type": "object"
+      },
+      "SignalHistoryPoint": {
+        "additionalProperties": true,
+        "properties": {
+          "algorithm": {
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "modality": {
+            "title": "Modality",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "signal": {
+            "title": "Signal",
+            "type": "string"
+          },
+          "submission": {
+            "title": "Submission",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "submission",
+          "createdAt",
+          "date",
+          "signal",
+          "score",
+          "title",
+          "modality",
+          "algorithm"
+        ],
+        "title": "SignalHistoryPoint",
+        "type": "object"
+      },
+      "SignalHistoryResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/SignalHistoryPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "signals": {
+            "items": {
+              "$ref": "#/components/schemas/SignalHistorySignal"
+            },
+            "title": "Signals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "signals",
+          "points"
+        ],
+        "title": "SignalHistoryResponse",
+        "type": "object"
+      },
+      "SignalHistorySignal": {
+        "additionalProperties": true,
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "count"
+        ],
+        "title": "SignalHistorySignal",
+        "type": "object"
+      },
+      "SignalResultJson": {
+        "additionalProperties": true,
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "key": {
+            "default": "",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "raw": {
+            "title": "Raw"
+          },
+          "role": {
+            "default": "",
+            "title": "Role",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "SignalResultJson",
+        "type": "object"
+      },
+      "SignalRevision": {
+        "additionalProperties": true,
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "after": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "subject",
+          "action",
+          "createdAt"
+        ],
+        "title": "SignalRevision",
+        "type": "object"
+      },
+      "SignalSpecCatalogResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "algorithms": {
+            "items": {
+              "$ref": "#/components/schemas/AlgorithmSignalSpec"
+            },
+            "title": "Algorithms",
+            "type": "array"
+          },
+          "default": {
+            "$ref": "#/components/schemas/RecallSignalSpecJson"
+          }
+        },
+        "required": [
+          "default",
+          "algorithms"
+        ],
+        "title": "SignalSpecCatalogResponse",
+        "type": "object"
+      },
+      "SignalStatusChange": {
+        "properties": {
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "SignalStatusChange",
+        "type": "object"
+      },
+      "SignalTryRequest": {
+        "properties": {
+          "choiceId": {
+            "maxLength": 8,
+            "minLength": 1,
+            "title": "Choiceid",
+            "type": "string"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/SignalDefinitionDraft"
+          },
+          "problemId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Problemid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "draft",
+          "problemId",
+          "choiceId"
+        ],
+        "title": "SignalTryRequest",
+        "type": "object"
+      },
+      "SignalTryResult": {
+        "additionalProperties": true,
+        "properties": {
+          "answer": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "answeredCorrectly": {
+            "title": "Answeredcorrectly",
+            "type": "boolean"
+          },
+          "applies": {
+            "title": "Applies",
+            "type": "boolean"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          },
+          "requestId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestid"
+          },
+          "result": {
+            "$ref": "#/components/schemas/SignalResultJson"
+          },
+          "state": {
+            "additionalProperties": true,
+            "title": "State",
+            "type": "object"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage"
+          }
+        },
+        "required": [
+          "state",
+          "answeredCorrectly",
+          "applies",
+          "result"
+        ],
+        "title": "SignalTryResult",
+        "type": "object"
+      },
+      "SkeletonApplicability": {
+        "properties": {
+          "applicationAbstraction": {
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Applicationabstraction",
+            "type": "integer"
+          },
+          "explanation": {
+            "minLength": 1,
+            "title": "Explanation",
+            "type": "string"
+          },
+          "summary": {
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "templateStrength": {
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Templatestrength",
+            "type": "integer"
+          },
+          "timeComplexity": {
+            "minLength": 1,
+            "title": "Timecomplexity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "templateStrength",
+          "applicationAbstraction",
+          "summary",
+          "explanation",
+          "timeComplexity"
+        ],
+        "title": "SkeletonApplicability",
+        "type": "object"
+      },
+      "SkillMapActivityDay": {
+        "properties": {
+          "count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "date": {
+            "default": "",
+            "title": "Date",
+            "type": "string"
+          },
+          "inFuture": {
+            "default": false,
+            "title": "Infuture",
+            "type": "boolean"
+          }
+        },
+        "title": "SkillMapActivityDay",
+        "type": "object"
+      },
+      "SkillMapAlgorithmReadiness": {
+        "properties": {
+          "algorithm": {
+            "minLength": 1,
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "dimensionSummary": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Dimensionsummary",
+            "type": "object"
+          },
+          "ghostRepCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Ghostrepcount",
+            "type": "integer"
+          },
+          "modes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SkillMapModeReadiness"
+            },
+            "default": {},
+            "title": "Modes",
+            "type": "object"
+          },
+          "overallAttemptCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Overallattemptcount",
+            "type": "integer"
+          },
+          "overallReadiness": {
+            "default": 0,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Overallreadiness",
+            "type": "number"
+          },
+          "practicedCards": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Practicedcards",
+            "type": "integer"
+          },
+          "skills": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Skills",
+            "type": "array"
+          },
+          "slug": {
+            "minLength": 1,
+            "title": "Slug",
+            "type": "string"
+          },
+          "staleCards": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Stalecards",
+            "type": "integer"
+          },
+          "totalCards": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Totalcards",
+            "type": "integer"
+          },
+          "unsupportedAttemptCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Unsupportedattemptcount",
+            "type": "integer"
+          },
+          "untouchedCards": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Untouchedcards",
+            "type": "integer"
+          },
+          "workCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Workcount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "algorithm",
+          "slug"
+        ],
+        "title": "SkillMapAlgorithmReadiness",
+        "type": "object"
+      },
+      "SkillMapCardReadiness": {
+        "properties": {
+          "algorithm": {
+            "default": "",
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "attemptCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Attemptcount",
+            "type": "integer"
+          },
+          "cardId": {
+            "minLength": 1,
+            "title": "Cardid",
+            "type": "string"
+          },
+          "daysSinceLastSubmit": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dayssincelastsubmit"
+          },
+          "dimensionSummary": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Dimensionsummary",
+            "type": "object"
+          },
+          "ghostRepCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Ghostrepcount",
+            "type": "integer"
+          },
+          "readiness": {
+            "default": 0,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Readiness",
+            "type": "number"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "templateMode": {
+            "default": "algorithm",
+            "title": "Templatemode",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "unsupportedAttemptCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Unsupportedattemptcount",
+            "type": "integer"
+          },
+          "workCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Workcount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cardId"
+        ],
+        "title": "SkillMapCardReadiness",
+        "type": "object"
+      },
+      "SkillMapDrillCard": {
+        "properties": {
+          "difficulty": {
+            "default": "Med.",
+            "title": "Difficulty",
+            "type": "string"
+          },
+          "explanation": {
+            "default": "",
+            "title": "Explanation",
+            "type": "string"
+          },
+          "hint": {
+            "default": "",
+            "title": "Hint",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "missing": {
+            "minLength": 1,
+            "title": "Missing",
+            "type": "string"
+          },
+          "plainEnglishPromptDetail": {
+            "$ref": "#/components/schemas/PlainEnglishPromptDetail"
+          },
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "skeletonApplicability": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkeletonApplicability"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "solution": {
+            "minLength": 1,
+            "title": "Solution",
+            "type": "string"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "templatePrompts": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Templateprompts",
+            "type": "object"
+          },
+          "templateTargets": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Templatetargets",
+            "type": "object"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "prompt",
+          "solution",
+          "missing"
+        ],
+        "title": "SkillMapDrillCard",
+        "type": "object"
+      },
+      "SkillMapDrillsRequest": {
+        "properties": {
+          "count": {
+            "default": 12,
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "llmProvider": {
+            "default": "openai",
+            "title": "Llmprovider",
+            "type": "string"
+          },
+          "questionType": {
+            "default": "skill-map",
+            "title": "Questiontype",
+            "type": "string"
+          },
+          "skillMap": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SkillMapNode"
+            },
+            "title": "Skillmap",
+            "type": "array"
+          },
+          "specimenTuning": {
+            "additionalProperties": true,
+            "title": "Specimentuning",
+            "type": "object"
+          },
+          "templateMode": {
+            "$ref": "#/components/schemas/TemplateMode",
+            "default": "algorithm"
+          },
+          "templateTargets": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Templatetargets",
+            "type": "object"
+          }
+        },
+        "title": "SkillMapDrillsRequest",
+        "type": "object"
+      },
+      "SkillMapDrillsResponse": {
+        "properties": {
+          "drills": {
+            "items": {
+              "$ref": "#/components/schemas/SkillMapDrillCard"
+            },
+            "title": "Drills",
+            "type": "array"
+          },
+          "llmUsed": {
+            "default": false,
+            "title": "Llmused",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "drills"
+        ],
+        "title": "SkillMapDrillsResponse",
+        "type": "object"
+      },
+      "SkillMapGhostRepActivity": {
+        "properties": {
+          "activeDays": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Activedays",
+            "type": "integer"
+          },
+          "algorithms": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SkillMapGhostRepAlgorithm"
+            },
+            "title": "Algorithms",
+            "type": "array"
+          },
+          "days": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SkillMapGhostRepActivityDay"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "peakDailyCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Peakdailycount",
+            "type": "integer"
+          },
+          "totalGhostReps": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Totalghostreps",
+            "type": "integer"
+          },
+          "totalMultipleChoice": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Totalmultiplechoice",
+            "type": "integer"
+          },
+          "totalPerfectRecalls": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Totalperfectrecalls",
+            "type": "integer"
+          },
+          "windowEnd": {
+            "default": "",
+            "title": "Windowend",
+            "type": "string"
+          },
+          "windowStart": {
+            "default": "",
+            "title": "Windowstart",
+            "type": "string"
+          },
+          "workCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Workcount",
+            "type": "integer"
+          }
+        },
+        "title": "SkillMapGhostRepActivity",
+        "type": "object"
+      },
+      "SkillMapGhostRepActivityDay": {
+        "properties": {
+          "date": {
+            "default": "",
+            "title": "Date",
+            "type": "string"
+          },
+          "ghostRepCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Ghostrepcount",
+            "type": "integer"
+          },
+          "multipleChoiceCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Multiplechoicecount",
+            "type": "integer"
+          },
+          "segments": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SkillMapGhostRepSegment"
+            },
+            "title": "Segments",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "totalRecallCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Totalrecallcount",
+            "type": "integer"
+          }
+        },
+        "title": "SkillMapGhostRepActivityDay",
+        "type": "object"
+      },
+      "SkillMapGhostRepAlgorithm": {
+        "properties": {
+          "algorithm": {
+            "default": "",
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "coreCardCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Corecardcount",
+            "type": "integer"
+          },
+          "daysSinceLastGhostRep": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dayssincelastghostrep"
+          },
+          "daysSinceLastPractice": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dayssincelastpractice"
+          },
+          "slug": {
+            "default": "",
+            "title": "Slug",
+            "type": "string"
+          },
+          "totalGhostReps": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Totalghostreps",
+            "type": "integer"
+          },
+          "totalMultipleChoice": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Totalmultiplechoice",
+            "type": "integer"
+          },
+          "totalPerfectRecalls": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Totalperfectrecalls",
+            "type": "integer"
+          },
+          "totalWork": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Totalwork",
+            "type": "integer"
+          }
+        },
+        "title": "SkillMapGhostRepAlgorithm",
+        "type": "object"
+      },
+      "SkillMapGhostRepSegment": {
+        "properties": {
+          "algorithm": {
+            "default": "",
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "skills": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SkillMapGhostRepSkillSegment"
+            },
+            "title": "Skills",
+            "type": "array"
+          },
+          "slug": {
+            "default": "",
+            "title": "Slug",
+            "type": "string"
+          },
+          "workType": {
+            "default": "ghost-reps",
+            "title": "Worktype",
+            "type": "string"
+          }
+        },
+        "title": "SkillMapGhostRepSegment",
+        "type": "object"
+      },
+      "SkillMapGhostRepSkillSegment": {
+        "properties": {
+          "count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "skill": {
+            "default": "",
+            "title": "Skill",
+            "type": "string"
+          },
+          "slug": {
+            "default": "",
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "title": "SkillMapGhostRepSkillSegment",
+        "type": "object"
+      },
+      "SkillMapModeActivity": {
+        "properties": {
+          "activeDays": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Activedays",
+            "type": "integer"
+          },
+          "currentStreak": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Currentstreak",
+            "type": "integer"
+          },
+          "days": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SkillMapActivityDay"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "lastSevenDaySubmitCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Lastsevendaysubmitcount",
+            "type": "integer"
+          },
+          "longestStreak": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Longeststreak",
+            "type": "integer"
+          },
+          "peakDailyCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Peakdailycount",
+            "type": "integer"
+          },
+          "recentSubmitCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Recentsubmitcount",
+            "type": "integer"
+          },
+          "windowEnd": {
+            "default": "",
+            "title": "Windowend",
+            "type": "string"
+          },
+          "windowStart": {
+            "default": "",
+            "title": "Windowstart",
+            "type": "string"
+          }
+        },
+        "title": "SkillMapModeActivity",
+        "type": "object"
+      },
+      "SkillMapModeReadiness": {
+        "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/SkillMapModeActivity",
+            "default": {
+              "activeDays": 0,
+              "currentStreak": 0,
+              "days": [],
+              "lastSevenDaySubmitCount": 0,
+              "longestStreak": 0,
+              "peakDailyCount": 0,
+              "recentSubmitCount": 0,
+              "windowEnd": "",
+              "windowStart": ""
+            }
+          },
+          "attemptCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Attemptcount",
+            "type": "integer"
+          },
+          "daysSinceLastSubmit": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dayssincelastsubmit"
+          },
+          "dimensionSummary": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Dimensionsummary",
+            "type": "object"
+          },
+          "ghostRepCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Ghostrepcount",
+            "type": "integer"
+          },
+          "lastSubmittedAt": {
+            "default": "",
+            "title": "Lastsubmittedat",
+            "type": "string"
+          },
+          "liveCoachUsedCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Livecoachusedcount",
+            "type": "integer"
+          },
+          "practicedCards": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Practicedcards",
+            "type": "integer"
+          },
+          "readiness": {
+            "default": 0,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Readiness",
+            "type": "number"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "staleCards": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Stalecards",
+            "type": "integer"
+          },
+          "successRate": {
+            "default": 0,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Successrate",
+            "type": "number"
+          },
+          "successfulAttempts": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Successfulattempts",
+            "type": "integer"
+          },
+          "totalCards": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Totalcards",
+            "type": "integer"
+          },
+          "unsupportedAttemptCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Unsupportedattemptcount",
+            "type": "integer"
+          },
+          "untouchedCards": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Untouchedcards",
+            "type": "integer"
+          },
+          "workCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Workcount",
+            "type": "integer"
+          }
+        },
+        "title": "SkillMapModeReadiness",
+        "type": "object"
+      },
+      "SkillMapNode": {
+        "properties": {
+          "algorithm": {
+            "minLength": 1,
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "playlistSlug": {
+            "default": "",
+            "title": "Playlistslug",
+            "type": "string"
+          },
+          "questionTitle": {
+            "default": "",
+            "title": "Questiontitle",
+            "type": "string"
+          },
+          "skills": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Skills",
+            "type": "array"
+          },
+          "techniques": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Techniques",
+            "type": "array"
+          }
+        },
+        "required": [
+          "algorithm"
+        ],
+        "title": "SkillMapNode",
+        "type": "object"
+      },
+      "SkillMapOverviewResponse": {
+        "properties": {
+          "algorithms": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SkillMapAlgorithmReadiness"
+            },
+            "title": "Algorithms",
+            "type": "array"
+          },
+          "ghostRepActivity": {
+            "$ref": "#/components/schemas/SkillMapGhostRepActivity",
+            "default": {
+              "activeDays": 0,
+              "algorithms": [],
+              "days": [],
+              "peakDailyCount": 0,
+              "totalGhostReps": 0,
+              "totalMultipleChoice": 0,
+              "totalPerfectRecalls": 0,
+              "windowEnd": "",
+              "windowStart": "",
+              "workCount": 0
+            }
+          },
+          "reviewQueue": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SkillMapCardReadiness"
+            },
+            "title": "Reviewqueue",
+            "type": "array"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Summary",
+            "type": "object"
+          }
+        },
+        "title": "SkillMapOverviewResponse",
+        "type": "object"
+      },
+      "SlidingWindowLadderAttempt": {
+        "properties": {
+          "question": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Question",
+            "type": "string"
+          },
+          "rungIndex": {
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Rungindex",
+            "type": "integer"
+          },
+          "strength": {
+            "default": "",
+            "maxLength": 400,
+            "title": "Strength",
+            "type": "string"
+          },
+          "successful": {
+            "title": "Successful",
+            "type": "boolean"
+          },
+          "weakness": {
+            "default": "",
+            "maxLength": 400,
+            "title": "Weakness",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rungIndex",
+          "successful"
+        ],
+        "title": "SlidingWindowLadderAttempt",
+        "type": "object"
+      },
+      "SlidingWindowLadderRequest": {
+        "properties": {
+          "cardPrompt": {
+            "default": "",
+            "maxLength": 3000,
+            "title": "Cardprompt",
+            "type": "string"
+          },
+          "cardTarget": {
+            "default": "",
+            "maxLength": 8000,
+            "title": "Cardtarget",
+            "type": "string"
+          },
+          "cardTitle": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Cardtitle",
+            "type": "string"
+          },
+          "llmProvider": {
+            "default": "",
+            "title": "Llmprovider",
+            "type": "string"
+          },
+          "recentAttempts": {
+            "items": {
+              "$ref": "#/components/schemas/SlidingWindowLadderAttempt"
+            },
+            "maxItems": 8,
+            "title": "Recentattempts",
+            "type": "array"
+          },
+          "rep": {
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Rep",
+            "type": "integer"
+          },
+          "rungIndex": {
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Rungindex",
+            "type": "integer"
+          },
+          "technique": {
+            "enum": [
+              "fixed",
+              "variable"
+            ],
+            "title": "Technique",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cardTitle",
+          "technique",
+          "rungIndex",
+          "rep"
+        ],
+        "title": "SlidingWindowLadderRequest",
+        "type": "object"
+      },
+      "SlidingWindowLadderResponse": {
+        "properties": {
+          "language": {
+            "default": "python",
+            "title": "Language",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "rungTitle": {
+            "title": "Rungtitle",
+            "type": "string"
+          },
+          "solution": {
+            "title": "Solution",
+            "type": "string"
+          },
+          "starterCode": {
+            "title": "Startercode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rungTitle",
+          "question",
+          "starterCode",
+          "solution"
+        ],
+        "title": "SlidingWindowLadderResponse",
+        "type": "object"
+      },
+      "SpecRef": {
+        "additionalProperties": true,
+        "description": "Which spec graded the submission. Recall specs omit ``modality`` and ``hash``.",
+        "properties": {
+          "algorithm": {
+            "default": "",
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hash"
+          },
+          "modality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modality"
+          },
+          "version": {
+            "default": 0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "title": "SpecRef",
+        "type": "object"
+      },
+      "SubmissionModality": {
+        "enum": [
+          "total-recall",
+          "ghost-rep",
+          "mcq",
+          "microdrill"
+        ],
+        "title": "SubmissionModality",
+        "type": "string"
+      },
+      "SubmissionSignals": {
+        "properties": {
+          "elapsedMs": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Elapsedms",
+            "type": "integer"
+          },
+          "evaluation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Evaluation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "flow": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow"
+          },
+          "modality": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modality"
+          }
+        },
+        "title": "SubmissionSignals",
+        "type": "object"
+      },
+      "SupportLayer": {
+        "enum": [
+          "none",
+          "ghost-reps"
+        ],
+        "title": "SupportLayer",
+        "type": "string"
+      },
+      "TemplateMode": {
+        "enum": [
+          "algorithm"
+        ],
+        "title": "TemplateMode",
+        "type": "string"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "System1 API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/admin/reset-practice-history": {
+      "post": {
+        "operationId": "reset_practice_history_api_admin_reset_practice_history_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminResetPracticeHistoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminResetPracticeHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Practice History",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/signals": {
+      "get": {
+        "operationId": "list_signals_api_admin_signals_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalAdminCatalog"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Signals",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "create_signal_api_admin_signals_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignalDefinitionDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSignal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Signal",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/signals/directive/mcq": {
+      "put": {
+        "operationId": "update_directive_api_admin_signals_directive_mcq_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignalDirectiveUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectnessDirective"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Directive",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/signals/revisions/{subject}": {
+      "get": {
+        "operationId": "signal_revisions_api_admin_signals_revisions__subject__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subject",
+            "required": true,
+            "schema": {
+              "title": "Subject",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SignalRevision"
+                  },
+                  "title": "Response Signal Revisions Api Admin Signals Revisions  Subject  Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Signal Revisions",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/signals/samples": {
+      "get": {
+        "operationId": "signal_samples_api_admin_signals_samples_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/McqSample"
+                  },
+                  "title": "Response Signal Samples Api Admin Signals Samples Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Signal Samples",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/signals/try": {
+      "post": {
+        "operationId": "try_signal_api_admin_signals_try_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignalTryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalTryResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Try Signal",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/signals/{key}": {
+      "put": {
+        "operationId": "update_signal_api_admin_signals__key__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignalDefinitionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSignal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Signal",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/signals/{key}/archive": {
+      "post": {
+        "operationId": "archive_signal_api_admin_signals__key__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignalStatusChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSignal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Signal",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/signals/{key}/restore": {
+      "post": {
+        "operationId": "restore_signal_api_admin_signals__key__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignalStatusChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSignal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Signal",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/attempts": {
+      "post": {
+        "operationId": "create_attempt_api_attempts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttemptCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptSubmitResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Attempt",
+        "tags": [
+          "attempts"
+        ]
+      }
+    },
+    "/api/catalog/playlists": {
+      "get": {
+        "operationId": "get_playlist_catalog_api_catalog_playlists_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistCatalogResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Playlist Catalog",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/signal-specs": {
+      "get": {
+        "operationId": "get_signal_specs_api_catalog_signal_specs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalSpecCatalogResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Signal Specs",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/coach/history": {
+      "post": {
+        "operationId": "coach_practice_history_api_coach_history_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoachPracticeHistoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachPracticeHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Coach Practice History",
+        "tags": [
+          "coach"
+        ]
+      }
+    },
+    "/api/coach/inline-completion": {
+      "post": {
+        "operationId": "coach_inline_completion_api_coach_inline_completion_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InlineCompletionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InlineCompletionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Coach Inline Completion",
+        "tags": [
+          "coach"
+        ]
+      }
+    },
+    "/api/coach/micro-drill": {
+      "post": {
+        "operationId": "coach_micro_drill_api_coach_micro_drill_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlowMicroDrillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowMicroDrillResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Coach Micro Drill",
+        "tags": [
+          "coach"
+        ]
+      }
+    },
+    "/api/coach/multiple-choice-drills": {
+      "post": {
+        "operationId": "coach_multiple_choice_drills_api_coach_multiple_choice_drills_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MultipleChoiceDrillsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MultipleChoiceDrillsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Coach Multiple Choice Drills",
+        "tags": [
+          "coach"
+        ]
+      }
+    },
+    "/api/coach/playlist-drills/{playlist_slug}": {
+      "get": {
+        "operationId": "coach_static_playlist_drills_api_coach_playlist_drills__playlist_slug__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playlist_slug",
+            "required": true,
+            "schema": {
+              "title": "Playlist Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "curated",
+              "title": "Order",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillMapDrillsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Coach Static Playlist Drills",
+        "tags": [
+          "coach"
+        ]
+      }
+    },
+    "/api/coach/problem-drills": {
+      "get": {
+        "operationId": "coach_random_problem_drills_api_coach_problem_drills_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "count",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 30,
+              "minimum": 1,
+              "title": "Count",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillMapDrillsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Coach Random Problem Drills",
+        "tags": [
+          "coach"
+        ]
+      }
+    },
+    "/api/coach/problem-drills/{algorithm_slug}": {
+      "get": {
+        "operationId": "coach_problem_drills_api_coach_problem_drills__algorithm_slug__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "algorithm_slug",
+            "required": true,
+            "schema": {
+              "title": "Algorithm Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillMapDrillsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Coach Problem Drills",
+        "tags": [
+          "coach"
+        ]
+      }
+    },
+    "/api/coach/provider-default": {
+      "get": {
+        "operationId": "coach_provider_default_api_coach_provider_default_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachProviderDefaultResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Coach Provider Default",
+        "tags": [
+          "coach"
+        ]
+      }
+    },
+    "/api/coach/session-plan": {
+      "post": {
+        "operationId": "coach_session_plan_api_coach_session_plan_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoachSessionPlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachSessionPlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Coach Session Plan",
+        "tags": [
+          "coach"
+        ]
+      }
+    },
+    "/api/coach/skill-map-drills": {
+      "post": {
+        "operationId": "coach_skill_map_drills_api_coach_skill_map_drills_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillMapDrillsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillMapDrillsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Coach Skill Map Drills",
+        "tags": [
+          "coach"
+        ]
+      }
+    },
+    "/api/coach/skill-map-drills-stream": {
+      "post": {
+        "operationId": "coach_skill_map_drills_stream_api_coach_skill_map_drills_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillMapDrillsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Coach Skill Map Drills Stream",
+        "tags": [
+          "coach"
+        ]
+      }
+    },
+    "/api/coach/sliding-window-ladder": {
+      "post": {
+        "operationId": "coach_sliding_window_ladder_api_coach_sliding_window_ladder_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SlidingWindowLadderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlidingWindowLadderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Coach Sliding Window Ladder",
+        "tags": [
+          "coach"
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/history/day": {
+      "get": {
+        "description": "Every submission counted in the daily work grid on ``date`` in ``tz``, with its stored evaluation.",
+        "operationId": "get_history_day_api_history_day_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "IANA timezone the calendar day is in.",
+            "in": "query",
+            "name": "tz",
+            "required": false,
+            "schema": {
+              "default": "UTC",
+              "description": "IANA timezone the calendar day is in.",
+              "maxLength": 64,
+              "title": "Tz",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryDayResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get History Day",
+        "tags": [
+          "attempts"
+        ]
+      }
+    },
+    "/api/history/signals": {
+      "get": {
+        "description": "Every scored signal from every counted submission, all time, for the signal hologram.",
+        "operationId": "get_signal_history_api_history_signals_get",
+        "parameters": [
+          {
+            "description": "IANA timezone for each point's calendar date.",
+            "in": "query",
+            "name": "tz",
+            "required": false,
+            "schema": {
+              "default": "UTC",
+              "description": "IANA timezone for each point's calendar date.",
+              "maxLength": 64,
+              "title": "Tz",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Signal History",
+        "tags": [
+          "attempts"
+        ]
+      }
+    },
+    "/api/skill-map": {
+      "get": {
+        "operationId": "get_skill_map_api_skill_map_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkillMapNode"
+                  },
+                  "title": "Response Get Skill Map Api Skill Map Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Skill Map",
+        "tags": [
+          "attempts"
+        ]
+      }
+    },
+    "/api/skill-map-overview": {
+      "get": {
+        "operationId": "get_skill_map_overview_api_skill_map_overview_get",
+        "parameters": [
+          {
+            "description": "Daily activity window in days; 0 = all time.",
+            "in": "query",
+            "name": "historyDays",
+            "required": false,
+            "schema": {
+              "default": 42,
+              "description": "Daily activity window in days; 0 = all time.",
+              "maximum": 3650,
+              "minimum": 0,
+              "title": "Historydays",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "IANA timezone whose calendar days the activity uses.",
+            "in": "query",
+            "name": "tz",
+            "required": false,
+            "schema": {
+              "default": "UTC",
+              "description": "IANA timezone whose calendar days the activity uses.",
+              "maxLength": 64,
+              "title": "Tz",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillMapOverviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Skill Map Overview",
+        "tags": [
+          "attempts"
+        ]
+      }
+    }
+  }
+}

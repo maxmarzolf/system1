@@ -11,6 +11,14 @@ from app.models import (
 )
 from app.services import admin_service, signal_admin_service
 from app.services.submission_context_service import SubmissionContextError
+from app.api_schemas import (
+    AdminSignal,
+    CorrectnessDirective,
+    McqSample,
+    SignalAdminCatalog,
+    SignalRevision,
+    SignalTryResult,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -41,48 +49,48 @@ async def _signal_call(call):
         raise HTTPException(status_code=502, detail={"code": "jev_unavailable", "message": str(error)}) from error
 
 
-@router.get("/signals")
+@router.get("/signals", response_model=SignalAdminCatalog)
 async def list_signals():
     return await _signal_call(signal_admin_service.list_signals())
 
 
-@router.post("/signals", status_code=201)
+@router.post("/signals", status_code=201, response_model=AdminSignal)
 async def create_signal(body: SignalDefinitionDraft):
     return await _signal_call(signal_admin_service.create_signal(body))
 
 
-@router.put("/signals/directive/mcq")
+@router.put("/signals/directive/mcq", response_model=CorrectnessDirective)
 async def update_directive(body: SignalDirectiveUpdate):
     return await _signal_call(signal_admin_service.update_directive(body))
 
 
-@router.post("/signals/try")
+@router.post("/signals/try", response_model=SignalTryResult)
 async def try_signal(body: SignalTryRequest):
     return await _signal_call(
         signal_admin_service.try_signal(body.draft, body.problemId, body.choiceId)
     )
 
 
-@router.get("/signals/samples")
+@router.get("/signals/samples", response_model=list[McqSample])
 async def signal_samples():
     return await _signal_call(signal_admin_service.mcq_samples())
 
 
-@router.get("/signals/revisions/{subject}")
+@router.get("/signals/revisions/{subject}", response_model=list[SignalRevision])
 async def signal_revisions(subject: str):
     return await _signal_call(signal_admin_service.signal_revisions(subject))
 
 
-@router.put("/signals/{key}")
+@router.put("/signals/{key}", response_model=AdminSignal)
 async def update_signal(key: str, body: SignalDefinitionUpdate):
     return await _signal_call(signal_admin_service.update_signal(key, body, body.version))
 
 
-@router.post("/signals/{key}/archive")
+@router.post("/signals/{key}/archive", response_model=AdminSignal)
 async def archive_signal(key: str, body: SignalStatusChange):
     return await _signal_call(signal_admin_service.set_signal_status(key, True, body.version))
 
 
-@router.post("/signals/{key}/restore")
+@router.post("/signals/{key}/restore", response_model=AdminSignal)
 async def restore_signal(key: str, body: SignalStatusChange):
     return await _signal_call(signal_admin_service.set_signal_status(key, False, body.version))

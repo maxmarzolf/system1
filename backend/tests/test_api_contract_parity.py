@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from app import main as app_main
+from app.contracts.evaluation import Evaluation
 from app.main import create_app
 from app.services import attempts_service, catalog_service, coach_service, problem_practice_service, submission_service
 
@@ -47,7 +48,7 @@ def test_attempts_endpoint_contract(monkeypatch) -> None:
     payload = response.json()
     assert payload["saved"] is True
     assert payload["attemptId"] == 123
-    assert payload["evaluation"] == {"version": 1, "verdict": "sound"}
+    assert payload["evaluation"] == Evaluation.model_validate({"version": 1, "verdict": "sound"}).to_stored()
     body = captured["body"]
     assert body.elapsedMs == 2500
     assert "exact" not in body.model_dump()

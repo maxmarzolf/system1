@@ -5,11 +5,12 @@ from fastapi import APIRouter, HTTPException, Query
 from app.models import AttemptCreate, SkillMapNode, SkillMapOverviewResponse
 from app.services import attempts_service, submission_service
 from app.services.submission_context_service import SubmissionContextError
+from app.api_schemas import AttemptSubmitResponse, HistoryDayResponse, SignalHistoryResponse
 
 router = APIRouter(prefix="/api", tags=["attempts"])
 
 
-@router.post("/attempts", status_code=201)
+@router.post("/attempts", status_code=201, response_model=AttemptSubmitResponse, response_model_exclude_none=True)
 async def create_attempt(body: AttemptCreate):
     try:
         return await submission_service.create_submission(body)
@@ -30,7 +31,7 @@ async def get_skill_map_overview(
     return await attempts_service.get_skill_map_overview(history_days=historyDays or None, timezone_name=tz)
 
 
-@router.get("/history/day")
+@router.get("/history/day", response_model=HistoryDayResponse)
 async def get_history_day(
     day: date = Query(alias="date"),
     tz: str = Query(default="UTC", max_length=64, description="IANA timezone the calendar day is in."),
@@ -39,7 +40,7 @@ async def get_history_day(
     return await attempts_service.get_history_day(day, timezone_name=tz)
 
 
-@router.get("/history/signals")
+@router.get("/history/signals", response_model=SignalHistoryResponse)
 async def get_signal_history(
     tz: str = Query(default="UTC", max_length=64, description="IANA timezone for each point's calendar date."),
 ):
