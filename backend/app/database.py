@@ -13,7 +13,11 @@ from app.core import core_algorithms, core_meta
 from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG, CORE_META_CATALOG
 from app.core.signal_catalog import get_signal_spec, spec_to_json
 from app.core.taxonomy_catalog import ALGORITHMS, CANONICAL_SKILLS, TECHNIQUES
+from app.db import close_pool, get_pool, open_pool  # noqa: F401 - get_pool re-exported for callers
 from app.migrations.runner import upgrade_to_head
+from app.repositories import unified_catalog_repository
+from app.services import unified_catalog_service
+from app.services.signal_registry_service import seed_signal_definitions
 
 logger = logging.getLogger(__name__)
 
@@ -21,19 +25,14 @@ logger = logging.getLogger(__name__)
 BOOT_LOCK_KEY = 0x5157_5345  # "SYSE"
 CATALOG_SEED_KEY = "catalog"
 
-pool: asyncpg.Pool | None = None
-
-
 async def connect() -> asyncpg.Pool:
-    global pool
-    pool = await asyncpg.create_pool(settings.database_url)
+    """Open the pool, then migrate and seed under an advisory lock."""
+    pool = await open_pool(settings.database_url)
     async with pool.acquire() as lock_conn:
         await lock_conn.execute("SELECT pg_advisory_lock($1)", BOOT_LOCK_KEY)
         try:
             await upgrade_to_head(settings.database_url)
             await _seed_catalog(pool)
-            from app.services.signal_registry_service import seed_signal_definitions
-
             await seed_signal_definitions()
         finally:
             await lock_conn.execute("SELECT pg_advisory_unlock($1)", BOOT_LOCK_KEY)
@@ -41,15 +40,7 @@ async def connect() -> asyncpg.Pool:
 
 
 async def disconnect() -> None:
-    global pool
-    if pool:
-        await pool.close()
-        pool = None
-
-
-def get_pool() -> asyncpg.Pool:
-    assert pool is not None, "Database pool not initialised – call connect() first"
-    return pool
+    await close_pool()
 
 
 def _display_label(slug: str) -> str:
@@ -79,8 +70,6 @@ async def _seed_catalog(db_pool: asyncpg.Pool) -> None:
     unchanged boot reads one row and writes nothing. Delete the ``seed_state``
     row to force a reseed.
     """
-    from app.repositories import unified_catalog_repository
-    from app.services import unified_catalog_service
 
     taxonomy = _taxonomy_rows()
     playlists = unified_catalog_service.build_static_playlist_seeds()
