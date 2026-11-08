@@ -15,8 +15,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from app.config import settings
-from app.core.jev import HttpJevGateway, JevGateway, JevQuestion, JevResponse, JevUnavailableError
+from app.core.jev import JevGateway, JevQuestion, JevResponse, JevUnavailableError
 from app.core.signals import (
     CORRECTNESS_QUESTION_ID,
     ModalitySignalSpec,
@@ -29,26 +28,15 @@ from app.core.signals import (
 from app.core.signals.mcq import MCQ_MODALITY
 from app.domain.feedback_builder import rubric_from_signal_results
 from app.contracts.evaluation import Evaluation, build_evaluation
-from app.models import AttemptCreate, SubmissionModality
+from app.models import AttemptCreate
 from app.services import signal_registry_service
 from app.contracts.submission import EvaluationOutcome, SubmissionRecord
-from app.services.evaluators.registry import register_evaluator
+from app.services.jev_gateway import default_jev_gateway
 from app.services.submission_context_service import McqContext, build_mcq_context
 
 logger = logging.getLogger(__name__)
 
 LOW_CONFIDENCE_THRESHOLD = 0.6
-
-
-def default_jev_gateway() -> JevGateway:
-    if not settings.jev_enabled:
-        raise JevUnavailableError("jev_disabled", "Jev evaluation is disabled (JEV_ENABLED=false).")
-    return HttpJevGateway(
-        api_key=settings.typesafe_api_key,
-        model=settings.jev_model,
-        base_url=settings.typesafe_base_url,
-        timeout_seconds=settings.jev_timeout_seconds,
-    )
 
 
 def _choice_text(answer: dict[str, str]) -> str:
@@ -209,5 +197,3 @@ class JevMcqEvaluator:
             record=_record(context),
         )
 
-
-register_evaluator(JevMcqEvaluator(), SubmissionModality.mcq)

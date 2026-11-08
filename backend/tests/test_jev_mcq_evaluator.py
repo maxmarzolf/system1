@@ -11,6 +11,7 @@ from app.core.signals.base import JevSignal
 from app.core.signals.mcq import DEFAULT_MCQ_DIRECTIVE, default_mcq_spec
 from app.models import AttemptCreate, SubmissionModality
 from app.services import attempts_service, signal_registry_service, submission_context_service, submission_service
+from app.services import jev_gateway
 from app.services.evaluators import EVALUATORS, SubmissionRecord, get_evaluator, jev_mcq
 from app.services.evaluators.jev_mcq import JevMcqEvaluator
 from app.services.evaluators.legacy_recall import AssessorEvaluator, GhostRepEvaluator
@@ -304,15 +305,26 @@ async def test_second_call_failure_marks_only_its_signals_unavailable(patched) -
 
 
 def test_default_gateway_respects_jev_enabled(monkeypatch) -> None:
-    monkeypatch.setattr(jev_mcq.settings, "jev_enabled", False)
+    monkeypatch.setattr(jev_gateway.settings, "jev_enabled", False)
     with pytest.raises(JevUnavailableError) as error:
-        jev_mcq.default_jev_gateway()
+        jev_gateway.default_jev_gateway()
     assert error.value.code == "jev_disabled"
-    monkeypatch.setattr(jev_mcq.settings, "jev_enabled", True)
-    assert jev_mcq.default_jev_gateway() is not None
+    monkeypatch.setattr(jev_gateway.settings, "jev_enabled", True)
+    assert jev_gateway.default_jev_gateway() is not None
 
 
 def test_unknown_modality_has_no_evaluator(monkeypatch) -> None:
     monkeypatch.delitem(EVALUATORS, SubmissionModality.mcq)
     with pytest.raises(LookupError):
         get_evaluator(SubmissionModality.mcq)
+
+
+def test_defaults_fill_only_unregistered_modalities() -> None:
+    from app.services.evaluators.defaults import register_default_evaluators
+
+    custom = GhostRepEvaluator()
+    EVALUATORS.clear()
+    EVALUATORS[SubmissionModality.mcq] = custom
+    register_default_evaluators()
+    assert EVALUATORS[SubmissionModality.mcq] is custom
+    assert set(EVALUATORS) == set(SubmissionModality)

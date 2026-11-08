@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from app.models import (
-    AdaptiveVariationRequest,
     CoachPracticeHistoryRequest,
     CoachSessionPlanRequest,
     MultipleChoiceDrillsRequest,
-    SequentialVariationRequest,
     SkillMapDrillsRequest,
 )
 from app.services import (
@@ -37,10 +35,3 @@ async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
 async def coach_multiple_choice_drills(body: MultipleChoiceDrillsRequest):
     return await coach_orchestration_service.coach_multiple_choice_drills(body)
 
-
-async def coach_adaptive_variation(body: AdaptiveVariationRequest):
-    return await coach_orchestration_service.coach_adaptive_variation(body)
-
-
-async def coach_sequential_variation(body: SequentialVariationRequest):
-    return await coach_orchestration_service.coach_sequential_variation(body)

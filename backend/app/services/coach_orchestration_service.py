@@ -6,10 +6,8 @@ from datetime import datetime, timezone
 from app.core.llm import llm_provider_label as _llm_provider_label
 from app.domain.llm_resilience import SubmissionFeedbackUnavailableError, coach_llm_http_exception
 from app.models import (
-    AdaptiveVariationRequest,
     CoachSessionPlanRequest,
     MultipleChoiceDrillsRequest,
-    SequentialVariationRequest,
     SkillMapDrillsRequest,
 )
 from app.repositories.coach_repository import insert_generated_multiple_choice_question_rows
@@ -17,7 +15,6 @@ from app.repositories.unified_catalog_repository import upsert_generated_problem
 from app.services import history_service
 from app.services import drill_generation_service
 from app.services import session_service
-from app.services import variation_service
 from app.services.contracts import (
     MultipleChoiceQuestionPayload,
     SkillMapCardGenerationContext,
@@ -111,16 +108,3 @@ async def coach_multiple_choice_drills(body: MultipleChoiceDrillsRequest):
     except SubmissionFeedbackUnavailableError as error:
         raise coach_llm_http_exception(error, _llm_provider_label(error.provider)) from error
 
-
-async def coach_adaptive_variation(body: AdaptiveVariationRequest):
-    try:
-        return await variation_service.coach_adaptive_variation(body)
-    except SubmissionFeedbackUnavailableError as error:
-        raise coach_llm_http_exception(error, _llm_provider_label(error.provider)) from error
-
-
-async def coach_sequential_variation(body: SequentialVariationRequest):
-    try:
-        return await variation_service.coach_sequential_variation(body)
-    except SubmissionFeedbackUnavailableError as error:
-        raise coach_llm_http_exception(error, _llm_provider_label(error.provider)) from error

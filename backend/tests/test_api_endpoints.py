@@ -78,21 +78,14 @@ def test_coach_routes_reach_their_services(client, monkeypatch) -> None:
     )
     monkeypatch.setattr(coach_service, "coach_skill_map_drills", returns(DRILLS))
     monkeypatch.setattr(problem_practice_service, "problem_drills_for_algorithm", returns(DRILLS))
-    monkeypatch.setattr(problem_practice_service, "problem_drills_for_technique", returns(DRILLS))
     monkeypatch.setattr(problem_practice_service, "static_playlist_drills", returns(DRILLS))
-    monkeypatch.setattr(coach_service, "coach_adaptive_variation", returns({"drill": DRILL, "targetDimension": "x"}))
-    monkeypatch.setattr(coach_service, "coach_sequential_variation", returns({"drill": DRILL}))
 
     assert client.get("/api/coach/provider-default").json()["provider"] == "openai"
     assert client.post("/api/coach/session-plan", json={}).json()["headline"] == "h"
     skill_map = {"skillMap": [{"algorithm": "heap", "skills": []}]}
     assert client.post("/api/coach/skill-map-drills", json=skill_map).status_code == 200
     assert client.get("/api/coach/problem-drills/heap").json() == DRILLS
-    assert client.get("/api/coach/problem-drills/technique/two-heaps").json() == DRILLS
     assert client.get("/api/coach/playlist-drills/blind-75?order=random").json() == DRILLS
-    variation = {"cardId": "c", "expectedAnswer": "x"}
-    assert client.post("/api/coach/adaptive-variation", json=variation).json()["targetDimension"] == "x"
-    assert client.post("/api/coach/sequential-variation", json=variation).status_code == 200
 
 
 def test_reset_route_maps_permission_error(client, monkeypatch) -> None:

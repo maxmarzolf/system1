@@ -2,16 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.core.signal_catalog import DEFAULT_SIGNAL_SPEC, SignalDefinition, SignalSpec, get_signal_spec
+from app.core.signal_catalog import DEFAULT_SIGNAL_SPEC, RecallSignal, SignalSpec
 from app.core.signals import ModalitySignalSpec, SignalResult
 from app.models import CoachAttemptFeedbackRequest
 from app.contracts.coerce import coerce_json_object
-
-
-def evaluation_signal_spec(evaluation: dict[str, Any]) -> SignalSpec:
-    """The spec that produced a stored evaluation, from its ``signalSpec`` reference."""
-    reference = coerce_json_object(evaluation.get("signalSpec"))
-    return get_signal_spec(str(reference.get("algorithm", "")))
 
 
 def _label_for(spec: SignalSpec, key: str) -> str:
@@ -19,40 +13,7 @@ def _label_for(spec: SignalSpec, key: str) -> str:
     return signal.label if signal else key.replace("_", " ").title()
 
 
-def adaptive_primary_failure(rubric: dict[str, Any]) -> dict[str, Any]:
-    spec = evaluation_signal_spec(rubric)
-    primary = coerce_json_object(rubric.get("primaryFailure"))
-    primary_key = str(primary.get("key", "")).strip()
-    if primary_key and primary_key != "sound":
-        return {
-            "key": primary_key,
-            "label": str(primary.get("label", "") or _label_for(spec, primary_key)),
-        }
-
-    weakest: dict[str, Any] = {}
-    dimensions = coerce_json_object(rubric.get("dimensions"))
-    modifiers = coerce_json_object(rubric.get("modifiers"))
-    for key, dimension in {**dimensions, **modifiers}.items():
-        if not isinstance(dimension, dict) or dimension.get("status") == "not_applicable":
-            continue
-        try:
-            score = float(dimension.get("score", 100) or 100)
-        except (TypeError, ValueError):
-            score = 100.0
-        if not weakest or score < float(weakest.get("score", 100)):
-            weakest = {
-                "key": str(dimension.get("key") or key),
-                "label": str(dimension.get("label") or _label_for(spec, str(key))),
-                "score": score,
-            }
-
-    if weakest:
-        return weakest
-    first = next(signal for signal in spec.signals if signal.role == "dimension")
-    return {"key": first.key, "label": first.label}
-
-
-def _score_from_signal(signal: SignalDefinition, raw: dict[str, Any]) -> float:
+def _score_from_signal(signal: RecallSignal, raw: dict[str, Any]) -> float:
     if signal.kind == "boolean":
         return 100.0 if bool(raw.get("valid")) else 0.0
     try:
@@ -76,7 +37,7 @@ def _weighted_mean(items: list[tuple[float, float]]) -> float | None:
     return round(sum(score * weight for score, weight in items) / total_weight, 1)
 
 
-def _signal_entry(signal: SignalDefinition, raw: Any) -> dict[str, Any]:
+def _signal_entry(signal: RecallSignal, raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {
             "key": signal.key,

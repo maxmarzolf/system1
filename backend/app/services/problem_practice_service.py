@@ -7,7 +7,6 @@ from app.core.static_playlists import build_static_playlist_drills, normalize_st
 from app.repositories.problems_repository import (
     fetch_problem_practice_rows,
     fetch_problem_practice_rows_by_tag,
-    fetch_problem_practice_rows_by_technique,
     fetch_random_problem_practice_rows,
 )
 from app.repositories.unified_catalog_repository import fetch_static_playlist_drills
@@ -43,13 +42,6 @@ async def problem_drills_for_tag(tag: str, count: int):
 
 async def problem_drills_for_algorithm(algorithm_slug: str):
     rows = await fetch_problem_practice_rows(algorithm_slug)
-    return {
-        "drills": [build_core_algorithm_drill(row) for row in rows],
-        "llmUsed": False,
-    }
-
-async def problem_drills_for_technique(technique_slug: str):
-    rows = await fetch_problem_practice_rows_by_technique(technique_slug)
     return {
         "drills": [build_core_algorithm_drill(row) for row in rows],
         "llmUsed": False,

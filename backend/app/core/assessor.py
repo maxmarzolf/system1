@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from app.core.signal_catalog import SignalDefinition, SignalSpec
+from app.core.signal_catalog import RecallSignal, SignalSpec
 from app.models import CoachAttemptFeedbackRequest
 
 
@@ -33,7 +33,7 @@ class AssessorRuntime:
     logger: logging.Logger | None = None
 
 
-def _signal_shape(signal: SignalDefinition) -> str:
+def _signal_shape(signal: RecallSignal) -> str:
     if signal.kind == "boolean":
         return f"{signal.key}: {{valid: bool, error: str|null}}"
     return f"{signal.key}: {{score: 0-100, note: str}}"

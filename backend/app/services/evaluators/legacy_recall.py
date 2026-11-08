@@ -11,10 +11,9 @@ from typing import Any
 from app.core.signal_catalog import SignalSpec
 from app.domain.llm_resilience import SubmissionFeedbackUnavailableError
 from app.contracts.evaluation import Evaluation, outcome_evaluation
-from app.models import AttemptCreate, CoachAttemptEvaluationRequest, CoachAttemptFeedbackRequest, SubmissionModality
+from app.models import AttemptCreate, CoachAttemptEvaluationRequest, CoachAttemptFeedbackRequest
 from app.services import evaluation_service, feedback_service, signal_spec_service
 from app.contracts.submission import EvaluationOutcome
-from app.services.evaluators.registry import register_evaluator
 
 
 def _feedback_request(body: AttemptCreate) -> CoachAttemptFeedbackRequest:
@@ -91,6 +90,3 @@ class AssessorEvaluator:
             feedback_unavailable=feedback_unavailable,
         )
 
-
-register_evaluator(GhostRepEvaluator(), SubmissionModality.ghost_rep)
-register_evaluator(AssessorEvaluator(), SubmissionModality.total_recall, SubmissionModality.microdrill)

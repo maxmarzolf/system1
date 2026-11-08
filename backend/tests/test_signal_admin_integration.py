@@ -13,7 +13,8 @@ from app.core.jev import JevResponse
 from app.main import create_app
 from app.models import SubmissionModality
 from app.services import signal_registry_service
-from app.services.evaluators import EVALUATORS, jev_mcq
+from app.services import jev_gateway
+from app.services.evaluators import EVALUATORS
 from app.services.evaluators.jev_mcq import JevMcqEvaluator
 
 
@@ -111,7 +112,7 @@ def admin(monkeypatch):
     except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - environment-dependent integration guard
         pytest.skip(f"Postgres not available for integration test: {exc}")
     gateway = CapturingGateway()
-    monkeypatch.setattr(jev_mcq, "default_jev_gateway", lambda: gateway)
+    monkeypatch.setattr(jev_gateway, "default_jev_gateway", lambda: gateway)
     monkeypatch.setitem(EVALUATORS, SubmissionModality.mcq, JevMcqEvaluator(lambda: gateway))
     problem_id = f"mcq-itest-admin-{uuid4().hex[:12]}"
     with TestClient(create_app()) as client:

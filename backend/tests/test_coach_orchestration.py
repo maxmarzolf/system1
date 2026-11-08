@@ -12,10 +12,8 @@ from app import main as app_main
 from app.domain.llm_resilience import SubmissionFeedbackUnavailableError
 from app.main import create_app
 from app.models import (
-    AdaptiveVariationRequest,
     CoachSessionPlanRequest,
     MultipleChoiceDrillsRequest,
-    SequentialVariationRequest,
 )
 from app.services import (
     coach_orchestration_service as orchestration,
@@ -37,16 +35,6 @@ async def raise_unavailable(*_args, **_kwargs):
     ("call", "target", "body"),
     [
         (orchestration.coach_session_plan, (orchestration.session_service, "coach_session_plan"), CoachSessionPlanRequest()),
-        (
-            orchestration.coach_adaptive_variation,
-            (orchestration.variation_service, "coach_adaptive_variation"),
-            AdaptiveVariationRequest(cardId="c", expectedAnswer="x"),
-        ),
-        (
-            orchestration.coach_sequential_variation,
-            (orchestration.variation_service, "coach_sequential_variation"),
-            SequentialVariationRequest(cardId="c", expectedAnswer="x"),
-        ),
         (
             orchestration.coach_multiple_choice_drills,
             (orchestration.drill_generation_service, "coach_multiple_choice_drills"),
@@ -139,7 +127,6 @@ def catalog(monkeypatch):
         "fetch_random_problem_practice_rows",
         "fetch_problem_practice_rows_by_tag",
         "fetch_problem_practice_rows",
-        "fetch_problem_practice_rows_by_technique",
     ):
         monkeypatch.setattr(problem_practice_service, name, rows(name))
     return calls
@@ -152,11 +139,10 @@ async def test_catalog_drills_clamp_counts_and_build_cards(catalog) -> None:
     await problem_practice_service.random_problem_drills(0)
     await problem_practice_service.problem_drills_for_tag("heap", -5)
     await problem_practice_service.problem_drills_for_algorithm("heap")
-    await problem_practice_service.problem_drills_for_technique("two-heaps")
     assert catalog[0][1] == (30,)
     assert catalog[1][1] == (10,)
     assert catalog[2][1] == ("heap", 1)
-    assert [call[0] for call in catalog[3:]] == ["fetch_problem_practice_rows", "fetch_problem_practice_rows_by_technique"]
+    assert [call[0] for call in catalog[3:]] == ["fetch_problem_practice_rows"]
 
 
 async def test_static_playlist_drills_merge_metadata(monkeypatch) -> None:

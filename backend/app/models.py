@@ -294,43 +294,6 @@ class MultipleChoiceDrillsResponse(BaseModel):
     llmUsed: bool = False
 
 
-class AdaptiveVariationRequest(BaseModel):
-    cardId: str = Field(min_length=1)
-    cardTitle: str = ""
-    prompt: str = ""
-    expectedAnswer: str = Field(min_length=1)
-    userAnswer: str = ""
-    templateMode: TemplateMode = TemplateMode.algorithm
-    skillTags: list[str] = []
-    evaluation: dict[str, Any] = Field(default_factory=dict)
-    specimenTuning: dict[str, Any] = Field(default_factory=dict)
-    llmProvider: str = "openai"
-
-
-class AdaptiveVariationResponse(BaseModel):
-    drill: SkillMapDrillCard
-    targetDimension: str = ""
-    variationReason: str = ""
-    llmUsed: bool = False
-
-
-class SequentialVariationRequest(BaseModel):
-    cardId: str = Field(min_length=1)
-    cardTitle: str = ""
-    prompt: str = ""
-    expectedAnswer: str = Field(min_length=1)
-    templateMode: TemplateMode = TemplateMode.algorithm
-    skillTags: list[str] = []
-    specimenTuning: dict[str, Any] = Field(default_factory=dict)
-    llmProvider: str = "openai"
-
-
-class SequentialVariationResponse(BaseModel):
-    drill: SkillMapDrillCard
-    progressionReason: str = ""
-    llmUsed: bool = False
-
-
 class CoachPracticeHistoryRequest(BaseModel):
     cardId: str = ""
     questionType: str = ""

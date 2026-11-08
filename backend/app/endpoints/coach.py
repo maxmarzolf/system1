@@ -8,8 +8,6 @@ from app.models import (
     SlidingWindowLadderResponse,
     InlineCompletionRequest,
     InlineCompletionResponse,
-    AdaptiveVariationRequest,
-    AdaptiveVariationResponse,
     CoachPracticeHistoryRequest,
     CoachPracticeHistoryResponse,
     CoachProviderDefaultResponse,
@@ -17,8 +15,6 @@ from app.models import (
     CoachSessionPlanResponse,
     MultipleChoiceDrillsRequest,
     MultipleChoiceDrillsResponse,
-    SequentialVariationRequest,
-    SequentialVariationResponse,
     SkillMapDrillsRequest,
     SkillMapDrillsResponse,
 )
@@ -80,11 +76,6 @@ async def coach_problem_drills(algorithm_slug: str):
     return await problem_practice_service.problem_drills_for_algorithm(algorithm_slug)
 
 
-@router.get("/problem-drills/technique/{technique_slug}", response_model=SkillMapDrillsResponse)
-async def coach_problem_drills_by_technique(technique_slug: str):
-    return await problem_practice_service.problem_drills_for_technique(technique_slug)
-
-
 @router.get("/playlist-drills/{playlist_slug}", response_model=SkillMapDrillsResponse)
 async def coach_static_playlist_drills(
     playlist_slug: str,
@@ -96,16 +87,6 @@ async def coach_static_playlist_drills(
 @router.post("/multiple-choice-drills", response_model=MultipleChoiceDrillsResponse)
 async def coach_multiple_choice_drills(body: MultipleChoiceDrillsRequest):
     return await coach_service.coach_multiple_choice_drills(body)
-
-
-@router.post("/adaptive-variation", response_model=AdaptiveVariationResponse)
-async def coach_adaptive_variation(body: AdaptiveVariationRequest):
-    return await coach_service.coach_adaptive_variation(body)
-
-
-@router.post("/sequential-variation", response_model=SequentialVariationResponse)
-async def coach_sequential_variation(body: SequentialVariationRequest):
-    return await coach_service.coach_sequential_variation(body)
 
 
 @router.post("/micro-drill", response_model=FlowMicroDrillResponse)

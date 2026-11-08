@@ -18,7 +18,7 @@ DEFAULT_ALGORITHM = "default"
 
 
 @dataclass(frozen=True)
-class SignalDefinition:
+class RecallSignal:
     key: str
     label: str
     kind: SignalKind
@@ -33,14 +33,14 @@ class SignalDefinition:
 class SignalSpec:
     algorithm: str
     version: int
-    signals: tuple[SignalDefinition, ...]
+    signals: tuple[RecallSignal, ...]
     structural_elements: tuple[str, ...]
 
     @property
     def keys(self) -> tuple[str, ...]:
         return tuple(signal.key for signal in self.signals)
 
-    def signal(self, key: str) -> SignalDefinition | None:
+    def signal(self, key: str) -> RecallSignal | None:
         for signal in self.signals:
             if signal.key == key:
                 return signal
@@ -50,7 +50,7 @@ class SignalSpec:
         return {"algorithm": self.algorithm, "version": self.version}
 
 
-_CORRECTNESS = SignalDefinition(
+_CORRECTNESS = RecallSignal(
     key="correctness",
     label="Correctness",
     kind="score",
@@ -59,7 +59,7 @@ _CORRECTNESS = SignalDefinition(
     guidance="Would the answer return the right result for the intended input contract?",
     variation_strategy="change the input shape so a subtly wrong answer path fails",
 )
-_SYNTAX = SignalDefinition(
+_SYNTAX = RecallSignal(
     key="syntax",
     label="Syntax and executability",
     kind="boolean",
@@ -69,7 +69,7 @@ _SYNTAX = SignalDefinition(
     variation_strategy="keep the logic small so the code must parse cleanly",
     axis="executable",
 )
-_COMPLETION_TIME = SignalDefinition(
+_COMPLETION_TIME = RecallSignal(
     key="completionTime",
     label="Speed and fluency",
     kind="score",
@@ -83,7 +83,7 @@ _COMPLETION_TIME = SignalDefinition(
 
 def _spec(
     algorithm: str,
-    dimensions: tuple[SignalDefinition, ...],
+    dimensions: tuple[RecallSignal, ...],
     structural_elements: tuple[str, ...],
     version: int = 1,
 ) -> SignalSpec:
@@ -98,7 +98,7 @@ def _spec(
 DEFAULT_SIGNAL_SPEC = _spec(
     DEFAULT_ALGORITHM,
     (
-        SignalDefinition(
+        RecallSignal(
             key="structure",
             label="Solution structure",
             kind="score",
@@ -107,7 +107,7 @@ DEFAULT_SIGNAL_SPEC = _spec(
             guidance="Does the answer have the overall shape of the expected solution?",
             variation_strategy="make the reusable algorithm shape unmistakable",
         ),
-        SignalDefinition(
+        RecallSignal(
             key="completeness",
             label="Completeness",
             kind="score",
@@ -116,7 +116,7 @@ DEFAULT_SIGNAL_SPEC = _spec(
             guidance="Are all required steps present, including the return path?",
             variation_strategy="require every step from setup through the return path",
         ),
-        SignalDefinition(
+        RecallSignal(
             key="patternFidelity",
             label="Pattern fidelity",
             kind="score",
@@ -133,7 +133,7 @@ DEFAULT_SIGNAL_SPEC = _spec(
 SLIDING_WINDOW_SIGNAL_SPEC = _spec(
     "sliding-window",
     (
-        SignalDefinition(
+        RecallSignal(
             key="windowState",
             label="Window state",
             kind="score",
@@ -142,7 +142,7 @@ SLIDING_WINDOW_SIGNAL_SPEC = _spec(
             guidance="Are the left boundary, window contents, and best answer initialized?",
             variation_strategy="force the window state variables to be named and initialized",
         ),
-        SignalDefinition(
+        RecallSignal(
             key="expandStep",
             label="Expand step",
             kind="score",
@@ -151,7 +151,7 @@ SLIDING_WINDOW_SIGNAL_SPEC = _spec(
             guidance="Does the right edge advance once per element and add it to the window?",
             variation_strategy="change what the incoming element contributes to the window",
         ),
-        SignalDefinition(
+        RecallSignal(
             key="windowRepair",
             label="Window repair",
             kind="score",
@@ -161,7 +161,7 @@ SLIDING_WINDOW_SIGNAL_SPEC = _spec(
             variation_strategy="change the validity rule so the shrink loop must be rebuilt",
             axis="fidelity",
         ),
-        SignalDefinition(
+        RecallSignal(
             key="answerUpdate",
             label="Valid-window scoring",
             kind="score",
@@ -177,7 +177,7 @@ SLIDING_WINDOW_SIGNAL_SPEC = _spec(
 TWO_POINTERS_SIGNAL_SPEC = _spec(
     "two-pointers",
     (
-        SignalDefinition(
+        RecallSignal(
             key="pointerSetup",
             label="Pointer setup",
             kind="score",
@@ -186,7 +186,7 @@ TWO_POINTERS_SIGNAL_SPEC = _spec(
             guidance="Are both pointers initialized at the right ends or offsets?",
             variation_strategy="move the starting positions so setup must be reasoned out",
         ),
-        SignalDefinition(
+        RecallSignal(
             key="scanLoop",
             label="Pointer scan loop",
             kind="score",
@@ -195,7 +195,7 @@ TWO_POINTERS_SIGNAL_SPEC = _spec(
             guidance="Does the loop run while the pointers have not crossed?",
             variation_strategy="change the termination condition the loop must respect",
         ),
-        SignalDefinition(
+        RecallSignal(
             key="comparisonRule",
             label="Comparison rule",
             kind="score",
@@ -204,7 +204,7 @@ TWO_POINTERS_SIGNAL_SPEC = _spec(
             guidance="Does each iteration compare the pointed values against the goal?",
             variation_strategy="change the target relation being compared",
         ),
-        SignalDefinition(
+        RecallSignal(
             key="pointerMovement",
             label="Pointer movement",
             kind="score",
@@ -221,7 +221,7 @@ TWO_POINTERS_SIGNAL_SPEC = _spec(
 BINARY_SEARCH_SIGNAL_SPEC = _spec(
     "binary-search",
     (
-        SignalDefinition(
+        RecallSignal(
             key="searchBounds",
             label="Interval setup",
             kind="score",
@@ -230,7 +230,7 @@ BINARY_SEARCH_SIGNAL_SPEC = _spec(
             guidance="Are the low and high bounds initialized to cover the whole search space?",
             variation_strategy="change the search space so the bounds must be re-derived",
         ),
-        SignalDefinition(
+        RecallSignal(
             key="loopCondition",
             label="Search loop",
             kind="score",
@@ -239,7 +239,7 @@ BINARY_SEARCH_SIGNAL_SPEC = _spec(
             guidance="Does the loop condition match the interval convention (closed vs half-open)?",
             variation_strategy="switch the interval convention",
         ),
-        SignalDefinition(
+        RecallSignal(
             key="midpoint",
             label="Midpoint step",
             kind="score",
@@ -248,7 +248,7 @@ BINARY_SEARCH_SIGNAL_SPEC = _spec(
             guidance="Is the midpoint computed inside the loop without overflow-style mistakes?",
             variation_strategy="make the midpoint choice matter for termination",
         ),
-        SignalDefinition(
+        RecallSignal(
             key="boundUpdate",
             label="Bound update",
             kind="score",
@@ -265,7 +265,7 @@ BINARY_SEARCH_SIGNAL_SPEC = _spec(
 DYNAMIC_PROGRAMMING_SIGNAL_SPEC = _spec(
     "dynamic-programming",
     (
-        SignalDefinition(
+        RecallSignal(
             key="stateDefinition",
             label="State definition",
             kind="score",
@@ -274,7 +274,7 @@ DYNAMIC_PROGRAMMING_SIGNAL_SPEC = _spec(
             guidance="Is there a table or memo whose entries have a clear subproblem meaning?",
             variation_strategy="change what each state entry must represent",
         ),
-        SignalDefinition(
+        RecallSignal(
             key="baseCase",
             label="Base case",
             kind="score",
@@ -283,7 +283,7 @@ DYNAMIC_PROGRAMMING_SIGNAL_SPEC = _spec(
             guidance="Are the base cases set before any transition reads them?",
             variation_strategy="change the smallest subproblem so base cases must be re-derived",
         ),
-        SignalDefinition(
+        RecallSignal(
             key="fillOrder",
             label="Fill order",
             kind="score",
@@ -292,7 +292,7 @@ DYNAMIC_PROGRAMMING_SIGNAL_SPEC = _spec(
             guidance="Are states computed in an order where dependencies are already solved?",
             variation_strategy="change the dependency direction of the recurrence",
         ),
-        SignalDefinition(
+        RecallSignal(
             key="transition",
             label="Transition update",
             kind="score",
@@ -347,7 +347,7 @@ def spec_from_json(raw: Any) -> SignalSpec | None:
         return None
     try:
         signals = tuple(
-            SignalDefinition(
+            RecallSignal(
                 key=str(item["key"]),
                 label=str(item["label"]),
                 kind=item["kind"],

@@ -3,12 +3,10 @@ from __future__ import annotations
 import pytest
 
 from app.core.assessor import AssessorContext, AssessorRuntime, AssessorUnavailableError, run_signal_assessor
-from app.core.signal_catalog import BINARY_SEARCH_SIGNAL_SPEC, DEFAULT_SIGNAL_SPEC, SLIDING_WINDOW_SIGNAL_SPEC
-from app.domain.feedback_builder import adaptive_primary_failure, submission_rubric_from_assessment
-from app.domain.llm_resilience import SubmissionFeedbackUnavailableError
+from app.core.signal_catalog import BINARY_SEARCH_SIGNAL_SPEC, DEFAULT_SIGNAL_SPEC
+from app.domain.feedback_builder import submission_rubric_from_assessment
 from app.contracts.evaluation import build_evaluation, compact_evaluation
-from app.models import AdaptiveVariationRequest, CoachAttemptFeedbackRequest
-from app.services import variation_service
+from app.models import CoachAttemptFeedbackRequest
 from app.domain.rubric_summary import summarize_submission_rubrics
 
 
@@ -98,47 +96,6 @@ def test_compacted_evaluation_keeps_spec_reference_and_order() -> None:
 
     assert compact["signalSpec"] == {"algorithm": "binary-search", "version": 1}
     assert list(compact["dimensions"]) == list(rubric["dimensions"])
-
-
-def test_adaptive_primary_failure_uses_weakest_spec_signal_when_sound() -> None:
-    rubric = submission_rubric_from_assessment(
-        _body(),
-        _search_assessment(verdict="sound", blockerKey=""),
-        BINARY_SEARCH_SIGNAL_SPEC,
-    )
-
-    assert adaptive_primary_failure(rubric) == {"key": "boundUpdate", "label": "Bound update", "score": 40.0}
-
-
-def test_adaptive_primary_failure_falls_back_to_first_spec_dimension() -> None:
-    evaluation = {"signalSpec": {"algorithm": "sliding-window", "version": 1}}
-
-    assert adaptive_primary_failure(evaluation) == {"key": "windowState", "label": "Window state"}
-
-
-@pytest.mark.asyncio
-async def test_variation_strategy_comes_from_the_stored_spec(monkeypatch) -> None:
-    captured: dict = {}
-
-    def fake_call(_system_prompt, payload, _provider):
-        captured.update(payload)
-        return None
-
-    monkeypatch.setattr(variation_service, "_resolve_available_llm_provider", lambda _requested: "openai")
-    monkeypatch.setattr(variation_service, "_llm_provider_available", lambda _provider: True)
-    monkeypatch.setattr(variation_service, "_call_llm_json", fake_call)
-
-    evaluation = {
-        "signalSpec": {"algorithm": "sliding-window", "version": 1},
-        "primaryFailure": {"key": "windowRepair", "label": "Window repair"},
-    }
-    with pytest.raises(SubmissionFeedbackUnavailableError):
-        await variation_service.coach_adaptive_variation(
-            AdaptiveVariationRequest(cardId="card-1", expectedAnswer="target", skillTags=["sliding-window"], evaluation=evaluation)
-        )
-
-    assert captured["targetDimension"] == {"key": "windowRepair", "label": "Window repair"}
-    assert captured["strategy"] == SLIDING_WINDOW_SIGNAL_SPEC.signal("windowRepair").variation_strategy
 
 
 def _runtime(response) -> AssessorRuntime:

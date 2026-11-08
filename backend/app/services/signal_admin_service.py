@@ -23,7 +23,7 @@ from app.domain.signal_definition_rules import (
 from app.models import SignalDefinitionDraft, SignalDirectiveUpdate
 from app.repositories import multiple_choice_repository, signal_definition_repository
 from app.repositories.signal_definition_repository import SignalVersionConflict
-from app.services.evaluators import jev_mcq
+from app.services import jev_gateway
 from app.services.submission_context_service import mcq_context_for
 
 # Stored (snake_case) field -> API (camelCase) field.
@@ -221,7 +221,7 @@ async def try_signal(
     if question is None:
         return {**base, "answer": None, "result": plugin.interpret(None, signal_context, successful).to_json()}
     try:
-        gateway = (gateway_factory or jev_mcq.default_jev_gateway)()
+        gateway = (gateway_factory or jev_gateway.default_jev_gateway)()
         response = await gateway.system_one(state, {definition["key"]: question})
     except JevUnavailableError as error:
         raise SignalTryError(f"Jev is unavailable ({error.code}): {error.message}") from error

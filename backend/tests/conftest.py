@@ -3,6 +3,19 @@ from __future__ import annotations
 import pytest
 
 from app.models import SkillMapDrillsRequest, SkillMapNode, TemplateMode
+from app.services.evaluators import EVALUATORS
+from app.services.evaluators.defaults import register_default_evaluators
+
+
+@pytest.fixture(autouse=True)
+def default_evaluators():
+    """Register evaluators the way the app factory does, and undo test overrides afterwards."""
+    saved = dict(EVALUATORS)
+    EVALUATORS.clear()
+    register_default_evaluators()
+    yield
+    EVALUATORS.clear()
+    EVALUATORS.update(saved)
 
 
 @pytest.fixture
