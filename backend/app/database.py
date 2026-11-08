@@ -207,10 +207,10 @@ async def _write_taxonomy(conn: asyncpg.Connection, rows: dict[str, list[tuple[A
         """
         INSERT INTO problem
             (slug, algorithm_slug, title, difficulty, description, code,
-             tags, leetcode_examples, source_type, question_type, prompt,
+             tags, leetcode_examples, source_type, question_type,
              missing, hint, display_order, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb,
-                $10, 'skill-map', $5,
+                $10, 'skill-map',
                 CASE WHEN $10::varchar = 'core-meta' THEN '# core meta complete' ELSE '# core algorithm complete' END,
                 COALESCE(NULLIF($5, ''), 'Recall the reusable algorithm shape.'), $9, NOW())
         ON CONFLICT (slug) DO UPDATE SET
@@ -223,7 +223,6 @@ async def _write_taxonomy(conn: asyncpg.Connection, rows: dict[str, list[tuple[A
             leetcode_examples = EXCLUDED.leetcode_examples,
             source_type = EXCLUDED.source_type,
             question_type = EXCLUDED.question_type,
-            prompt = EXCLUDED.prompt,
             missing = EXCLUDED.missing,
             hint = EXCLUDED.hint,
             display_order = EXCLUDED.display_order,

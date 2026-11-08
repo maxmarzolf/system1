@@ -38,9 +38,9 @@ async def _insert_submission(problem_id: str) -> int:
         return await conn.fetchval(
             """
             INSERT INTO submission (multiple_choice_problem_id, answer, question_type, category_tags, correct_answer,
-                                    successful, signals, modality, created_at, updated_at)
+                                    successful, signals, modality, created_at)
             VALUES ($1, 'A. While invalid', 'skill-map-mcq:card:random', ARRAY['skill-map', 'sliding-window'],
-                    'A. While invalid', TRUE, $2::jsonb, 'mcq', $3, $3)
+                    'A. While invalid', TRUE, $2::jsonb, 'mcq', $3)
             RETURNING id
             """,
             problem_id,

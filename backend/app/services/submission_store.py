@@ -69,11 +69,7 @@ async def create_attempt(
         support_layer=body.supportLayer.value,
         live_coach_used=body.liveCoachUsed,
         modality=modality,
-        target_source=body.targetSource,
-        target_control=body.targetControl,
-        format_control=body.formatControl,
         created_at=now,
-        updated_at=now,
     )
 
     return {"saved": True, "attemptId": row["id"] if row else None}

@@ -78,9 +78,6 @@ class AttemptCreate(BaseModel):
     modality: SubmissionModality | None = None
     liveCoachUsed: bool = False
     activityFormat: Literal["recall", "multiple-choice", "code-completion"] | None = None
-    targetSource: Literal["recall-miss", "algorithm", "skill-map"] | None = None
-    targetControl: Literal["user", "system"] | None = None
-    formatControl: Literal["user", "system"] | None = None
     signals: dict[str, Any] = Field(default_factory=dict)
     submissionTuning: dict[str, Any] = Field(default_factory=dict)
     llmProvider: str = "openai"

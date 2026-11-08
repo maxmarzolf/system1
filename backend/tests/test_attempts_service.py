@@ -34,7 +34,7 @@ def test_create_attempt_forwards_multiple_choice_metadata(monkeypatch) -> None:
 
     assert result == {"saved": True, "attemptId": 91}
     assert captured["modality"] == "mcq"
-    assert captured["target_source"] == "skill-map"
+    assert "target_source" not in captured
     assert json.loads(str(captured["signals_json"])) == {
         "elapsed_ms": 875,
         "evaluation": evaluation.to_stored(),

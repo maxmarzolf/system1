@@ -344,21 +344,6 @@
             ],
             "title": "Flowrunid"
           },
-          "formatControl": {
-            "anyOf": [
-              {
-                "enum": [
-                  "user",
-                  "system"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Formatcontrol"
-          },
           "generatedCard": {
             "anyOf": [
               {
@@ -481,37 +466,6 @@
           "supportLayer": {
             "$ref": "#/components/schemas/SupportLayer",
             "default": "none"
-          },
-          "targetControl": {
-            "anyOf": [
-              {
-                "enum": [
-                  "user",
-                  "system"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Targetcontrol"
-          },
-          "targetSource": {
-            "anyOf": [
-              {
-                "enum": [
-                  "recall-miss",
-                  "algorithm",
-                  "skill-map"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Targetsource"
           },
           "templateMode": {
             "$ref": "#/components/schemas/TemplateMode",

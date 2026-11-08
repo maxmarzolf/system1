@@ -54,7 +54,6 @@ async def _persist_skill_map_drills(
             missing=drill["missing"],
             hint=drill["hint"],
             tags=drill["tags"],
-            llm_used=llm_used,
             generation_context_json=json.dumps(generation_context),
         )
 

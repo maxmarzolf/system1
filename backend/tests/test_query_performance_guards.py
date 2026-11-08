@@ -46,7 +46,6 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
         INSERT INTO submission (
             id,
             session_id,
-            user_id,
             multiple_choice_problem_id,
             answer,
             question_type,
@@ -60,13 +59,11 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
             template_mode,
             support_layer,
             live_coach_used,
-            created_at,
-            updated_at
+            created_at
         )
         SELECT
             920000 + s,
             'fx-perf-session-' || s::text,
-            '0000',
             'mcq-fx-perf-q',
             'user-answer-' || s::text,
             CASE WHEN s % 10 = 0 THEN 'skill-map-lite' ELSE 'skill-map' END,
@@ -87,7 +84,6 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
             'algorithm',
             'none',
             FALSE,
-            NOW() - ((s % 720)::text || ' minutes')::interval,
             NOW() - ((s % 720)::text || ' minutes')::interval
         FROM generate_series(1, 800) AS s
         ON CONFLICT (id) DO NOTHING
@@ -157,7 +153,7 @@ def test_performance_guard_required_indexes_exist() -> None:
         try:
             submission_indexes = await _fetch_index_names(conn, "submission")
             assert "idx_submission_question_type_created_at" in submission_indexes
-            assert "idx_submission_generated_card_id" in submission_indexes
+            assert "idx_submission_card_id_created_at" in submission_indexes
             assert "idx_submission_category_tags" in submission_indexes
             assert "idx_submission_created_at" in submission_indexes
             assert "idx_submission_flow_anchor_created_at" in submission_indexes

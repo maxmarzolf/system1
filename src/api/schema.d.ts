@@ -643,8 +643,6 @@ export interface components {
             elapsedMs: number;
             /** Flowrunid */
             flowRunId?: string | null;
-            /** Formatcontrol */
-            formatControl?: ("user" | "system") | null;
             /** Generatedcard */
             generatedCard?: {
                 [key: string]: unknown;
@@ -688,10 +686,6 @@ export interface components {
             };
             /** @default none */
             supportLayer: components["schemas"]["SupportLayer"];
-            /** Targetcontrol */
-            targetControl?: ("user" | "system") | null;
-            /** Targetsource */
-            targetSource?: ("recall-miss" | "algorithm" | "skill-map") | null;
             /** @default algorithm */
             templateMode: components["schemas"]["TemplateMode"];
             /** Useranswer */

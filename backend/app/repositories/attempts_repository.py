@@ -34,11 +34,7 @@ async def insert_submission_attempt_row(
     support_layer: str,
     live_coach_used: bool,
     modality: str,
-    target_source: str | None,
-    target_control: str | None,
-    format_control: str | None,
     created_at: datetime,
-    updated_at: datetime,
     multiple_choice_problem_id: str | None = None,
 ) -> SubmissionInsertResult | None:
     """Insert a submission. MCQ rows reference the stored problem the evaluator graded against."""
@@ -63,16 +59,14 @@ async def insert_submission_attempt_row(
         row = await conn.fetchrow(
             """
             INSERT INTO submission
-                (session_id, user_id, multiple_choice_problem_id, answer, question_type, category_tags,
+                (session_id, multiple_choice_problem_id, answer, question_type, category_tags,
                  correct_answer, successful, signals, interaction_id,
                  generated_card_id, problem_slug, generated_card, template_mode, support_layer,
-                 live_coach_used, modality,
-                 target_source, target_control, format_control, created_at, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+                 live_coach_used, modality, created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
             RETURNING id
             """,
             session_id or "0000",
-            "0000",
             multiple_choice_problem_id,
             normalized_user_answer,
             question_type,
@@ -88,11 +82,7 @@ async def insert_submission_attempt_row(
             support_layer,
             live_coach_used,
             modality,
-            target_source,
-            target_control,
-            format_control,
             created_at,
-            updated_at,
         )
         if not row:
             return None

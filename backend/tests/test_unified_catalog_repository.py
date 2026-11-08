@@ -87,7 +87,6 @@ def test_upsert_generated_problem_writes_problem_only(monkeypatch):
         missing="# missing",
         hint="Think in states",
         tags=["skill-map", "sliding-window"],
-        llm_used=True,
         generation_context_json=json.dumps({"llmUsed": True}),
     ))
 
@@ -95,6 +94,7 @@ def test_upsert_generated_problem_writes_problem_only(monkeypatch):
     query, args = connection.execute_calls[0]
     assert "INSERT INTO problem" in query
     assert "generated_skill_map_cards" not in query
+    assert "prompt" not in query and "llm_used" not in query
     assert args[0] == "generated-1"
 
 
@@ -153,4 +153,5 @@ def test_seed_static_playlist_batches_problems_and_orderings(monkeypatch):
     assert [(row[1], row[2], row[3]) for row in order_rows] == [
         ("curated", "a", 0), ("curated", "b", 1), ("reverse", "b", 0), ("reverse", "a", 1),
     ]
-    assert order_rows[0][4:6] == ("tier-1", "two-pointers")
+    assert json.loads(order_rows[0][4]) == {"tier": "tier-1"}
+    assert "tier, family" not in order_sql
