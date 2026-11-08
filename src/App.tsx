@@ -8,7 +8,6 @@ import { skillMap, type SkillMapNode } from './data/skill-map'
 import { practicePlaylists, type PracticePlaylist } from './data/playlists'
 import { resolveRelatedLeetCodeSet } from './data/related-leetcode'
 import { loadStoredSubmissionTuning, saveStoredSubmissionTuning } from './submissionTuning'
-import { loadStoredSpecimenTuning } from './specimenTuning'
 import { loadStoredCodeEditorTuning, saveStoredCodeEditorTuning } from './codeEditorTuning'
 import { loadStoredMcqTuning } from './mcqTuning'
 import { loadStoredGooglePlaylistTuning } from './googlePlaylistTuning'
@@ -26,36 +25,30 @@ import { compactFeedbackItems, flowEvaluationScore, flowEvaluationWeaknesses, fl
 import { inlineDisplayLines, normalizeTyping, splitInlineAnnotationLine } from './practice/inlineNotes'
 import { buildFlowFocusSummary, buildFlowGhostScaffold, buildFlowGhostTarget, computeLineReview, createInteractionId, extractFlowGhostFocusedInput, firstIncompleteGhostLineNumber, initialFlowFocus, nextFlowAnchor, nextGhostLineNumber, summarizeFlowFocusLine, summarizeRecallAttempt, toMultipleChoiceFocusLines } from './practice/lineReview'
 import { MarkdownCodeContent } from './practice/markdown'
+import { useFlowMultipleChoiceDeck, useMultipleChoiceDeck, useRecallDeck } from './practice/hooks/useDecks'
+import { MULTIPLE_CHOICE_DIFFICULTY, cardSpecimen, flowMultipleChoiceRequest, multipleChoiceDeckRequest } from './practice/mcqRequests'
 import PrimaryActionIcon from './practice/components/PrimaryActionIcon'
 import { resolvePracticeFocus } from './practice/focus'
 import { resolvePrimaryAction, type PrimaryActionKind } from './practice/primaryAction'
 import { INLINE_LENS, RECALL_TARGET_MODE, derivePracticeTargets } from './practice/targets'
 import { focusMicroDrillInput } from './practice/markdownText'
-import { TEMPLATE_MODE_LABELS, getPrimaryPatternTag, patternLabelFromSlug } from './practice/patterns'
-import { postAttempt, rejectionReason, requestCoreAlgorithmDrills, requestCoreAlgorithmDrillsByTag, requestMultipleChoiceDrills, requestRandomCoreAlgorithmDrills, requestSkillMapDrills, requestSkillMapDrillsStream, requestStaticPlaylistDrills } from './practice/requests'
-import { CARD_MOVE_DOUBLE_TAP_WINDOW_MS, FLOW_TRANSITION_MINIMUM_MS, FLOW_TRANSITION_SETTLE_MS, INLINE_FEEDBACK_ENABLED, emptySkillMapCard, EMPTY_FLOW_MICRODRILL_ACTION_STATE, type AnnotatedDisplayLine, type AttemptPayload, type CoachAttemptFeedback, type CoachSessionPlan, type Flashcard, type FlowMicroDrillPrimaryActionState, type LlmProviderSelection, type MultipleChoiceCard, type MultipleChoiceChoice, type MultipleChoiceDifficulty, type MultipleChoiceDrillsRequest, type MultipleChoiceSpecimenContext, type PracticeFlowState, type PracticeFlowTransitionState, type PracticeMode, type RecallAttemptSnapshot, type SubmissionFailureModalState, type SubmissionSaveResponse, type SupportLayer, type TemplateMode } from './practice/types'
+import { TEMPLATE_MODE_LABELS } from './practice/patterns'
+import { postAttempt, rejectionReason } from './practice/requests'
+import { CARD_MOVE_DOUBLE_TAP_WINDOW_MS, FLOW_TRANSITION_MINIMUM_MS, FLOW_TRANSITION_SETTLE_MS, INLINE_FEEDBACK_ENABLED, emptySkillMapCard, EMPTY_FLOW_MICRODRILL_ACTION_STATE, type AnnotatedDisplayLine, type AttemptPayload, type CoachAttemptFeedback, type CoachSessionPlan, type Flashcard, type FlowMicroDrillPrimaryActionState, type LlmProviderSelection, type MultipleChoiceChoice, type MultipleChoiceSpecimenContext, type PracticeFlowState, type PracticeFlowTransitionState, type PracticeMode, type RecallAttemptSnapshot, type SubmissionFailureModalState, type SubmissionSaveResponse, type SupportLayer, type TemplateMode } from './practice/types'
 
 function App() {
   const { theme } = useTheme()
   const [searchParams, setSearchParams] = useSearchParams()
   const [practiceMode, setPracticeMode] = useState<PracticeMode>('recall')
   const [mcqSourceSpecimen, setMcqSourceSpecimen] = useState<MultipleChoiceSpecimenContext | null>(null)
-  const [multipleChoiceDifficulty] = useState<MultipleChoiceDifficulty>('Med.')
+  const [mcqRequestId, setMcqRequestId] = useState(0)
   const [supportLayer, setSupportLayer] = useState<SupportLayer>('none')
-  const [skillMapDeck, setSkillMapDeck] = useState<Flashcard[]>([])
   // The served catalog and taxonomy; the bundled copies stay the fallback when the API is unavailable or empty.
   const servedPlaylists = useCatalogPlaylists<{ playlists?: PracticePlaylist[] }>().data?.playlists
   const catalogPlaylists = Array.isArray(servedPlaylists) && servedPlaylists.length > 0 ? servedPlaylists : null
   const skillMapQuery = useSkillMap<SkillMapNode[]>()
   const catalogSkillMap = Array.isArray(skillMapQuery.data) && skillMapQuery.data.length > 0 ? skillMapQuery.data : null
   const catalogSkillMapResolved = !skillMapQuery.isPending
-  const [skillMapLoading, setSkillMapLoading] = useState(false)
-  const [skillMapError, setSkillMapError] = useState('')
-  const [skillMapSessionVersion, setSkillMapSessionVersion] = useState(0)
-  const [multipleChoiceDeck, setMultipleChoiceDeck] = useState<MultipleChoiceCard[]>([])
-  const [multipleChoiceLoading, setMultipleChoiceLoading] = useState(false)
-  const [multipleChoiceError, setMultipleChoiceError] = useState('')
-  const [multipleChoiceSessionVersion, setMultipleChoiceSessionVersion] = useState(0)
   const [inlineEnabled, setInlineEnabled] = useState(false)
   const [inlineTaskProgress, setInlineTaskProgress] = useState(0)
   const [tagsExpanded, setTagsExpanded] = useState(false)
@@ -73,9 +66,6 @@ function App() {
   const flowAttemptsRef = useRef<FlowAttempt[]>([])
   const [flowHistoryLoading, setFlowHistoryLoading] = useState(false)
   const [flowHistoryError, setFlowHistoryError] = useState('')
-  const [flowMultipleChoiceDeck, setFlowMultipleChoiceDeck] = useState<MultipleChoiceCard[]>([])
-  const [flowMultipleChoiceLoading, setFlowMultipleChoiceLoading] = useState(false)
-  const [flowMultipleChoiceError, setFlowMultipleChoiceError] = useState('')
   const [flowMultipleChoicePosition, setFlowMultipleChoicePosition] = useState(0)
   const [flowMultipleChoiceSelectedChoiceId, setFlowMultipleChoiceSelectedChoiceId] = useState('')
   const [flowMultipleChoiceStartedAt, setFlowMultipleChoiceStartedAt] = useState<number | null>(null)
@@ -132,231 +122,26 @@ function App() {
   const previewCodeContainerRef = useRef<HTMLDivElement | null>(null)
   const [recallMinHeight, setRecallMinHeight] = useState<number | undefined>(undefined)
   const recallEvaluationPendingRef = useRef(false)
-  const skillMapDeckRequestVersionRef = useRef(0)
-  const multipleChoiceDeckRequestVersionRef = useRef(0)
-  const flowMultipleChoiceDeckRequestVersionRef = useRef(0)
   const availablePlaylists = catalogPlaylists ?? practicePlaylists
   const availableSkillMap = catalogSkillMap ?? skillMap
-  const {
-    focusedPatternSlug, focusedTagSlug, focusedPatternLabel, requestedPlaylist, focusedCardPending, focusedCardNotFound,
-    requestedSkillMap, requestedSkillMapSignature, requestedTemplateMode, requestedTemplateTargets, requestedQuestionType,
-  } = useMemo(
+  const practiceFocus = useMemo(
     () => resolvePracticeFocus({ searchParams, playlists: availablePlaylists, skillMap: availableSkillMap, skillMapResolved: catalogSkillMapResolved }),
     [availablePlaylists, availableSkillMap, catalogSkillMapResolved, searchParams],
   )
-  const filteredDeck = useMemo(() => skillMapDeck, [skillMapDeck])
+  const { focusedPatternSlug, focusedTagSlug, focusedPatternLabel, requestedPlaylist, focusedCardPending, focusedCardNotFound, requestedQuestionType } = practiceFocus
+  const recallDeck = useRecallDeck(practiceFocus, googlePlaylistTuning.order, requestLlmProvider)
+  const filteredDeck = recallDeck.deck
+  const skillMapLoading = recallDeck.loading
+  const mcqDeck = useMultipleChoiceDeck(
+    practiceMode === 'multiple-choice' && mcqSourceSpecimen
+      ? multipleChoiceDeckRequest(mcqSourceSpecimen, { count: multipleChoiceQuestionCount, flowMode: mcqTuning.flowMode, llmProvider: requestLlmProvider })
+      : null,
+    mcqRequestId,
+    requestedQuestionType,
+  )
+  const multipleChoiceDeck = mcqDeck.deck
+  const multipleChoiceLoading = mcqDeck.loading
   const currentTemplateMode: TemplateMode = 'algorithm'
-
-  const fetchSkillMapDeck = async () => {
-    skillMapDeckRequestVersionRef.current += 1
-    const requestVersion = skillMapDeckRequestVersionRef.current
-    setSkillMapLoading(true)
-    setSkillMapError('')
-    setSkillMapDeck([])
-
-    const requestBody = {
-      questionType: requestedQuestionType,
-      count: requestedSkillMap.length,
-      skillMap: requestedSkillMap,
-      templateMode: requestedTemplateMode,
-      templateTargets: requestedTemplateTargets,
-      specimenTuning: loadStoredSpecimenTuning(),
-      llmProvider: requestLlmProvider,
-    }
-
-    try {
-      if (focusedTagSlug && !requestedPlaylist) {
-        const payload = await requestCoreAlgorithmDrillsByTag(focusedTagSlug, 10)
-        if (skillMapDeckRequestVersionRef.current !== requestVersion) return
-        setSkillMapDeck(payload.drills)
-        setSkillMapSessionVersion((prev) => prev + 1)
-        return
-      }
-
-      if (focusedPatternSlug && !requestedPlaylist) {
-        const payload = await requestCoreAlgorithmDrills(focusedPatternSlug)
-        if (skillMapDeckRequestVersionRef.current !== requestVersion) return
-        setSkillMapDeck(payload.drills)
-        setSkillMapSessionVersion((prev) => prev + 1)
-        return
-      }
-
-      if (!requestedPlaylist) {
-        const payload = await requestRandomCoreAlgorithmDrills(10)
-        if (skillMapDeckRequestVersionRef.current !== requestVersion) return
-        setSkillMapDeck(payload.drills)
-        setSkillMapSessionVersion((prev) => prev + 1)
-        return
-      }
-
-      if (requestedPlaylist.staticDeck) {
-        const staticOrder = requestedPlaylist.slug === 'google' ? googlePlaylistTuning.order : 'mastery'
-        const payload = await requestStaticPlaylistDrills(requestedPlaylist.slug, staticOrder)
-        if (skillMapDeckRequestVersionRef.current !== requestVersion) return
-        setSkillMapDeck(payload.drills)
-        setSkillMapSessionVersion((prev) => prev + 1)
-        return
-      }
-
-      const result = await requestSkillMapDrillsStream(
-        requestBody,
-        (drill) => {
-          if (skillMapDeckRequestVersionRef.current !== requestVersion) return
-          setSkillMapDeck((prev) => [...prev, drill])
-        },
-      )
-      if (skillMapDeckRequestVersionRef.current !== requestVersion) return
-      setSkillMapDeck(result.drills)
-      setSkillMapSessionVersion((prev) => prev + 1)
-    } catch {
-      if (requestedPlaylist?.staticDeck) {
-        if (skillMapDeckRequestVersionRef.current !== requestVersion) return
-        setSkillMapDeck([])
-        setSkillMapSessionVersion((prev) => prev + 1)
-        setSkillMapError('Static playlist is unavailable right now.')
-        return
-      }
-
-      // Fallback to non-streaming endpoint
-      try {
-        const payload = await requestSkillMapDrills(requestBody)
-        if (skillMapDeckRequestVersionRef.current !== requestVersion) return
-        setSkillMapDeck(payload.drills)
-        setSkillMapSessionVersion((prev) => prev + 1)
-      } catch (error) {
-        if (skillMapDeckRequestVersionRef.current !== requestVersion) return
-        setSkillMapDeck([])
-        setSkillMapSessionVersion((prev) => prev + 1)
-        setSkillMapError(
-          error instanceof Error && error.message.trim().length > 0
-            ? error.message
-            : 'Skill map drill generation is unavailable right now.'
-        )
-      }
-    } finally {
-      if (skillMapDeckRequestVersionRef.current === requestVersion) {
-        setSkillMapLoading(false)
-      }
-    }
-  }
-
-  const fetchMultipleChoiceDeck = async () => {
-    multipleChoiceDeckRequestVersionRef.current += 1
-    const requestVersion = multipleChoiceDeckRequestVersionRef.current
-    setMultipleChoiceLoading(true)
-    setMultipleChoiceError('')
-    setMultipleChoiceDeck([])
-
-    if (!mcqSourceSpecimen) {
-      setMultipleChoiceLoading(false)
-      return
-    }
-    const specimenContext = mcqSourceSpecimen
-    const cardBasedSkillMap: SkillMapNode[] = [{
-      algorithm: specimenContext.algorithm,
-      skills: [specimenContext.cardTitle, ...specimenContext.tags.filter((tag) => tag !== 'skill-map').slice(0, 4)],
-    }]
-    const sourceMode = 'card'
-    const flowMode = mcqTuning.flowMode
-
-    const requestBody: MultipleChoiceDrillsRequest = {
-      questionType: `skill-map-mcq:${sourceMode}:${flowMode}`,
-      count: multipleChoiceQuestionCount,
-      skillMap: cardBasedSkillMap,
-      difficulty: multipleChoiceDifficulty,
-      sourceMode,
-      flowMode,
-      specimen: specimenContext,
-      llmProvider: requestLlmProvider,
-    }
-
-    try {
-      const payload = await requestMultipleChoiceDrills(requestBody)
-      if (multipleChoiceDeckRequestVersionRef.current !== requestVersion) return
-      setMultipleChoiceDeck(payload.drills)
-      setMultipleChoiceSessionVersion((prev) => prev + 1)
-    } catch (error) {
-      if (multipleChoiceDeckRequestVersionRef.current !== requestVersion) return
-      setMultipleChoiceDeck([])
-      setMultipleChoiceSessionVersion((prev) => prev + 1)
-      setMultipleChoiceError(
-        error instanceof Error && error.message.trim().length > 0
-          ? error.message
-          : 'Multiple choice generation is unavailable right now.'
-      )
-    } finally {
-      if (multipleChoiceDeckRequestVersionRef.current === requestVersion) {
-        setMultipleChoiceLoading(false)
-      }
-    }
-  }
-
-  const fetchFlowMultipleChoiceDeck = async () => {
-    if (!practiceFlow) return
-
-    flowMultipleChoiceDeckRequestVersionRef.current += 1
-    const requestVersion = flowMultipleChoiceDeckRequestVersionRef.current
-    setFlowMultipleChoiceLoading(true)
-    setFlowMultipleChoiceError('')
-    setFlowMultipleChoiceDeck([])
-    setFlowMultipleChoicePosition(0)
-    setFlowMultipleChoiceSelectedChoiceId('')
-    setFlowMultipleChoiceStartedAt(null)
-    setFlowMultipleChoiceSubmittedByCard({})
-
-    const cardPatternSlug = getPrimaryPatternTag(card.tags)
-    const specimenPattern = cardPatternSlug ? patternLabelFromSlug(cardPatternSlug) : card.title
-    const cardBasedSkillMap: SkillMapNode[] = [{
-      algorithm: specimenPattern || 'Algorithm',
-      skills: [card.title, ...card.tags.filter((tag) => tag !== 'skill-map').slice(0, 4)],
-    }]
-    const specimenContext: MultipleChoiceSpecimenContext = {
-      cardId: card.id,
-      cardTitle: card.title,
-      algorithm: specimenPattern || 'Algorithm',
-      prompt: practicePrompt,
-      target: practiceTarget,
-      tags: card.tags,
-      focus: {
-        sequenceStage: 'multiple-choice',
-        focusSummary: practiceFlow.focus.focusSummary,
-        missedLines: practiceFlow.focus.missedLines,
-        ...flowGenerationContext,
-      },
-    }
-
-    const requestBody: MultipleChoiceDrillsRequest = {
-      questionType: `skill-map-mcq:card:progressive:flow-${practiceFlow.runId}-step-${practiceFlow.step}`,
-      count: 1,
-      skillMap: cardBasedSkillMap,
-      difficulty: flowGenerationContext.phase === 'challenge' || flowGenerationContext.phase === 'mastered'
-        ? 'Hard'
-        : multipleChoiceDifficulty,
-      sourceMode: 'card',
-      flowMode: 'progressive',
-      specimen: specimenContext,
-      llmProvider: requestLlmProvider,
-    }
-
-    try {
-      const payload = await requestMultipleChoiceDrills(requestBody)
-      if (flowMultipleChoiceDeckRequestVersionRef.current !== requestVersion) return
-      setFlowMultipleChoiceDeck(payload.drills)
-      setFlowMultipleChoiceStartedAt(Date.now())
-    } catch (error) {
-      if (flowMultipleChoiceDeckRequestVersionRef.current !== requestVersion) return
-      setFlowMultipleChoiceDeck([])
-      setFlowMultipleChoiceError(
-        error instanceof Error && error.message.trim().length > 0
-          ? error.message
-          : 'Targeted multiple choice generation is unavailable right now.'
-      )
-    } finally {
-      if (flowMultipleChoiceDeckRequestVersionRef.current === requestVersion) {
-        setFlowMultipleChoiceLoading(false)
-      }
-    }
-  }
 
   const startSession = (deckLength: number) => {
     setSessionOrder(Array.from({ length: deckLength }, (_, idx) => idx))
@@ -389,33 +174,6 @@ function App() {
   }
 
   useEffect(() => {
-    if (focusedCardPending) return
-    if (focusedCardNotFound) {
-      skillMapDeckRequestVersionRef.current += 1
-      setSkillMapDeck([])
-      setSkillMapError('')
-      setSkillMapLoading(false)
-      return
-    }
-    void fetchSkillMapDeck()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedCardPending, focusedCardNotFound, focusedPatternSlug, focusedTagSlug, googlePlaylistTuning.order, llmProvider, requestLlmProvider, requestedQuestionType, requestedSkillMapSignature, requestedTemplateMode])
-
-  useEffect(() => {
-    if (practiceMode !== 'multiple-choice') return
-    if (!mcqSourceSpecimen) return
-    void fetchMultipleChoiceDeck()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [practiceMode, llmProvider, requestedQuestionType, multipleChoiceDifficulty, multipleChoiceQuestionCount, mcqTuning.flowMode, mcqSourceSpecimen])
-
-  useEffect(() => {
-    if (!practiceFlow || practiceFlow.stage !== 'multiple-choice') return
-    if (flowMultipleChoiceDeck.length > 0) return
-    void fetchFlowMultipleChoiceDeck()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [practiceFlow?.stage, practiceFlow?.step, practiceFlow?.runId, multipleChoiceDifficulty, requestLlmProvider])
-
-  useEffect(() => {
     saveStoredSubmissionTuning(submissionTuning)
   }, [submissionTuning])
 
@@ -428,24 +186,32 @@ function App() {
     if (skillMapLoading) return
     startSession(filteredDeck.length)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [practiceMode, skillMapSessionVersion, skillMapLoading])
+  }, [practiceMode, recallDeck.loadedAt, skillMapLoading])
 
   useEffect(() => {
     if (practiceMode !== 'multiple-choice') return
     if (multipleChoiceLoading) return
     startSession(multipleChoiceDeck.length)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [practiceMode, multipleChoiceSessionVersion, multipleChoiceLoading])
+  }, [practiceMode, mcqDeck.loadedAt, multipleChoiceLoading])
 
   const currentDeckIndex = sessionOrder[sessionPosition] ?? 0
   const card = (practiceFlow ? filteredDeck.find(item => item.id === practiceFlow.anchorCardId) : filteredDeck[currentDeckIndex]) ?? filteredDeck[0] ?? emptySkillMapCard
   const ladderTechnique = slidingWindowTechnique(card)
+  const { practiceTarget, inlineTaskProgression, practicePrompt } = useMemo(() => derivePracticeTargets(card), [card])
   const currentFlowAttempts = useMemo(
     () => practiceFlow ? flowAttempts.filter((attempt) => attempt.anchorCardId === practiceFlow.anchorCardId) : [],
     [flowAttempts, practiceFlow]
   )
   const flowMastery = useMemo(() => summarizeFlowMastery(currentFlowAttempts), [currentFlowAttempts])
   const flowGenerationContext = useMemo(() => buildFlowGenerationContext(currentFlowAttempts), [currentFlowAttempts])
+  const flowMcqDeck = useFlowMultipleChoiceDeck(
+    practiceFlow?.stage === 'multiple-choice'
+      ? flowMultipleChoiceRequest({ flow: practiceFlow, card, prompt: practicePrompt, target: practiceTarget, context: flowGenerationContext, llmProvider: requestLlmProvider })
+      : null,
+    practiceFlow ? { runId: practiceFlow.runId, step: practiceFlow.step } : null,
+  )
+  const flowMultipleChoiceDeck = flowMcqDeck.deck
   const multipleChoiceCard = multipleChoiceDeck[currentDeckIndex] ?? multipleChoiceDeck[0] ?? null
   const flowMultipleChoiceCard = flowMultipleChoiceDeck[flowMultipleChoicePosition] ?? flowMultipleChoiceDeck[0] ?? null
   const isFlowActive = practiceFlow !== null
@@ -457,7 +223,7 @@ function App() {
   const activeMultipleChoiceCard = isFlowActive ? flowMultipleChoiceCard : multipleChoiceCard
   const activeCardId = currentPracticeMode === 'multiple-choice' ? activeMultipleChoiceCard?.id ?? '' : card.id
   const activeCardTitle = currentPracticeMode === 'multiple-choice' ? activeMultipleChoiceCard?.title ?? 'Multiple Choice' : card.title
-  const activeCardDifficulty = currentPracticeMode === 'multiple-choice' ? activeMultipleChoiceCard?.difficulty ?? multipleChoiceDifficulty : card.difficulty
+  const activeCardDifficulty = currentPracticeMode === 'multiple-choice' ? activeMultipleChoiceCard?.difficulty ?? MULTIPLE_CHOICE_DIFFICULTY : card.difficulty
   const activeCardTags = currentPracticeMode === 'multiple-choice' ? activeMultipleChoiceCard?.tags ?? [] : card.tags
   const headerCardTitle = isFlowActive ? practiceFlow?.anchorTitle ?? card.title : activeCardTitle
   const headerCardDifficulty = isFlowActive ? card.difficulty : activeCardDifficulty
@@ -465,7 +231,6 @@ function App() {
   const headerCardTags = isFlowActive ? card.tags : activeCardTags
   const isCoreAlgorithmCard = headerCardTags.includes('core-algorithm')
   const isMetaCard = headerCardTags.includes('core-meta') || headerCardTags.includes('meta')
-  const { primaryPatternTag, practiceTarget, inlineTaskProgression, practicePrompt } = useMemo(() => derivePracticeTargets(card), [card])
   const skeletonReference = card.skeletonApplicability ?? null
   const tagsListId = `card-tags-${card.id}`
 
@@ -507,10 +272,10 @@ function App() {
       'mode-multiple-choice',
       'source-card',
       `flow-${isFlowActive ? 'progressive' : mcqTuning.flowMode}`,
-      `difficulty-${multipleChoiceDifficulty === 'Hard' ? 'hard' : 'med'}`,
+      `difficulty-${MULTIPLE_CHOICE_DIFFICULTY === 'Hard' ? 'hard' : 'med'}`,
       ...(isFlowActive && practiceFlow ? ['mode-flow', `flow-cycle-${practiceFlow.cycle}`] : []),
     ],
-    [activeMultipleChoiceCard?.tags, isFlowActive, mcqTuning.flowMode, multipleChoiceDifficulty, practiceFlow]
+    [activeMultipleChoiceCard?.tags, isFlowActive, mcqTuning.flowMode, practiceFlow]
   )
   const visibleCardTags = useMemo(
     () => headerCardTags.filter((tag) => tag !== 'skill-map' && tag !== 'skill-map-mcq'),
@@ -532,12 +297,9 @@ function App() {
   const hasRecallDeck = filteredDeck.length > 0
   const hasMultipleChoiceDeck = isFlowActive ? flowMultipleChoiceDeck.length > 0 : multipleChoiceDeck.length > 0
   const hasDeck = currentPracticeMode === 'multiple-choice' ? hasMultipleChoiceDeck : hasRecallDeck
-  const activeLoading = currentPracticeMode === 'multiple-choice'
-    ? (isFlowActive ? flowMultipleChoiceLoading : multipleChoiceLoading)
-    : skillMapLoading
-  const activeError = currentPracticeMode === 'multiple-choice'
-    ? (isFlowActive ? flowMultipleChoiceError : multipleChoiceError)
-    : skillMapError
+  const activeDeck = currentPracticeMode === 'multiple-choice' ? (isFlowActive ? flowMcqDeck : mcqDeck) : recallDeck
+  const activeLoading = activeDeck.loading
+  const activeError = activeDeck.error
   const isGhostRepsEnabled = effectiveSupportLayer === 'ghost-reps'
   const currentInlineTask = inlineEnabled && mainPhase === 'typing' && !isGhostRepsEnabled
     ? inlineTaskProgression[inlineTaskProgress]
@@ -830,14 +592,11 @@ function App() {
   }
 
   const resetFlowMultipleChoiceState = () => {
-    setFlowMultipleChoiceDeck([])
-    setFlowMultipleChoiceLoading(false)
-    setFlowMultipleChoiceError('')
     setFlowMultipleChoicePosition(0)
     setFlowMultipleChoiceSelectedChoiceId('')
     setFlowMultipleChoiceStartedAt(null)
     setFlowMultipleChoiceSubmittedByCard({})
-    flowMultipleChoiceDeckRequestVersionRef.current += 1
+    setMultipleChoiceSubmitError('')
   }
 
   const beginPracticeFlowTransition = ({
@@ -1061,7 +820,7 @@ function App() {
     }
     if (flowTransition.toStage === 'multiple-choice') {
       return flowMultipleChoiceDeck.length > 0
-        || Boolean(flowMultipleChoiceError && !flowMultipleChoiceLoading)
+        || Boolean(flowMcqDeck.error && !flowMcqDeck.loading)
     }
 
     const interactionKey = `${practiceFlow.runId}-${practiceFlow.step}`
@@ -1070,8 +829,8 @@ function App() {
   }, [
     flowMicroDrillPrimaryActionState,
     flowMultipleChoiceDeck.length,
-    flowMultipleChoiceError,
-    flowMultipleChoiceLoading,
+    flowMcqDeck.error,
+    flowMcqDeck.loading,
     flowTransition,
     mainPhase,
     practiceFlow,
@@ -1383,8 +1142,7 @@ function App() {
       const message = submitRejection
         ? `Your answer could not be graded: ${submitRejection}`
         : 'Your answer could not be graded. Submit again before continuing.'
-      if (isFlowActive) setFlowMultipleChoiceError(message)
-      else setMultipleChoiceSubmitError(message)
+      setMultipleChoiceSubmitError(message)
       return
     }
 
@@ -1800,14 +1558,8 @@ function App() {
                   className={currentPracticeMode === 'multiple-choice' ? 'practice-mode-button active' : 'practice-mode-button'}
                   onClick={() => {
                     if (practiceMode === 'multiple-choice') return
-                    setMcqSourceSpecimen({
-                      cardId: card.id,
-                      cardTitle: card.title,
-                      algorithm: primaryPatternTag ? patternLabelFromSlug(primaryPatternTag) : card.title,
-                      prompt: practicePrompt,
-                      target: practiceTarget,
-                      tags: card.tags,
-                    })
+                    setMcqSourceSpecimen(cardSpecimen(card, practicePrompt, practiceTarget))
+                    setMcqRequestId((id) => id + 1)
                     setPracticeMode('multiple-choice')
                   }}
                   aria-pressed={currentPracticeMode === 'multiple-choice'}
@@ -2138,7 +1890,7 @@ function App() {
                     <span className="prompt-section-label">Question</span>
                     <p className="prompt prompt-surface-body prompt-bar">Multiple choice is unavailable right now.</p>
                     <p className="hint">{activeError || 'No question set was returned.'}</p>
-                    {isFlowActive && <button type="button" className="secondary" onClick={() => void fetchFlowMultipleChoiceDeck()}>Retry MCQ</button>}
+                    {isFlowActive && <button type="button" className="secondary" onClick={flowMcqDeck.retry}>Retry MCQ</button>}
                   </div>
                 )
               ) : activeMultipleChoiceCard ? (

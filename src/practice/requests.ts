@@ -1,48 +1,41 @@
 import type { GooglePlaylistOrder } from '../googlePlaylistTuning'
-import { api, ApiError, queryClient, unwrap } from '../api/client'
+import { api, ApiError, unwrap } from '../api/client'
 import type { components } from '../api/schema'
 import type { Flashcard, MultipleChoiceDrillsRequest, MultipleChoiceDrillsResponse, SkillMapDrillsRequest, SkillMapDrillsResponse, SubmissionSaveResponse } from './types'
 
-export const fetchOnce = <T,>(queryKey: readonly unknown[], load: () => Promise<T>) =>
-  queryClient.fetchQuery({ queryKey: ['deck', ...queryKey], queryFn: load, staleTime: 0, gcTime: 0 })
+// Deck loaders. Callers (practice/hooks/useDecks.ts) cache and deduplicate them with TanStack Query.
 
-export const requestSkillMapDrills = (body: SkillMapDrillsRequest) =>
-  fetchOnce(['skill-map', body], async () =>
-    unwrap(await api.POST('/api/coach/skill-map-drills', { body }), 'Unable to generate skill map drills') as unknown as SkillMapDrillsResponse)
+export const requestSkillMapDrills = async (body: SkillMapDrillsRequest) =>
+  unwrap(await api.POST('/api/coach/skill-map-drills', { body }), 'Unable to generate skill map drills') as unknown as SkillMapDrillsResponse
 
-export const requestCoreAlgorithmDrills = (algorithmSlug: string) =>
-  fetchOnce(['core-algorithm', algorithmSlug], async () =>
-    unwrap(
-      await api.GET('/api/coach/problem-drills/{algorithm_slug}', { params: { path: { algorithm_slug: algorithmSlug } } }),
-      'Unable to load core algorithms',
-    ) as unknown as SkillMapDrillsResponse)
+export const requestCoreAlgorithmDrills = async (algorithmSlug: string) =>
+  unwrap(
+    await api.GET('/api/coach/problem-drills/{algorithm_slug}', { params: { path: { algorithm_slug: algorithmSlug } } }),
+    'Unable to load core algorithms',
+  ) as unknown as SkillMapDrillsResponse
 
-export const requestRandomCoreAlgorithmDrills = (count = 10) =>
-  fetchOnce(['core-algorithm-random', count], async () =>
-    unwrap(await api.GET('/api/coach/problem-drills', { params: { query: { count } } }), 'Unable to load core algorithms') as unknown as SkillMapDrillsResponse)
+export const requestRandomCoreAlgorithmDrills = async (count = 10) =>
+  unwrap(await api.GET('/api/coach/problem-drills', { params: { query: { count } } }), 'Unable to load core algorithms') as unknown as SkillMapDrillsResponse
 
-export const requestCoreAlgorithmDrillsByTag = (tagSlug: string, count = 10) =>
-  fetchOnce(['core-algorithm-tag', tagSlug, count], async () =>
-    unwrap(
-      await api.GET('/api/coach/problem-drills', { params: { query: { tag: tagSlug, count } } }),
-      'Unable to load tagged core algorithms',
-    ) as unknown as SkillMapDrillsResponse)
+export const requestCoreAlgorithmDrillsByTag = async (tagSlug: string, count = 10) =>
+  unwrap(
+    await api.GET('/api/coach/problem-drills', { params: { query: { tag: tagSlug, count } } }),
+    'Unable to load tagged core algorithms',
+  ) as unknown as SkillMapDrillsResponse
 
-export const requestStaticPlaylistDrills = (playlistSlug: string, order: GooglePlaylistOrder) =>
-  fetchOnce(['static-playlist', playlistSlug, order], async () =>
-    unwrap(
-      await api.GET('/api/coach/playlist-drills/{playlist_slug}', {
-        params: { path: { playlist_slug: playlistSlug }, query: { order } },
-      }),
-      'Unable to load static playlist',
-    ) as unknown as SkillMapDrillsResponse)
+export const requestStaticPlaylistDrills = async (playlistSlug: string, order: GooglePlaylistOrder) =>
+  unwrap(
+    await api.GET('/api/coach/playlist-drills/{playlist_slug}', {
+      params: { path: { playlist_slug: playlistSlug }, query: { order } },
+    }),
+    'Unable to load static playlist',
+  ) as unknown as SkillMapDrillsResponse
 
-export const requestMultipleChoiceDrills = (body: MultipleChoiceDrillsRequest) =>
-  fetchOnce(['multiple-choice', body], async () =>
-    unwrap(
-      await api.POST('/api/coach/multiple-choice-drills', { body }),
-      'Unable to generate multiple choice questions',
-    ) as unknown as MultipleChoiceDrillsResponse)
+export const requestMultipleChoiceDrills = async (body: MultipleChoiceDrillsRequest) =>
+  unwrap(
+    await api.POST('/api/coach/multiple-choice-drills', { body }),
+    'Unable to generate multiple choice questions',
+  ) as unknown as MultipleChoiceDrillsResponse
 
 export type AttemptBody = components['schemas']['AttemptCreate']
 
