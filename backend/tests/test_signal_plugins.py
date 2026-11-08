@@ -7,7 +7,7 @@ from dataclasses import replace
 from app.core.signals import SignalContext, applies, definition_to_plugin, register_implementation
 from app.core.signals.base import DeterministicSignal, JevSignal
 from app.core.signals.mcq import COMPLETION_TIME, DEFAULT_MCQ_DEFINITIONS, default_mcq_spec
-from app.domain.coach_context import algorithm_slug_for_tags
+from app.core.taxonomy import algorithm_slug_for_tags
 from app.domain.feedback_builder import rubric_from_signal_results
 
 CONTEXT = SignalContext(modality="mcq", state={"question": "q"}, elapsed_ms=10_000)

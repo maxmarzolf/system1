@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json as _json
-import re
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -38,9 +37,8 @@ from app.services.contracts import (
     SkillMapModeSummary,
     SkillMapAlgorithmSummary,
     SkillMapOverviewPayload,
-    SkillMapOverviewSummary,
-    SkillMapReviewQueueItem,
 )
+from app.core import taxonomy
 
 
 class AttemptOverviewItem(TypedDict):
@@ -52,20 +50,8 @@ class AttemptOverviewItem(TypedDict):
 
 
 def _submission_modality(row: dict[str, Any]) -> str:
-    modality = str(row.get("modality") or "").strip()
-    if modality:
-        return modality
-    activity_format = str(row.get("activity_format") or "").strip()
-    if activity_format == "multiple-choice":
-        return "mcq"
-    if (
-        activity_format == "code-completion"
-        or str(row.get("question_type") or "").endswith(":microdrill")
-    ):
-        return "microdrill"
-    if str(row.get("support_layer") or "none") == "ghost-reps":
-        return "ghost-rep"
-    return "total-recall"
+    """The stored modality (a NOT NULL column; rows built in tests may omit it)."""
+    return str(row.get("modality") or "").strip() or "total-recall"
 
 
 def _submission_signals(
@@ -92,26 +78,6 @@ def _submission_signals(
     else:
         signals["modality"] = {"kind": modality}
     return signals
-
-
-def _algorithm_slug(algorithm: str) -> str:
-    slug = re.sub(
-        r"\s+",
-        "-",
-        re.sub(r"[^a-z0-9\s-]", " ", algorithm.lower().replace("/", " ").replace("&", " ").replace("-", " ")).strip(),
-    )
-    return {
-        "google-skeletons": "skeletons",
-        "heap-priority-queue": "heap",
-    }.get(slug, slug)
-
-
-def _matched_algorithm_slugs(tags: list[str], known_slugs: set[str]) -> list[str]:
-    return list(dict.fromkeys(
-        normalized
-        for tag in tags
-        if (normalized := _algorithm_slug(tag)) in known_slugs
-    ))
 
 
 def resolve_timezone(name: str | None) -> tzinfo:
@@ -265,7 +231,7 @@ def _build_ghost_rep_activity(
         is_microdrill = modality == "microdrill"
         if not is_ghost_rep and not is_mcq and not is_total_recall and not is_microdrill:
             continue
-        matched_algorithm_slugs = _matched_algorithm_slugs(category_tags, known_algorithm_slugs)
+        matched_algorithm_slugs = taxonomy.matched_algorithm_slugs(category_tags, known_algorithm_slugs)
         primary_matches = [
             slug
             for slug in matched_algorithm_slugs
@@ -289,9 +255,9 @@ def _build_ghost_rep_activity(
         for slug in matched_algorithm_slugs:
             known_skills = skills_by_algorithm_slug.get(slug, [])
             matched_skill_slugs = [
-                _algorithm_slug(skill)
+                taxonomy.algorithm_slug(skill)
                 for skill in known_skills
-                if _algorithm_slug(skill) in category_tags
+                if taxonomy.algorithm_slug(skill) in category_tags
             ]
             skill_slug = matched_skill_slugs[0] if matched_skill_slugs else "unclassified"
             if is_mcq:
@@ -343,7 +309,7 @@ def _build_ghost_rep_activity(
                                 (
                                     skill
                                     for skill in skills_by_algorithm_slug.get(slug, [])
-                                    if _algorithm_slug(skill) == skill_slug
+                                    if taxonomy.algorithm_slug(skill) == skill_slug
                                 ),
                                 "Unclassified",
                             ),
@@ -404,7 +370,7 @@ def build_skill_map_overview(
     for row in algorithm_rows:
         algorithm_id = int(row["algorithm_id"])
         algorithm_name = str(row["algorithm_name"])
-        algorithm_slug = str(row.get("algorithm_slug") or _algorithm_slug(algorithm_name))
+        algorithm_slug = str(row.get("algorithm_slug") or taxonomy.algorithm_slug(algorithm_name))
         if algorithm_id not in grouped:
             grouped[algorithm_id] = {
                 "algorithm": algorithm_name,
@@ -429,11 +395,10 @@ def build_skill_map_overview(
     card_ids_by_algorithm: dict[str, set[str]] = {slug: set() for slug in known_algorithm_slugs}
     review_card_ids_by_algorithm: dict[str, set[str]] = {slug: set() for slug in known_algorithm_slugs}
 
-    generated_cards: dict[str, dict[str, Any]] = {}
     card_ids_by_pattern: dict[str, set[str]] = {slug: set() for slug in known_pattern_slugs}
     for row in generated_rows:
         tags = [str(tag) for tag in (row["tags"] or [])]
-        matched_algorithm_slugs = _matched_algorithm_slugs(tags, known_algorithm_slugs)
+        matched_algorithm_slugs = taxonomy.matched_algorithm_slugs(tags, known_algorithm_slugs)
         source_type = str(
             row.get("source_type")
             or ("static-playlist" if "static-playlist" in tags else "core-catalog")
@@ -449,11 +414,6 @@ def build_skill_map_overview(
             inventory_algorithm_slugs = [slug for slug in matched_algorithm_slugs if slug in static_playlist_slugs]
         else:
             inventory_algorithm_slugs = []
-        generated_cards[str(row["id"])] = {
-            "cardId": str(row["id"]),
-            "title": str(row["title"] or ""),
-            "algorithmSlugs": matched_algorithm_slugs,
-        }
         for slug in matched_algorithm_slugs:
             review_card_ids_by_algorithm.setdefault(slug, set()).add(str(row["id"]))
         for slug in inventory_algorithm_slugs:
@@ -462,9 +422,6 @@ def build_skill_map_overview(
 
     attempts_by_card_mode: dict[tuple[str, str], list[AttemptOverviewItem]] = {}
     attempts_by_algorithm_mode: dict[tuple[str, str], list[AttemptOverviewItem]] = {}
-    attempted_card_ids: set[str] = set()
-    total_ghost_rep_count = 0
-    total_unsupported_attempt_count = 0
 
     for row in attempt_rows:
         card_id = str(row["tracked_card_id"] or "").strip()
@@ -479,20 +436,9 @@ def build_skill_map_overview(
             continue
         template_mode = str(row["template_mode"] or "algorithm").strip() or "algorithm"
         support_layer = str(row["support_layer"] or "none")
-        if support_layer == "ghost-reps":
-            total_ghost_rep_count += 1
-        else:
-            total_unsupported_attempt_count += 1
-        matched_algorithm_slugs = _matched_algorithm_slugs(category_tags, known_algorithm_slugs)
+        matched_algorithm_slugs = taxonomy.matched_algorithm_slugs(category_tags, known_algorithm_slugs)
         for slug in matched_algorithm_slugs:
             review_card_ids_by_algorithm.setdefault(slug, set()).add(card_id)
-
-        if card_id not in generated_cards:
-            generated_cards[card_id] = {
-                "cardId": card_id,
-                "title": str(row["card_title"] or card_id),
-                "algorithmSlugs": matched_algorithm_slugs,
-            }
 
         stored_signals = coerce_json_object(row.get("signals"))
         attempt: AttemptOverviewItem = {
@@ -508,10 +454,8 @@ def build_skill_map_overview(
         attempts_by_card_mode.setdefault((card_id, template_mode), []).append(attempt)
         for slug in matched_algorithm_slugs:
             attempts_by_algorithm_mode.setdefault((slug, template_mode), []).append(attempt)
-        attempted_card_ids.add(card_id)
 
     algorithm_summaries: list[SkillMapAlgorithmSummary] = []
-    card_mode_summaries: dict[tuple[str, str], SkillMapReviewQueueItem] = {}
 
     for algorithm in algorithms:
         slug = str(algorithm["slug"])
@@ -538,23 +482,9 @@ def build_skill_map_overview(
             for card_id in reviewed_card_ids:
                 card_attempts = attempts_by_card_mode.get((card_id, template_mode), [])
                 card_readiness = summarize_readiness(card_attempts)
-                card_support_counts = _build_support_counts(card_attempts)
                 if card_id in practiced_card_ids and card_readiness["stale"]:
                     stale_card_count += 1
                     stale_cards_any_mode.add(card_id)
-                card_mode_summaries[(card_id, template_mode)] = {
-                    "cardId": card_id,
-                    "title": generated_cards.get(card_id, {}).get("title", card_id),
-                    "algorithm": str(algorithm["algorithm"]),
-                    "templateMode": template_mode,
-                    "readiness": card_readiness["readiness"],
-                    "attemptCount": card_readiness["attemptCount"],
-                    **card_support_counts,
-                    "daysSinceLastSubmit": card_readiness["daysSinceLastSubmit"],
-                    "stale": card_readiness["stale"],
-                    "dimensionSummary": summarize_submission_rubrics(card_attempts),
-                }
-
             practiced_cards_any_mode.update(practiced_card_ids)
             mode_summaries[template_mode] = {
                 **readiness_summary,
@@ -595,46 +525,8 @@ def build_skill_map_overview(
             "modes": mode_summaries,
         })
 
-    review_queue: list[SkillMapReviewQueueItem] = [
-        item
-        for item in sorted(
-            card_mode_summaries.values(),
-            key=lambda item: (
-                0 if item["stale"] else 1,
-                float(item["readiness"]),
-                item["daysSinceLastSubmit"] if item["daysSinceLastSubmit"] is not None else -1,
-                str(item["title"]),
-            ),
-        )
-        if item["attemptCount"] > 0
-    ][:8]
-
-    stale_card_ids: set[str] = {item["cardId"] for item in card_mode_summaries.values() if item["stale"]}
-    avg_algorithm_readiness = round(
-        sum(float(item["overallReadiness"]) for item in algorithm_summaries) / len(algorithm_summaries),
-        1,
-    ) if algorithm_summaries else 0.0
-
-    summary: SkillMapOverviewSummary = {
-        "totalGeneratedCards": len(generated_cards),
-        "attemptedCards": len(attempted_card_ids),
-        "untouchedCards": max(len(generated_cards) - len(attempted_card_ids), 0),
-        "staleCards": len(stale_card_ids),
-        "ghostRepCount": total_ghost_rep_count,
-        "unsupportedAttemptCount": total_unsupported_attempt_count,
-        "workCount": total_ghost_rep_count + total_unsupported_attempt_count,
-        "algorithmsStarted": sum(1 for item in algorithm_summaries if item["overallAttemptCount"] > 0),
-        "algorithmsUntouched": sum(1 for item in algorithm_summaries if item["overallAttemptCount"] == 0),
-        "avgAlgorithmReadiness": avg_algorithm_readiness,
-        "modeOrder": list(READINESS_MODE_ORDER),
-        "successThreshold": 90,
-        "staleAfterDays": 7,
-    }
-
     return {
-        "summary": summary,
         "algorithms": algorithm_summaries,
-        "reviewQueue": review_queue,
         "ghostRepActivity": _build_ghost_rep_activity(
             attempt_rows,
             slug_to_pattern,
@@ -748,7 +640,7 @@ async def get_history_day(day: date, timezone_name: str | None = None) -> dict[s
     submissions: list[dict[str, Any]] = []
     for row in rows:
         tags = [str(tag) for tag in (row["category_tags"] or [])]
-        slugs = _matched_algorithm_slugs(tags, set(algorithm_names))
+        slugs = taxonomy.matched_algorithm_slugs(tags, set(algorithm_names))
         if not slugs:
             continue  # The grid does not count it either.
         signals = coerce_json_object(row["signals"])
@@ -791,7 +683,7 @@ async def get_signal_history(timezone_name: str | None = None) -> dict[str, Any]
     points: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
         created_at = _coerce_utc_datetime(row["created_at"])
-        slugs = _matched_algorithm_slugs([str(tag) for tag in (row["category_tags"] or [])], set(algorithm_names))
+        slugs = taxonomy.matched_algorithm_slugs([str(tag) for tag in (row["category_tags"] or [])], set(algorithm_names))
         if created_at is None or not slugs:
             continue  # The grid does not count it either.
         evaluation = Evaluation.from_stored(coerce_json_object(row["signals"]).get("evaluation"))

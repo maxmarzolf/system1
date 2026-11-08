@@ -112,21 +112,6 @@ class SkillMapAlgorithmSummary(TypedDict):
 	modes: dict[str, SkillMapModeSummary]
 
 
-class SkillMapReviewQueueItem(TypedDict):
-	cardId: str
-	title: str
-	algorithm: str
-	templateMode: str
-	readiness: float
-	attemptCount: int
-	ghostRepCount: int
-	unsupportedAttemptCount: int
-	workCount: int
-	daysSinceLastSubmit: int | None
-	stale: bool
-	dimensionSummary: dict[str, Any]
-
-
 class SkillMapGhostRepSkillSegment(TypedDict):
 	skill: str
 	slug: str
@@ -174,26 +159,8 @@ class SkillMapGhostRepActivity(TypedDict):
 	days: list[SkillMapGhostRepActivityDay]
 	algorithms: list[SkillMapGhostRepAlgorithm]
 
-class SkillMapOverviewSummary(TypedDict):
-	totalGeneratedCards: int
-	attemptedCards: int
-	untouchedCards: int
-	staleCards: int
-	ghostRepCount: int
-	unsupportedAttemptCount: int
-	workCount: int
-	algorithmsStarted: int
-	algorithmsUntouched: int
-	avgAlgorithmReadiness: float
-	modeOrder: list[str]
-	successThreshold: int
-	staleAfterDays: int
-
-
 class SkillMapOverviewPayload(TypedDict):
-	summary: SkillMapOverviewSummary
 	algorithms: list[SkillMapAlgorithmSummary]
-	reviewQueue: list[SkillMapReviewQueueItem]
 	ghostRepActivity: SkillMapGhostRepActivity
 
 class FeedbackPayload(TypedDict, total=False):

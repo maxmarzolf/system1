@@ -429,25 +429,8 @@ class SkillMapAlgorithmReadiness(BaseModel):
     modes: dict[str, SkillMapModeReadiness] = {}
 
 
-class SkillMapCardReadiness(BaseModel):
-    cardId: str = Field(min_length=1)
-    title: str = ""
-    algorithm: str = ""
-    templateMode: str = TemplateMode.algorithm.value
-    readiness: float = Field(default=0, ge=0, le=100)
-    attemptCount: int = Field(default=0, ge=0)
-    ghostRepCount: int = Field(default=0, ge=0)
-    unsupportedAttemptCount: int = Field(default=0, ge=0)
-    workCount: int = Field(default=0, ge=0)
-    daysSinceLastSubmit: int | None = Field(default=None, ge=0)
-    stale: bool = False
-    dimensionSummary: dict[str, Any] = {}
-
-
 class SkillMapOverviewResponse(BaseModel):
-    summary: dict[str, Any] = {}
     algorithms: list[SkillMapAlgorithmReadiness] = []
-    reviewQueue: list[SkillMapCardReadiness] = []
     ghostRepActivity: SkillMapGhostRepActivity = SkillMapGhostRepActivity()
 
 

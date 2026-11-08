@@ -13,7 +13,7 @@ from app.repositories import admin_repository
 from app.services import (
     admin_service,
     attempts_service,
-    coach_service,
+    coach_orchestration_service,
     problem_practice_service,
     signal_admin_service,
 )
@@ -70,13 +70,13 @@ def test_read_routes(client, monkeypatch) -> None:
 
 
 def test_coach_routes_reach_their_services(client, monkeypatch) -> None:
-    monkeypatch.setattr(coach_service, "coach_provider_default", returns({"provider": "openai"}))
+    monkeypatch.setattr(coach_orchestration_service, "coach_provider_default", returns({"provider": "openai"}))
     monkeypatch.setattr(
-        coach_service,
+        coach_orchestration_service,
         "coach_session_plan",
         returns({"headline": "h", "focusTheme": "f", "warmup": "w", "mainSet": "m", "cooldown": "c", "note": "n"}),
     )
-    monkeypatch.setattr(coach_service, "coach_skill_map_drills", returns(DRILLS))
+    monkeypatch.setattr(coach_orchestration_service, "coach_skill_map_drills", returns(DRILLS))
     monkeypatch.setattr(problem_practice_service, "problem_drills_for_algorithm", returns(DRILLS))
     monkeypatch.setattr(problem_practice_service, "static_playlist_drills", returns(DRILLS))
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from collections import Counter
 from typing import Any, TypedDict
 
@@ -8,6 +7,7 @@ from app.models import SkillMapNode, TemplateMode
 from app.readiness import READINESS_MODE_ORDER, summarize_readiness
 from app.domain.rubric_summary import summarize_submission_rubrics
 from app.contracts.evaluation import evaluation_feedback
+from app.core.taxonomy import primary_pattern_tag, slugify
 
 
 class AttemptHistoryEntry(TypedDict, total=False):
@@ -48,14 +48,6 @@ class PatternProgressSummary(TypedDict, total=False):
 class SkillMapProgressSummary(TypedDict):
     overall: dict[str, Any]
     patterns: dict[str, PatternProgressSummary]
-
-
-def _pattern_slug(text: str) -> str:
-    return re.sub(
-        r"\s+",
-        "-",
-        re.sub(r"[^a-z0-9\s-]", " ", text.lower().replace("/", " ").replace("&", " ").replace("-", " ")).strip(),
-    )
 
 
 def summarize_attempt_history(history: list[AttemptHistoryEntry]) -> AttemptHistorySummary:
@@ -133,7 +125,7 @@ def summarize_skill_map_progress(
     progress_by_pattern: dict[str, PatternProgressSummary] = {}
 
     for node in skill_map:
-        slug = _pattern_slug(getattr(node, "algorithm", ""))
+        slug = slugify(getattr(node, "algorithm", ""))
         if not slug:
             continue
         progress_by_pattern[slug] = {
@@ -197,54 +189,6 @@ def summarize_skill_map_progress(
         },
         "patterns": progress_by_pattern,
     }
-
-
-def primary_pattern_tag(skill_tags: list[str]) -> str:
-    for tag in (
-        "sliding-window",
-        "two-pointers",
-        "binary-search",
-        "trees",
-        "graphs",
-        "dfs-bfs",
-        "graph-traversal",
-        "backtracking",
-        "heap-priority-queue",
-        "heap",
-        "union-find",
-        "dynamic-programming",
-        "dp",
-        "intervals",
-        "prefix-sums",
-        "monotonic-stack",
-        "stacks-queues",
-        "linked-lists",
-        "matrix-grid",
-        "trie",
-        "sorting",
-        "greedy-sorting",
-        "stack",
-    ):
-        if tag in skill_tags:
-            return tag
-    return ""
-
-
-# Pattern tags that differ from their ``algorithm`` table slug.
-PATTERN_TAG_ALGORITHM_ALIASES = {
-    "heap-priority-queue": "heap",
-    "dfs-bfs": "graphs",
-    "graph-traversal": "graphs",
-    "dp": "dynamic-programming",
-    "greedy-sorting": "sorting",
-    "stack": "stacks-queues",
-}
-
-
-def algorithm_slug_for_tags(skill_tags: list[str]) -> str:
-    """The ``algorithm`` slug for a card's primary pattern tag, or "" if none."""
-    tag = primary_pattern_tag(skill_tags)
-    return PATTERN_TAG_ALGORITHM_ALIASES.get(tag, tag)
 
 
 def pattern_display_name(skill_tags: list[str]) -> str:

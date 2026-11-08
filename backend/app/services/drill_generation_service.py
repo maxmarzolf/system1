@@ -25,20 +25,12 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-DRILL_GEN_MAX_TOKENS = 8000
-DRILL_GEN_OPENAI_TIMEOUT_SECONDS = 90
-DRILL_GEN_TEMPERATURE = 0.7
-
-
 def _make_skill_map_drill_generator(
     persist_skill_map_drills: PersistSkillMapDrills,
 ) -> SkillMapDrillGenerator:
     runtime = GeneratorRuntime(
         call_llm_json=_call_llm_json,
         persist_skill_map_drills=persist_skill_map_drills,
-        drill_gen_max_tokens=DRILL_GEN_MAX_TOKENS,
-        drill_gen_openai_timeout_seconds=DRILL_GEN_OPENAI_TIMEOUT_SECONDS,
-        drill_gen_temperature=DRILL_GEN_TEMPERATURE,
         logger=logger,
     )
     return SkillMapDrillGenerator(

@@ -19,7 +19,7 @@ from app.models import (
     SkillMapDrillsResponse,
 )
 from app.services import inline_completion_service, micro_drill_service, sliding_window_ladder_service
-from app.services import coach_service
+from app.services import coach_orchestration_service, history_service
 from app.services import problem_practice_service
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])
@@ -37,27 +37,27 @@ async def coach_inline_completion(body: InlineCompletionRequest):
 
 @router.get("/provider-default", response_model=CoachProviderDefaultResponse)
 async def coach_provider_default():
-    return await coach_service.coach_provider_default()
+    return await coach_orchestration_service.coach_provider_default()
 
 
 @router.post("/session-plan", response_model=CoachSessionPlanResponse)
 async def coach_session_plan(body: CoachSessionPlanRequest):
-    return await coach_service.coach_session_plan(body)
+    return await coach_orchestration_service.coach_session_plan(body)
 
 
 @router.post("/history", response_model=CoachPracticeHistoryResponse)
 async def coach_practice_history(body: CoachPracticeHistoryRequest):
-    return await coach_service.coach_practice_history(body)
+    return await history_service.coach_practice_history(body)
 
 
 @router.post("/skill-map-drills", response_model=SkillMapDrillsResponse)
 async def coach_skill_map_drills(body: SkillMapDrillsRequest):
-    return await coach_service.coach_skill_map_drills(body)
+    return await coach_orchestration_service.coach_skill_map_drills(body)
 
 
 @router.post("/skill-map-drills-stream")
 async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
-    stream = await coach_service.coach_skill_map_drills_stream(body)
+    stream = await coach_orchestration_service.coach_skill_map_drills_stream(body)
     return StreamingResponse(stream, media_type="text/event-stream")
 
 
@@ -86,7 +86,7 @@ async def coach_static_playlist_drills(
 
 @router.post("/multiple-choice-drills", response_model=MultipleChoiceDrillsResponse)
 async def coach_multiple_choice_drills(body: MultipleChoiceDrillsRequest):
-    return await coach_service.coach_multiple_choice_drills(body)
+    return await coach_orchestration_service.coach_multiple_choice_drills(body)
 
 
 @router.post("/micro-drill", response_model=FlowMicroDrillResponse)

@@ -11,16 +11,9 @@ from app.services import attempts_service
 
 @pytest.mark.parametrize(
     ("row", "expected"),
-    [
-        ({"modality": "ghost-rep"}, "ghost-rep"),
-        ({"activity_format": "multiple-choice"}, "mcq"),
-        ({"activity_format": "code-completion"}, "microdrill"),
-        ({"question_type": "skill-map:microdrill"}, "microdrill"),
-        ({"support_layer": "ghost-reps"}, "ghost-rep"),
-        ({}, "total-recall"),
-    ],
+    [({"modality": "ghost-rep"}, "ghost-rep"), ({"modality": " mcq "}, "mcq"), ({}, "total-recall")],
 )
-def test_submission_modality_falls_back_to_legacy_fields(row, expected) -> None:
+def test_submission_modality_reads_the_stored_column(row, expected) -> None:
     assert attempts_service._submission_modality(row) == expected
 
 

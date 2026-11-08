@@ -11,7 +11,7 @@ import logging
 
 from app.core.signals import DETERMINISTIC_IMPLEMENTATIONS, ModalitySignalSpec, build_spec
 from app.core.signals.mcq import DEFAULT_MCQ_ALGORITHM, DEFAULT_MCQ_DEFINITIONS, DEFAULT_MCQ_DIRECTIVE, MCQ_MODALITY
-from app.domain.coach_context import algorithm_slug_for_tags
+from app.core.taxonomy import algorithm_slug_for_tags
 from app.repositories import signal_definition_repository
 
 logger = logging.getLogger(__name__)

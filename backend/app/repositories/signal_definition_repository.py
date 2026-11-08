@@ -87,12 +87,6 @@ async def fetch_active_definitions(modality: str, algorithm_slug: str) -> list[d
     return [_definition(row) for row in rows]
 
 
-async def fetch_definition(key: str) -> dict[str, Any] | None:
-    async with acquire_connection() as conn:
-        row = await conn.fetchrow(f"SELECT {DEFINITION_COLUMNS} FROM signal_definition WHERE key = $1", key)
-    return _definition(row) if row else None
-
-
 async def insert_definition(definition: dict[str, Any], modality: str) -> dict[str, Any] | None:
     """Insert a new definition; returns None when the key already exists."""
     columns = ", ".join(WRITABLE_COLUMNS)

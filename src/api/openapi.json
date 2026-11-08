@@ -2935,89 +2935,6 @@
         "title": "SkillMapAlgorithmReadiness",
         "type": "object"
       },
-      "SkillMapCardReadiness": {
-        "properties": {
-          "algorithm": {
-            "default": "",
-            "title": "Algorithm",
-            "type": "string"
-          },
-          "attemptCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Attemptcount",
-            "type": "integer"
-          },
-          "cardId": {
-            "minLength": 1,
-            "title": "Cardid",
-            "type": "string"
-          },
-          "daysSinceLastSubmit": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Dayssincelastsubmit"
-          },
-          "dimensionSummary": {
-            "additionalProperties": true,
-            "default": {},
-            "title": "Dimensionsummary",
-            "type": "object"
-          },
-          "ghostRepCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Ghostrepcount",
-            "type": "integer"
-          },
-          "readiness": {
-            "default": 0,
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Readiness",
-            "type": "number"
-          },
-          "stale": {
-            "default": false,
-            "title": "Stale",
-            "type": "boolean"
-          },
-          "templateMode": {
-            "default": "algorithm",
-            "title": "Templatemode",
-            "type": "string"
-          },
-          "title": {
-            "default": "",
-            "title": "Title",
-            "type": "string"
-          },
-          "unsupportedAttemptCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Unsupportedattemptcount",
-            "type": "integer"
-          },
-          "workCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Workcount",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "cardId"
-        ],
-        "title": "SkillMapCardReadiness",
-        "type": "object"
-      },
       "SkillMapDrillCard": {
         "properties": {
           "difficulty": {
@@ -3661,20 +3578,6 @@
               "windowStart": "",
               "workCount": 0
             }
-          },
-          "reviewQueue": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/SkillMapCardReadiness"
-            },
-            "title": "Reviewqueue",
-            "type": "array"
-          },
-          "summary": {
-            "additionalProperties": true,
-            "default": {},
-            "title": "Summary",
-            "type": "object"
           }
         },
         "title": "SkillMapOverviewResponse",

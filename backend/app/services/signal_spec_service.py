@@ -10,7 +10,7 @@ from app.core.signal_catalog import (
     spec_from_json,
     spec_to_json,
 )
-from app.domain.coach_context import algorithm_slug_for_tags
+from app.core.taxonomy import algorithm_slug_for_tags
 from app.repositories import signal_spec_repository
 from app.contracts.coerce import coerce_json_object
 

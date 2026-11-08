@@ -17,7 +17,6 @@ from app.models import (
 )
 from app.services import (
     coach_orchestration_service as orchestration,
-    coach_service,
     inline_completion_service,
     micro_drill_service,
     problem_practice_service,
@@ -53,7 +52,7 @@ async def test_llm_failures_become_503s(monkeypatch, call, target, body) -> None
 
 async def test_provider_default_reports_configured_provider(monkeypatch) -> None:
     monkeypatch.setattr("app.core.llm.settings.coach_llm_provider", "anthropic")
-    assert (await coach_service.coach_provider_default()).provider == "claude"
+    assert (await orchestration.coach_provider_default()).provider == "claude"
 
 
 async def test_skill_map_drills_are_persisted_with_progress_context(monkeypatch, skill_map_request, progress_summary) -> None:
@@ -85,7 +84,7 @@ async def test_skill_map_drills_are_persisted_with_progress_context(monkeypatch,
     monkeypatch.setattr(orchestration.drill_generation_service, "coach_skill_map_drills", generate)
     monkeypatch.setattr(orchestration.drill_generation_service, "coach_skill_map_drills_stream", generate)
 
-    for call in (coach_service.coach_skill_map_drills, coach_service.coach_skill_map_drills_stream):
+    for call in (orchestration.coach_skill_map_drills, orchestration.coach_skill_map_drills_stream):
         result = await call(skill_map_request)
         assert result["llmUsed"]
     context = json.loads(stored[0]["generation_context_json"])
@@ -104,7 +103,7 @@ async def test_generated_questions_are_stored_and_mapped(monkeypatch) -> None:
 
     monkeypatch.setattr(orchestration, "insert_generated_multiple_choice_question_rows", insert)
     monkeypatch.setattr(orchestration.drill_generation_service, "coach_multiple_choice_drills", generate)
-    result = await coach_service.coach_multiple_choice_drills(MultipleChoiceDrillsRequest())
+    result = await orchestration.coach_multiple_choice_drills(MultipleChoiceDrillsRequest())
     assert result["stored"] == [{"id": "q1", "choices": [], "correctChoiceId": "A"}, None]
 
 
@@ -225,7 +224,7 @@ def test_stream_endpoint_returns_event_stream(client, monkeypatch, skill_map_req
 
         return events()
 
-    monkeypatch.setattr(coach_service, "coach_skill_map_drills_stream", stream)
+    monkeypatch.setattr(orchestration, "coach_skill_map_drills_stream", stream)
     response = client.post("/api/coach/skill-map-drills-stream", json=skill_map_request.model_dump(mode="json"))
     assert response.headers["content-type"].startswith("text/event-stream")
     assert response.text == "data: {}\n\n"

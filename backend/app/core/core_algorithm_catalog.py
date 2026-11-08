@@ -1,21 +1,9 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from app.core.taxonomy_catalog import ALGORITHMS, TECHNIQUES
-
-
-def taxonomy_slug(value: str) -> str:
-    slug = re.sub(
-        r"\s+",
-        "-",
-        re.sub(r"[^a-z0-9\s-]", " ", str(value or "").lower().replace("/", " ").replace("&", " ").replace("-", " ")).strip(),
-    )
-    return {
-        "heap-priority-queue": "heap",
-        "dfs-bfs": "dfs-bfs",
-    }.get(slug, slug)
+from app.core.taxonomy import catalog_slug as taxonomy_slug
 
 
 def _entry(

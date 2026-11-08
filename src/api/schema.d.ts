@@ -2031,65 +2031,6 @@ export interface components {
              */
             workCount: number;
         };
-        /** SkillMapCardReadiness */
-        SkillMapCardReadiness: {
-            /**
-             * Algorithm
-             * @default
-             */
-            algorithm: string;
-            /**
-             * Attemptcount
-             * @default 0
-             */
-            attemptCount: number;
-            /** Cardid */
-            cardId: string;
-            /** Dayssincelastsubmit */
-            daysSinceLastSubmit?: number | null;
-            /**
-             * Dimensionsummary
-             * @default {}
-             */
-            dimensionSummary: {
-                [key: string]: unknown;
-            };
-            /**
-             * Ghostrepcount
-             * @default 0
-             */
-            ghostRepCount: number;
-            /**
-             * Readiness
-             * @default 0
-             */
-            readiness: number;
-            /**
-             * Stale
-             * @default false
-             */
-            stale: boolean;
-            /**
-             * Templatemode
-             * @default algorithm
-             */
-            templateMode: string;
-            /**
-             * Title
-             * @default
-             */
-            title: string;
-            /**
-             * Unsupportedattemptcount
-             * @default 0
-             */
-            unsupportedAttemptCount: number;
-            /**
-             * Workcount
-             * @default 0
-             */
-            workCount: number;
-        };
         /** SkillMapDrillCard */
         SkillMapDrillCard: {
             /**
@@ -2543,18 +2484,6 @@ export interface components {
              *     }
              */
             ghostRepActivity: components["schemas"]["SkillMapGhostRepActivity"];
-            /**
-             * Reviewqueue
-             * @default []
-             */
-            reviewQueue: components["schemas"]["SkillMapCardReadiness"][];
-            /**
-             * Summary
-             * @default {}
-             */
-            summary: {
-                [key: string]: unknown;
-            };
         };
         /** SlidingWindowLadderAttempt */
         SlidingWindowLadderAttempt: {

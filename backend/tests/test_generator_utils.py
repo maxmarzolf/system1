@@ -6,22 +6,10 @@ from app.core.generator import (
     _clean_concise_prompt,
     _core_shape_template_target,
     _normalize_drill_difficulty,
-    _pattern_slug,
     _template_mode_value,
     _normalize_inline_template_target,
     apply_specimen_tuning_to_target,
 )
-
-
-def test_pattern_slug_normalizes_common_variants() -> None:
-    assert _pattern_slug("Sliding Window") == "sliding-window"
-    assert _pattern_slug("Binary/Search") == "binary-search"
-    assert _pattern_slug("A & B") == "a-b"
-
-
-def test_pattern_slug_is_stable() -> None:
-    slug = _pattern_slug("Graph Traversal")
-    assert _pattern_slug(slug) == slug
 
 
 def test_clean_concise_prompt_truncates_on_word_boundary() -> None:

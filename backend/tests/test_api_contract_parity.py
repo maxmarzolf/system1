@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from app import main as app_main
 from app.contracts.evaluation import Evaluation
 from app.main import create_app
-from app.services import attempts_service, catalog_service, coach_service, problem_practice_service, submission_service
+from app.services import attempts_service, catalog_service, history_service, problem_practice_service, submission_service
 
 
 def test_attempts_endpoint_contract(monkeypatch) -> None:
@@ -93,7 +93,7 @@ def test_coach_history_endpoint_contract(monkeypatch) -> None:
     async def _noop_disconnect():
         return None
 
-    monkeypatch.setattr(coach_service, "coach_practice_history", _mock_history)
+    monkeypatch.setattr(history_service, "coach_practice_history", _mock_history)
     monkeypatch.setattr(app_main, "connect", _noop_connect)
     monkeypatch.setattr(app_main, "disconnect", _noop_disconnect)
 
@@ -120,7 +120,6 @@ def test_coach_history_endpoint_contract(monkeypatch) -> None:
 def test_skill_map_overview_endpoint_contract(monkeypatch) -> None:
     async def _mock_overview(**_kwargs):
         return {
-            "summary": {"workCount": 1},
             "algorithms": [
                 {
                     "algorithm": "Sliding Window",
@@ -139,7 +138,6 @@ def test_skill_map_overview_endpoint_contract(monkeypatch) -> None:
                     "modes": {},
                 }
             ],
-            "reviewQueue": [],
             "ghostRepActivity": {
                 "windowStart": "2026-05-01",
                 "windowEnd": "2026-05-24",
@@ -170,9 +168,8 @@ def test_skill_map_overview_endpoint_contract(monkeypatch) -> None:
 
     assert response.status_code == 200, response.text
     payload = response.json()
-    assert "summary" in payload
+    assert "summary" not in payload and "reviewQueue" not in payload
     assert "algorithms" in payload
-    assert "reviewQueue" in payload
     assert "ghostRepActivity" in payload
     assert payload["algorithms"][0]["slug"] == "sliding-window"
     assert payload["ghostRepActivity"]["totalPerfectRecalls"] == 3

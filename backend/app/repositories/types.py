@@ -50,10 +50,6 @@ class SubmissionInsertResult(TypedDict):
     id: int
 
 
-class MultipleChoiceProblemInsertResult(TypedDict):
-    id: str
-
-
 class AlgorithmSkillRow(TypedDict):
     algorithm_id: int
     algorithm_name: str

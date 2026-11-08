@@ -35,6 +35,7 @@ from app.models import (
     SkillMapNode,
     TemplateMode,
 )
+from app.core.taxonomy import slugify
 
 INLINE_NOTE_COLUMN = 48
 
@@ -137,22 +138,15 @@ class GeneratorContext:
 class GeneratorRuntime:
     call_llm_json: Callable[[str, LLMJsonPayload, str, int, int, float], LLMJsonResponse | None]
     persist_skill_map_drills: Callable[[list[SkillMapDrillPayload], bool, SkillMapProgressPayload], Awaitable[None]]
-    drill_gen_max_tokens: int
-    drill_gen_openai_timeout_seconds: int
-    drill_gen_temperature: float
+    # Cost settings; SkillMapDrillGenerator replaces these with its GeneratorTuning.
+    drill_gen_max_tokens: int = GeneratorCostTuning.max_tokens
+    drill_gen_openai_timeout_seconds: int = GeneratorCostTuning.timeout_seconds
+    drill_gen_temperature: float = GeneratorCostTuning.temperature
     logger: logging.Logger | None = None
 
 
-def _pattern_slug(pattern: str) -> str:
-    return re.sub(
-        r"\s+",
-        "-",
-        re.sub(r"[^a-z0-9\s-]", " ", pattern.lower().replace("/", " ").replace("&", " ").replace("-", " ")).strip(),
-    )
-
-
 def _question_slug(title: str) -> str:
-    return _pattern_slug(title)[:72] or "question"
+    return slugify(title)[:72] or "question"
 
 
 def _is_playlist_request(body: SkillMapDrillsRequest) -> bool:
@@ -516,7 +510,7 @@ def _process_multiple_choice_card(raw: Any, index: int, body: MultipleChoiceDril
     source_methods = list(getattr(source_node, "skills", []) or [])
     if not skill and body.sourceMode == "skill-map" and len(source_methods) == 1:
         skill = str(source_methods[0]).strip()
-    pattern_slug = _pattern_slug(pattern) or "algorithm"
+    pattern_slug = slugify(pattern) or "algorithm"
     title = str(raw.get("title") or f"{pattern} Multiple Choice").strip()
     question = _normalize_python_markdown_display(str(raw.get("question") or ""))
     explanation = _normalize_python_markdown_display(str(raw.get("explanation") or ""))
@@ -559,7 +553,7 @@ def _process_multiple_choice_card(raw: Any, index: int, body: MultipleChoiceDril
     tags: list[str] = []
     source_tag = f"source-{body.sourceMode}"
     flow_tag = f"flow-{body.flowMode}"
-    skill_slug = _pattern_slug(skill)
+    skill_slug = slugify(skill)
     for tag in ["skill-map", "skill-map-mcq", pattern_slug, skill_slug, source_tag, flow_tag, *raw_tags]:
         if tag and tag not in tags:
             tags.append(tag)
@@ -691,7 +685,7 @@ async def generate_multiple_choice_drills_response(
             {
                 "pattern": node.algorithm,
                 "methods": node.skills,
-                "patternSlug": _pattern_slug(node.algorithm),
+                "patternSlug": slugify(node.algorithm),
             }
             for node in skill_map[: body.count]
         ],
@@ -1463,7 +1457,7 @@ def attach_plain_english_prompt_detail(
     method: str = "",
 ) -> SkillMapDrillPayload:
     tags = [str(tag) for tag in drill.get("tags", []) if str(tag).strip()]
-    pattern_slug = _pattern_slug(pattern) or next((tag for tag in tags if tag != "skill-map"), "")
+    pattern_slug = slugify(pattern) or next((tag for tag in tags if tag != "skill-map"), "")
     template_targets = drill.get("templateTargets", {}) if isinstance(drill.get("templateTargets"), dict) else {}
     target = str(
         template_targets.get(TemplateMode.algorithm.value)
@@ -1687,7 +1681,7 @@ def _process_raw_drill(
         tags = ["skill-map", *tags]
     source_node = generation_skill_map[index] if index < len(generation_skill_map) else None
     pattern = source_node.algorithm if source_node else str(raw.get("title", "algorithm"))
-    pattern_slug = _pattern_slug(pattern)
+    pattern_slug = slugify(pattern)
     method = _focused_source_method(source_node)
     question_title = str(getattr(source_node, "questionTitle", "") or "").strip() if source_node else ""
     playlist_slug = str(getattr(source_node, "playlistSlug", "") or "").strip() if source_node else ""
@@ -1922,7 +1916,7 @@ def _invalid_response_error(context: GeneratorContext) -> GeneratorUnavailableEr
 
 
 def _fallback_template_for_pattern(pattern: str, method_hint: str, prompt_max_chars: int = 80) -> SkillMapDrillPayload:
-    slug = _pattern_slug(pattern) or "pattern"
+    slug = slugify(pattern) or "pattern"
     func = slug.replace("-", "_")
     method_text = method_hint.strip() if method_hint else "core method"
     solution = (
@@ -1965,7 +1959,7 @@ def fallback_skill_map_drills(context: GeneratorContext) -> SkillMapDrillsEnvelo
                         body=context.body,
                         source_node=node,
                         pattern=pattern,
-                        pattern_slug=_pattern_slug(pattern),
+                        pattern_slug=slugify(pattern),
                         method=method_hint,
                     ),
                     pattern=pattern,
@@ -1974,7 +1968,7 @@ def fallback_skill_map_drills(context: GeneratorContext) -> SkillMapDrillsEnvelo
             )
             continue
         base = _fallback_template_for_pattern(pattern, method_hint, context.output_tuning.prompt_max_chars)
-        slug = _pattern_slug(pattern)
+        slug = slugify(pattern)
         progress = progress_by_pattern.get(slug, {}) if slug else {}
         difficulty = "Easy" if float(progress.get("successRate", 100) or 100) < 80 else base["difficulty"]
 

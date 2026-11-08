@@ -160,6 +160,7 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
                 "created_at": five_days_ago,
                 "template_mode": "algorithm",
                 "support_layer": "ghost-reps",
+                "modality": "ghost-rep",
                 "live_coach_used": False,
                 "signals": {},
             },
@@ -171,6 +172,7 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
                 "created_at": yesterday,
                 "template_mode": "algorithm",
                 "support_layer": "ghost-reps",
+                "modality": "ghost-rep",
                 "live_coach_used": False,
                 "signals": {},
             },
@@ -279,7 +281,6 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
     assert pattern_freshness["binary-search"]["daysSinceLastGhostRep"] == 1
     assert pattern_freshness["binary-search"]["daysSinceLastPractice"] == 0
     assert pattern_freshness["binary-search"]["totalWork"] == 4
-    assert overview["summary"]["workCount"] == 5
 
 
 def test_skill_map_overview_counts_static_catalog_cards() -> None:
@@ -335,7 +336,6 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
     assert google["overallAttemptCount"] == 1
     assert skeletons["totalCards"] == 1
     assert skeletons["overallAttemptCount"] == 1
-    assert overview["summary"]["totalGeneratedCards"] == 3
 
     today_bucket = next(
         day for day in overview["ghostRepActivity"]["days"]
@@ -420,7 +420,6 @@ def test_skill_map_overview_keeps_generated_cards_out_of_core_catalog_counts() -
     assert heap["overallAttemptCount"] == 1
     assert heap["practicedCards"] == 0
     assert google["totalCards"] == 1
-    assert overview["reviewQueue"][0]["cardId"] == "skill-map-20260921000000000000-1"
 
 
 def _activity_row(created_at: datetime) -> dict[str, object]:
