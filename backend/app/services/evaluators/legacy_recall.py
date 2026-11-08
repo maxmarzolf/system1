@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.signal_catalog import SignalSpec
-from app.domain.llm_resilience import SubmissionFeedbackUnavailableError
+from app.core.llm import LlmUnavailableError
 from app.contracts.evaluation import Evaluation, outcome_evaluation
 from app.models import AttemptCreate, CoachAttemptEvaluationRequest, CoachAttemptFeedbackRequest
 from app.services import evaluation_service, feedback_service, signal_spec_service
@@ -77,7 +77,7 @@ class AssessorEvaluator:
         feedback_unavailable: dict[str, Any] | None = None
         try:
             evaluation = await feedback_service.coach_submission_evaluation(_feedback_request(body), spec)
-        except SubmissionFeedbackUnavailableError as error:
+        except LlmUnavailableError as error:
             evaluation = await _semantic_evaluation(body, spec)
             feedback_unavailable = {
                 "code": error.code,

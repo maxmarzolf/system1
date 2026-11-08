@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import connect, disconnect
 from app.endpoints import ALL_ROUTERS
+from app.endpoints.errors import register_error_handlers
 from app.services.evaluators.defaults import register_default_evaluators
 
 
@@ -29,6 +30,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    register_error_handlers(app)
     for router in ALL_ROUTERS:
         app.include_router(router)
 

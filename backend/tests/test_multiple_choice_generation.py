@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.generator import (
-    GeneratorUnavailableError,
+    LlmUnavailableError,
     _process_multiple_choice_card,
     generate_multiple_choice_drills_response,
 )
@@ -296,7 +296,7 @@ async def test_generate_multiple_choice_drills_response_fails_closed_when_persis
     async def persist_generated_questions(_drills):
         raise RuntimeError("db unavailable")
 
-    with pytest.raises(GeneratorUnavailableError) as error:
+    with pytest.raises(LlmUnavailableError) as error:
         await generate_multiple_choice_drills_response(
             request,
             provider="openai",

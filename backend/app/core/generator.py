@@ -9,8 +9,7 @@ import queue as thread_queue
 import random
 import re
 import tokenize
-import urllib.request
-from collections.abc import AsyncIterator, Awaitable, Callable, Generator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, TypeAlias, TypedDict
@@ -36,6 +35,7 @@ from app.models import (
     TemplateMode,
 )
 from app.core.taxonomy import slugify
+from app.core.llm import LlmUnavailableError, stream_openai_text
 
 INLINE_NOTE_COLUMN = 48
 
@@ -73,15 +73,6 @@ class MultipleChoiceQuestionPayload(TypedDict, total=False):
 class SkillMapDrillsEnvelope(TypedDict):
     drills: list[SkillMapDrillPayload]
     llmUsed: bool
-
-
-class GeneratorUnavailableError(RuntimeError):
-    def __init__(self, code: str, message: str, provider: str, api_error_code: str = ""):
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.provider = provider
-        self.api_error_code = api_error_code
 
 
 @dataclass(frozen=True)
@@ -593,7 +584,7 @@ async def generate_multiple_choice_drills_response(
     available_candidates = [candidate for candidate in provider_candidates if candidate[2]]
 
     if not available_candidates:
-        raise GeneratorUnavailableError(
+        raise LlmUnavailableError(
             code="mcq_generation_missing_api_key",
             message=f"Multiple choice questions cannot be generated at this time. No API key is configured for {provider_label}.",
             provider=provider,
@@ -751,7 +742,7 @@ async def generate_multiple_choice_drills_response(
             logger.warning("MCQ generation exhausted retries for %s; trying next provider.", candidate_label)
 
     if not llm_response:
-        raise GeneratorUnavailableError(
+        raise LlmUnavailableError(
             code="mcq_generation_no_response",
             message=f"Multiple choice questions cannot be generated at this time. No valid response from {resolved_provider_label}.",
             provider=resolved_provider,
@@ -762,7 +753,7 @@ async def generate_multiple_choice_drills_response(
     for index, raw in enumerate(llm_response["drills"][: body.count]):
         processed = _process_multiple_choice_card(raw, index, body)
         if not processed:
-            raise GeneratorUnavailableError(
+            raise LlmUnavailableError(
                 code="mcq_generation_invalid_response",
                 message=f"Multiple choice questions cannot be generated at this time. Invalid response from {resolved_provider_label}.",
                 provider=resolved_provider,
@@ -771,7 +762,7 @@ async def generate_multiple_choice_drills_response(
         drills.append(processed)
 
     if len(drills) != body.count:
-        raise GeneratorUnavailableError(
+        raise LlmUnavailableError(
             code="mcq_generation_invalid_response",
             message=f"Multiple choice questions cannot be generated at this time. Invalid response from {resolved_provider_label}.",
             provider=resolved_provider,
@@ -786,7 +777,7 @@ async def generate_multiple_choice_drills_response(
         except Exception as error:
             if logger is not None:
                 logger.warning("Persisting generated multiple-choice questions failed: %s", error)
-            raise GeneratorUnavailableError(
+            raise LlmUnavailableError(
                 code="mcq_generation_persist_failed",
                 message="Multiple choice questions cannot be saved at this time.",
                 provider=resolved_provider,
@@ -1614,54 +1605,6 @@ class _DrillStreamParser:
         return new
 
 
-def _call_openai_streaming(
-    system_prompt: str,
-    user_payload: LLMJsonPayload,
-    max_tokens: int = 1800,
-    timeout_seconds: int = 90,
-    temperature: float = 0.7,
-) -> Generator[str, None, None]:
-    if not settings.coach_openai_api_key:
-        return
-    url = f"{settings.coach_openai_base_url.rstrip('/')}/chat/completions"
-    body: LLMJsonPayload = {
-        "model": settings.coach_openai_model,
-        "temperature": temperature,
-        "max_completion_tokens": max_tokens,
-        "response_format": {"type": "json_object"},
-        "stream": True,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": json.dumps(user_payload)},
-        ],
-    }
-    data = json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {settings.coach_openai_api_key}",
-            "Content-Type": "application/json",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
-        for raw_line in resp:
-            line = raw_line.decode("utf-8").strip()
-            if not line or not line.startswith("data:"):
-                continue
-            payload = line[5:].strip()
-            if payload == "[DONE]":
-                break
-            try:
-                chunk = json.loads(payload)
-                delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                if delta:
-                    yield delta
-            except (json.JSONDecodeError, KeyError, IndexError):
-                continue
-
-
 def _process_raw_drill(
     raw: Any,
     index: int,
@@ -1906,8 +1849,8 @@ def build_generator_context(
     )
 
 
-def _invalid_response_error(context: GeneratorContext) -> GeneratorUnavailableError:
-    return GeneratorUnavailableError(
+def _invalid_response_error(context: GeneratorContext) -> LlmUnavailableError:
+    return LlmUnavailableError(
         code="coach_llm_invalid_response",
             message=f"Skill-map practice cards cannot be generated at this time. Invalid response from {context.provider_label}.",
         provider=context.provider,
@@ -2026,7 +1969,7 @@ async def generate_skill_map_drills(context: GeneratorContext, runtime: Generato
         runtime.drill_gen_temperature,
     )
     if not llm_response or not isinstance(llm_response.get("drills"), list):
-        raise GeneratorUnavailableError(
+        raise LlmUnavailableError(
             code="coach_llm_no_response",
             message=f"Skill-map practice cards cannot be generated at this time. No response from {context.provider_label}.",
             provider=context.provider,
@@ -2108,7 +2051,7 @@ class SkillMapDrillGenerator:
         if provider_available:
             try:
                 drills = await generate_skill_map_drills(context, runtime)
-            except GeneratorUnavailableError:
+            except LlmUnavailableError:
                 drills = fallback_skill_map_drills(context)
         else:
             drills = fallback_skill_map_drills(context)
@@ -2148,7 +2091,7 @@ def skill_map_drills_stream_response(context: GeneratorContext, runtime: Generat
 
                 if use_streaming:
                     try:
-                        for token in _call_openai_streaming(
+                        for token in stream_openai_text(
                             context.system_prompt,
                             context.llm_payload,
                             runtime.drill_gen_max_tokens,

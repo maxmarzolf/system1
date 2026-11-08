@@ -5,14 +5,12 @@ from __future__ import annotations
 import json
 
 import pytest
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app import main as app_main
-from app.domain.llm_resilience import SubmissionFeedbackUnavailableError
+from app.core.llm import LlmUnavailableError
 from app.main import create_app
 from app.models import (
-    CoachSessionPlanRequest,
     MultipleChoiceDrillsRequest,
 )
 from app.services import (
@@ -23,7 +21,7 @@ from app.services import (
     sliding_window_ladder_service,
 )
 
-UNAVAILABLE = SubmissionFeedbackUnavailableError("coach_llm_no_response", "No response.", "claude", "provider_empty_response")
+UNAVAILABLE = LlmUnavailableError("coach_llm_no_response", "No response.", "claude", "provider_empty_response")
 
 
 async def raise_unavailable(*_args, **_kwargs):
@@ -31,23 +29,23 @@ async def raise_unavailable(*_args, **_kwargs):
 
 
 @pytest.mark.parametrize(
-    ("call", "target", "body"),
+    ("path", "target"),
     [
-        (orchestration.coach_session_plan, (orchestration.session_service, "coach_session_plan"), CoachSessionPlanRequest()),
-        (
-            orchestration.coach_multiple_choice_drills,
-            (orchestration.drill_generation_service, "coach_multiple_choice_drills"),
-            MultipleChoiceDrillsRequest(),
-        ),
+        ("/api/coach/session-plan", (orchestration.session_service, "coach_session_plan")),
+        ("/api/coach/multiple-choice-drills", (orchestration.drill_generation_service, "coach_multiple_choice_drills")),
     ],
 )
-async def test_llm_failures_become_503s(monkeypatch, call, target, body) -> None:
+def test_llm_failures_become_503s(client, monkeypatch, path, target) -> None:
     monkeypatch.setattr(*target, raise_unavailable)
-    with pytest.raises(HTTPException) as error:
-        await call(body)
-    assert error.value.status_code == 503
-    assert error.value.detail["providerLabel"] == "Claude"
-    assert error.value.detail["code"] == "coach_llm_no_response"
+    response = client.post(path, json={})
+    assert response.status_code == 503
+    assert response.json()["detail"] == {
+        "code": "coach_llm_no_response",
+        "message": "No response.",
+        "provider": "claude",
+        "providerLabel": "Claude",
+        "apiErrorCode": "provider_empty_response",
+    }
 
 
 async def test_provider_default_reports_configured_provider(monkeypatch) -> None:

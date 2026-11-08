@@ -8,7 +8,7 @@ import pytest
 
 from app.core import narrator
 from app.core.signal_catalog import BINARY_SEARCH_SIGNAL_SPEC
-from app.domain.llm_resilience import SubmissionFeedbackUnavailableError
+from app.core.llm import LlmUnavailableError
 from app.models import (
     AdminResetPracticeHistoryRequest,
     CoachAttemptFeedbackRequest,
@@ -116,7 +116,7 @@ async def test_narrator_retries_retryable_failures_then_succeeds() -> None:
 
 
 async def test_narrator_stops_on_non_retryable_failure() -> None:
-    with pytest.raises(narrator.NarratorFeedbackUnavailableError) as error:
+    with pytest.raises(narrator.LlmUnavailableError) as error:
         await narrator.attempt_feedback_with_narrator(
             body(), ASSESSMENT, [], {}, context(), runtime([(None, "provider_auth_error", "bad key", False)])
         )
@@ -126,12 +126,23 @@ async def test_narrator_stops_on_non_retryable_failure() -> None:
 
 async def test_narrator_gives_up_after_max_retries_with_default_message() -> None:
     results = [(None, "", "", True)] * 3
-    with pytest.raises(narrator.NarratorFeedbackUnavailableError) as error:
+    with pytest.raises(narrator.LlmUnavailableError) as error:
         await narrator.attempt_feedback_with_narrator(body(), ASSESSMENT, [], {}, context(), runtime(results))
     assert "No response from ChatGPT" in error.value.message
 
 
 # ── feedback_service ──
+
+
+def _require(state):
+    def require(requested):
+        if not state["available"]:
+            raise LlmUnavailableError("coach_llm_missing_api_key", "No key.", "openai", "provider_auth_error")
+        return "openai"
+
+    return require
+
+
 
 
 @pytest.fixture
@@ -142,8 +153,7 @@ def feedback(monkeypatch):
         return [], {}
 
     monkeypatch.setattr(history_service, "load_feedback_context", load_context)
-    monkeypatch.setattr(feedback_service, "_resolve_available_llm_provider", lambda requested: "openai")
-    monkeypatch.setattr(feedback_service, "_llm_provider_available", lambda provider: state["available"])
+    monkeypatch.setattr(feedback_service, "require_available_provider", _require(state))
     monkeypatch.setattr(
         feedback_service,
         "ASSESSOR_RUNTIME",
@@ -164,20 +174,20 @@ async def test_submission_evaluation_combines_assessor_and_narrator(feedback) ->
 
 async def test_submission_evaluation_requires_a_provider_key(feedback) -> None:
     feedback["available"] = False
-    with pytest.raises(SubmissionFeedbackUnavailableError) as error:
+    with pytest.raises(LlmUnavailableError) as error:
         await feedback_service.coach_submission_evaluation(body(), BINARY_SEARCH_SIGNAL_SPEC)
     assert error.value.code == "coach_llm_missing_api_key"
 
 
 async def test_assessor_failure_becomes_feedback_unavailable(feedback) -> None:
     feedback["assessment"] = None
-    with pytest.raises(SubmissionFeedbackUnavailableError):
+    with pytest.raises(LlmUnavailableError):
         await feedback_service.coach_submission_evaluation(body(), BINARY_SEARCH_SIGNAL_SPEC)
 
 
 async def test_narrator_failure_becomes_feedback_unavailable(feedback, monkeypatch) -> None:
     monkeypatch.setattr(feedback_service, "NARRATOR_RUNTIME", runtime([(None, "x", "nope", False)]))
-    with pytest.raises(SubmissionFeedbackUnavailableError) as error:
+    with pytest.raises(LlmUnavailableError) as error:
         await feedback_service.coach_submission_evaluation(body(), BINARY_SEARCH_SIGNAL_SPEC)
     assert error.value.message == "nope"
 
@@ -187,7 +197,7 @@ async def test_narrator_without_llm_use_is_rejected(feedback, monkeypatch) -> No
         return {"llmUsed": False}
 
     monkeypatch.setattr(feedback_service, "attempt_feedback_with_narrator", no_llm)
-    with pytest.raises(SubmissionFeedbackUnavailableError) as error:
+    with pytest.raises(LlmUnavailableError) as error:
         await feedback_service.coach_submission_evaluation(body(), BINARY_SEARCH_SIGNAL_SPEC)
     assert error.value.code == "submission_feedback_no_response"
 
@@ -200,8 +210,7 @@ PLAN = {"headline": "h", "focusTheme": "f", "warmup": "w", "mainSet": "m", "cool
 @pytest.fixture
 def plan_llm(monkeypatch):
     state = {"available": True, "response": PLAN}
-    monkeypatch.setattr(session_service, "_resolve_available_llm_provider", lambda requested: "openai")
-    monkeypatch.setattr(session_service, "_llm_provider_available", lambda provider: state["available"])
+    monkeypatch.setattr(session_service, "require_available_provider", _require(state))
     monkeypatch.setattr(session_service, "_call_llm_json", lambda *_args: state["response"])
     return state
 
@@ -225,7 +234,7 @@ async def test_session_plan_success(plan_llm) -> None:
 )
 async def test_session_plan_failures(plan_llm, available, response, code) -> None:
     plan_llm.update(available=available, response=response)
-    with pytest.raises(SubmissionFeedbackUnavailableError) as error:
+    with pytest.raises(LlmUnavailableError) as error:
         await session_service.coach_session_plan(plan_request())
     assert error.value.code == code
 

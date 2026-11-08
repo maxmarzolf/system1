@@ -82,31 +82,13 @@ def sse(*deltas: str) -> list[str]:
     return lines
 
 
-def test_openai_streaming_yields_deltas(monkeypatch) -> None:
-    sent: list[dict] = []
-
-    def fake_urlopen(request, timeout):
-        sent.append(json.loads(request.data))
-        return FakeStream(sse("ab", "", "cd"))
-
-    monkeypatch.setattr(generator.settings, "coach_openai_api_key", "sk")
-    monkeypatch.setattr(generator.urllib.request, "urlopen", fake_urlopen)
-    assert list(generator._call_openai_streaming("sys", {"a": 1}, 10, 5, 0.3)) == ["ab", "cd"]
-    assert sent[0]["stream"] is True and sent[0]["max_completion_tokens"] == 10
-
-
-def test_openai_streaming_without_key_yields_nothing(monkeypatch) -> None:
-    monkeypatch.setattr(generator.settings, "coach_openai_api_key", "")
-    assert list(generator._call_openai_streaming("sys", {})) == []
-
-
 # ── stream responses ──
 
 
 async def test_stream_uses_openai_streaming(monkeypatch, skill_map_request, progress_summary, llm_drills_payload) -> None:
     monkeypatch.setattr(generator.settings, "coach_openai_api_key", "sk")
     text = json.dumps(llm_drills_payload)
-    monkeypatch.setattr(generator, "_call_openai_streaming", lambda *a: iter([text[:40], text[40:]]))
+    monkeypatch.setattr(generator, "stream_openai_text", lambda *a: iter([text[:40], text[40:]]))
     persisted: dict = {}
     events = await collect(stream(skill_map_request, progress_summary, lambda *a: None, persisted))
     assert [event for event, _ in events] == ["drill", "drill", "done"]
@@ -124,7 +106,7 @@ async def test_stream_falls_back_to_json_call_when_streaming_breaks(
         raise OSError("connection reset")
         yield ""  # pragma: no cover
 
-    monkeypatch.setattr(generator, "_call_openai_streaming", broken)
+    monkeypatch.setattr(generator, "stream_openai_text", broken)
     events = await collect(stream(skill_map_request, progress_summary, lambda *a: llm_drills_payload, {}))
     assert events[-1] == ("done", {"count": 2, "llmUsed": True})
 

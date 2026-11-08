@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.assessor import AssessorContext, AssessorRuntime, AssessorUnavailableError, run_signal_assessor
+from app.core.assessor import AssessorContext, AssessorRuntime, LlmUnavailableError, run_signal_assessor
 from app.core.signal_catalog import BINARY_SEARCH_SIGNAL_SPEC, DEFAULT_SIGNAL_SPEC
 from app.domain.feedback_builder import submission_rubric_from_assessment
 from app.contracts.evaluation import build_evaluation, compact_evaluation
@@ -126,7 +126,7 @@ async def test_assessor_rejects_response_missing_a_spec_signal() -> None:
     assessment = _search_assessment()
     del assessment["signals"]["boundUpdate"]
 
-    with pytest.raises(AssessorUnavailableError) as error:
+    with pytest.raises(LlmUnavailableError) as error:
         await run_signal_assessor(_body(), _CONTEXT, _runtime(assessment), BINARY_SEARCH_SIGNAL_SPEC)
 
     assert error.value.code == "signal_assessor_invalid_response"
@@ -134,7 +134,7 @@ async def test_assessor_rejects_response_missing_a_spec_signal() -> None:
 
 @pytest.mark.asyncio
 async def test_assessor_rejects_non_dict_response() -> None:
-    with pytest.raises(AssessorUnavailableError) as error:
+    with pytest.raises(LlmUnavailableError) as error:
         await run_signal_assessor(_body(), _CONTEXT, _runtime(None), DEFAULT_SIGNAL_SPEC)
 
     assert error.value.code == "signal_assessor_no_response"

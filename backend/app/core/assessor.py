@@ -8,15 +8,7 @@ from typing import Any
 
 from app.core.signal_catalog import RecallSignal, SignalSpec
 from app.models import CoachAttemptFeedbackRequest
-
-
-class AssessorUnavailableError(RuntimeError):
-    def __init__(self, code: str, message: str, provider: str, api_error_code: str = ""):
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.provider = provider
-        self.api_error_code = api_error_code
+from app.core.llm import LlmUnavailableError
 
 
 @dataclass(frozen=True)
@@ -84,7 +76,7 @@ async def run_signal_assessor(
     if not isinstance(result, dict):
         if runtime.logger:
             runtime.logger.warning("Signal assessor returned non-dict response from provider '%s'.", context.provider)
-        raise AssessorUnavailableError(
+        raise LlmUnavailableError(
             code="signal_assessor_no_response",
             message=f"Signal assessment cannot be generated at this time. No response from {context.provider_label}.",
             provider=context.provider,
@@ -103,7 +95,7 @@ async def run_signal_assessor(
                 missing_signals,
                 context.provider,
             )
-        raise AssessorUnavailableError(
+        raise LlmUnavailableError(
             code="signal_assessor_invalid_response",
             message=f"Signal assessment cannot be generated at this time. Invalid response from {context.provider_label}.",
             provider=context.provider,

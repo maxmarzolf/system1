@@ -3,33 +3,20 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from app.core.assessor import (
-    AssessorContext,
-    AssessorRuntime,
-    AssessorUnavailableError,
-    run_signal_assessor,
-)
+from app.core.assessor import AssessorContext, AssessorRuntime, run_signal_assessor
 from app.core.generator import _template_mode_value
 from app.core.llm import (
+    LlmUnavailableError,
     call_llm_json as _call_llm_json,
-    llm_provider_available as _llm_provider_available,
+    call_llm_json_for_submission,
     llm_provider_label as _llm_provider_label,
-    resolve_available_llm_provider as _resolve_available_llm_provider,
+    require_available_provider,
 )
-from app.core.narrator import (
-    NarratorContext,
-    NarratorFeedbackUnavailableError,
-    NarratorRuntime,
-    attempt_feedback_with_narrator,
-)
+from app.core.narrator import NarratorContext, NarratorRuntime, attempt_feedback_with_narrator
 from app.core.signal_catalog import SignalSpec
-from app.core.submission_llm_client import call_llm_json_for_submission
 from app.domain.coach_context import algorithmic_template_label as _domain_algorithmic_template_label
 from app.domain.feedback_builder import submission_rubric_from_assessment as _domain_submission_rubric_from_assessment
 from app.contracts.evaluation import Evaluation, build_evaluation
-from app.domain.llm_resilience import (
-    SubmissionFeedbackUnavailableError,
-)
 from app.domain.recall_soundness import merged_submission_tuning as _domain_merged_submission_tuning
 from app.models import CoachAttemptFeedbackRequest
 from app.services.contracts import FeedbackPayload, HistoryEntry, HistorySummary
@@ -50,18 +37,6 @@ NARRATOR_RUNTIME = NarratorRuntime(
 )
 
 
-def _resolve_feedback_provider(body: CoachAttemptFeedbackRequest) -> str:
-    provider = _resolve_available_llm_provider(body.llmProvider)
-    if not _llm_provider_available(provider):
-        raise SubmissionFeedbackUnavailableError(
-            code="coach_llm_missing_api_key",
-            message="Update backend .env with at least one coach LLM API key.",
-            provider=provider,
-            api_error_code="provider_auth_error",
-        )
-    return provider
-
-
 async def _run_assessor_phase(
     body: CoachAttemptFeedbackRequest,
     provider: str,
@@ -73,15 +48,7 @@ async def _run_assessor_phase(
         provider_label=_llm_provider_label(provider),
         template_mode=template_mode,
     )
-    try:
-        return await run_signal_assessor(body, assessor_context, ASSESSOR_RUNTIME, spec)
-    except AssessorUnavailableError as error:
-        raise SubmissionFeedbackUnavailableError(
-            code=error.code,
-            message=error.message,
-            provider=error.provider,
-            api_error_code=error.api_error_code,
-        ) from error
+    return await run_signal_assessor(body, assessor_context, ASSESSOR_RUNTIME, spec)
 
 
 async def _run_submission_narrator_phase(
@@ -98,25 +65,17 @@ async def _run_submission_narrator_phase(
         template_label=_domain_algorithmic_template_label(body.skillTags, template_mode),
         submission_tuning=_domain_merged_submission_tuning(body.submissionTuning),
     )
-    try:
-        feedback = await attempt_feedback_with_narrator(
-            body,
-            assessment,
-            history,
-            history_summary,
-            narrator_context,
-            NARRATOR_RUNTIME,
-        )
-    except NarratorFeedbackUnavailableError as error:
-        raise SubmissionFeedbackUnavailableError(
-            code=error.code,
-            message=error.message,
-            provider=error.provider,
-            api_error_code=error.api_error_code,
-        ) from error
+    feedback = await attempt_feedback_with_narrator(
+        body,
+        assessment,
+        history,
+        history_summary,
+        narrator_context,
+        NARRATOR_RUNTIME,
+    )
 
     if not bool(feedback.get("llmUsed")):
-        raise SubmissionFeedbackUnavailableError(
+        raise LlmUnavailableError(
             code="submission_feedback_no_response",
             message=f"Feedback cannot be generated at this time. No response from {_llm_provider_label(provider)}.",
             provider=provider,
@@ -127,7 +86,7 @@ async def _run_submission_narrator_phase(
 
 async def coach_submission_evaluation(body: CoachAttemptFeedbackRequest, spec: SignalSpec) -> Evaluation:
     history, history_summary = await history_service.load_feedback_context(body)
-    provider = _resolve_feedback_provider(body)
+    provider = require_available_provider(body.llmProvider)
     template_mode = _template_mode_value(body.templateMode)
     assessment = await _run_assessor_phase(body, provider, template_mode, spec)
     sound = str(assessment.get("verdict") or "").strip() == "sound"

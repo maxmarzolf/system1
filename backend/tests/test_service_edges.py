@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.signals import registry as signal_registry
-from app.domain.llm_resilience import SubmissionFeedbackUnavailableError
+from app.core.llm import LlmUnavailableError
 from app.models import AttemptCreate, FlowMicroDrillRequest, InlineCompletionRequest, MultipleChoiceDrillsRequest
 from app.services import drill_generation_service, inline_completion_service, micro_drill_service
 from app.services.evaluators import legacy_recall
@@ -23,7 +23,7 @@ async def test_assessor_evaluator_falls_back_to_semantic_check(monkeypatch) -> N
         return DEFAULT_SIGNAL_SPEC
 
     async def unavailable(*_args):
-        raise SubmissionFeedbackUnavailableError("provider_timeout", "slow", "claude")
+        raise LlmUnavailableError("provider_timeout", "slow", "claude")
 
     async def semantic(request):
         return {"sound": True, "llmUsed": False}
@@ -58,12 +58,12 @@ async def test_skill_map_generation_uses_the_configured_generator(monkeypatch, s
 
 async def test_multiple_choice_generator_errors_become_feedback_unavailable(monkeypatch) -> None:
     async def failing(*_args, **_kwargs):
-        raise drill_generation_service.GeneratorUnavailableError(
+        raise LlmUnavailableError(
             code="coach_llm_no_response", message="none", provider="openai", api_error_code="x"
         )
 
     monkeypatch.setattr(drill_generation_service, "generate_multiple_choice_drills_response", failing)
-    with pytest.raises(SubmissionFeedbackUnavailableError) as error:
+    with pytest.raises(LlmUnavailableError) as error:
         await drill_generation_service.coach_multiple_choice_drills(MultipleChoiceDrillsRequest(), None)
     assert error.value.code == "coach_llm_no_response"
 

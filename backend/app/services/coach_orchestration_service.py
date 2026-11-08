@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from app.core.llm import llm_provider_label as _llm_provider_label
-from app.domain.llm_resilience import SubmissionFeedbackUnavailableError, coach_llm_http_exception
+from app.core.llm import resolve_llm_provider
 from app.models import (
+    CoachProviderDefaultResponse,
     CoachSessionPlanRequest,
     MultipleChoiceDrillsRequest,
     SkillMapDrillsRequest,
@@ -24,18 +24,12 @@ from app.services.contracts import (
 
 
 async def coach_provider_default():
-    from app.core.llm import resolve_llm_provider
-    from app.models import CoachProviderDefaultResponse
-
     configured = resolve_llm_provider("")
     return CoachProviderDefaultResponse(provider=configured)
 
 
 async def coach_session_plan(body: CoachSessionPlanRequest):
-    try:
-        return await session_service.coach_session_plan(body)
-    except SubmissionFeedbackUnavailableError as error:
-        raise coach_llm_http_exception(error, _llm_provider_label(error.provider)) from error
+    return await session_service.coach_session_plan(body)
 
 
 async def _persist_skill_map_drills(
@@ -100,11 +94,8 @@ async def _persist_generated_questions(
 
 
 async def coach_multiple_choice_drills(body: MultipleChoiceDrillsRequest):
-    try:
-        return await drill_generation_service.coach_multiple_choice_drills(
-            body,
-            persist_generated_questions=_persist_generated_questions,
-        )
-    except SubmissionFeedbackUnavailableError as error:
-        raise coach_llm_http_exception(error, _llm_provider_label(error.provider)) from error
+    return await drill_generation_service.coach_multiple_choice_drills(
+        body,
+        persist_generated_questions=_persist_generated_questions,
+    )
 
