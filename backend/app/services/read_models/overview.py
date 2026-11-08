@@ -1,44 +1,41 @@
+"""Readiness per algorithm and the daily activity grid (Dashboard and Journey)."""
+
 from __future__ import annotations
 
-import json as _json
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone, tzinfo
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Any, TypedDict
 
-from app.models import AttemptCreate, SkillMapNode
+from app.contracts.coerce import coerce_json_object
+from app.contracts.evaluation import compact_evaluation
+from app.core import taxonomy
+from app.core.static_playlists import static_playlist_activity_rows
+from app.domain.rubric_summary import summarize_submission_rubrics
+from app.models import SkillMapNode
 from app.readiness import READINESS_MODE_ORDER, summarize_readiness
 from app.repositories.attempts_repository import (
     fetch_algorithms_with_skills_rows,
-    fetch_history_day_rows,
     fetch_skill_map_overview_algorithm_rows,
     fetch_skill_map_overview_attempt_rows,
     fetch_skill_map_overview_generated_rows,
-    insert_submission_attempt_row,
 )
-from app.core.static_playlists import static_playlist_activity_rows
 from app.repositories.types import (
     AlgorithmSkillRow,
     SkillMapOverviewAlgorithmRow,
     SkillMapOverviewAttemptRow,
     SkillMapOverviewGeneratedRow,
 )
-from app.contracts.coerce import coerce_json_object
-from app.contracts.evaluation import Evaluation, compact_evaluation
-from app.domain.rubric_summary import summarize_submission_rubrics
-from app.contracts.submission import SubmissionRecord
 from app.services.contracts import (
-    AttemptSaveResult,
+    SkillMapAlgorithmSummary,
     SkillMapGhostRepActivity,
     SkillMapGhostRepActivityDay,
     SkillMapGhostRepAlgorithm,
     SkillMapModeActivity,
     SkillMapModeActivityDay,
     SkillMapModeSummary,
-    SkillMapAlgorithmSummary,
     SkillMapOverviewPayload,
 )
-from app.core import taxonomy
+from app.services.read_models.common import coerce_utc_datetime, resolve_timezone, submission_modality
 
 
 class AttemptOverviewItem(TypedDict):
@@ -47,61 +44,6 @@ class AttemptOverviewItem(TypedDict):
     supportLayer: str
     liveCoachUsed: bool
     signals: dict[str, Any]
-
-
-def _submission_modality(row: dict[str, Any]) -> str:
-    """The stored modality (a NOT NULL column; rows built in tests may omit it)."""
-    return str(row.get("modality") or "").strip() or "total-recall"
-
-
-def _submission_signals(
-    body: AttemptCreate,
-    *,
-    modality: str,
-    evaluation: Evaluation,
-) -> dict[str, Any]:
-    raw_signals = body.signals if isinstance(body.signals, dict) else {}
-    signals: dict[str, Any] = {
-        "elapsed_ms": body.elapsedMs,
-        "evaluation": evaluation.to_stored(),
-    }
-    flow_signals = raw_signals.get("flow")
-    if isinstance(flow_signals, dict) and flow_signals:
-        signals["flow"] = flow_signals
-
-    modality_signals = raw_signals.get("modality")
-    if isinstance(modality_signals, dict):
-        signals["modality"] = {
-            **modality_signals,
-            "kind": modality,
-        }
-    else:
-        signals["modality"] = {"kind": modality}
-    return signals
-
-
-def resolve_timezone(name: str | None) -> tzinfo:
-    """The viewer's IANA timezone for calendar-day bucketing; UTC when missing or unknown."""
-    try:
-        return ZoneInfo(name) if name else timezone.utc
-    except (ZoneInfoNotFoundError, ValueError):
-        return timezone.utc
-
-
-def _coerce_utc_datetime(value: Any) -> datetime | None:
-    if isinstance(value, datetime):
-        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return None
-        normalized = text.replace("Z", "+00:00")
-        try:
-            parsed = datetime.fromisoformat(normalized)
-        except ValueError:
-            return None
-        return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
-    return None
 
 
 def _aligned_activity_window(today: date) -> tuple[date, date]:
@@ -117,7 +59,7 @@ def _build_mode_activity(attempts: list[AttemptOverviewItem]) -> SkillMapModeAct
     counts_by_date: Counter[str] = Counter()
 
     for attempt in attempts:
-        created_at = _coerce_utc_datetime(attempt.get("created_at") or attempt.get("createdAt"))
+        created_at = coerce_utc_datetime(attempt.get("created_at") or attempt.get("createdAt"))
         if created_at is None:
             continue
         counts_by_date[created_at.date().isoformat()] += 1
@@ -197,7 +139,7 @@ def _build_ghost_rep_activity(
         attempt_dates = [
             created_at.astimezone(tz).date()
             for row in attempt_rows
-            if (created_at := _coerce_utc_datetime(row["created_at"])) is not None
+            if (created_at := coerce_utc_datetime(row["created_at"])) is not None
         ]
         window_start = min([*attempt_dates, today])
     else:
@@ -216,11 +158,11 @@ def _build_ghost_rep_activity(
     last_work_seen_by_algorithm: dict[str, date] = {}
 
     for row in attempt_rows:
-        created_at = _coerce_utc_datetime(row["created_at"])
+        created_at = coerce_utc_datetime(row["created_at"])
         if created_at is None:
             continue
         category_tags = [str(tag) for tag in (row["category_tags"] or [])]
-        modality = _submission_modality(row)
+        modality = submission_modality(row)
         is_mcq = (
             modality == "mcq"
             or str(row.get("question_type") or "").startswith("skill-map-mcq")
@@ -429,7 +371,7 @@ def build_skill_map_overview(
             continue
         category_tags = [str(tag) for tag in (row["category_tags"] or [])]
         if (
-            _submission_modality(row) == "mcq"
+            submission_modality(row) == "mcq"
             or str(row.get("question_type") or "").startswith("skill-map-mcq")
             or "skill-map-mcq" in category_tags
         ):
@@ -445,7 +387,7 @@ def build_skill_map_overview(
             "successful": bool(row["successful"]),
             "created_at": row["created_at"],
             "supportLayer": support_layer,
-            "modality": _submission_modality(row),
+            "modality": submission_modality(row),
             "liveCoachUsed": bool(row["live_coach_used"]),
             "signals": {
                 "evaluation": compact_evaluation(stored_signals.get("evaluation")),
@@ -555,46 +497,6 @@ def build_skill_map_nodes(algorithm_rows: list[AlgorithmSkillRow]) -> list[Skill
     return list(grouped.values())
 
 
-async def create_attempt(
-    body: AttemptCreate,
-    *,
-    successful: bool,
-    evaluation: Evaluation,
-    record: SubmissionRecord | None = None,
-) -> AttemptSaveResult:
-    now = datetime.now(tz=timezone.utc)
-    modality = body.resolved_modality().value
-    signals = _submission_signals(body, modality=modality, evaluation=evaluation)
-    row = await insert_submission_attempt_row(
-        session_id=body.resolved_session_id(),
-        card_id=body.cardId,
-        card_title=body.cardTitle,
-        question=body.question,
-        question_type=body.questionType,
-        category_tags=body.categoryTags,
-        correct_answer=record.correct_answer if record else body.correctAnswer,
-        user_answer=record.user_answer if record else body.userAnswer,
-        multiple_choice_problem_id=record.multiple_choice_problem_id if record else None,
-        mode=body.mode.value,
-        successful=successful,
-        signals_json=_json.dumps({key: value for key, value in signals.items() if value is not None}),
-        interaction_id=body.interactionId,
-        generated_card_id=body.generatedCardId,
-        generated_card_json=_json.dumps(body.generatedCard) if body.generatedCard else None,
-        template_mode=body.templateMode.value,
-        support_layer=body.supportLayer.value,
-        live_coach_used=body.liveCoachUsed,
-        modality=modality,
-        target_source=body.targetSource,
-        target_control=body.targetControl,
-        format_control=body.formatControl,
-        created_at=now,
-        updated_at=now,
-    )
-
-    return {"saved": True, "attemptId": row["id"] if row else None}
-
-
 async def get_skill_map() -> list[SkillMapNode]:
     rows = await fetch_algorithms_with_skills_rows()
 
@@ -613,101 +515,3 @@ async def get_skill_map_overview(history_days: int | None = 42, timezone_name: s
         history_days=history_days,
         history_tz=resolve_timezone(timezone_name),
     )
-
-
-def _history_day_choices(row: dict[str, Any]) -> list[dict[str, Any]]:
-    correct = str(row.get("multiple_choice_correct_answer_label") or "")
-    return [
-        {"id": label, "text": text, "correct": label == correct}
-        for index in range(1, 5)
-        if (label := str(row.get(f"multiple_choice_answer_label_{index}") or ""))
-        and (text := str(row.get(f"multiple_choice_answer_text_{index}") or ""))
-    ]
-
-
-async def get_history_day(day: date, timezone_name: str | None = None) -> dict[str, Any]:
-    """Every submission the daily work grid counted on calendar ``day`` in ``timezone_name``, oldest first."""
-    tz = resolve_timezone(timezone_name)
-    next_day = day + timedelta(days=1)
-    rows = await fetch_history_day_rows(
-        datetime(day.year, day.month, day.day, tzinfo=tz),
-        datetime(next_day.year, next_day.month, next_day.day, tzinfo=tz),
-    )
-    algorithm_names = {
-        str(row["algorithm_slug"]): str(row["algorithm_name"]) for row in await fetch_skill_map_overview_algorithm_rows()
-    }
-    algorithm_names.update({str(item["slug"]): str(item["algorithm"]) for item in static_playlist_activity_rows()})
-    submissions: list[dict[str, Any]] = []
-    for row in rows:
-        tags = [str(tag) for tag in (row["category_tags"] or [])]
-        slugs = taxonomy.matched_algorithm_slugs(tags, set(algorithm_names))
-        if not slugs:
-            continue  # The grid does not count it either.
-        signals = coerce_json_object(row["signals"])
-        created_at = _coerce_utc_datetime(row["created_at"])
-        submissions.append({
-            "id": int(row["id"]),
-            "createdAt": created_at.isoformat() if created_at else "",
-            "modality": _submission_modality(row),
-            "title": str(row.get("title") or ""),
-            "question": str(row.get("question") or ""),
-            "choices": _history_day_choices(row),
-            "userAnswer": str(row.get("answer") or ""),
-            "correctAnswer": str(row.get("correct_answer") or ""),
-            "successful": bool(row.get("successful")),
-            "elapsedMs": int(signals.get("elapsed_ms") or 0),
-            "algorithms": [{"slug": slug, "algorithm": algorithm_names[slug]} for slug in slugs],
-            "evaluation": coerce_json_object(signals.get("evaluation")),
-            "flow": coerce_json_object(signals.get("flow")),
-        })
-    return {"date": day.isoformat(), "submissions": submissions}
-
-
-async def get_signal_history(timezone_name: str | None = None) -> dict[str, Any]:
-    """Every scored signal from every submission the daily work grid counts, all time, oldest first.
-
-    Signals are the evaluation's rubric dimensions and modifiers (recall and Jev MCQ alike);
-    entries that were not applicable or unavailable are left out.
-    """
-    tz = resolve_timezone(timezone_name)
-    algorithm_names = {
-        str(row["algorithm_slug"]): str(row["algorithm_name"]) for row in await fetch_skill_map_overview_algorithm_rows()
-    }
-    algorithm_names.update({str(item["slug"]): str(item["algorithm"]) for item in static_playlist_activity_rows()})
-    rows = sorted(
-        await fetch_skill_map_overview_attempt_rows(),
-        key=lambda row: _coerce_utc_datetime(row["created_at"]) or datetime.min.replace(tzinfo=timezone.utc),
-    )
-    labels: dict[str, str] = {}
-    counts: Counter[str] = Counter()
-    points: list[dict[str, Any]] = []
-    for index, row in enumerate(rows):
-        created_at = _coerce_utc_datetime(row["created_at"])
-        slugs = taxonomy.matched_algorithm_slugs([str(tag) for tag in (row["category_tags"] or [])], set(algorithm_names))
-        if created_at is None or not slugs:
-            continue  # The grid does not count it either.
-        evaluation = Evaluation.from_stored(coerce_json_object(row["signals"]).get("evaluation"))
-        if evaluation is None:
-            continue
-        for key, entry in evaluation.scored_entries():
-            score = entry.score
-            labels.setdefault(key, entry.label or key)
-            counts[key] += 1
-            points.append({
-                "submission": index,
-                "createdAt": created_at.isoformat(),
-                "date": created_at.astimezone(tz).date().isoformat(),
-                "signal": str(key),
-                "score": round(min(max(score, 0.0), 100.0), 1),
-                "title": str(row.get("card_title") or ""),
-                "modality": _submission_modality(row),
-                "algorithm": algorithm_names[slugs[0]],
-            })
-    return {
-        # Most-used signals first, so the busiest columns sit together.
-        "signals": [
-            {"key": key, "label": labels[key], "count": counts[key]}
-            for key in sorted(counts, key=lambda key: (-counts[key], labels[key].lower()))
-        ],
-        "points": points,
-    }

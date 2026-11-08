@@ -5,7 +5,8 @@ import pytest
 from app.core.signal_catalog import BINARY_SEARCH_SIGNAL_SPEC, DEFAULT_SIGNAL_SPEC
 from app.contracts.evaluation import Evaluation, build_evaluation
 from app.models import AttemptCreate
-from app.services import attempts_service, feedback_service, signal_spec_service, submission_service
+from app.services import feedback_service, signal_spec_service, submission_service
+from app.services import submission_store
 
 
 def test_canonical_evaluation_removes_embedded_rubric_and_feedback_metadata() -> None:
@@ -73,7 +74,7 @@ async def test_final_recall_uses_one_evaluation_flow_and_persists_its_result(mon
         return {"saved": True, "attemptId": 44}
 
     monkeypatch.setattr(feedback_service, "coach_submission_evaluation", _evaluate)
-    monkeypatch.setattr(attempts_service, "create_attempt", _persist)
+    monkeypatch.setattr(submission_store, "create_attempt", _persist)
     monkeypatch.setattr(signal_spec_service, "resolve_signal_spec", _resolve)
 
     body = AttemptCreate.model_validate({

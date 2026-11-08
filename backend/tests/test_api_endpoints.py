@@ -12,11 +12,11 @@ from app.main import create_app
 from app.repositories import admin_repository
 from app.services import (
     admin_service,
-    attempts_service,
     coach_orchestration_service,
     problem_practice_service,
     signal_admin_service,
 )
+from app.services.read_models import history, overview
 from app.services.submission_context_service import SubmissionContextError
 
 
@@ -63,8 +63,8 @@ def test_health(client) -> None:
 
 
 def test_read_routes(client, monkeypatch) -> None:
-    monkeypatch.setattr(attempts_service, "get_skill_map", returns([{"algorithm": "Heap", "skills": []}]))
-    monkeypatch.setattr(attempts_service, "get_signal_history", returns({"signals": [], "points": []}))
+    monkeypatch.setattr(overview, "get_skill_map", returns([{"algorithm": "Heap", "skills": []}]))
+    monkeypatch.setattr(history, "get_signal_history", returns({"signals": [], "points": []}))
     assert client.get("/api/skill-map").json()[0]["algorithm"] == "Heap"
     assert client.get("/api/history/signals?tz=UTC").json() == {"signals": [], "points": []}
 

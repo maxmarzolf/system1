@@ -5,7 +5,8 @@ from fastapi.testclient import TestClient
 from app import main as app_main
 from app.contracts.evaluation import Evaluation
 from app.main import create_app
-from app.services import attempts_service, catalog_service, history_service, problem_practice_service, submission_service
+from app.services.read_models import overview
+from app.services import catalog_service, history_service, problem_practice_service, submission_service
 
 
 def test_attempts_endpoint_contract(monkeypatch) -> None:
@@ -158,7 +159,7 @@ def test_skill_map_overview_endpoint_contract(monkeypatch) -> None:
     async def _noop_disconnect():
         return None
 
-    monkeypatch.setattr(attempts_service, "get_skill_map_overview", _mock_overview)
+    monkeypatch.setattr(overview, "get_skill_map_overview", _mock_overview)
     monkeypatch.setattr(app_main, "connect", _noop_connect)
     monkeypatch.setattr(app_main, "disconnect", _noop_disconnect)
 

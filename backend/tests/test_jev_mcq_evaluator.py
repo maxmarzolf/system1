@@ -10,7 +10,7 @@ from app.core.signals import ModalitySignalSpec, SpecEntry
 from app.core.signals.base import JevSignal
 from app.core.signals.mcq import DEFAULT_MCQ_DIRECTIVE, default_mcq_spec
 from app.models import AttemptCreate, SubmissionModality
-from app.services import attempts_service, signal_registry_service, submission_context_service, submission_service
+from app.services import signal_registry_service, submission_store, submission_context_service, submission_service
 from app.services import jev_gateway
 from app.services.evaluators import EVALUATORS, SubmissionRecord, get_evaluator, jev_mcq
 from app.services.evaluators.jev_mcq import JevMcqEvaluator
@@ -240,7 +240,7 @@ async def test_submission_service_persists_the_evaluator_record(patched, monkeyp
         captured.update(successful=successful, evaluation=evaluation, record=record)
         return {"saved": True, "attemptId": 7}
 
-    monkeypatch.setattr(attempts_service, "create_attempt", _persist)
+    monkeypatch.setattr(submission_store, "create_attempt", _persist)
 
     result = await submission_service.create_submission(_body(correctAnswer="D. tampered"))
 

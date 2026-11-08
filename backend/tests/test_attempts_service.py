@@ -6,8 +6,9 @@ from datetime import datetime, timedelta, timezone
 
 from app.contracts.evaluation import Evaluation
 from app.models import AttemptCreate
-from app.services import attempts_service
-from app.services.attempts_service import build_skill_map_overview
+from app.services import submission_store
+from app.services.read_models import common as read_common, history, overview
+from app.services.read_models.overview import build_skill_map_overview
 
 
 def test_create_attempt_forwards_multiple_choice_metadata(monkeypatch) -> None:
@@ -17,7 +18,7 @@ def test_create_attempt_forwards_multiple_choice_metadata(monkeypatch) -> None:
         captured.update(kwargs)
         return {"id": 91}
 
-    monkeypatch.setattr(attempts_service, "insert_submission_attempt_row", _insert)
+    monkeypatch.setattr(submission_store, "insert_submission_attempt_row", _insert)
     body = AttemptCreate.model_validate({
         "cardId": "mcq-1",
         "mode": "main-recall",
@@ -29,7 +30,7 @@ def test_create_attempt_forwards_multiple_choice_metadata(monkeypatch) -> None:
     })
 
     evaluation = Evaluation.model_validate({"version": 1, "verdict": "needs-work"})
-    result = asyncio.run(attempts_service.create_attempt(body, successful=False, evaluation=evaluation))
+    result = asyncio.run(submission_store.create_attempt(body, successful=False, evaluation=evaluation))
 
     assert result == {"saved": True, "attemptId": 91}
     assert captured["modality"] == "mcq"
@@ -48,14 +49,14 @@ def test_create_attempt_normalizes_legacy_activity_format(monkeypatch) -> None:
         captured.update(kwargs)
         return {"id": 92}
 
-    monkeypatch.setattr(attempts_service, "insert_submission_attempt_row", _insert)
+    monkeypatch.setattr(submission_store, "insert_submission_attempt_row", _insert)
     body = AttemptCreate.model_validate({
         "cardId": "mcq-legacy",
         "mode": "main-recall",
         "activityFormat": "multiple-choice",
     })
 
-    result = asyncio.run(attempts_service.create_attempt(body, successful=True, evaluation=Evaluation(verdict="sound")))
+    result = asyncio.run(submission_store.create_attempt(body, successful=True, evaluation=Evaluation(verdict="sound")))
 
     assert result == {"saved": True, "attemptId": 92}
     assert captured["session_id"] == "0000"
@@ -69,7 +70,7 @@ def test_create_attempt_persists_flow_and_modality_signals(monkeypatch) -> None:
         captured.update(kwargs)
         return {"id": 93}
 
-    monkeypatch.setattr(attempts_service, "insert_submission_attempt_row", _insert)
+    monkeypatch.setattr(submission_store, "insert_submission_attempt_row", _insert)
     body = AttemptCreate.model_validate({
         "cardId": "flow-card",
         "mode": "main-recall",
@@ -91,7 +92,7 @@ def test_create_attempt_persists_flow_and_modality_signals(monkeypatch) -> None:
         },
     })
 
-    result = asyncio.run(attempts_service.create_attempt(body, successful=True, evaluation=Evaluation(verdict="sound")))
+    result = asyncio.run(submission_store.create_attempt(body, successful=True, evaluation=Evaluation(verdict="sound")))
 
     assert result == {"saved": True, "attemptId": 93}
     assert captured["session_id"] == "flow-1"
@@ -120,7 +121,7 @@ def test_create_attempt_prefers_explicit_session_id_over_flow_signal(monkeypatch
         captured.update(kwargs)
         return {"id": 94}
 
-    monkeypatch.setattr(attempts_service, "insert_submission_attempt_row", _insert)
+    monkeypatch.setattr(submission_store, "insert_submission_attempt_row", _insert)
     body = AttemptCreate.model_validate({
         "cardId": "flow-card",
         "mode": "main-recall",
@@ -129,7 +130,7 @@ def test_create_attempt_prefers_explicit_session_id_over_flow_signal(monkeypatch
         "signals": {"flow": {"runId": "flow-signal-fallback"}},
     })
 
-    result = asyncio.run(attempts_service.create_attempt(body, successful=True, evaluation=Evaluation(verdict="sound")))
+    result = asyncio.run(submission_store.create_attempt(body, successful=True, evaluation=Evaluation(verdict="sound")))
 
     assert result == {"saved": True, "attemptId": 94}
     assert captured["session_id"] == "flow-session-explicit"
@@ -439,9 +440,9 @@ def test_daily_activity_groups_by_the_viewers_calendar_day() -> None:
     rows = [_activity_row(late_evening)]
     slugs = {"sliding-window": "Sliding Window"}
 
-    utc = attempts_service._build_ghost_rep_activity(rows, slugs, {}, window_days=7)
-    new_york = attempts_service._build_ghost_rep_activity(
-        rows, slugs, {}, window_days=7, tz=attempts_service.resolve_timezone("America/New_York"),
+    utc = overview._build_ghost_rep_activity(rows, slugs, {}, window_days=7)
+    new_york = overview._build_ghost_rep_activity(
+        rows, slugs, {}, window_days=7, tz=read_common.resolve_timezone("America/New_York"),
     )
 
     def active(activity):
@@ -456,7 +457,7 @@ def test_all_time_activity_starts_at_the_first_attempt() -> None:
     first = now - timedelta(days=90)
     rows = [_activity_row(first), _activity_row(now)]
 
-    activity = attempts_service._build_ghost_rep_activity(rows, {"sliding-window": "Sliding Window"}, {}, window_days=None)
+    activity = overview._build_ghost_rep_activity(rows, {"sliding-window": "Sliding Window"}, {}, window_days=None)
 
     assert activity["windowStart"] == first.date().isoformat()
     assert len(activity["days"]) == 91
@@ -464,9 +465,9 @@ def test_all_time_activity_starts_at_the_first_attempt() -> None:
 
 
 def test_unknown_timezones_fall_back_to_utc() -> None:
-    assert attempts_service.resolve_timezone("Not/AZone") is timezone.utc
-    assert attempts_service.resolve_timezone(None) is timezone.utc
-    assert str(attempts_service.resolve_timezone("Europe/Paris")) == "Europe/Paris"
+    assert read_common.resolve_timezone("Not/AZone") is timezone.utc
+    assert read_common.resolve_timezone(None) is timezone.utc
+    assert str(read_common.resolve_timezone("Europe/Paris")) == "Europe/Paris"
 
 
 def test_signal_history_lists_scored_signals_from_counted_submissions(monkeypatch) -> None:
@@ -500,19 +501,19 @@ def test_signal_history_lists_scored_signals_from_counted_submissions(monkeypatc
     async def _algorithm_rows():
         return [{"algorithm_slug": "sliding-window", "algorithm_name": "Sliding Window"}]
 
-    monkeypatch.setattr(attempts_service, "fetch_skill_map_overview_attempt_rows", _attempt_rows)
-    monkeypatch.setattr(attempts_service, "fetch_skill_map_overview_algorithm_rows", _algorithm_rows)
+    monkeypatch.setattr(history, "fetch_skill_map_overview_attempt_rows", _attempt_rows)
+    monkeypatch.setattr(history, "fetch_skill_map_overview_algorithm_rows", _algorithm_rows)
 
-    history = asyncio.run(attempts_service.get_signal_history("America/New_York"))
+    signal_history = asyncio.run(history.get_signal_history("America/New_York"))
 
-    assert history["signals"] == [
+    assert signal_history["signals"] == [
         {"key": "correctness", "label": "Correct choice", "count": 2},
         {"key": "completionTime", "label": "Speed and fluency", "count": 1},
     ]
-    assert [(point["signal"], point["score"], point["date"]) for point in history["points"]] == [
+    assert [(point["signal"], point["score"], point["date"]) for point in signal_history["points"]] == [
         ("correctness", 0.0, "2026-01-13"),
         ("correctness", 100.0, "2026-01-14"),
         ("completionTime", 100.0, "2026-01-14"),
     ]
-    assert history["points"][0]["algorithm"] == "Sliding Window"
-    assert history["points"][0]["title"] == "Window question"
+    assert signal_history["points"][0]["algorithm"] == "Sliding Window"
+    assert signal_history["points"][0]["title"] == "Window question"
