@@ -1,17 +1,11 @@
 from __future__ import annotations
 
+import json
 from typing import Any, TypedDict
 
 from app.repositories.base import acquire_connection
 
-MULTIPLE_CHOICE_PROBLEM_COLUMNS = """
-    id, question_text, question_help_text,
-    multiple_choice_answer_label_1, multiple_choice_answer_text_1,
-    multiple_choice_answer_label_2, multiple_choice_answer_text_2,
-    multiple_choice_answer_label_3, multiple_choice_answer_text_3,
-    multiple_choice_answer_label_4, multiple_choice_answer_text_4,
-    multiple_choice_correct_answer_label, multiple_choice_correct_answer_text
-"""
+MULTIPLE_CHOICE_PROBLEM_COLUMNS = "id, question_text, explanation, choices, correct_choice_id, algorithm_slug"
 
 
 class StoredChoice(TypedDict):
@@ -25,21 +19,30 @@ class StoredMultipleChoiceProblem(TypedDict):
     explanation: str
     choices: list[StoredChoice]
     correctChoiceId: str
+    algorithmSlug: str | None
+
+
+def stored_choices(value: Any) -> list[StoredChoice]:
+    """Parse the ``choices`` JSONB column (asyncpg returns it as text)."""
+    raw = json.loads(value) if isinstance(value, str) else value
+    choices: list[StoredChoice] = []
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict):
+            continue
+        choice_id, text = str(item.get("id") or "").strip(), str(item.get("text") or "")
+        if choice_id and text:
+            choices.append({"id": choice_id, "text": text})
+    return choices
 
 
 def stored_multiple_choice_problem(row: dict[str, Any]) -> StoredMultipleChoiceProblem:
-    choices: list[StoredChoice] = []
-    for index in range(1, 5):
-        label = str(row.get(f"multiple_choice_answer_label_{index}") or "").strip()
-        text = str(row.get(f"multiple_choice_answer_text_{index}") or "")
-        if label and text:
-            choices.append({"id": label, "text": text})
     return {
         "id": str(row["id"]),
         "question": str(row.get("question_text") or ""),
-        "explanation": str(row.get("question_help_text") or ""),
-        "choices": choices,
-        "correctChoiceId": str(row.get("multiple_choice_correct_answer_label") or "").strip(),
+        "explanation": str(row.get("explanation") or ""),
+        "choices": stored_choices(row.get("choices")),
+        "correctChoiceId": str(row.get("correct_choice_id") or "").strip(),
+        "algorithmSlug": row.get("algorithm_slug"),
     }
 
 
@@ -58,8 +61,8 @@ async def fetch_recent_multiple_choice_problems(limit: int = 25) -> list[StoredM
         rows = await conn.fetch(
             f"""
             SELECT {MULTIPLE_CHOICE_PROBLEM_COLUMNS} FROM multiple_choice_problem
-            WHERE multiple_choice_answer_text_4 IS NOT NULL AND multiple_choice_correct_answer_label IS NOT NULL
-            ORDER BY created_date DESC
+            WHERE jsonb_array_length(choices) = 4 AND correct_choice_id <> ''
+            ORDER BY created_at DESC
             LIMIT $1
             """,
             limit,

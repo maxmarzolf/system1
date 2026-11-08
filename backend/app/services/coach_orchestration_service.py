@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timezone
 
 from app.core.llm import resolve_llm_provider
+from app.core.taxonomy import algorithm_slug_for_tags
 from app.models import (
     CoachProviderDefaultResponse,
     CoachSessionPlanRequest,
@@ -79,12 +80,10 @@ async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
 async def _persist_generated_questions(
     drills: list[MultipleChoiceQuestionPayload],
 ) -> list[MultipleChoiceQuestionPayload | None]:
-    now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
     stored = await insert_generated_multiple_choice_question_rows(
         questions=drills,
-        user_id="0000",
-        created_date=now,
-        modified_date=now,
+        algorithm_slugs=[algorithm_slug_for_tags(list(drill.get("tags") or [])) or None for drill in drills],
+        created_at=datetime.now(tz=timezone.utc),
     )
     return [
         {"id": row["id"], "choices": row["choices"], "correctChoiceId": row["correctChoiceId"]} if row else None

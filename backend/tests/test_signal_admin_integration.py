@@ -78,16 +78,8 @@ async def _seed_problem(problem_id: str) -> None:
     try:
         await conn.execute(
             """
-            INSERT INTO multiple_choice_problem (
-                id, question_text, multiple_choice_answer_label_1, multiple_choice_answer_text_1,
-                multiple_choice_answer_label_2, multiple_choice_answer_text_2,
-                multiple_choice_answer_label_3, multiple_choice_answer_text_3,
-                multiple_choice_answer_label_4, multiple_choice_answer_text_4,
-                multiple_choice_correct_answer_label, multiple_choice_correct_answer_text, fingerprint
-            )
-            VALUES ($1, 'Which heap keeps the kth largest at the root?', 'A', 'Min-heap of size k',
-                    'B', 'Max-heap of size k', 'C', 'Min-heap of all n', 'D', 'A sorted list',
-                    'A', 'Min-heap of size k', $1)
+            INSERT INTO multiple_choice_problem (id, question_text, choices, correct_choice_id, fingerprint)
+            VALUES ($1, 'Which heap keeps the kth largest at the root?', '[{"id": "A", "text": "Min-heap of size k"}, {"id": "B", "text": "Max-heap of size k"}, {"id": "C", "text": "Min-heap of all n"}, {"id": "D", "text": "A sorted list"}]'::jsonb, 'A', $1)
             """,
             problem_id,
         )

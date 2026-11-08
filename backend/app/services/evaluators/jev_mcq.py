@@ -83,8 +83,9 @@ class JevMcqEvaluator:
 
     async def evaluate(self, body: AttemptCreate) -> EvaluationOutcome:
         context = await build_mcq_context(body)
+        # The stored problem's algorithm decides which scoped signals apply; older rows fall back to the tags.
         spec = await signal_registry_service.load_mcq_spec(
-            signal_registry_service.mcq_algorithm_for_tags(body.categoryTags)
+            context.algorithm_slug or signal_registry_service.mcq_algorithm_for_tags(body.categoryTags)
         )
         signal_context = SignalContext(modality=MCQ_MODALITY, state=context.jev_state(), elapsed_ms=context.elapsed_ms)
         plugins = [plugin for plugin, _weight in spec.plugins()]

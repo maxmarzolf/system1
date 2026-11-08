@@ -71,15 +71,8 @@ async def _seed_problem(question_id: str) -> None:
     try:
         await conn.execute(
             """
-            INSERT INTO multiple_choice_problem (
-                id, question_text, multiple_choice_answer_label_1, multiple_choice_answer_text_1,
-                multiple_choice_answer_label_2, multiple_choice_answer_text_2,
-                multiple_choice_answer_label_3, multiple_choice_answer_text_3,
-                multiple_choice_answer_label_4, multiple_choice_answer_text_4,
-                multiple_choice_correct_answer_label, multiple_choice_correct_answer_text, fingerprint
-            )
-            VALUES ($1, 'Which state is sufficient?', 'A', 'Every subarray', 'B', 'Current value',
-                    'C', 'Best prefix result', 'D', 'A sorted copy', 'C', 'Best prefix result', $1)
+            INSERT INTO multiple_choice_problem (id, question_text, choices, correct_choice_id, fingerprint)
+            VALUES ($1, 'Which state is sufficient?', '[{"id": "A", "text": "Every subarray"}, {"id": "B", "text": "Current value"}, {"id": "C", "text": "Best prefix result"}, {"id": "D", "text": "A sorted copy"}]'::jsonb, 'C', $1)
             """,
             question_id,
         )

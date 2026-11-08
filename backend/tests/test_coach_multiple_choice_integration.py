@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from uuid import uuid4
 
 import asyncpg
@@ -13,39 +14,9 @@ from app.models import MultipleChoiceDrillsResponse
 from app.services import drill_generation_service
 
 
-QUESTION_SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS multiple_choice_problem (
-    id VARCHAR(80) PRIMARY KEY,
-    user_id VARCHAR(80) NOT NULL DEFAULT '0000',
-    question_text TEXT NOT NULL,
-    question_help_text TEXT NOT NULL DEFAULT '',
-    recall_answer TEXT,
-    multiple_choice_answer_label_1 VARCHAR(1),
-    multiple_choice_answer_text_1 TEXT,
-    multiple_choice_answer_label_2 VARCHAR(1),
-    multiple_choice_answer_text_2 TEXT,
-    multiple_choice_answer_label_3 VARCHAR(1),
-    multiple_choice_answer_text_3 TEXT,
-    multiple_choice_answer_label_4 VARCHAR(1),
-    multiple_choice_answer_text_4 TEXT,
-    multiple_choice_correct_answer_label VARCHAR(1),
-    multiple_choice_correct_answer_text TEXT,
-    fingerprint VARCHAR(64) NOT NULL,
-    created_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    modified_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_multiple_choice_problem_fingerprint
-    ON multiple_choice_problem(fingerprint);
-"""
-
-
-async def _ensure_question_schema(database_url: str) -> None:
+async def _ensure_database(database_url: str) -> None:
     conn = await asyncpg.connect(database_url)
-    try:
-        await conn.execute(QUESTION_SCHEMA_SQL)
-    finally:
-        await conn.close()
+    await conn.close()
 
 
 async def _fetch_question_row(database_url: str, question_id: str) -> asyncpg.Record | None:
@@ -53,12 +24,7 @@ async def _fetch_question_row(database_url: str, question_id: str) -> asyncpg.Re
     try:
         return await conn.fetchrow(
             """
-            SELECT
-                id,
-                user_id,
-                question_text,
-                multiple_choice_correct_answer_label,
-                multiple_choice_correct_answer_text
+            SELECT id, question_text, explanation, choices, correct_choice_id, algorithm_slug, created_at
             FROM multiple_choice_problem
             WHERE id = $1
             """,
@@ -79,7 +45,7 @@ async def _delete_question_row(database_url: str, question_id: str) -> None:
 @pytest.mark.integration
 def test_multiple_choice_route_persists_generated_question(monkeypatch: pytest.MonkeyPatch) -> None:
     try:
-        asyncio.run(_ensure_question_schema(settings.database_url))
+        asyncio.run(_ensure_database(settings.database_url))
     except Exception as exc:  # pragma: no cover - environment-dependent integration guard
         pytest.skip(f"Postgres not available for integration test: {exc}")
 
@@ -169,9 +135,11 @@ def test_multiple_choice_route_persists_generated_question(monkeypatch: pytest.M
     try:
         assert row is not None
         assert row["id"] == question_id
-        assert row["user_id"] == "0000"
         assert row["question_text"] == question_text
-        assert row["multiple_choice_correct_answer_label"] == "A"
-        assert row["multiple_choice_correct_answer_text"] == "Use left <= right and tighten bounds each step."
+        assert row["explanation"] == "Monotonic bounds updates guarantee termination."
+        assert json.loads(row["choices"]) == question_payload["choices"]
+        assert row["correct_choice_id"] == "A"
+        assert row["algorithm_slug"] == "binary-search"
+        assert row["created_at"].tzinfo is not None
     finally:
         asyncio.run(_delete_question_row(settings.database_url, question_id))

@@ -93,7 +93,8 @@ async def test_skill_map_drills_are_persisted_with_progress_context(monkeypatch,
 
 async def test_generated_questions_are_stored_and_mapped(monkeypatch) -> None:
     async def insert(**kwargs):
-        assert kwargs["user_id"] == "0000"
+        assert "user_id" not in kwargs and kwargs["created_at"].tzinfo is not None
+        assert kwargs["algorithm_slugs"] == [None, None]
         return [{"id": "q1", "choices": [], "correctChoiceId": "A"}, None]
 
     async def generate(body, *, persist_generated_questions):

@@ -29,6 +29,7 @@ class McqContext:
     correct_answer: StoredChoice
     submitted_answer: StoredChoice
     elapsed_ms: int
+    algorithm_slug: str | None = None
 
     def jev_state(self) -> dict[str, Any]:
         """State for every Jev question about this submission."""
@@ -76,4 +77,5 @@ async def mcq_context_for(problem_id: str, selected_id: str, *, elapsed_ms: int 
         correct_answer=correct,
         submitted_answer=submitted,
         elapsed_ms=elapsed_ms,
+        algorithm_slug=problem.get("algorithmSlug"),
     )

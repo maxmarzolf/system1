@@ -16,28 +16,8 @@ async def _connect_db() -> asyncpg.Connection:
 async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
     await conn.execute(
         """
-        INSERT INTO multiple_choice_problem (
-            id,
-            user_id,
-            question_text,
-            question_help_text,
-            recall_answer,
-            multiple_choice_correct_answer_text,
-            fingerprint,
-            created_date,
-            modified_date
-        )
-        VALUES (
-            'mcq-fx-perf-q',
-            '0000',
-            'Performance fixture question',
-            '',
-            NULL,
-            'correct',
-            'fx-perf-fingerprint-q',
-            NOW(),
-            NOW()
-        )
+        INSERT INTO multiple_choice_problem (id, question_text, fingerprint)
+        VALUES ('mcq-fx-perf-q', 'Performance fixture question', 'fx-perf-fingerprint-q')
         ON CONFLICT (id) DO NOTHING
         """
     )

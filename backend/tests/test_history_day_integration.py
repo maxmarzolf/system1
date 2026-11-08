@@ -26,12 +26,8 @@ async def _insert_submission(problem_id: str) -> int:
     try:
         await conn.execute(
             """
-            INSERT INTO multiple_choice_problem (
-                id, question_text, multiple_choice_answer_label_1, multiple_choice_answer_text_1,
-                multiple_choice_answer_label_2, multiple_choice_answer_text_2,
-                multiple_choice_correct_answer_label, multiple_choice_correct_answer_text, fingerprint
-            )
-            VALUES ($1, 'When does the window shrink?', 'A', 'While invalid', 'B', 'Never', 'A', 'While invalid', $1)
+            INSERT INTO multiple_choice_problem (id, question_text, choices, correct_choice_id, fingerprint)
+            VALUES ($1, 'When does the window shrink?', '[{"id": "A", "text": "While invalid"}, {"id": "B", "text": "Never"}]'::jsonb, 'A', $1)
             """,
             problem_id,
         )

@@ -10,17 +10,16 @@ from app.contracts.coerce import coerce_json_object
 from app.contracts.evaluation import Evaluation
 from app.core import taxonomy
 from app.core.static_playlists import static_playlist_activity_rows
+from app.repositories.multiple_choice_repository import stored_choices
 from app.repositories.attempts_repository import fetch_history_day_rows, fetch_skill_map_overview_algorithm_rows, fetch_skill_map_overview_attempt_rows
 from app.services.read_models.common import coerce_utc_datetime, resolve_timezone, submission_modality
 
 
 def _history_day_choices(row: dict[str, Any]) -> list[dict[str, Any]]:
-    correct = str(row.get("multiple_choice_correct_answer_label") or "")
+    correct = str(row.get("multiple_choice_correct_choice_id") or "")
     return [
-        {"id": label, "text": text, "correct": label == correct}
-        for index in range(1, 5)
-        if (label := str(row.get(f"multiple_choice_answer_label_{index}") or ""))
-        and (text := str(row.get(f"multiple_choice_answer_text_{index}") or ""))
+        {"id": choice["id"], "text": choice["text"], "correct": choice["id"] == correct}
+        for choice in stored_choices(row.get("multiple_choice_choices"))
     ]
 
 

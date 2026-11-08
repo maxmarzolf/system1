@@ -223,11 +223,8 @@ async def fetch_history_day_rows(day_start: datetime, day_end: datetime) -> list
                 a.problem_slug,
                 COALESCE(NULLIF(a.generated_card->>'title', ''), a.generated_card_id, a.multiple_choice_problem_id) AS title,
                 COALESCE(q.question_text, NULLIF(a.generated_card->>'question', ''), NULLIF(a.generated_card->>'prompt', ''), '') AS question,
-                q.multiple_choice_answer_label_1, q.multiple_choice_answer_text_1,
-                q.multiple_choice_answer_label_2, q.multiple_choice_answer_text_2,
-                q.multiple_choice_answer_label_3, q.multiple_choice_answer_text_3,
-                q.multiple_choice_answer_label_4, q.multiple_choice_answer_text_4,
-                q.multiple_choice_correct_answer_label
+                q.choices AS multiple_choice_choices,
+                q.correct_choice_id AS multiple_choice_correct_choice_id
             FROM submission a
             LEFT JOIN multiple_choice_problem q ON q.id = a.multiple_choice_problem_id
             WHERE {_DAILY_WORK_SUBMISSION_FILTER}
