@@ -1,6 +1,7 @@
 import { act, fireEvent, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { usePracticeHotkeys } from './practice/hooks/usePracticeHotkeys'
+import { usePracticePanels } from './practice/hooks/usePracticePanels'
 import { usePracticeSession, useSessionPlan } from './practice/hooks/usePracticeSession'
 import { emptySkillMapCard } from './practice/types'
 import { mockFetch } from './test/fetch'
@@ -123,5 +124,32 @@ describe('usePracticeHotkeys', () => {
     const outsideRecall = setup({ recallActive: false })
     press('l')
     expect(outsideRecall.onToggleAiCompletion).not.toHaveBeenCalled()
+  })
+})
+
+describe('usePracticePanels', () => {
+  it('keeps one side panel open at a time and closes on Escape', () => {
+    const { result } = renderHook(() => usePracticePanels({ flowOpenOnArrival: true, relatedKey: 'a' }))
+    expect(result.current.flowOpen).toBe(true)
+    act(() => result.current.toggleRelated())
+    expect(result.current).toMatchObject({ flowOpen: false, relatedOpen: true })
+    act(() => result.current.toggleLadder('card'))
+    expect(result.current).toMatchObject({ relatedOpen: false, ladderCardId: 'card' })
+    act(() => result.current.toggleFlow())
+    expect(result.current).toMatchObject({ flowOpen: true, ladderCardId: null })
+    act(() => result.current.toggleZen())
+    expect(result.current).toMatchObject({ zen: true, flowOpen: false })
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(result.current.zen).toBe(false)
+  })
+
+  it('closes the related drawer when the card changes', () => {
+    const { result, rerender } = renderHook(({ relatedKey }) => usePracticePanels({ flowOpenOnArrival: false, relatedKey }), {
+      initialProps: { relatedKey: 'a' },
+    })
+    act(() => result.current.toggleRelated())
+    expect(result.current.relatedOpen).toBe(true)
+    rerender({ relatedKey: 'b' })
+    expect(result.current.relatedOpen).toBe(false)
   })
 })
