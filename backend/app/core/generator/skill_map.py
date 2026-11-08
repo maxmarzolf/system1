@@ -21,7 +21,7 @@ from app.core.focused_core_algorithm_cards import (
     method_slug as _method_slug,
     pattern_family_slug as _pattern_family_slug,
 )
-from app.models import SkillMapDrillsRequest, SkillMapNode, TemplateMode
+from app.contracts.coaching import SkillMapDrillsRequest, SkillMapNode, TemplateMode
 from app.core.taxonomy import slugify
 from app.core.llm import LlmUnavailableError, stream_openai_text
 from app.core.generator.types import (

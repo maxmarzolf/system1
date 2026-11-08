@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, TypeAlias, TypedDict
 
 from app.config import settings
-from app.models import SkillMapDrillsRequest, SkillMapNode, TemplateMode
+from app.contracts.coaching import SkillMapDrillsRequest, SkillMapNode, TemplateMode
 
 
 INLINE_NOTE_COLUMN = 48

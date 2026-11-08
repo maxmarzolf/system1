@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, cast
 
-from app.core.core_algorithm_practice import problem_slug_candidates
+from app.contracts.catalog_ids import problem_slug_candidates
 from app.repositories.base import acquire_connection
 from app.repositories.types import (
     AlgorithmSkillRow,

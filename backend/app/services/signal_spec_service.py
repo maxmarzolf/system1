@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from app.core.core_algorithm_practice import problem_slug_candidates
+from app.contracts.catalog_ids import problem_slug_candidates
 from app.core.signal_catalog import (
     DEFAULT_SIGNAL_SPEC,
     SignalSpec,

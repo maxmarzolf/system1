@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.core.signal_catalog import RecallSignal, SignalSpec
-from app.models import CoachAttemptFeedbackRequest
+from app.contracts.coaching import CoachAttemptFeedbackRequest
 from app.core.llm import LlmUnavailableError
 
 

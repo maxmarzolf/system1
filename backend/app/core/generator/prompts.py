@@ -10,7 +10,7 @@ from app.core.focused_core_algorithm_cards import (
     pattern_examples as _pattern_examples,
     pattern_family_slug as _pattern_family_slug,
 )
-from app.models import SkillMapDrillsRequest, TemplateMode
+from app.contracts.coaching import SkillMapDrillsRequest, TemplateMode
 from app.core.taxonomy import slugify
 from app.core.generator.types import (
     CORE_SHAPE_TEMPLATE_KEY,

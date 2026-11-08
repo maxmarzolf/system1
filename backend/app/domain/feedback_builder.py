@@ -4,7 +4,7 @@ from typing import Any
 
 from app.core.signal_catalog import DEFAULT_SIGNAL_SPEC, RecallSignal, SignalSpec
 from app.core.signals import ModalitySignalSpec, SignalResult
-from app.models import CoachAttemptFeedbackRequest
+from app.contracts.coaching import CoachAttemptFeedbackRequest
 from app.contracts.coerce import coerce_json_object
 
 

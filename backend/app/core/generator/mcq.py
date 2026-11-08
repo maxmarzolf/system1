@@ -9,7 +9,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any
 
-from app.models import MultipleChoiceDrillsRequest, MultipleChoiceDrillsResponse, SkillMapNode
+from app.contracts.coaching import MultipleChoiceDrillsRequest, MultipleChoiceDrillsResponse, SkillMapNode
 from app.core.taxonomy import slugify
 from app.core.llm import LlmUnavailableError
 from app.core.generator.types import LLMJsonPayload, LLMJsonResponse, MultipleChoiceQuestionPayload

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any, TypedDict
 
-from app.models import SkillMapNode, TemplateMode
+from app.contracts.coaching import SkillMapNode, TemplateMode
 from app.readiness import READINESS_MODE_ORDER, summarize_readiness
 from app.domain.rubric_summary import summarize_submission_rubrics
 from app.contracts.evaluation import evaluation_feedback

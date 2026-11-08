@@ -8,7 +8,7 @@ from typing import Any
 
 from app.core.llm import LlmUnavailableError
 from app.contracts.evaluation import evaluation_feedback
-from app.models import CoachAttemptFeedbackRequest, TemplateMode
+from app.contracts.coaching import CoachAttemptFeedbackRequest, TemplateMode
 
 
 SUBMISSION_LLM_MAX_RETRIES = 3
