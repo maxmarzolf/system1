@@ -72,12 +72,7 @@ Docs ([index](docs/README.md)):
 
 ### Backend layering rules
 
-A boundary test enforces these:
-
-- SQL only in `backend/app/repositories/`; row types in `repositories/types.py`.
-- Endpoints in `backend/app/endpoints/` stay thin and call services.
-- Service payload contracts live in `backend/app/services/contracts.py`.
-- `backend/app/core/` and `backend/app/domain/` stay framework-agnostic and never import repositories.
+`endpoints → services → domain → core → contracts`, with SQL only in `repositories/`. The [import-linter](https://import-linter.readthedocs.io/) contracts in `backend/.importlinter` enforce this in CI and in pytest. [docs/backend-architecture.md](docs/backend-architecture.md) lists the rules and says where new code goes.
 
 ### Key modules
 
@@ -88,7 +83,8 @@ A boundary test enforces these:
 | `backend/app/services/evaluators/` | One evaluator per modality |
 | `backend/app/services/signal_registry_service.py` | Loads the active MCQ spec for an algorithm; seeds defaults (insert-if-missing) |
 | `backend/app/services/signal_admin_service.py` | `/admin`: list, create, edit, archive, restore, try |
-| `backend/app/services/attempts_service.py` | Readiness, daily activity, day detail and signal history |
+| `backend/app/contracts/` | Shapes shared across layers, including the versioned `Evaluation` |
+| `backend/app/services/read_models/` | Readiness, daily activity, day detail and signal history |
 | `src/App.tsx` | The practice screen |
 | `src/PracticeHistoryPage.tsx`, `src/SignalHologram.tsx` | Journey and the score terrain |
 | `src/AdminPage.tsx`, `src/signalAdmin.ts` | `/admin` and its API client |
@@ -102,9 +98,9 @@ A boundary test enforces these:
 | GET | `/api/skill-map`, `/api/skill-map-overview?historyDays=&tz=` | Taxonomy; readiness and daily activity |
 | GET | `/api/history/day?date=&tz=`, `/api/history/signals?tz=` | One day's submissions; every scored signal over time |
 | GET | `/api/catalog/playlists`, `/api/catalog/signal-specs` | Playlists; recall signal specs |
-| GET | `/api/coach/problem-drills[/{algorithm} \| /technique/{t}]`, `/api/coach/playlist-drills/{slug}` | Catalog drills |
+| GET | `/api/coach/problem-drills[/{algorithm}]`, `/api/coach/playlist-drills/{slug}` | Catalog drills |
 | POST | `/api/coach/skill-map-drills[-stream]`, `/api/coach/multiple-choice-drills`, `/api/coach/micro-drill` | Generated drills |
-| POST | `/api/coach/adaptive-variation`, `/api/coach/sequential-variation`, `/api/coach/sliding-window-ladder` | Follow-up drills |
+| POST | `/api/coach/sliding-window-ladder` | Follow-up drills |
 | POST | `/api/coach/inline-completion`, `/api/coach/session-plan`, `/api/coach/history` | Editor suggestions, session plan, practice history |
 | GET | `/api/coach/provider-default` | Configured coach provider |
 | GET, POST | `/api/admin/signals` | List or create MCQ signals |
@@ -152,6 +148,22 @@ A live call to Jev (uses `TYPESAFE_API_KEY`):
 
 ```bash
 cd backend && ../.venv/bin/python -m pytest -q -m jev_live
+```
+
+Layer boundaries:
+
+```bash
+cd backend && ../.venv/bin/lint-imports
+```
+
+After changing a route or response model, export the OpenAPI document, then regenerate the frontend API types (a backend test and CI fail if either is stale):
+
+```bash
+.venv/bin/python backend/scripts/export_openapi.py
+```
+
+```bash
+npm run gen:api
 ```
 
 Notes:

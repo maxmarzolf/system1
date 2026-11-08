@@ -12,7 +12,7 @@ from app.core import taxonomy
 from app.core.static_playlists import static_playlist_activity_rows
 from app.domain.rubric_summary import summarize_submission_rubrics
 from app.models import SkillMapNode
-from app.readiness import READINESS_MODE_ORDER, summarize_readiness
+from app.domain.readiness import READINESS_MODE_ORDER, summarize_readiness
 from app.repositories.attempts_repository import (
     fetch_algorithms_with_skills_rows,
     fetch_skill_map_overview_algorithm_rows,

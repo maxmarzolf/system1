@@ -129,7 +129,7 @@ Key points:
 
 ```mermaid
 flowchart LR
-  DB[("submission")] --> O["attempts_service<br/>build_skill_map_overview"]
+  DB[("submission")] --> O["read_models.overview<br/>build_skill_map_overview"]
   DB --> HD["get_history_day(date, tz)"]
   DB --> SH["get_signal_history(tz)"]
   O -->|"/api/skill-map-overview?historyDays&tz"| Dash["Dashboard<br/>readiness per algorithm"]
