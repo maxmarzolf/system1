@@ -18,7 +18,6 @@ import { useTheme } from './theme'
 import RecallCodeEditor, { type RecallEditorLineMeta } from './RecallCodeEditor'
 import SlidingWindowLadder from './WindowLadderPanel'
 import { slidingWindowTechnique } from './windowLadderPlan'
-import { matchesHotkey } from './hotkeys'
 import { FlowCoachTransition, FlowMicroDrillCard } from './practice/FlowMicroDrillCard'
 import { inlineDisplayLines, splitInlineAnnotationLine } from './practice/inlineNotes'
 import { buildFlowFocusSummary, buildFlowGhostScaffold, buildFlowGhostTarget, firstIncompleteGhostLineNumber, summarizeFlowFocusLine, toMultipleChoiceFocusLines } from './practice/lineReview'
@@ -27,6 +26,7 @@ import { usePracticeFlowControls, usePracticeFlowState, type FlowChange } from '
 import { useMultipleChoiceAttempt } from './practice/hooks/useMultipleChoiceAttempt'
 import { useRecallAttempt, type RecallSubmitted } from './practice/hooks/useRecallAttempt'
 import { usePracticeSession, useSessionPlan } from './practice/hooks/usePracticeSession'
+import { usePracticeHotkeys } from './practice/hooks/usePracticeHotkeys'
 import { useFlowMultipleChoiceDeck, useMultipleChoiceDeck, useRecallDeck } from './practice/hooks/useDecks'
 import { MULTIPLE_CHOICE_DIFFICULTY, cardSpecimen, flowMultipleChoiceRequest, multipleChoiceDeckRequest } from './practice/mcqRequests'
 import PrimaryActionIcon from './practice/components/PrimaryActionIcon'
@@ -595,40 +595,14 @@ function App() {
     'recall-revise': recall.revise,
   }
 
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if (event.repeat || event.isComposing || event.altKey || event.shiftKey || !matchesHotkey(event, 'primary-card-action')) return
-      const button = primaryCardButtonRef.current
-      if (!button || button.disabled) return
-      event.preventDefault()
-      event.stopPropagation()
-      button.click()
-    }
-    window.addEventListener('keydown', handler, true)
-    return () => window.removeEventListener('keydown', handler, true)
-  }, [])
-
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if (currentPracticeMode !== 'recall') return
-      if (matchesHotkey(event, 'toggle-ai-completion')) {
-        event.preventDefault()
-        setCodeEditorTuning((prev) => ({ ...prev, aiCompletion: !prev.aiCompletion }))
-        return
-      }
-      if (isFlowActive) return
-      if (matchesHotkey(event, 'toggle-ghost-reps')) {
-        event.preventDefault()
-        setSupportLayer((prev) => (prev === 'ghost-reps' ? 'none' : 'ghost-reps'))
-      }
-      if (INLINE_FEEDBACK_ENABLED && matchesHotkey(event, 'toggle-inline-feedback')) {
-        event.preventDefault()
-        toggleInlineHelper()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [currentPracticeMode, isFlowActive, toggleInlineHelper])
+  usePracticeHotkeys({
+    primaryButtonRef: primaryCardButtonRef,
+    recallActive: currentPracticeMode === 'recall',
+    flowActive: isFlowActive,
+    onToggleAiCompletion: toggleAiCompletion,
+    onToggleGhostReps: () => setSupportLayer((current) => (current === 'ghost-reps' ? 'none' : 'ghost-reps')),
+    onToggleInline: toggleInlineHelper,
+  })
 
   useEffect(() => {
     if (!zenMode) return
