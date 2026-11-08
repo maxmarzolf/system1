@@ -6,6 +6,7 @@ import { errorMessage } from './api/client'
 import { useSignalHistory } from './api/queries'
 import { formatCalendarDate } from './dailyWork'
 import SignalHologramHeader from './SignalHologramHeader'
+import { LANDSCAPE_ROWS, shortfallOf, signalShortfallRows, timeFraction, timeRange } from './signalTerrain'
 import { Link } from 'react-router-dom'
 import { useTheme } from './theme'
 
@@ -34,10 +35,7 @@ const SCORE_HEIGHT = 4.5
 const TIME_TICKS = 5
 const POINT_SIZE = 0.32
 // Landscape resolution and smoothing.
-const LANDSCAPE_ROWS = 48 // samples along time, front to back
 const LANDSCAPE_SUBDIVISIONS = 6 // samples between neighbouring signals
-const TIME_BANDWIDTH = 0.07 // smoothing kernel width, as a fraction of the whole time span
-const PRIOR_WEIGHT = 0.2 // pull toward a signal's mean shortfall where it has no nearby answers
 // Reveal: the terrain rises from flat while the camera eases in; dots and labels follow.
 const REVEAL_MS = 1600
 const REVEAL_MS_REDUCED = 400 // reduced motion: a plain fade
@@ -100,33 +98,6 @@ const webglAvailable = () => {
   }
 }
 
-const shortfallOf = (score: number) => 100 - score
-
-/**
- * Shortfall (100 - score) for each signal at each time row, Gaussian-smoothed over time.
- * Rows with no nearby answers relax toward that signal's mean shortfall.
- */
-function signalShortfallRows(history: SignalHistory, tMin: number, tMax: number): number[][] {
-  const fractionOf = (time: number) => (tMax === tMin ? 0.5 : (time - tMin) / (tMax - tMin))
-  return history.signals.map((signal) => {
-    const samples = history.points
-      .filter((point) => point.signal === signal.key)
-      .map((point) => ({ at: fractionOf(Date.parse(point.createdAt)), shortfall: shortfallOf(point.score) }))
-    const mean = samples.reduce((total, sample) => total + sample.shortfall, 0) / Math.max(samples.length, 1)
-    return Array.from({ length: LANDSCAPE_ROWS }, (_, row) => {
-      const at = row / (LANDSCAPE_ROWS - 1)
-      let weights = PRIOR_WEIGHT
-      let total = PRIOR_WEIGHT * mean
-      for (const sample of samples) {
-        const weight = Math.exp(-((at - sample.at) ** 2) / (2 * TIME_BANDWIDTH ** 2))
-        weights += weight
-        total += weight * sample.shortfall
-      }
-      return total / weights
-    })
-  })
-}
-
 const compact = (label: string) => (label.length > 18 ? `${label.slice(0, 17)}…` : label)
 
 function disposeScene(scene: THREE.Scene) {
@@ -179,19 +150,18 @@ function mountHologram(
   const signalIndex = new Map(signals.map((signal, index) => [signal.key, index]))
   const signalLabels = new Map(signals.map((signal) => [signal.key, signal.label]))
   const width = Math.max(signals.length - 1, 1) * SIGNAL_SPACING
-  const times = history.points.map((point) => Date.parse(point.createdAt))
-  const tMin = Math.min(...times)
-  const tMax = Math.max(...times)
+  const range = timeRange(history.points)
+  const { tMin, tMax } = range
   const xOf = (key: string) => (signalIndex.get(key) ?? 0) * SIGNAL_SPACING - width / 2
   // Newest answers sit at the front, nearest the viewer.
-  const zOf = (time: number) => (tMax === tMin ? 0 : ((time - tMin) / (tMax - tMin) - 0.5) * TIME_DEPTH)
+  const zOf = (time: number) => (timeFraction(time, range) - 0.5) * TIME_DEPTH
   const yOf = (shortfall: number) => (shortfall / 100) * SCORE_HEIGHT
 
   const hologram = new THREE.Group()
   scene.add(hologram)
 
   // The landscape: one surface over signals (x) and time (depth), height = smoothed shortfall.
-  const shortfallRows = signalShortfallRows(history, tMin, tMax)
+  const shortfallRows = signalShortfallRows(history, range)
   const columnCount = Math.max(signals.length - 1, 1) * LANDSCAPE_SUBDIVISIONS + 1
   const columnShortfall = (column: number, row: number) => {
     const at = signals.length > 1 ? column / LANDSCAPE_SUBDIVISIONS : 0
