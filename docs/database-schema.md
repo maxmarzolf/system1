@@ -162,7 +162,7 @@ erDiagram
 - **Submissions keep a snapshot:** `submission.generated_card` stores the card exactly as shown, so history renders correctly even if the problem later changes.
 - **Resetting practice history** deletes `generated-llm` problems but never core or playlist rows.
 - **MCQs are separate on purpose:** they live in `multiple_choice_problem`. A stored question is never edited, so every MCQ answer can be checked against what was shown.
-- The Python and TypeScript catalogs in code (`backend/app/core/*catalog*.py`, `src/data/`) are seed inputs and offline fallbacks; reads at runtime go through the repositories.
+- The Python and TypeScript catalogs in code (`backend/app/core/*catalog*.py`, `src/shared/data/`) are seed inputs and offline fallbacks; reads at runtime go through the repositories.
 - **Seeding is skipped when nothing changed:** the seed hashes the code catalogs plus the seeding code and stores the hash in `seed_state` (key `catalog`). A boot with a matching hash writes nothing. To force a reseed, `DELETE FROM seed_state WHERE key = 'catalog'` and restart.
 - **Retired core problems that have submissions are kept:** `submission.problem_slug` is `ON DELETE RESTRICT`, so the seed skips deleting them and logs a warning instead of failing the boot.
 

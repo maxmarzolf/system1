@@ -33,11 +33,11 @@ See the **Agent Guide** section in [README.md](../README.md) for the full quick-
 
 ## Before Modifying Frontend Code
 
-- Page components live in `src/`. Routes are in `src/App.tsx`. Nav links are in `src/TopNav.tsx`.
+- Each page lives in `src/features/<page>/`; shared code is in `src/shared/`. Routes are in `src/app/routes.tsx`. Nav links are in `src/app/TopNav.tsx`. See `docs/frontend.md` for where new code goes.
 - API base URL is `http://localhost:3001`. The Vite dev proxy forwards `/api/*` to the backend.
-- TypeScript types for skill-map data are in `src/data/skill-map.ts`.
+- TypeScript types for skill-map data are in `src/shared/data/skill-map.ts`.
 - Host-side tests need `DATABASE_URL=postgresql://flashcard_user:flashcard_password@localhost:5432/flashcard_db`; the Docker-only `.env` hostname `postgres` is not resolvable from macOS.
-- Frontend validation is `npm run build`.
+- Frontend validation is `npm run build`, `npm run lint` (includes the module-boundary rules) and `npm run test:coverage`.
 
 ## Content Migration Rules
 

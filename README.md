@@ -86,9 +86,9 @@ Docs ([index](docs/README.md)):
 | `backend/app/contracts/` | Shapes shared across layers, including the versioned `Evaluation` |
 | `backend/app/services/read_models/` | Readiness, daily activity, day detail and signal history |
 | `src/api/` | The typed API client: `client.ts` (openapi-fetch typed from the generated `schema.d.ts`, one `ApiError` for every error shape) and `queries.ts` (TanStack Query hooks for shared reads) |
-| `src/App.tsx`, `src/practice/` | The practice screen: App composes hooks (`practice/hooks/`), presentational components (`practice/components/`) and pure, unit-tested logic (`practice/*.ts`, e.g. the flow reducer) |
-| `src/PracticeHistoryPage.tsx`, `src/SignalHologram.tsx` | Journey and the score terrain |
-| `src/AdminPage.tsx`, `src/signalAdmin.ts` | `/admin` and its API client |
+| `src/app/` | The shell: routes, TopNav, theme and the global styles (`app/styles/`, imported in cascade order) |
+| `src/features/` | One folder per page: `practice/` (the practice screen and its flow, ladder and editor), `dashboard/`, `journey/` (incl. the score terrain), `admin/`, `tune/` |
+| `src/shared/` | Components, helpers, settings and catalogs used by more than one page |
 
 ## API
 
@@ -124,7 +124,7 @@ npm test
 npm run test:coverage
 ```
 
-`npm run test:watch` reruns on save. Tests sit next to the code (`src/*.test.ts[x]`); shared helpers are in `src/test/`:
+`npm run test:watch` reruns on save. Tests sit next to the code they test; shared helpers are in `src/test/`:
 
 - `mockFetch` stubs the API by route.
 - `test/app.ts` has practice-screen helpers: drill fixtures, typing into CodeMirror, hotkeys.
