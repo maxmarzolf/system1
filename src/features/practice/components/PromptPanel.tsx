@@ -2,14 +2,9 @@ import type { CSSProperties } from 'react'
 import type { AppTheme } from '@/app/theme'
 import MarkdownCodeContent from './MarkdownCodeContent'
 import type { MultipleChoiceCard, PracticeMode } from '../lib/types'
+import Skeleton from '@/shared/components/Skeleton'
 
-const SkeletonLines = () => (
-  <>
-    <div className="skeleton-line w95 tall" />
-    <div className="skeleton-line w80" />
-    <div className="skeleton-line w60" />
-  </>
-)
+const PROMPT_LINES = ['w95 tall', 'w80', 'w60']
 
 /** The left panel: the MCQ question, or the recall prompt (an explanation for skeleton cards). */
 export default function PromptPanel({ mode, hasDeck, loading, error, onRetry, mcqCard, prompt, explanation, syntaxTheme, theme }: {
@@ -34,7 +29,7 @@ export default function PromptPanel({ mode, hasDeck, loading, error, onRetry, mc
               <div className="prompt-section-content" aria-hidden="true">
                 <span className="prompt-section-label">Question</span>
               </div>
-              <SkeletonLines />
+              <Skeleton lines={PROMPT_LINES} />
             </div>
           ) : (
             <div className="prompt-surface-section">
@@ -64,7 +59,7 @@ export default function PromptPanel({ mode, hasDeck, loading, error, onRetry, mc
         loading ? (
           <div className="prompt-surface-section skeleton-group" role="status" aria-label="Loading prompt">
             <span className="prompt-section-label" aria-hidden="true">Prompt</span>
-            <SkeletonLines />
+            <Skeleton lines={PROMPT_LINES} />
           </div>
         ) : (
           <div className="prompt-surface-section">

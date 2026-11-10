@@ -4,6 +4,7 @@ import RecallCodeEditor, { type RecallEditorLineMeta } from '../editor/RecallCod
 import type { AppTheme } from '@/app/theme'
 import type { RecallAttempt } from '../hooks/useRecallAttempt'
 import { inlineDisplayLines, splitInlineAnnotationLine } from '../lib/inlineNotes'
+import Skeleton from '@/shared/components/Skeleton'
 
 const BASE_LABEL = 'Type the full algorithm from memory'
 const BASE_PLACEHOLDER = 'Type the full algorithm from memory...'
@@ -72,12 +73,7 @@ export default function RecallPanel({
       <div className="panel">
         {loading ? (
           <div className="skeleton-group">
-            <div className="skeleton-line w60" />
-            <div className="skeleton-line w95 tall" />
-            <div className="skeleton-line w95 tall" />
-            <div className="skeleton-line w80 tall" />
-            <div className="skeleton-line w95 tall" />
-            <div className="skeleton-line w45" />
+            <Skeleton lines={['w60', 'w95 tall', 'w95 tall', 'w80 tall', 'w95 tall', 'w45']} />
           </div>
         ) : (
           <div className="hint" style={{ marginTop: 0 }}>{error || 'No drills are available yet.'}</div>

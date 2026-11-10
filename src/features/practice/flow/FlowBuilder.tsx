@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { FLOW_LABELS, FLOW_STAGES, expandFlow, type FlowConfig } from './practiceFlow'
+import Icon from '@/shared/components/Icon'
 
 const FLOW_TILE_COLUMNS = 160
 const FLOW_TILE_ROWS = 8
@@ -135,11 +136,7 @@ export default function FlowBuilder({ config, onChange, disabled }: {
                 <RecallFlagsScene />
               )}
               {block.stage === 'ghost' && (
-                <svg className="flow-ghost-icon" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M2 12.5V6.5a5 5 0 0 1 10 0v6l-1.5-1.5-1.5 1.5-1.5-1.5-1.5 1.5-1.5-1.5-1.5 1.5Z" />
-                  <circle cx="5.5" cy="6.5" r="0.75" fill="currentColor" stroke="none" />
-                  <circle cx="8.5" cy="6.5" r="0.75" fill="currentColor" stroke="none" />
-                </svg>
+                <Icon name="ghost" className="flow-ghost-icon" />
               )}
               <div className="flow-block-drag-zone">
                 <button
@@ -170,10 +167,7 @@ export default function FlowBuilder({ config, onChange, disabled }: {
               </div>
               <div className="flow-block-remove-zone">
                 <button className="flow-block-remove" type="button" aria-label={`Remove block ${index + 1}`} disabled={disabled || config.blocks.length === 1} onClick={() => onChange({ ...config, blocks: config.blocks.filter((_, i) => i !== index) })}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M4.5 7.5h15" />
-                    <path d="M9 7.5V5.25h6V7.5M6.75 7.5l.75 12h9l.75-12M10 11v5.25M14 11v5.25" />
-                  </svg>
+                  <Icon name="trash" size={16} />
                 </button>
               </div>
             </li>

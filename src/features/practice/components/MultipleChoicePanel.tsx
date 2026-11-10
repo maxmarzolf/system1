@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import type { MultipleChoiceAttempt } from '../hooks/useMultipleChoiceAttempt'
 import MarkdownCodeContent from './MarkdownCodeContent'
 import type { MultipleChoiceCard } from '../lib/types'
+import Skeleton from '@/shared/components/Skeleton'
 
 /** The answer choices for an MCQ card and, once graded, the verdict with its explanation. */
 export default function MultipleChoicePanel({ hasDeck, loading, error, card, attempt, locked, syntaxTheme }: {
@@ -28,8 +29,7 @@ export default function MultipleChoicePanel({ hasDeck, loading, error, card, att
                 <div className="multiple-choice-option multiple-choice-option-loading" key={choice} aria-hidden="true">
                   <span className="multiple-choice-option-id">{choice}</span>
                   <div className="skeleton-group">
-                    <div className="skeleton-line w95" />
-                    <div className="skeleton-line w60" />
+                    <Skeleton lines={['w95', 'w60']} />
                   </div>
                 </div>
               ))}

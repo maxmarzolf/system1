@@ -1,5 +1,6 @@
 import type { PracticeFlowTransitionState } from '../lib/types'
 import { FLOW_COACH_LABELS } from './practiceFlow'
+import Icon from '@/shared/components/Icon'
 
 /** The coach's card between two flow stages: from where, to where, and why. */
 export default function FlowCoachTransition({
@@ -27,9 +28,7 @@ export default function FlowCoachTransition({
         <span className="flow-transition-eyebrow">Coach · Next modality</span>
         <div className="flow-transition-route" aria-label={`${fromLabel} to ${toLabel}`}>
           <span>{fromLabel}</span>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="m9 5.25 6.75 6.75L9 18.75" />
-          </svg>
+          <Icon name="chevron-right" />
           <strong>{toLabel}</strong>
         </div>
       </div>
