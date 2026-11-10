@@ -1,5 +1,6 @@
 import { Link, NavLink } from 'react-router-dom'
 import { type ReactNode, type RefObject } from 'react'
+import { NAV_PAGES } from './navPages'
 import { useTheme } from './theme'
 
 type TopNavProps = {
@@ -22,7 +23,7 @@ export default function TopNav({
   llmProviderMenuOpen = false,
   onToggleLlmProviderMenu,
   llmProviderMenuRef,
-  practiceHistoryHref = '/practice-history',
+  practiceHistoryHref = '/',
   rightExtras,
   pinned = false,
   solid = false,
@@ -59,11 +60,16 @@ export default function TopNav({
         </div>
       </div>
       <div className="navbar-right">
-        <NavLink to="/dashboard" className="navbar-dashboard">Dashboard</NavLink>
-        <NavLink to={practiceHistoryHref} className="navbar-dashboard">Journey</NavLink>
-        <NavLink to="/tune" className="navbar-dashboard">Tune</NavLink>
-        <NavLink to="/evolve" className="navbar-dashboard">Evolve</NavLink>
-        <NavLink to="/admin" className="navbar-dashboard">Admin</NavLink>
+        {NAV_PAGES.map((page) => (
+          <NavLink
+            key={page.path}
+            to={page.path === '/' ? practiceHistoryHref : page.path}
+            end={page.path === '/'}
+            className="navbar-dashboard"
+          >
+            {page.label}
+          </NavLink>
+        ))}
         <div className="navbar-theme">
           <button
             type="button"

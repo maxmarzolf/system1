@@ -4,18 +4,18 @@ A React 19 + TypeScript app built with Vite (`src/`). It talks to the backend on
 
 ## Pages
 
-Routes are defined in `src/app/routes.tsx`; every page shares `TopNav` (the active page gets an underline).
+Routes are defined in `src/app/routes.tsx`; every page shares `TopNav` (the active page gets an underline). The navbar order lives in `src/app/navPages.ts`: Practice, Journey, Dashboard, Tune, Evolve, Admin. Cmd/Ctrl + a double-tapped ← or → opens the neighbouring page in that order (`usePageHotkeys`), and `PageSweep` draws a faint sweep across the window in the direction of travel.
 
 | Route | Component | What it does |
 |---|---|---|
-| `/` | `features/practice/PracticePage.tsx` | The practice screen: recall, MCQ, Ghost Reps, Inline notes, AI completion, the Sliding Window Ladder, and flows |
+| `/` | `features/journey/JourneyPage.tsx` | Journey, the home page: the score terrain, the daily work grid and the day detail. Enter opens `/practice` |
+| `/practice` | `features/practice/PracticePage.tsx` | The practice screen: recall, MCQ, Ghost Reps, Inline notes, AI completion, the Sliding Window Ladder, and flows |
 | `/dashboard` | `features/dashboard/DashboardPage.tsx` | A readiness card per algorithm and playlist; each starts focused practice |
-| `/practice-history` | `features/journey/JourneyPage.tsx` | Journey: the score terrain, the daily work grid and the day detail |
 | `/tune` | `features/tune/TunePage.tsx` | Local preferences; saved as you change them |
 | `/admin` | `features/admin/AdminPage.tsx` | MCQ signal editor and the read-only recall specs |
 | `/evolve` | `features/evolve/EvolvePage.tsx` | AlphaEvolve-style prompt runs for MCQ generation |
 
-`/coach-tuning` and `/submission-tuning` redirect to `/tune`.
+`/coach-tuning` and `/submission-tuning` redirect to `/tune`; the old `/practice-history` redirects to `/`.
 
 The practice screen reads its starting deck from the URL:
 
@@ -34,7 +34,7 @@ The code is organized by feature: each page owns a folder, and code used by more
 ```
 src/
   main.tsx        mounts the providers and the router
-  app/            the shell: routes.tsx, TopNav, theme, and styles/ (global CSS)
+  app/            the shell: routes.tsx, navPages, TopNav, page hotkeys and sweep, theme, and styles/ (global CSS)
   api/            the typed API client (client.ts) and shared TanStack Query reads (queries.ts)
   shared/
     components/   Icon, IconToggle, Skeleton, InfoTip, settingControls
@@ -42,9 +42,9 @@ src/
     settings/     the *Tuning modules (localStorage preferences)
     data/         bundled catalogs, used when the API has none
   features/
-    practice/     /            the practice screen
+    practice/     /practice    the practice screen
     dashboard/    /dashboard   readiness cards
-    journey/      /practice-history   the score terrain, daily work grid and day detail
+    journey/      /            the score terrain, daily work grid and day detail
     admin/        /admin       the signal editor
     tune/         /tune        preferences
     evolve/       /evolve      OpenEvolve MCQ-prompt runs (talks to the evolve service on :3002)

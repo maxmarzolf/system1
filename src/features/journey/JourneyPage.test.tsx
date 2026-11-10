@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import * as THREE from 'three'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ThemeProvider } from '@/app/theme'
@@ -79,7 +79,10 @@ const renderJourney = () =>
   render(
     <ThemeProvider>
       <MemoryRouter>
-        <JourneyPage />
+        <Routes>
+          <Route path="/" element={<JourneyPage />} />
+          <Route path="/practice" element={<output data-testid="practice" />} />
+        </Routes>
       </MemoryRouter>
     </ThemeProvider>,
   )
@@ -113,6 +116,17 @@ describe('JourneyPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Week' }))
     await waitFor(() => expect(fetch.calls.some((call) => call.url.includes('historyDays=7'))).toBe(true))
+  })
+
+  it('starts practice on Enter, but not when Enter presses a focused control', async () => {
+    routes()
+    renderJourney()
+    await screen.findByText('No submissions recorded on this day.')
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Week' }), { key: 'Enter' })
+    fireEvent.keyDown(window, { key: 'Enter', metaKey: true })
+    expect(screen.queryByTestId('practice')).toBeNull()
+    fireEvent.keyDown(document.body, { key: 'Enter' })
+    expect(screen.getByTestId('practice')).toBeInTheDocument()
   })
 
   it('reports an unavailable history', async () => {

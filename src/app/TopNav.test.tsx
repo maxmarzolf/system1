@@ -19,7 +19,17 @@ describe('TopNav', () => {
     renderNav('/tune')
     expect(screen.getByRole('link', { name: 'Tune' })).toHaveClass('active')
     expect(screen.getByRole('link', { name: 'Admin' })).not.toHaveClass('active')
-    expect(screen.getByRole('link', { name: 'Journey' })).toHaveAttribute('href', '/practice-history')
+    expect(screen.getByRole('link', { name: 'Journey' })).not.toHaveClass('active')
+    expect(screen.getByRole('link', { name: 'Journey' })).toHaveAttribute('href', '/')
+  })
+
+  it('lists the pages in order and marks Journey only on /', () => {
+    renderNav('/')
+    const links = screen.getAllByRole('link').filter((link) => link.classList.contains('navbar-dashboard'))
+    expect(links.map((link) => link.textContent)).toEqual(['Practice', 'Journey', 'Dashboard', 'Tune', 'Evolve', 'Admin'])
+    expect(links.map((link) => link.getAttribute('href'))).toEqual(['/practice', '/', '/dashboard', '/tune', '/evolve', '/admin'])
+    expect(screen.getByRole('link', { name: 'Journey' })).toHaveClass('active')
+    expect(screen.getByRole('link', { name: 'Practice' })).not.toHaveClass('active')
   })
 
   it('pins, goes solid and toggles the theme', async () => {

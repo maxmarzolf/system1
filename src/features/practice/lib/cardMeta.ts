@@ -51,13 +51,13 @@ export function describeCard({ card, mcqCard, mode, flow, inlineEnabled, request
   ]
 
   const historyHref = (() => {
-    if (!hasDeck) return '/practice-history'
+    if (!hasDeck) return '/'
     const [id, title, type, tags] = mcq && mcqCard
       ? [mcqCard.id, mcqCard.title, mcqQuestionType, mcqSkillTags]
       : [card.id, card.title, questionType, skillTags]
     const params = new URLSearchParams({ cardId: id, cardTitle: title, questionType: type })
     tags.forEach((tag) => params.append('tag', tag))
-    return `/practice-history?${params.toString()}`
+    return `/?${params.toString()}`
   })()
 
   return {

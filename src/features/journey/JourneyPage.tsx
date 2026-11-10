@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useSkillMapOverview } from '@/api/queries'
 import DailyWorkHistory, {
   type DailyWorkActivity,
@@ -18,7 +19,9 @@ type SkillMapOverview = {
   ghostRepActivity: DailyWorkActivity
 }
 
-const latestActiveDate = (activity: DailyWorkActivity) =>
+const INTERACTIVE_SELECTOR = 'a, button, input, textarea, select, summary, [contenteditable="true"], [role="button"], [role="link"], [role="option"], [role="menuitem"], [role="tab"], [role="gridcell"]'
+
+const latestActiveDate =(activity: DailyWorkActivity) =>
   [...activity.days].reverse().find(day => day.segments.some(segment => segment.count > 0))?.date ?? null
 
 export default function JourneyPage() {
@@ -105,6 +108,25 @@ export default function JourneyPage() {
       window.removeEventListener('scroll', onScroll)
     }
   }, [])
+
+  // Enter starts practice, unless it is pressing a focused control (a day, a range button, a field).
+  const navigate = useNavigate()
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key !== 'Enter'
+        || event.repeat
+        || event.isComposing
+        || event.defaultPrevented
+        || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey
+      ) return
+      if (event.target instanceof Element && event.target.closest(INTERACTIVE_SELECTOR)) return
+      event.preventDefault()
+      navigate('/practice')
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [navigate])
 
   // When a new window loads, keep the selected day while it is in range; otherwise show the most recent day with work.
   const loadedActivity = overviewQuery.isPlaceholderData ? undefined : overviewQuery.data?.ghostRepActivity

@@ -84,7 +84,6 @@ export type PracticeFlowTransitionState = {
   status: string
 }
 
-export const CARD_MOVE_DOUBLE_TAP_WINDOW_MS = 350
 export const FLOW_TRANSITION_MINIMUM_MS = 700
 export const FLOW_TRANSITION_SETTLE_MS = 280
 export const INLINE_FEEDBACK_ENABLED = true

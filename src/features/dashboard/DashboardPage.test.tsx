@@ -39,7 +39,7 @@ const renderDashboard = () =>
       <MemoryRouter initialEntries={['/dashboard']}>
         <Routes>
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/" element={<Landing />} />
+          <Route path="/practice" element={<Landing />} />
         </Routes>
       </MemoryRouter>
     </ThemeProvider>,

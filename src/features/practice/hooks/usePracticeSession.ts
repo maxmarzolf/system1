@@ -1,10 +1,10 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { api, unwrap } from '@/api/client'
-import { CARD_MOVE_DOUBLE_TAP_WINDOW_MS, type CoachSessionPlan, type Flashcard } from '../lib/types'
+import type { CoachSessionPlan, Flashcard } from '../lib/types'
 
 /**
  * A pass through a deck: which card is showing, which were answered and how, and when the
- * pass is finished. Cmd/Ctrl + a double-tapped arrow key moves between cards.
+ * pass is finished. Cards move with the control bar's buttons; Cmd/Ctrl + arrows move between pages.
  */
 export function usePracticeSession({ disabled, onMove }: { disabled: boolean; onMove: () => void }) {
   const [order, setOrder] = useState<number[]>([])
@@ -12,7 +12,6 @@ export function usePracticeSession({ disabled, onMove }: { disabled: boolean; on
   const [finished, setFinished] = useState(false)
   const [results, setResults] = useState<Record<string, boolean>>({})
   const [elapsedByCard, setElapsedByCard] = useState<Record<string, number>>({})
-  const lastMoveKey = useRef<{ key: string; pressedAt: number } | null>(null)
 
   const canGoNext = !disabled && position < order.length - 1
   const canGoPrev = !disabled && position > 0
@@ -47,33 +46,6 @@ export function usePracticeSession({ disabled, onMove }: { disabled: boolean; on
     onMove()
     setPosition((current) => Math.max(current - 1, 0))
   }
-
-  const moveFromKey = useEffectEvent((key: string) => {
-    if (key === 'ArrowLeft' && canGoPrev) prev()
-    if (key === 'ArrowRight' && canGoNext) next()
-  })
-
-  useEffect(() => {
-    if (disabled) return
-    const handler = (event: KeyboardEvent) => {
-      if (
-        event.repeat
-        || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')
-        || (!event.metaKey && !event.ctrlKey)
-        || event.altKey
-        || event.shiftKey
-      ) return
-      event.preventDefault()
-      const now = performance.now()
-      const previous = lastMoveKey.current
-      const doubleTapped = previous?.key === event.key && now - previous.pressedAt <= CARD_MOVE_DOUBLE_TAP_WINDOW_MS
-      lastMoveKey.current = doubleTapped ? null : { key: event.key, pressedAt: now }
-      if (!doubleTapped) return
-      moveFromKey(event.key)
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [disabled])
 
   return {
     position,

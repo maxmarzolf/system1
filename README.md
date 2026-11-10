@@ -2,9 +2,9 @@
 
 System 1 is a practice app for coding-interview algorithms. You recall code from memory, get graded, and track where you're weak over time.
 
-- **Practice** (`/`): recall a card's code from memory, or answer multiple-choice questions (MCQs). Optional supports: Ghost Reps (type over the target), Inline notes, AI completion, a Sliding Window Ladder, and adaptive or custom **flows** that mix all four modalities.
+- **Practice** (`/practice`): recall a card's code from memory, or answer multiple-choice questions (MCQs). Optional supports: Ghost Reps (type over the target), Inline notes, AI completion, a Sliding Window Ladder, and adaptive or custom **flows** that mix all four modalities.
 - **Dashboard** (`/dashboard`): readiness per algorithm and playlist; start focused practice from any card.
-- **Journey** (`/practice-history`): a 3D *Signal Score Terrain* of every graded signal over time, a daily work grid, and the full stored evaluation of each submission on any day.
+- **Journey** (`/`, the home page): a 3D *Signal Score Terrain* of every graded signal over time, a daily work grid, and the full stored evaluation of each submission on any day.
 - **Tune** (`/tune`): local preferences: specimen style, editor, MCQ set size, grading strictness, hotkeys.
 - **Evolve** (`/evolve`): run and review the AlphaEvolve MCQ prompt experiment. See [the experiment guide](examples/openevolve_mcq_prompt/README.md).
 - **Admin** (`/admin`): edit the signals Jev uses to grade MCQs, try a draft against a stored question, and view the read-only recall specs.
@@ -33,7 +33,7 @@ npm install
 docker compose up -d --build
 ```
 
-Open http://localhost:5173. Or run the Vite dev server yourself (`npm run dev:client`) against the containers.
+Open http://localhost:5173 (Journey; press Enter to start practicing). Or run the Vite dev server yourself (`npm run dev:client`) against the containers.
 
 Configuration lives in `backend/.env` (gitignored). The backend reads it only when the container is **created**, so after editing it run `docker compose up -d backend`, not `restart`.
 

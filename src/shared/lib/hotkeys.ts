@@ -8,7 +8,7 @@ export type HotkeyId =
   | 'primary-card-action'
   | 'next-targeted-line'
   | 'toggle-ghost-reps'
-  | 'move-cards'
+  | 'move-pages'
   | 'indent-outdent'
   | 'toggle-ai-completion'
   | 'toggle-inline-feedback'
@@ -21,7 +21,7 @@ type HotkeyBinding = {
 
 type HotkeyDefinition = {
   id: HotkeyId
-  group: 'Card modalities' | 'Recall and Ghost Reps' | 'Editor and coaching'
+  group: 'Navigation' | 'Card modalities' | 'Recall and Ghost Reps' | 'Editor and coaching'
   displayKeys: string[]
   label: string
   description: string
@@ -39,6 +39,14 @@ export type PracticeHotkey = {
 }
 
 const hotkeyDefinitions: HotkeyDefinition[] = [
+  {
+    id: 'move-pages',
+    group: 'Navigation',
+    displayKeys: ['Mod + ← ← / Mod + → →'],
+    label: 'Move between pages',
+    description: 'Double-tap the modified arrow shortcut to open the page to the left or right in the navbar.',
+    bindings: [],
+  },
   {
     id: 'flow-full-recall',
     group: 'Card modalities',
@@ -99,14 +107,6 @@ const hotkeyDefinitions: HotkeyDefinition[] = [
     label: 'Toggle Ghost Reps',
     description: 'Available outside a Flow.',
     bindings: [{ key: 'g', modifier: 'mod' }],
-  },
-  {
-    id: 'move-cards',
-    group: 'Recall and Ghost Reps',
-    displayKeys: ['Mod + ← ← / Mod + → →'],
-    label: 'Move cards',
-    description: 'Double-tap the modified arrow shortcut to move between cards outside a Flow.',
-    bindings: [],
   },
   {
     id: 'indent-outdent',
@@ -170,7 +170,7 @@ export const matchesHotkey = (event: KeyboardEvent, id: HotkeyId) => {
 }
 
 export const getHotkeyReferenceGroups = (isMac: boolean) => {
-  const groupTitles: HotkeyDefinition['group'][] = ['Card modalities', 'Recall and Ghost Reps', 'Editor and coaching']
+  const groupTitles: HotkeyDefinition['group'][] = ['Navigation', 'Card modalities', 'Recall and Ghost Reps', 'Editor and coaching']
 
   return groupTitles.map((title) => ({
     title,

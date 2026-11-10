@@ -87,7 +87,7 @@ export default function DashboardPage() {
     ...skillMapPlaylists.map((playlist) => ({ kind: 'playlist' as const, title: playlist.title, playlist })),
     ...algorithms.map((node) => ({ kind: 'algorithm' as const, title: node.algorithm, node })),
   ].sort((left, right) => left.title.localeCompare(right.title, undefined, { sensitivity: 'base' }))
-  const launch = (params: Record<string, string>) => navigate(`/?${new URLSearchParams(params).toString()}`)
+  const launch = (params: Record<string, string>) => navigate(`/practice?${new URLSearchParams(params).toString()}`)
   const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
   return (

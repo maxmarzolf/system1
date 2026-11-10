@@ -29,20 +29,18 @@ describe('usePracticeSession', () => {
     expect(result.current.position).toBe(0)
   })
 
-  it('moves on a double-tapped Cmd+arrow, and not at all while disabled', () => {
+  it('ignores Cmd+arrows (they move between pages), and does not move while disabled', () => {
     const { result, rerender } = renderHook(({ disabled }) => usePracticeSession({ disabled, onMove: () => {} }), {
       initialProps: { disabled: false },
     })
     act(() => result.current.start(3))
     arrow('ArrowRight')
-    expect(result.current.position).toBe(0)
     arrow('ArrowRight')
+    expect(result.current.position).toBe(0)
+    act(() => result.current.next())
     expect(result.current.position).toBe(1)
 
     rerender({ disabled: true })
-    arrow('ArrowLeft')
-    arrow('ArrowLeft')
-    expect(result.current.position).toBe(1)
     act(() => result.current.prev())
     expect(result.current.position).toBe(1)
   })

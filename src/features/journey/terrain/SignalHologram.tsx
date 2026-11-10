@@ -544,8 +544,8 @@ export default function SignalHologram() {
           {tooltip ? createPortal(<DotTooltip tooltip={tooltip} />, document.body) : null}
           {/* Inside the full-window stage, so these sit at the bottom of the screen. */}
           <nav className="signal-hologram-actions" aria-label="Start working">
-            <Link to="/" className="signal-hologram-action">/do</Link>
-            <Link to="/?panel=flow" className="signal-hologram-action">/build</Link>
+            <Link to="/practice" className="signal-hologram-action">/do</Link>
+            <Link to="/practice?panel=flow" className="signal-hologram-action">/build</Link>
           </nav>
           <p className="signal-hologram-hint" aria-hidden="true">Drag to rotate · pinch or ⌘/Ctrl + scroll to zoom · hover a dot</p>
         </div>

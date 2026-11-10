@@ -107,7 +107,7 @@ describe('SignalHologram', () => {
     const { unmount } = renderTerrain()
     expect(screen.getByText('Mapping signal scores…')).toBeInTheDocument()
     await screen.findByText(/3 scores across 2 signals/)
-    expect(screen.getByRole('link', { name: '/build' })).toHaveAttribute('href', '/?panel=flow')
+    expect(screen.getByRole('link', { name: '/build' })).toHaveAttribute('href', '/practice?panel=flow')
     runFrames()
     expect(renderers).toHaveLength(1)
     expect(renderers[0].rendered).toBe(1) // drawn once on mount

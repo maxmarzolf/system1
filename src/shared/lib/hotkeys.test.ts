@@ -19,12 +19,13 @@ describe('hotkeys', () => {
     expect(matchesHotkey(key({ key: 'x', metaKey: true }), 'flow-full-recall')).toBe(false)
     expect(matchesHotkey(key({ key: 'Enter' }), 'next-targeted-line')).toBe(true)
     expect(matchesHotkey(key({ key: 'Tab', shiftKey: true }), 'indent-outdent')).toBe(true)
-    expect(matchesHotkey(key({ key: 'ArrowLeft', metaKey: true }), 'move-cards')).toBe(false)
+    expect(matchesHotkey(key({ key: 'ArrowLeft', metaKey: true }), 'move-pages')).toBe(false)
   })
 
   it('groups the reference sheet', () => {
     const groups = getHotkeyReferenceGroups(true)
-    expect(groups.map((group) => group.title)).toEqual(['Card modalities', 'Recall and Ghost Reps', 'Editor and coaching'])
-    expect(groups[0].hotkeys[0]).toMatchObject({ keys: ['⌘', 'D'], flowStage: 'recall' })
+    expect(groups.map((group) => group.title)).toEqual(['Navigation', 'Card modalities', 'Recall and Ghost Reps', 'Editor and coaching'])
+    expect(groups[0].hotkeys[0]).toMatchObject({ id: 'move-pages', keys: ['⌘ + ← ← / ⌘ + → →'] })
+    expect(groups[1].hotkeys[0]).toMatchObject({ keys: ['⌘', 'D'], flowStage: 'recall' })
   })
 })
