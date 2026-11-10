@@ -411,13 +411,13 @@ export default function TunePage() {
             <TuneSection
               eyebrow="05"
               title="AI Completion"
-              copy="Show short code suggestions inline while you type. Press Tab to accept a suggestion."
+              copy="Get live coaching as you work, plus short inline code suggestions. Press Tab to accept a suggestion."
             >
               <div id="ai-completion" className="tune-toggle-list">
                 <ToggleControl
                   checked={codeEditorTuning.aiCompletion}
                   onChange={(value) => updateCodeEditorTuning('aiCompletion', value)}
-                  label="Enable Copilot-style inline suggestions"
+                  label="Enable AI completion and live coach"
                 />
               </div>
             </TuneSection>

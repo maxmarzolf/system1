@@ -2285,6 +2285,36 @@ button.link:hover {
   font-size: 0.9rem;
 }
 
+.live-ai-coach {
+  margin-top: 0.85rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--hc-border-dim);
+  border-left: 3px solid var(--hc-accent);
+  background: var(--hc-panel-bg);
+  color: var(--hc-fg);
+}
+
+.live-ai-coach-label {
+  display: block;
+  color: var(--hc-accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.live-ai-coach p {
+  margin: 0.45rem 0 0;
+  line-height: 1.5;
+}
+
+.live-ai-coach-status {
+  display: block;
+  margin-top: 0.45rem;
+  color: var(--hc-fg-dim);
+  font-size: 0.82rem;
+}
+
 .related-problems-drawer {
   position: fixed;
   top: 5.25rem;

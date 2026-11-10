@@ -1,0 +1,27 @@
+max_iterations: 5
+checkpoint_interval: 5
+enforce_evolve_blocks: true
+
+llm:
+  api_base: https://api.openai.com/v1
+  api_key: ${OPENAI_API_KEY}
+  models:
+    - name: gpt-5.4-mini
+      weight: 1.0
+  reasoning_effort: none
+  max_tokens: 2048
+
+prompt:
+  system_message: >-
+    Improve choose_number so it returns an integer from 0 to 100 as close to 42
+    as possible. Edit only the EVOLVE-BLOCK in initial_program.py.
+
+database:
+  population_size: 10
+  archive_size: 5
+  num_islands: 1
+
+evaluator:
+  cascade_evaluation: false
+  parallel_evaluations: 1
+  timeout: 10

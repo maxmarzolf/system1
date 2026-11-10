@@ -1,0 +1,43 @@
+max_iterations: 3
+checkpoint_interval: 1
+language: text
+file_suffix: .txt
+diff_based_evolution: false
+max_code_length: 6000
+
+llm:
+  api_base: https://api.openai.com/v1
+  api_key: ${OPENAI_API_KEY}
+  models:
+    - name: gpt-5.4-mini
+      weight: 1.0
+  reasoning_effort: none
+  max_tokens: 2048
+
+prompt:
+  include_artifacts: true
+  system_message: >-
+    Improve a reusable MCQ-generation policy for Sliding Window questions.
+    The prompt must read answerHistory from the input JSON, choose a specific
+    next reasoning decision, and return it as nextProbe alongside drills.
+    Evolve the rule for choosing nextProbe, not a fixed probe for one round.
+    Preserve the input fields and the JSON output shape {"nextProbe": string,
+    "drills": [...]} with one sound MCQ. Recent selected answers are observations,
+    not proof of mastery or a misconception. A correct answer can lead to a
+    different, untested decision within the same skill; an incorrect answer
+    can lead to a clearer related decision. Avoid repeating a decision already
+    tested in answerHistory. Changed numbers or a new setting alone do not count.
+    Jev scores the policy, chosen probe, question soundness, alignment, and novelty.
+    Use its scores to improve the rule. Historical human_reviews may appear in old runs.
+    Keep the prompt under 5000 characters.
+    Return only the full replacement prompt text.
+
+database:
+  population_size: 10
+  archive_size: 5
+  num_islands: 1
+
+evaluator:
+  cascade_evaluation: false
+  parallel_evaluations: 1
+  timeout: 180

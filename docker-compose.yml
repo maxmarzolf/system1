@@ -48,6 +48,20 @@ services:
       timeout: 5s
       retries: 5
 
+  evolve:
+    build:
+      context: .
+      dockerfile: Dockerfile.evolve
+    container_name: flashcard-evolve
+    ports:
+      - "127.0.0.1:3002:3002"
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./examples/openevolve_mcq_prompt:/app/experiment
+    networks:
+      - flashcard-network
+
   frontend:
     build:
       context: .

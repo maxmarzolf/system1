@@ -78,6 +78,7 @@ export default function TopNav({
           </button>
         </div>
         <Link to="/tune" className="navbar-dashboard">Tune</Link>
+        <Link to="/evolve" className="navbar-dashboard">Evolve</Link>
         <Link to={practiceHistoryHref} className="navbar-dashboard">History</Link>
         <Link to="/dashboard" className="navbar-dashboard">Dashboard</Link>
         {rightExtras}

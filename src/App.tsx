@@ -35,6 +35,7 @@ import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 import { useTheme, type AppTheme } from './theme'
 import RecallCodeEditor, { type RecallCodeEditorHandle, type RecallEditorLineMeta } from './RecallCodeEditor'
+import LiveAiCoach from './LiveAiCoach'
 import SlidingWindowLadder from './WindowLadderPanel'
 import { slidingWindowTechnique } from './windowLadderPlan'
 import {
@@ -2016,6 +2017,7 @@ function App() {
   const [codeEditorTuning, setCodeEditorTuning] = useState(() => loadStoredCodeEditorTuning())
   const syntaxTheme = theme === 'light-high-contrast' ? vs : vscDarkPlus
   const [, setCoachFeedback] = useState<CoachAttemptFeedback | null>(null)
+  const [lastCoachFeedbackByCard, setLastCoachFeedbackByCard] = useState<Record<string, CoachAttemptFeedback>>({})
   const [coachLoading, setCoachLoading] = useState(false)
   const [coachError, setCoachError] = useState('')
   const [submissionFailureModal, setSubmissionFailureModal] = useState<SubmissionFailureModalState | null>(null)
@@ -3363,6 +3365,7 @@ function App() {
       : null
     if (!isGhostRep) {
       setCoachFeedback(feedback)
+      if (feedback) setLastCoachFeedbackByCard((prev) => ({ ...prev, [currentRecallHistoryKey]: feedback }))
       if (!submission) {
         setCoachError('Submission evaluation unavailable for this attempt.')
       }
@@ -4539,6 +4542,22 @@ function App() {
                         onEnterKey={handleGhostRepEnterKey}
                       />
                       {aiCompletionStatus && mainPhase === 'typing' && <p className="hint" role="status">{aiCompletionStatus}</p>}
+                      {codeEditorTuning.aiCompletion && !isGhostRepsEnabled
+                        && (mainPhase === 'typing' || mainPhase === 'submitted') && (
+                          <LiveAiCoach
+                            key={currentRecallHistoryKey}
+                            cardId={card.id}
+                            cardTitle={card.title}
+                            prompt={practicePrompt}
+                            referenceAnswer={practiceTarget}
+                            code={mainInput}
+                            language={practiceLanguage}
+                            phase={mainPhase}
+                            feedback={lastCoachFeedbackByCard[currentRecallHistoryKey] ?? null}
+                            recentAttempts={currentCardRecallHistory}
+                            onFeedbackShown={() => setAiCompletionShownThisAttempt(true)}
+                          />
+                        )}
                     </div>
                   </div>
                 </div>

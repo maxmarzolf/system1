@@ -8,6 +8,7 @@ import DashboardPage from './DashboardPage.tsx'
 import PracticeHistoryPage from './PracticeHistoryPage.tsx'
 import { ThemeProvider } from './theme.tsx'
 import TunePage from './TunePage.tsx'
+import EvolvePage from './EvolvePage.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -16,6 +17,7 @@ createRoot(document.getElementById('root')!).render(
         <Routes>
           <Route path="/" element={<App />} />
           <Route path="/tune" element={<TunePage />} />
+          <Route path="/evolve" element={<EvolvePage />} />
           <Route path="/coach-tuning" element={<Navigate to="/tune" replace />} />
           <Route path="/submission-tuning" element={<Navigate to="/tune" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />

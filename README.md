@@ -192,6 +192,7 @@ Key variables:
 - `COACH_OPENAI_API_KEY` or `OPENAI_API_KEY`
 - `COACH_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY`
 - `COACH_OPENAI_MODEL`, `COACH_ANTHROPIC_MODEL`
+- `COACH_LIVE_MODEL` (defaults to `gpt-6-astra` for AI Completion live coaching)
 - `COACH_OPENAI_BASE_URL`, `COACH_ANTHROPIC_BASE_URL`
 - `COACH_GEMMA_API_KEY`, `COACH_GEMMA_MODEL`, `COACH_GEMMA_BASE_URL`
 
@@ -203,6 +204,8 @@ Generator tuning:
 - `COACH_GENERATOR_PROMPT_WORDS`
 - `COACH_GENERATOR_PROMPT_MAX_CHARS`
 - `COACH_GENERATOR_PATTERN_HISTORY_LIMIT`
+
+AI Completion also opens a live coaching WebSocket while a recall answer is being typed or reviewed after submission. The browser connects to `/api/coach/live-coaching`; the backend connects to the OpenAI Responses WebSocket using `COACH_OPENAI_API_KEY`. The prompt is in `backend/app/services/live_coach_service.py`, and the panel is in `src/LiveAiCoach.tsx`. Changes to the coaching style can be made in `COACH_INSTRUCTIONS` without changing the transport. The existing inline code suggestion endpoint remains available under the same AI Completion toggle.
 
 ## Submission Feedback Behavior
 

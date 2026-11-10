@@ -21,6 +21,10 @@ class Settings(BaseSettings):
         default="gpt-5.2",
         validation_alias=AliasChoices("COACH_OPENAI_MODEL", "OPENAI_MODEL"),
     )
+    coach_live_model: str = Field(
+        default="gpt-6-astra",
+        validation_alias=AliasChoices("COACH_LIVE_MODEL"),
+    )
     coach_openai_base_url: str = Field(
         default="https://api.openai.com/v1",
         validation_alias=AliasChoices("COACH_OPENAI_BASE_URL", "OPENAI_BASE_URL"),

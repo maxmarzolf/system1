@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, WebSocket
 from fastapi.responses import StreamingResponse
 
 from app.models import (
@@ -24,11 +24,16 @@ from app.models import (
     SkillMapDrillsRequest,
     SkillMapDrillsResponse,
 )
-from app.services import inline_completion_service, micro_drill_service, sliding_window_ladder_service
+from app.services import inline_completion_service, live_coach_service, micro_drill_service, sliding_window_ladder_service
 from app.services import coach_service
 from app.services import problem_practice_service
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])
+
+
+@router.websocket("/live-coaching")
+async def coach_live_coaching(websocket: WebSocket):
+    await live_coach_service.live_coach(websocket)
 
 
 @router.post("/inline-completion", response_model=InlineCompletionResponse)
