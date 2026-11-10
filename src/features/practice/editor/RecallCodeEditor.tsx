@@ -1,0 +1,881 @@
+import { forwardRef, type CSSProperties, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
+import { Compartment, EditorSelection, EditorState, Prec, type Extension, type Range } from '@codemirror/state'
+import {
+  crosshairCursor,
+  Decoration,
+  drawSelection,
+  dropCursor,
+  EditorView,
+  highlightSpecialChars,
+  WidgetType,
+  keymap,
+  lineNumbers,
+  placeholder as editorPlaceholder,
+  rectangularSelection,
+  type DecorationSet,
+} from '@codemirror/view'
+import { defaultKeymap, history, historyKeymap, indentLess, indentMore } from '@codemirror/commands'
+import {
+  autocompletion,
+  closeBrackets,
+  closeBracketsKeymap,
+  completeFromList,
+  completionKeymap,
+  type Completion,
+} from '@codemirror/autocomplete'
+import {
+  bracketMatching,
+  defaultHighlightStyle,
+  foldGutter,
+  HighlightStyle,
+  foldKeymap,
+  indentOnInput,
+  indentUnit,
+  syntaxHighlighting,
+} from '@codemirror/language'
+import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
+import { lintKeymap } from '@codemirror/lint'
+import { tags } from '@lezer/highlight'
+import { python } from '@codemirror/lang-python'
+import { javascript } from '@codemirror/lang-javascript'
+import { java } from '@codemirror/lang-java'
+import { cpp } from '@codemirror/lang-cpp'
+import { go } from '@codemirror/lang-go'
+import { sql } from '@codemirror/lang-sql'
+import { html } from '@codemirror/lang-html'
+import { css } from '@codemirror/lang-css'
+import { json } from '@codemirror/lang-json'
+import { markdown } from '@codemirror/lang-markdown'
+import { rust } from '@codemirror/lang-rust'
+import { clearLocalCache, inlineCopilot } from 'codemirror-copilot'
+import type { AppTheme } from '@/app/theme'
+import type { CodeEditorStyleGuide } from '@/shared/settings/codeEditorTuning'
+import { getEditorHotkeyKey } from '@/shared/lib/hotkeys'
+import { api } from '@/api/client'
+
+export type RecallEditorLineStatus = 'match' | 'mismatch' | 'missing' | 'extra'
+export type RecallEditorLiveTone = 'positive' | 'negative' | 'neutral'
+
+export type RecallEditorLineMeta = {
+  sourceLineNumber: number | null
+  status?: RecallEditorLineStatus | null
+  liveTone?: RecallEditorLiveTone | null
+  inlineDecision?: boolean
+  inlineNote?: string
+}
+
+export type RecallCodeEditorHandle = {
+  focus: () => void
+  focusEnd: () => void
+  focusLine: (lineNumber: number) => void
+  getCursorPosition: () => number
+  getCursorLineNumber: () => number
+}
+
+type RecallCodeEditorProps = {
+  value: string
+  language: string
+  theme: AppTheme
+  editable: boolean
+  disabled?: boolean
+  placeholder: string
+  ghostTarget?: string
+  inlineTask?: string
+  lineMeta: RecallEditorLineMeta[]
+  minHeight?: number
+  intellisense?: boolean
+  aiCompletion?: {
+    cardId: string
+    cardTitle: string
+    prompt: string
+    provider: string
+  }
+  aiCompletionEnabled?: boolean
+  onAiCompletionShown?: () => void
+  onAiCompletionStatus?: (message: string) => void
+  styleGuide?: CodeEditorStyleGuide
+  commonPatterns?: boolean
+  foldControls?: boolean
+  showSearchPanel?: boolean
+  className?: string
+  onChange: (nextValue: string, context: { cursorLineNumber: number }) => void
+  onEnterKey?: (context: { value: string, cursorLineNumber: number }) => boolean
+}
+
+const resolveLanguageExtension = (language: string): Extension => {
+  const normalized = language.trim().toLowerCase()
+
+  if (normalized === 'python' || normalized === 'py') return python()
+  if (normalized === 'javascript' || normalized === 'js') return javascript()
+  if (normalized === 'typescript' || normalized === 'ts') return javascript({ typescript: true })
+  if (normalized === 'jsx') return javascript({ jsx: true })
+  if (normalized === 'tsx') return javascript({ jsx: true, typescript: true })
+  if (normalized === 'java') return java()
+  if (normalized === 'c' || normalized === 'cpp' || normalized === 'c++') return cpp()
+  if (normalized === 'go' || normalized === 'golang') return go()
+  if (normalized === 'sql') return sql()
+  if (normalized === 'html') return html()
+  if (normalized === 'css') return css()
+  if (normalized === 'json') return json()
+  if (normalized === 'markdown' || normalized === 'md') return markdown()
+  if (normalized === 'rust' || normalized === 'rs') return rust()
+
+  return python()
+}
+
+const resolveIndentationExtension = (language: string): Extension => {
+  const normalized = language.trim().toLowerCase()
+  if (normalized === 'python' || normalized === 'py') {
+    return [EditorState.tabSize.of(4), indentUnit.of('    ')]
+  }
+  return EditorState.tabSize.of(4)
+}
+
+const normalizedLanguage = (language: string) => language.trim().toLowerCase()
+
+const pythonBaseCompletions: Completion[] = [
+  { label: 'def', type: 'keyword', detail: 'function' },
+  { label: 'return', type: 'keyword' },
+  { label: 'for', type: 'keyword' },
+  { label: 'while', type: 'keyword' },
+  { label: 'if', type: 'keyword' },
+  { label: 'elif', type: 'keyword' },
+  { label: 'else', type: 'keyword' },
+  { label: 'enumerate', type: 'function' },
+  { label: 'range', type: 'function' },
+  { label: 'len', type: 'function' },
+  { label: 'sorted', type: 'function' },
+  { label: 'set', type: 'type' },
+  { label: 'dict', type: 'type' },
+  { label: 'list', type: 'type' },
+]
+
+const pythonPatternCompletions: Completion[] = [
+  {
+    label: 'def solve',
+    type: 'function',
+    detail: 'PEP 8 function skeleton',
+    apply: 'def solve(nums):\n    \n    return',
+  },
+  {
+    label: 'two pointers',
+    type: 'text',
+    detail: 'left/right scan',
+    apply: 'left, right = 0, len(nums) - 1\nwhile left < right:\n    ',
+  },
+  {
+    label: 'sliding window',
+    type: 'text',
+    detail: 'expand/shrink',
+    apply: 'left = 0\nfor right, value in enumerate(nums):\n    while False:\n        left += 1',
+  },
+  {
+    label: 'frequency map',
+    type: 'text',
+    detail: 'counts dictionary',
+    apply: 'counts = {}\nfor value in nums:\n    counts[value] = counts.get(value, 0) + 1',
+  },
+  {
+    label: 'heap',
+    type: 'text',
+    detail: 'priority queue import',
+    apply: 'import heapq\nheap = []\nheapq.heappush(heap, item)',
+  },
+]
+
+const javascriptCompletions: Completion[] = [
+  { label: 'function', type: 'keyword' },
+  { label: 'const', type: 'keyword' },
+  { label: 'let', type: 'keyword' },
+  { label: 'return', type: 'keyword' },
+  { label: 'for', type: 'keyword' },
+  { label: 'while', type: 'keyword' },
+  { label: 'Map', type: 'type' },
+  { label: 'Set', type: 'type' },
+]
+
+const sqlCompletions: Completion[] = [
+  { label: 'SELECT', type: 'keyword' },
+  { label: 'FROM', type: 'keyword' },
+  { label: 'WHERE', type: 'keyword' },
+  { label: 'GROUP BY', type: 'keyword' },
+  { label: 'ORDER BY', type: 'keyword' },
+  { label: 'JOIN', type: 'keyword' },
+]
+
+const completionsForLanguage = (language: string, commonPatterns: boolean) => {
+  const normalized = normalizedLanguage(language)
+  if (normalized === 'python' || normalized === 'py') {
+    return [...pythonBaseCompletions, ...(commonPatterns ? pythonPatternCompletions : [])]
+  }
+  if (['javascript', 'js', 'typescript', 'ts', 'jsx', 'tsx'].includes(normalized)) {
+    return javascriptCompletions
+  }
+  if (normalized === 'sql') return sqlCompletions
+  return []
+}
+
+const editorAssistanceExtension = (
+  language: string,
+  intellisense: boolean,
+  commonPatterns: boolean
+): Extension => {
+  if (!intellisense) return []
+  const completions = completionsForLanguage(language, commonPatterns)
+  return [
+    closeBrackets(),
+    autocompletion(completions.length > 0 ? { override: [completeFromList(completions)] } : undefined),
+    keymap.of([...completionKeymap, ...closeBracketsKeymap]),
+  ]
+}
+
+const recallBaseSetup = [
+  lineNumbers(),
+  highlightSpecialChars(),
+  history(),
+  drawSelection(),
+  dropCursor(),
+  EditorState.allowMultipleSelections.of(true),
+  indentOnInput(),
+  syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+  bracketMatching(),
+  rectangularSelection(),
+  crosshairCursor(),
+  highlightSelectionMatches(),
+  keymap.of([
+    ...defaultKeymap,
+    ...historyKeymap,
+    ...foldKeymap,
+    ...lintKeymap,
+  ]),
+]
+
+class InlineNoteWidget extends WidgetType {
+  readonly note: string
+  readonly tone?: RecallEditorLiveTone | null
+
+  constructor(note: string, tone?: RecallEditorLiveTone | null) {
+    super()
+    this.note = note
+    this.tone = tone
+  }
+
+  eq(widget: InlineNoteWidget) {
+    return widget.note === this.note && widget.tone === this.tone
+  }
+
+  toDOM() {
+    const element = document.createElement('span')
+    element.className = ['cm-recall-inline-note', this.tone ? `cm-recall-inline-note-${this.tone}` : '']
+      .filter(Boolean)
+      .join(' ')
+    element.textContent = this.note
+    return element
+  }
+}
+
+class GhostTextWidget extends WidgetType {
+  readonly text: string
+
+  constructor(text: string) {
+    super()
+    this.text = text
+  }
+
+  eq(widget: GhostTextWidget) {
+    return widget.text === this.text
+  }
+
+  toDOM() {
+    const element = document.createElement('span')
+    element.className = 'cm-recall-ghost-text'
+    element.textContent = this.text
+    return element
+  }
+}
+
+class GhostBlockWidget extends WidgetType {
+  readonly text: string
+
+  constructor(text: string) {
+    super()
+    this.text = text
+  }
+
+  eq(widget: GhostBlockWidget) {
+    return widget.text === this.text
+  }
+
+  toDOM() {
+    const element = document.createElement('span')
+    element.className = 'cm-recall-ghost-block'
+    element.textContent = `\n${this.text}`
+    return element
+  }
+}
+
+class InlineTaskWidget extends WidgetType {
+  readonly task: string
+
+  constructor(task: string) {
+    super()
+    this.task = task
+  }
+
+  eq(widget: InlineTaskWidget) {
+    return widget.task === this.task
+  }
+
+  toDOM() {
+    const element = document.createElement('span')
+    element.className = 'cm-recall-inline-task'
+    element.textContent = this.task
+    return element
+  }
+}
+
+const lineClassForMeta = (meta: RecallEditorLineMeta) => {
+  const classes = ['cm-recall-line']
+  if (meta.status) classes.push(`line-${meta.status}`)
+  if (meta.inlineDecision) classes.push('inline-decision-line')
+  if (meta.liveTone) {
+    classes.push(`live-target-${meta.liveTone}`)
+    if (meta.sourceLineNumber !== null) classes.push('live-target-source-line')
+    classes.push('inline-live-note-line')
+  }
+  return classes.join(' ')
+}
+
+const buildRecallDecorations = (
+  view: EditorView,
+  lineMeta: RecallEditorLineMeta[],
+  ghostTarget: string | undefined,
+  inlineTask: string | undefined
+): DecorationSet => {
+  // Collected, then sorted by Decoration.set: widgets at the same position (an inline task and the
+  // ghost block on an empty last line) are not added in side order.
+  const ranges: Range<Decoration>[] = []
+  const builder = { add: (from: number, to: number, decoration: Decoration) => ranges.push(decoration.range(from, to)) }
+  const doc = view.state.doc
+  const documentText = doc.toString()
+  const inputLines = documentText.split('\n')
+  const ghostLines = ghostTarget ? ghostTarget.split('\n') : []
+
+  for (let index = 0; index < doc.lines; index += 1) {
+    const line = doc.line(index + 1)
+    const meta = lineMeta[index]
+
+    if (meta) {
+      builder.add(line.from, line.from, Decoration.line({ class: lineClassForMeta(meta) }))
+    }
+
+    const ghostLine = ghostLines[index]
+    if (ghostLine !== undefined) {
+      const inputLine = inputLines[index] ?? ''
+      const remainder = ghostLine.startsWith(inputLine) ? ghostLine.slice(inputLine.length) : ''
+      if (remainder) {
+        builder.add(
+          line.to,
+          line.to,
+          Decoration.widget({ widget: new GhostTextWidget(remainder), side: 1 })
+        )
+      }
+    }
+
+    if (meta?.inlineNote) {
+      builder.add(
+        line.to,
+        line.to,
+        Decoration.widget({ widget: new InlineNoteWidget(meta.inlineNote, meta.liveTone), side: 2 })
+      )
+    }
+
+    if (inlineTask && line.number === view.state.doc.lineAt(view.state.selection.main.head).number && !line.text.trim()) {
+      builder.add(
+        line.to,
+        line.to,
+        Decoration.widget({ widget: new InlineTaskWidget(inlineTask), side: 4 })
+      )
+    }
+  }
+
+  if (ghostLines.length > doc.lines) {
+    builder.add(
+      doc.length,
+      doc.length,
+      Decoration.widget({
+        widget: new GhostBlockWidget(ghostLines.slice(doc.lines).join('\n')),
+        side: 3,
+      })
+    )
+  }
+
+  return Decoration.set(ranges, true)
+}
+
+const recallDecorations = (lineMeta: RecallEditorLineMeta[], ghostTarget?: string, inlineTask?: string) =>
+  EditorView.decorations.of((view) => buildRecallDecorations(view, lineMeta, ghostTarget, inlineTask))
+
+const vscodeHighContrastDarkHighlightStyle = HighlightStyle.define([
+  { tag: [tags.keyword, tags.operatorKeyword, tags.modifier, tags.self], color: '#569cd6' },
+  { tag: [tags.controlKeyword, tags.definitionKeyword], color: '#c586c0' },
+  { tag: [tags.atom, tags.bool], color: '#569cd6' },
+  { tag: [tags.number, tags.unit], color: '#b5cea8' },
+  { tag: [tags.string, tags.special(tags.string), tags.inserted], color: '#ce9178' },
+  { tag: [tags.regexp, tags.escape], color: '#d16969' },
+  { tag: [tags.comment, tags.meta], color: '#7ca668' },
+  { tag: [tags.function(tags.variableName), tags.labelName], color: '#dcdcaa' },
+  { tag: [tags.typeName, tags.className, tags.namespace], color: '#4ec9b0' },
+  { tag: [tags.variableName, tags.propertyName, tags.attributeName], color: '#9cdcfe' },
+  { tag: [tags.tagName, tags.constant(tags.name)], color: '#569cd6' },
+  { tag: [tags.operator, tags.punctuation, tags.separator, tags.bracket], color: '#d4d4d4' },
+  { tag: [tags.deleted, tags.invalid], color: '#f44747' },
+  { tag: tags.heading, color: '#6796e6', fontWeight: 'bold' },
+  { tag: tags.strong, fontWeight: 'bold' },
+  { tag: tags.emphasis, fontStyle: 'italic' },
+  { tag: tags.link, color: '#9cdcfe', textDecoration: 'underline' },
+])
+
+const vscodeHighContrastDarkTheme = EditorView.theme({
+  '&': {
+    color: '#ffffff',
+    backgroundColor: '#000000',
+  },
+  '.cm-content': {
+    caretColor: '#ffffff',
+  },
+  '.cm-cursor, .cm-dropCursor': {
+    borderLeftColor: '#ffffff',
+  },
+  '.cm-gutters': {
+    backgroundColor: '#000000',
+    color: '#7c7c7c',
+    borderRight: 'none',
+  },
+  '.cm-panels': {
+    backgroundColor: '#000000',
+    color: '#ffffff',
+    borderColor: '#ffffff',
+  },
+  '.cm-panels.cm-panels-top': {
+    borderBottom: '1px solid #ffffff',
+  },
+  '.cm-panels.cm-panels-bottom': {
+    borderTop: '1px solid #ffffff',
+  },
+  '.cm-textfield': {
+    backgroundColor: '#000000',
+    color: '#ffffff',
+    border: '1px solid #ffffff',
+  },
+  '.cm-button': {
+    backgroundImage: 'none',
+    backgroundColor: '#000000',
+    color: '#ffffff',
+    border: '1px solid #ffffff',
+  },
+  '.cm-tooltip': {
+    backgroundColor: '#000000',
+    color: '#ffffff',
+    border: '1px solid #ffffff',
+  },
+  '.cm-tooltip .cm-tooltip-arrow:before': {
+    borderTopColor: '#ffffff',
+    borderBottomColor: '#ffffff',
+  },
+  '.cm-tooltip .cm-tooltip-arrow:after': {
+    borderTopColor: '#000000',
+    borderBottomColor: '#000000',
+  },
+  '.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+    backgroundColor: '#ffffff',
+    color: '#000000',
+  },
+  '.cm-searchMatch': {
+    backgroundColor: '#ffff0052',
+    outline: '1px solid #ffff00',
+  },
+  '.cm-searchMatch.cm-searchMatch-selected': {
+    backgroundColor: '#ffff0080',
+  },
+  '.cm-selectionMatch': {
+    backgroundColor: '#ffffff24',
+    outline: '1px solid #ffffff',
+  },
+  '&.cm-focused .cm-matchingBracket': {
+    backgroundColor: '#ffffff24',
+    outline: '1px solid #ffffff',
+  },
+  '&.cm-focused .cm-nonmatchingBracket': {
+    backgroundColor: '#f4474740',
+    outline: '1px solid #f44747',
+  },
+  '.cm-foldPlaceholder': {
+    backgroundColor: '#000000',
+    color: '#ffffff',
+    border: '1px solid #ffffff',
+  },
+  '.cm-diagnostic-error': {
+    borderLeftColor: '#f44747',
+  },
+  '.cm-diagnostic-warning': {
+    borderLeftColor: '#cca700',
+  },
+}, { dark: true })
+
+const recallTheme = (theme: AppTheme) => [
+  theme === 'dark-high-contrast'
+    ? [vscodeHighContrastDarkTheme, syntaxHighlighting(vscodeHighContrastDarkHighlightStyle)]
+    : [],
+  EditorView.theme({
+    '&': {
+      minHeight: '12rem',
+      backgroundColor: 'var(--hc-editor-bg)',
+      color: theme === 'dark-high-contrast' ? '#ffffff' : 'var(--hc-code-fg)',
+      fontSize: '0.75rem',
+    },
+    '.cm-scroller': {
+      fontFamily: "'Menlo', 'Monaco', 'Courier New', monospace",
+      lineHeight: '1.6',
+    },
+    '.cm-content': {
+      padding: '0.35rem 0.75rem',
+      minHeight: '12rem',
+      caretColor: 'var(--hc-fg)',
+    },
+    '&.cm-focused': {
+      outline: 'none',
+    },
+    '.cm-gutters': {
+      backgroundColor: 'var(--hc-editor-bg)',
+      color: theme === 'dark-high-contrast' ? '#7c7c7c' : 'var(--hc-gutter-fg)',
+      borderRight: 'none',
+    },
+    '.cm-gutters::before': {
+      display: 'none',
+    },
+    '.cm-lineNumbers .cm-gutterElement': {
+      minWidth: '2.5rem',
+      padding: '0 0.65rem 0 0.4rem',
+    },
+    '.cm-activeLineGutter, .cm-activeLine': {
+      backgroundColor: 'transparent',
+    },
+    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
+      backgroundColor: theme === 'dark-high-contrast'
+        ? 'rgba(255, 255, 255, 0.32)'
+        : 'color-mix(in srgb, var(--hc-accent) 32%, transparent)',
+      outline: theme === 'dark-high-contrast' ? '1px solid #ffffff' : 'none',
+    },
+    '.cm-placeholder': {
+      color: 'var(--hc-fg-dim)',
+      opacity: '0.72',
+      whiteSpace: 'pre',
+    },
+  })
+]
+
+const createPlaceholderExtension = (placeholderText: string) => {
+  return editorPlaceholder(() => {
+    const element = document.createElement('pre')
+    element.className = 'cm-recall-placeholder'
+    element.textContent = placeholderText
+    return element
+  })
+}
+
+const editableExtension = (editable: boolean, disabled?: boolean) => [
+  EditorState.readOnly.of(!editable || Boolean(disabled)),
+  EditorView.editable.of(editable && !disabled),
+]
+
+const foldControlsExtension = (foldControls: boolean) => foldControls ? foldGutter() : []
+
+const searchPanelExtension = (showSearchPanel: boolean) => showSearchPanel ? keymap.of(searchKeymap) : []
+
+const valueFromEditor = (view: EditorView) => view.state.doc.toString()
+
+const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProps>(function RecallCodeEditor(
+  {
+    value,
+    language,
+    theme,
+    editable,
+    disabled,
+    placeholder,
+    ghostTarget,
+    inlineTask,
+    lineMeta,
+    minHeight,
+    intellisense = true,
+    aiCompletion,
+    aiCompletionEnabled = false,
+    onAiCompletionShown,
+    onAiCompletionStatus,
+    commonPatterns = true,
+    foldControls = false,
+    showSearchPanel = false,
+    className,
+    onChange,
+    onEnterKey,
+  },
+  ref
+) {
+  const hostRef = useRef<HTMLDivElement | null>(null)
+  const viewRef = useRef<EditorView | null>(null)
+  const onChangeRef = useRef(onChange)
+  const onEnterKeyRef = useRef(onEnterKey)
+  const aiCompletionRef = useRef(aiCompletion)
+  const onAiCompletionShownRef = useRef(onAiCompletionShown)
+  const onAiCompletionStatusRef = useRef(onAiCompletionStatus)
+  const aiCompletionContextKeyRef = useRef('')
+  const aiCompletionRequestRef = useRef<AbortController | null>(null)
+  const aiCompletionCompartment = useMemo(() => new Compartment(), [])
+  const languageCompartment = useMemo(() => new Compartment(), [])
+  const indentationCompartment = useMemo(() => new Compartment(), [])
+  const themeCompartment = useMemo(() => new Compartment(), [])
+  const editableCompartment = useMemo(() => new Compartment(), [])
+  const decorationsCompartment = useMemo(() => new Compartment(), [])
+  const placeholderCompartment = useMemo(() => new Compartment(), [])
+  const assistanceCompartment = useMemo(() => new Compartment(), [])
+  const foldControlsCompartment = useMemo(() => new Compartment(), [])
+  const searchPanelCompartment = useMemo(() => new Compartment(), [])
+
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
+
+  useEffect(() => {
+    onEnterKeyRef.current = onEnterKey
+  }, [onEnterKey])
+
+  aiCompletionRef.current = aiCompletion
+  onAiCompletionShownRef.current = onAiCompletionShown
+  onAiCompletionStatusRef.current = onAiCompletionStatus
+
+  const createAiCompletionExtension = () => inlineCopilot(async (prefix, suffix) => {
+    const context = aiCompletionRef.current
+    const requestContextKey = aiCompletionContextKeyRef.current
+    if (!context || !prefix.trim() || !requestContextKey) return ''
+    aiCompletionRequestRef.current?.abort()
+    const controller = new AbortController()
+    aiCompletionRequestRef.current = controller
+    try {
+      const { data: payload, response } = await api.POST('/api/coach/inline-completion', {
+        signal: controller.signal,
+        body: {
+          prefix: prefix.slice(-8000),
+          suffix: suffix.slice(0, 4000),
+          language,
+          cardTitle: context.cardTitle.slice(0, 200),
+          prompt: context.prompt.slice(0, 3000),
+          llmProvider: context.provider,
+        },
+      })
+      if (controller.signal.aborted || requestContextKey !== aiCompletionContextKeyRef.current) return ''
+      if (!response.ok || !payload) {
+        onAiCompletionStatusRef.current?.(response.status === 503
+          ? 'Configure a model provider for AI completion.'
+          : 'AI completion is unavailable right now.')
+        return ''
+      }
+      if (controller.signal.aborted || requestContextKey !== aiCompletionContextKeyRef.current) return ''
+      const prediction = typeof payload.prediction === 'string' ? payload.prediction : ''
+      onAiCompletionStatusRef.current?.('')
+      if (prediction) onAiCompletionShownRef.current?.()
+      return prediction
+    } catch {
+      if (!controller.signal.aborted && requestContextKey === aiCompletionContextKeyRef.current) {
+        onAiCompletionStatusRef.current?.('AI completion is unavailable right now.')
+      }
+      return ''
+    } finally {
+      if (aiCompletionRequestRef.current === controller) aiCompletionRequestRef.current = null
+    }
+  }, 700, false)
+
+  useImperativeHandle(ref, () => ({
+    focus: () => viewRef.current?.focus(),
+    focusEnd: () => {
+      const view = viewRef.current
+      if (!view) return
+      const end = view.state.doc.length
+      view.dispatch({
+        selection: EditorSelection.cursor(end),
+        scrollIntoView: true,
+      })
+      view.focus()
+    },
+    focusLine: (lineNumber: number) => {
+      const view = viewRef.current
+      if (!view) return
+      const safeLineNumber = Math.max(1, Math.min(lineNumber, view.state.doc.lines))
+      const line = view.state.doc.line(safeLineNumber)
+      view.dispatch({
+        selection: EditorSelection.cursor(line.to),
+        scrollIntoView: true,
+      })
+      view.focus()
+    },
+    getCursorPosition: () => viewRef.current?.state.selection.main.head ?? value.length,
+    getCursorLineNumber: () => {
+      const view = viewRef.current
+      if (!view) return Math.max(value.split('\n').length, 1)
+      return view.state.doc.lineAt(view.state.selection.main.head).number
+    },
+  }), [value])
+
+  useEffect(() => {
+    if (!hostRef.current) return
+
+    const state = EditorState.create({
+      doc: value,
+      extensions: [
+        aiCompletionCompartment.of(aiCompletionEnabled ? createAiCompletionExtension() : []),
+        Prec.highest(keymap.of([
+          {
+            key: getEditorHotkeyKey('next-targeted-line'),
+            run: (view) => onEnterKeyRef.current?.({
+              value: valueFromEditor(view),
+              cursorLineNumber: view.state.doc.lineAt(view.state.selection.main.head).number,
+            }) ?? false,
+          },
+          {
+            key: getEditorHotkeyKey('indent-outdent'),
+            run: indentMore,
+            shift: indentLess,
+          },
+        ])),
+        recallBaseSetup,
+        languageCompartment.of(resolveLanguageExtension(language)),
+        indentationCompartment.of(resolveIndentationExtension(language)),
+        themeCompartment.of(recallTheme(theme)),
+        editableCompartment.of(editableExtension(editable, disabled)),
+        decorationsCompartment.of(recallDecorations(lineMeta, ghostTarget, inlineTask)),
+        placeholderCompartment.of(createPlaceholderExtension(placeholder)),
+        assistanceCompartment.of(editorAssistanceExtension(language, intellisense, commonPatterns)),
+        foldControlsCompartment.of(foldControlsExtension(foldControls)),
+        searchPanelCompartment.of(searchPanelExtension(showSearchPanel)),
+        EditorView.lineWrapping,
+        EditorView.updateListener.of((update) => {
+          if (!update.docChanged) return
+          aiCompletionRequestRef.current?.abort()
+          onChangeRef.current(valueFromEditor(update.view), {
+            cursorLineNumber: update.state.doc.lineAt(update.state.selection.main.head).number,
+          })
+        }),
+      ],
+    })
+
+    const view = new EditorView({
+      state,
+      parent: hostRef.current,
+    })
+    viewRef.current = view
+
+    return () => {
+      aiCompletionRequestRef.current?.abort()
+      view.destroy()
+      viewRef.current = null
+    }
+    // The editor is intentionally created once; prop changes are applied through compartments below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+    const currentValue = valueFromEditor(view)
+    if (currentValue === value) return
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: value },
+    })
+  }, [value])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: languageCompartment.reconfigure(resolveLanguageExtension(language)),
+    })
+  }, [language, languageCompartment])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: indentationCompartment.reconfigure(resolveIndentationExtension(language)),
+    })
+  }, [indentationCompartment, language])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: themeCompartment.reconfigure(recallTheme(theme)),
+    })
+  }, [theme, themeCompartment])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: editableCompartment.reconfigure(editableExtension(editable, disabled)),
+    })
+  }, [disabled, editable, editableCompartment])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: decorationsCompartment.reconfigure(recallDecorations(lineMeta, ghostTarget, inlineTask)),
+    })
+  }, [decorationsCompartment, ghostTarget, inlineTask, lineMeta])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: placeholderCompartment.reconfigure(createPlaceholderExtension(placeholder)),
+    })
+  }, [placeholder, placeholderCompartment])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: assistanceCompartment.reconfigure(editorAssistanceExtension(language, intellisense, commonPatterns)),
+    })
+  }, [assistanceCompartment, commonPatterns, intellisense, language])
+
+  useEffect(() => {
+    const contextKey = aiCompletionEnabled && aiCompletion
+      ? JSON.stringify([aiCompletion.cardId, aiCompletion.cardTitle, aiCompletion.prompt, aiCompletion.provider, language])
+      : ''
+    if (contextKey === aiCompletionContextKeyRef.current) return
+    aiCompletionContextKeyRef.current = contextKey
+    aiCompletionRequestRef.current?.abort()
+    onAiCompletionStatusRef.current?.('')
+    clearLocalCache()
+    viewRef.current?.dispatch({
+      effects: aiCompletionCompartment.reconfigure(contextKey ? createAiCompletionExtension() : []),
+    })
+    // The callback reads the latest card context through refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiCompletion?.cardId, aiCompletion?.cardTitle, aiCompletion?.prompt, aiCompletion?.provider, aiCompletionEnabled, aiCompletionCompartment, language])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: foldControlsCompartment.reconfigure(foldControlsExtension(foldControls)),
+    })
+  }, [foldControls, foldControlsCompartment])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: searchPanelCompartment.reconfigure(searchPanelExtension(showSearchPanel)),
+    })
+  }, [searchPanelCompartment, showSearchPanel])
+
+  const editorStyle = minHeight
+    ? ({
+      minHeight,
+      '--recall-editor-min-height': `${minHeight}px`,
+    } as CSSProperties)
+    : undefined
+
+  return (
+    <div
+      ref={hostRef}
+      className={['recall-code-editor', className].filter(Boolean).join(' ')}
+      style={editorStyle}
+    />
+  )
+})
+
+export default RecallCodeEditor

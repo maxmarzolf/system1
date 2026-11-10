@@ -4,7 +4,7 @@
  * component rendered without a provider (tests, isolated widgets).
  */
 import { useQuery } from '@tanstack/react-query'
-import { viewerTimeZone } from '../dailyWork'
+import { viewerTimeZone } from '@/shared/lib/dailyWork'
 import { api, queryClient, unwrap } from './client'
 
 export const queryKeys = {

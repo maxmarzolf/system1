@@ -1,0 +1,493 @@
+/* ─── Dashboard ─── */
+
+.dashboard {
+  margin-bottom: 2rem;
+  padding: 1.25rem;
+  border: 1px solid var(--hc-border);
+  border-radius: 0;
+  background: var(--hc-bg);
+}
+
+.dashboard h2 {
+  margin: 0 0 1rem;
+  font-size: 1.2rem;
+  color: var(--hc-fg);
+}
+
+.skill-map-intro {
+  margin: 0 0 1rem;
+  color: var(--hc-fg-dim);
+  font-size: 0.9rem;
+  max-width: 70ch;
+  line-height: 1.6;
+}
+
+.skill-map-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.skill-map-card {
+  position: relative;
+  z-index: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(5rem, 1fr) auto auto;
+  align-content: stretch;
+  gap: 0.45rem;
+  aspect-ratio: 1 / 0.86;
+  min-width: 0;
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-card-surface-gradient);
+  padding: 0.95rem;
+}
+
+.skill-map-card-menu-open {
+  z-index: 5;
+}
+
+.skill-map-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.skill-map-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--hc-fg);
+  line-height: 1.15;
+}
+
+.skill-map-card-stats {
+  margin: 0;
+  gap: 0.35rem;
+}
+
+.skill-method-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.skill-method-panel {
+  position: relative;
+  align-self: start;
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--hc-border-dim);
+  background: transparent;
+  text-align: left;
+}
+
+.skill-method-panel:hover {
+  background: var(--hc-option-hover-bg);
+  border-color: var(--hc-accent);
+}
+
+.skill-method-panel-selected {
+  background: var(--hc-option-hover-bg);
+  border-color: var(--hc-accent);
+}
+
+.skill-method-dropdown-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 2.05rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  padding: 0.35rem 0.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--hc-fg);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.skill-method-dropdown-trigger:hover {
+  background: transparent;
+}
+
+.skill-method-dropdown-trigger span {
+  color: var(--hc-fg-dim);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.skill-method-dropdown-trigger strong {
+  color: var(--hc-accent);
+  font-size: 0.7rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.skill-method-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: -1px;
+  right: -1px;
+  z-index: 10;
+  max-height: min(14rem, 52vh);
+  overflow: auto;
+  padding: 0.55rem;
+  border: 1px solid var(--hc-accent);
+  background: var(--hc-menu-bg), var(--hc-bg);
+  box-shadow: var(--hc-menu-shadow);
+}
+
+.skill-method-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--hc-method-border);
+  background: var(--hc-method-bg);
+  color: var(--hc-fg);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: left;
+  text-transform: none;
+}
+
+.skill-method-chip:hover {
+  border-color: var(--hc-accent);
+  background: var(--hc-option-hover-bg);
+}
+
+.skill-method-chip-selected {
+  border-color: var(--hc-accent);
+  background: var(--hc-option-hover-bg);
+  color: var(--hc-accent);
+}
+
+.skill-map-illustration {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 0.1rem 0 0.05rem;
+  color: var(--hc-accent);
+  opacity: 0.9;
+  overflow: hidden;
+}
+
+.skill-map-illustration::before {
+  position: absolute;
+  inset: 8% 5%;
+  z-index: -1;
+  background:
+    linear-gradient(color-mix(in srgb, var(--hc-accent) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--hc-accent) 5%, transparent) 1px, transparent 1px),
+    radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--hc-accent) 10%, transparent), transparent 66%);
+  background-size: 14px 14px, 14px 14px, auto;
+  content: '';
+  opacity: 0.68;
+  -webkit-mask-image: linear-gradient(90deg, transparent, black 15%, black 85%, transparent);
+  mask-image: linear-gradient(90deg, transparent, black 15%, black 85%, transparent);
+}
+
+.skill-map-illustration-svg {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: min(100%, 12.5rem);
+  height: 100%;
+  max-height: 7rem;
+  filter: drop-shadow(0 0 0.4rem color-mix(in srgb, var(--hc-accent) 8%, transparent));
+  transition: transform 180ms ease, filter 180ms ease;
+}
+
+.skill-map-card:hover .skill-map-illustration-svg {
+  transform: translateY(-1px);
+  filter: drop-shadow(0 0 0.55rem color-mix(in srgb, var(--hc-accent) 18%, transparent));
+}
+
+.skill-svg-line {
+  fill: none;
+  stroke: color-mix(in srgb, var(--hc-fg-dim) 62%, transparent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.skill-svg-muted {
+  stroke: color-mix(in srgb, var(--hc-fg-dim) 38%, transparent);
+}
+
+.skill-svg-accent {
+  stroke: currentColor;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--hc-accent) 54%, transparent));
+}
+
+.skill-svg-dashed {
+  stroke-dasharray: 4 5;
+}
+
+.skill-svg-node {
+  fill: var(--hc-bg);
+  stroke: color-mix(in srgb, var(--hc-fg-dim) 66%, transparent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.skill-svg-accent-fill {
+  fill: color-mix(in srgb, var(--hc-accent) 28%, var(--hc-bg));
+  stroke: currentColor;
+}
+
+.skill-svg-highlight {
+  fill: color-mix(in srgb, var(--hc-accent) 13%, transparent);
+  stroke: color-mix(in srgb, var(--hc-accent) 72%, transparent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.skill-svg-grid rect,
+.skill-svg-block {
+  fill: color-mix(in srgb, var(--hc-accent) 8%, var(--hc-bg));
+  stroke: color-mix(in srgb, var(--hc-fg-dim) 50%, transparent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.skill-svg-grid .skill-svg-cell-filled,
+.skill-svg-block.skill-svg-accent-fill {
+  fill: color-mix(in srgb, var(--hc-accent) 22%, var(--hc-bg));
+  stroke: currentColor;
+}
+
+.skill-svg-labels text {
+  fill: var(--hc-fg);
+  stroke: var(--hc-bg);
+  stroke-width: 3px;
+  paint-order: stroke fill;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 900;
+  text-anchor: middle;
+}
+
+.skill-svg-labels .skill-svg-label-accent {
+  fill: var(--hc-accent);
+}
+
+.skill-svg-order-marks circle,
+.skill-svg-play {
+  fill: var(--hc-accent);
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--hc-accent) 62%, transparent));
+}
+
+.skill-svg-brand-google,
+.skill-svg-meta-mark {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.86;
+}
+
+.skill-svg-google-blue { stroke: #4285f4; }
+.skill-svg-google-red { stroke: #ea4335; }
+.skill-svg-google-yellow { stroke: #fbbc05; }
+.skill-svg-google-green { stroke: #34a853; }
+
+.skill-svg-meta-mark {
+  stroke: url(#skill-map-meta-gradient);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skill-map-illustration-svg {
+    transition: none;
+  }
+}
+
+.dashboard-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+
+.dashboard-summary.skill-map-card-stats {
+  gap: 0.28rem;
+  margin: 0;
+}
+
+.daily-work-history {
+  --daily-work-history-cell-size: 1.5rem;
+  --daily-work-history-glow: #58a6ff;
+  margin: 0 0 1rem;
+  padding: 1.05rem 1.1rem 1.15rem;
+  border: 1px solid var(--workbench-edge);
+  border-radius: var(--workbench-radius-sm);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--hc-accent) 4%, transparent), transparent 34%),
+    var(--workbench-surface-raised);
+  box-shadow: 0 0.8rem 2rem color-mix(in srgb, var(--hc-bg) 34%, transparent);
+}
+
+.daily-work-history-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.9rem;
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--workbench-edge);
+}
+
+/* Two columns: fixed algorithm labels, then the day grid, which scrolls on its own. */
+.daily-work-history-swimlane {
+  display: grid;
+  grid-template-columns: 9.75rem minmax(0, 1fr);
+  column-gap: 0.65rem;
+  align-items: start;
+}
+
+.daily-work-history-labels,
+.daily-work-history-grid {
+  display: grid;
+  grid-auto-rows: var(--daily-work-history-cell-size);
+  row-gap: 0.3rem;
+  padding-top: 0.1rem;
+}
+
+.daily-work-history-grid {
+  grid-auto-rows: auto;
+  width: max-content;
+}
+
+.daily-work-history-scroll {
+  min-width: 0;
+  overflow-x: auto;
+  padding: 0 0.1rem 0.65rem;
+  scrollbar-color: color-mix(in srgb, var(--hc-accent) 42%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.daily-work-history-x-axis,
+.daily-work-history-lane-cells {
+  display: grid;
+  grid-template-columns: repeat(var(--daily-work-history-days), var(--daily-work-history-cell-size));
+  gap: 0.25rem;
+}
+
+.daily-work-history-x-day {
+  display: grid;
+  place-items: center;
+  gap: 0.12rem;
+  width: var(--daily-work-history-cell-size);
+  color: color-mix(in srgb, var(--hc-fg-dim) 74%, transparent);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.daily-work-history-x-day strong {
+  color: color-mix(in srgb, var(--hc-fg) 88%, var(--hc-fg-dim));
+  font-size: 0.55rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.daily-work-history-x-day span {
+  font-size: 0.46rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.daily-work-history-x-day-today {
+  color: var(--hc-accent);
+}
+
+.daily-work-history-x-day-today strong {
+  color: var(--hc-accent);
+}
+
+.daily-work-history-x-day-today::after {
+  content: '';
+  width: 0.25rem;
+  height: 0.1rem;
+  margin-top: 0.08rem;
+  border-radius: 999px;
+  background: var(--hc-accent);
+  box-shadow: 0 0 0.45rem color-mix(in srgb, var(--hc-accent) 52%, transparent);
+}
+
+button.daily-work-history-lane-label {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: var(--daily-work-history-cell-size);
+  padding: 0 0.35rem;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: color-mix(in srgb, var(--hc-fg) 90%, var(--hc-fg-dim));
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 650;
+  letter-spacing: normal;
+  line-height: calc(var(--daily-work-history-cell-size) - 2px);
+  text-align: left;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+button.daily-work-history-lane-label:hover,
+button.daily-work-history-lane-label:focus-visible {
+  border-color: var(--workbench-edge-strong);
+  color: var(--hc-fg);
+}
+
+button.daily-work-history-lane-label-selected,
+button.daily-work-history-lane-label-selected:hover {
+  border-color: var(--hc-accent);
+  background: color-mix(in srgb, var(--hc-accent) 12%, transparent);
+  color: var(--hc-accent);
+}
+
+.daily-work-history-cell {
+  display: grid;
+  place-items: center;
+  width: var(--daily-work-history-cell-size);
+  height: var(--daily-work-history-cell-size);
+  min-width: var(--daily-work-history-cell-size);
+  min-height: var(--daily-work-history-cell-size);
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--workbench-edge-strong) 50%, transparent);
+  border-radius: 0.18rem;
+  background: color-mix(in srgb, var(--workbench-surface) 76%, var(--hc-bg));
+  color: var(--hc-fg);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--hc-fg) 3%, transparent);
+}
+
+.daily-work-history-cell-active {
+  border-color: color-mix(in srgb, var(--daily-work-history-glow) 84%, white);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--daily-work-history-glow) 82%, white),
+    color-mix(in srgb, var(--daily-work-history-glow) 84%, var(--hc-bg))
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 32%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--daily-work-history-glow) 20%, transparent),
+    0 0 0.75rem color-mix(in srgb, var(--daily-work-history-glow) 24%, transparent);
+}

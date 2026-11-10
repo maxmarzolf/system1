@@ -16,7 +16,7 @@ export default mergeConfig(
           'src/**/*.test.{ts,tsx}',
           'src/test/**',
           'src/main.tsx',
-          'src/data/**',
+          'src/shared/data/**',
           'src/vite-env.d.ts',
         ],
         reporter: ['text-summary', 'text', 'html'],

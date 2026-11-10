@@ -1,0 +1,20 @@
+/* ════════════════════════════════════════════════════════
+   VSCode High Contrast Dark Theme
+   ════════════════════════════════════════════════════════ */
+
+.app {
+  --related-drawer-width: 17rem;
+  --related-drawer-gap: 1.25rem;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 1rem 2rem 4rem;
+  overflow-x: visible;
+  transition: max-width 0.22s ease, margin-right 0.22s ease;
+}
+
+.app-side-drawer-open,
+.app-related-drawer-open {
+  max-width: min(1000px, calc(100vw - var(--related-drawer-width) - var(--related-drawer-gap) - 2rem));
+  margin-left: auto;
+  margin-right: calc(var(--related-drawer-width) + var(--related-drawer-gap));
+}

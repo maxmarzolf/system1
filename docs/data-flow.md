@@ -7,7 +7,7 @@ How data moves through System 1: from the practice screen, through the evaluator
 ```mermaid
 flowchart LR
   subgraph Browser["Browser (React + Vite)"]
-    Practice["Practice / (App.tsx)"]
+    Practice["Practice / (PracticePage)"]
     Dashboard["/dashboard"]
     Journey["/practice-history (Journey)"]
     Admin["/admin"]

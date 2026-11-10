@@ -4,15 +4,15 @@ A React 19 + TypeScript app built with Vite (`src/`). It talks to the backend on
 
 ## Pages
 
-Routes are defined in `src/main.tsx`; every page shares `TopNav` (the active page gets an underline).
+Routes are defined in `src/app/routes.tsx`; every page shares `TopNav` (the active page gets an underline).
 
 | Route | Component | What it does |
 |---|---|---|
-| `/` | `App.tsx` | The practice screen: recall, MCQ, Ghost Reps, Inline notes, AI completion, the Sliding Window Ladder, and flows |
-| `/dashboard` | `DashboardPage.tsx` | A readiness card per algorithm and playlist; each starts focused practice |
-| `/practice-history` | `PracticeHistoryPage.tsx` | Journey: the score terrain, the daily work grid and the day detail |
-| `/tune` | `TunePage.tsx` | Local preferences; saved as you change them |
-| `/admin` | `AdminPage.tsx` | MCQ signal editor and the read-only recall specs |
+| `/` | `features/practice/PracticePage.tsx` | The practice screen: recall, MCQ, Ghost Reps, Inline notes, AI completion, the Sliding Window Ladder, and flows |
+| `/dashboard` | `features/dashboard/DashboardPage.tsx` | A readiness card per algorithm and playlist; each starts focused practice |
+| `/practice-history` | `features/journey/JourneyPage.tsx` | Journey: the score terrain, the daily work grid and the day detail |
+| `/tune` | `features/tune/TunePage.tsx` | Local preferences; saved as you change them |
+| `/admin` | `features/admin/AdminPage.tsx` | MCQ signal editor and the read-only recall specs |
 
 `/coach-tuning` and `/submission-tuning` redirect to `/tune`.
 
@@ -28,27 +28,45 @@ The practice screen reads its starting deck from the URL:
 
 ## Source layout
 
-| Files | Role |
+The code is organized by feature: each page owns a folder, and code used by more than one page lives in `shared/`.
+
+```
+src/
+  main.tsx        mounts the providers and the router
+  app/            the shell: routes.tsx, TopNav, theme, and styles/ (global CSS)
+  api/            the typed API client (client.ts) and shared TanStack Query reads (queries.ts)
+  shared/
+    components/   Icon, IconToggle, Skeleton, InfoTip, settingControls
+    lib/          storedSetting, hotkeys, dailyWork, llmProviderDefault
+    settings/     the *Tuning modules (localStorage preferences)
+    data/         bundled catalogs, used when the API has none
+  features/
+    practice/     /            the practice screen
+    dashboard/    /dashboard   readiness cards
+    journey/      /practice-history   the score terrain, daily work grid and day detail
+    admin/        /admin       the signal editor
+    tune/         /tune        preferences
+  test/           Vitest setup and helpers
+```
+
+Inside a feature:
+
+| Folder | Holds |
 |---|---|
-| `App.tsx` | The practice screen. It only composes: the hooks, components and pure modules below hold the logic |
-| `practice/hooks/` | One hook per concern: `useDecks` (the three decks, on TanStack Query), `usePracticeSession` (moving through a deck; the coach's session plan), `useRecallAttempt` and `useMultipleChoiceAttempt` (answering a card), `usePracticeFlow` (the flow's state, controls, transition timing and stage hotkeys), `usePracticeHotkeys`, `usePracticePanels` (Zen, Flow, related drawer, tags, Ladder), `usePracticeFocus` (the URL focus) |
-| `practice/components/` | Presentational pieces of the screen: `CardHeader`, `PromptPanel`, `RecallPanel`, `MultipleChoicePanel`, `FlowPanel`, `SessionSummary`, `PracticeControlBar`, `SubmissionFailureModal`; they take props and fetch nothing |
-| `practice/*.ts` | Pure logic, unit-tested without rendering: `focus` (URL to deck request), `targets` (what to type), `cardMeta` (header, tags, question types, History link), `primaryAction` (what the primary button does), `flowReducer` (the flow as actions and planners), `mcqRequests` and `attemptBodies` (request bodies), plus the editor helpers (`inlineNotes`, `lineReview`, `markdownText`) |
-| `RecallCodeEditor.tsx` | CodeMirror editor: line status decorations, ghost text, inline notes, autocompletion, AI completion via `/api/coach/inline-completion` |
-| `FlowBuilder.tsx`, `practiceFlow.ts` | Flow configuration UI and the flow engine (next step, mastery summary, transition copy) |
-| `WindowLadderPanel.tsx`, `windowLadderPlan.ts` | The five-rung Sliding Window Ladder |
-| `PracticeHistoryPage.tsx`, `DailyWorkHistory.tsx`, `HistoryDayDetail.tsx`, `SubmissionSignalDetails.tsx` | Journey |
-| `SignalHologram.tsx`, `signalTerrain.ts` | The Signal Score Terrain (three.js, loaded lazily) and its surface maths |
-| `AdminPage.tsx`, `signalAdmin.ts`, `signalFieldHelp.tsx` | `/admin`, its API client and its field help |
-| `TunePage.tsx`, `tuneControls.tsx`, `*Tuning.ts` | Tune and the stored settings it edits |
-| `TopNav.tsx`, `InfoTip.tsx`, `theme.tsx` | Shared UI: nav, `?` tooltips, light/dark theme |
-| `api/` | The typed API client (`client.ts`) and the shared TanStack Query reads (`queries.ts`) |
-| `signalSpecs.ts`, `llmProviderDefault.ts`, `dailyWork.ts`, `hotkeys.ts`, `storedSetting.ts` | Small API helpers, date formatting, keyboard shortcuts, the `localStorage` setting helper |
-| `data/` | Local catalogs (skill map, playlists, related LeetCode problems), used when the API has none |
+| `<Feature>Page.tsx` | The route component. It composes the feature's hooks and components |
+| `components/` | Presentational pieces; they take props and fetch nothing |
+| `hooks/` | One hook per concern (practice: `useDecks`, `usePracticeSession`, `useRecallAttempt`, `useMultipleChoiceAttempt`, `usePracticeHotkeys`, `usePracticePanels`, `usePracticeFocus`) |
+| `lib/` (or `lib.ts`) | Pure logic, unit-tested without rendering (practice: `focus`, `targets`, `cardMeta`, `primaryAction`, `inlineNotes`, `lineReview`, `types`) |
+| `api.ts` | The feature's requests (practice: decks, MCQ generation, attempt bodies; admin: the signal admin client) |
+| Sub-areas | Practice also has `flow/` (FlowBuilder, the flow engine `practiceFlow.ts`, `flowReducer`, `usePracticeFlow`, the flow cards), `ladder/` (the Sliding Window Ladder) and `editor/` (`RecallCodeEditor`, the CodeMirror editor). Journey has `terrain/` (the three.js Signal Score Terrain) |
+
+**Where new code goes.** Code for one page goes in that page's feature folder. Once a second feature needs it, it moves to `shared/`. A feature never imports another feature, and `shared/` and `api/` never import `features/` or `app/`; ESLint (`no-restricted-imports` in `eslint.config.js`) enforces both. Use `@/` (= `src/`) for imports across modules and relative paths within one.
+
+**Styles.** `app/styles/index.css` imports `base.css` and the numbered section files in cascade order. Later files refine earlier ones (the practice workbench layer overrides card and editor rules), so add rules to the section they belong to and keep the order.
 
 ## State
 
-There is no global store. Server data goes through TanStack Query (`src/api/queries.ts` for shared reads, `practice/hooks/useDecks.ts` for practice decks), so two components asking for the same data make one request. Preferences live in `localStorage`, read through `storedSetting.ts` with a validating loader that falls back to defaults for missing or invalid values:
+There is no global store. Server data goes through TanStack Query (`src/api/queries.ts` for shared reads, `practice/hooks/useDecks.ts` for practice decks), so two components asking for the same data make one request. Preferences live in `localStorage`, read through `shared/lib/storedSetting.ts` with a validating loader that falls back to defaults for missing or invalid values:
 
 | Key | Holds |
 |---|---|
@@ -68,7 +86,7 @@ The Admin page keeps its view (question type and scope) in the URL, so views can
 A flow keeps one card as its **anchor** and moves between the four modalities around it. Attempts are tagged with `signals.flow.anchorCardId`, so a flow resumes from stored history (`/api/coach/history`).
 
 - **Custom** repeats the configured blocks in order. **Random** draws each step from the enabled stages, repeats allowed.
-- **Adaptive** (`practiceFlow.ts::adaptiveNextFlowStep`):
+- **Adaptive** (`features/practice/flow/practiceFlow.ts::adaptiveNextFlowStep`):
   - **On a miss** (failed, scored under 65, or missed lines), it remediates: Recall goes to Ghost; Ghost and MCQ go to Microdrill; Microdrill goes back to Recall, so a fresh line-level weakness can be measured.
   - **On a success**, it first proves any modality not yet passed (MCQ, then Microdrill, then Recall), then progresses.
 - **Phase:** each step computes a phase from recent scores, streak, missed lines and modality coverage (`establish`, `remediate`, `consolidate`, `challenge` or `mastered`). The phase and a short weakness summary go to MCQ and microdrill generation. Challenge questions may change constraints or edge cases but stay within the anchor card's algorithm.
@@ -76,7 +94,7 @@ A flow keeps one card as its **anchor** and moves between the four modalities ar
 
 ## Keyboard shortcuts
 
-Defined once in `hotkeys.ts` and listed on Tune. Mod is ⌘ on macOS and Ctrl elsewhere.
+Defined once in `shared/lib/hotkeys.ts` and listed on Tune. Mod is ⌘ on macOS and Ctrl elsewhere.
 
 | Keys | Action |
 |---|---|
@@ -90,7 +108,7 @@ Defined once in `hotkeys.ts` and listed on Tune. Mod is ⌘ on macOS and Ctrl el
 
 ## Tests
 
-Vitest with React Testing Library and jsdom. Tests sit next to the code as `src/*.test.ts[x]`; helpers are in `src/test/`.
+Vitest with React Testing Library and jsdom. Tests sit next to the code they test (`PracticePage.test.tsx` beside `PracticePage.tsx`); helpers are in `src/test/`.
 
 | Helper | Use |
 |---|---|

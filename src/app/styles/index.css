@@ -1,0 +1,22 @@
+/*
+ * Global styles, in cascade order: base element styles, then the app sections. Later files
+ * override earlier ones (the practice workbench layer refines the card and editor rules before it),
+ * so keep this order when adding or moving rules.
+ */
+@import './base.css';
+@import './01-app-shell.css';
+@import './02-nav.css';
+@import './03-card-controls.css';
+@import './04-dashboard.css';
+@import './05-trends.css';
+@import './06-buttons.css';
+@import './07-card.css';
+@import './08-card-grid.css';
+@import './09-recall-editor.css';
+@import './10-actions-responsive.css';
+@import './11-practice-workbench.css';
+@import './12-mcq.css';
+@import './13-signal-specs.css';
+@import './14-admin.css';
+@import './15-journey.css';
+@import './16-admin-rail.css';

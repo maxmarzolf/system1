@@ -1,0 +1,101 @@
+/* Admin rail: question type (MCQ, Recall) > scope. Buttons styled like the Tune rail's links. */
+.tune-rail .admin-rail-group + .admin-rail-group {
+  margin-top: 0.85rem;
+}
+
+.tune-rail button.admin-rail-group-label,
+.tune-rail button.admin-rail-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  width: 100%;
+  min-height: 0;
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--hc-fg-dim);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.15;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.tune-rail button.admin-rail-group-label {
+  color: var(--hc-accent);
+}
+
+.tune-rail button.admin-rail-item {
+  padding-left: 1.2rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.tune-rail button.admin-rail-group-label:hover,
+.tune-rail button.admin-rail-item:hover {
+  background: var(--hc-option-hover-bg);
+  color: var(--hc-fg);
+}
+
+.tune-rail button.admin-rail-item-empty {
+  color: color-mix(in srgb, var(--hc-fg-dim) 60%, transparent);
+}
+
+.tune-rail button.admin-rail-item-current,
+.tune-rail button.admin-rail-item-current:hover {
+  background: color-mix(in srgb, var(--hc-accent) 14%, transparent);
+  color: var(--hc-accent);
+}
+
+.admin-rail-count {
+  color: var(--hc-fg-dim);
+  font-size: 0.64rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Collapsed signal: label + key with the primitive right-aligned; instructions; a spread meta row. */
+.admin-signal-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.admin-signal-primitive {
+  flex: none;
+  color: var(--hc-accent);
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+
+.admin-signal-instructions {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--hc-fg-dim);
+  font-size: 0.76rem;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.admin-signal:not(.admin-signal-new) .admin-signal-meta {
+  justify-content: space-between;
+}
+
+.admin-recall-list,
+.admin-recall-spec {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.admin-recall-list {
+  gap: 1.4rem;
+}
+
+.admin-recall-spec-title {
+  color: var(--hc-fg);
+}

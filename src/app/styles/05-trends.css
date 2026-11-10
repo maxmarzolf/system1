@@ -1,0 +1,552 @@
+/* ─── Trend Analysis ─────────────────────────────────────────────────────── */
+
+.trend-analysis-section {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--hc-border-dim);
+}
+
+.trend-analysis-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.trend-analysis-title {
+  color: var(--hc-fg-dim);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.trend-analysis-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.trend-analysis-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.62rem;
+  color: var(--hc-fg-dim);
+}
+
+.trend-analysis-legend-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.trend-analysis-legend-type {
+  color: var(--hc-fg-dim);
+  opacity: 0.6;
+  font-size: 0.58rem;
+}
+
+.trend-analysis-clear {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--hc-border-dim);
+  background: transparent;
+  color: var(--hc-fg-dim);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.trend-analysis-clear:hover {
+  border-color: var(--hc-accent);
+  color: var(--hc-fg);
+}
+
+.trend-analysis-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.trend-grid-line {
+  stroke: var(--hc-border-dim);
+  stroke-width: 0.5;
+}
+
+.trend-axis-label {
+  fill: var(--hc-fg-dim);
+  font-size: 8px;
+  font-family: inherit;
+  opacity: 0.7;
+}
+
+.trend-goal-line {
+  stroke: var(--hc-accent);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  opacity: 0.5;
+}
+
+.trend-goal-label {
+  fill: var(--hc-accent);
+  font-size: 7px;
+  font-family: inherit;
+  opacity: 0.65;
+}
+
+.trend-gap-warning {
+  fill: rgba(245, 158, 11, 0.1);
+}
+
+.trend-gap-critical {
+  fill: rgba(239, 68, 68, 0.14);
+}
+
+.trend-gap-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 0.4rem;
+}
+
+.trend-gap-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.58rem;
+  color: var(--hc-fg-dim);
+  opacity: 0.8;
+}
+
+.trend-gap-swatch {
+  width: 0.8rem;
+  height: 0.45rem;
+  flex-shrink: 0;
+}
+
+.trend-gap-swatch-warning {
+  background: rgba(245, 158, 11, 0.45);
+}
+
+.trend-gap-swatch-critical {
+  background: rgba(239, 68, 68, 0.5);
+}
+
+.trend-gap-swatch-goal {
+  background: transparent;
+  border-top: 1.5px dashed var(--hc-accent);
+  opacity: 0.6;
+}
+
+.method-drilldown-section {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--hc-border-dim);
+}
+
+.method-drilldown-heading,
+.method-drilldown-parent-header,
+.method-drilldown-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.method-drilldown-heading {
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+.method-drilldown-note {
+  color: var(--hc-fg-dim);
+  font-size: 0.58rem;
+  opacity: 0.7;
+}
+
+.method-drilldown-parent + .method-drilldown-parent {
+  margin-top: 1rem;
+}
+
+.method-drilldown-parent-header {
+  gap: 0.4rem;
+  margin-bottom: 0.45rem;
+}
+
+.method-drilldown-parent-header strong {
+  color: var(--hc-fg);
+  font-size: 0.72rem;
+}
+
+.method-drilldown-parent-header span {
+  color: var(--hc-fg-dim);
+  font-size: 0.58rem;
+  opacity: 0.7;
+}
+
+.method-drilldown-legend {
+  gap: 0.55rem;
+  margin-bottom: 0.55rem;
+}
+
+.method-drilldown-legend b {
+  color: var(--hc-fg);
+  font-size: 0.58rem;
+}
+
+.method-drilldown-chart {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.method-drilldown-day {
+  display: grid;
+  grid-template-columns: 5.25rem minmax(0, 1fr) 1.5rem;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 1.65rem;
+}
+
+.method-drilldown-bar {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  height: 0.72rem;
+  overflow: hidden;
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-panel-bg);
+}
+
+.method-drilldown-fill {
+  display: flex;
+  min-width: 0.45rem;
+}
+
+.method-drilldown-segment {
+  flex-basis: 0;
+  min-width: 0.3rem;
+  background: var(--method-color);
+  box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.25);
+}
+
+.method-drilldown-total {
+  color: var(--hc-fg-dim);
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+
+.dashboard-mode-tabs {
+  display: flex;
+  margin-top: 0.9rem;
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-card-surface-soft);
+}
+
+.skill-map-card .dashboard-mode-tabs {
+  justify-self: center;
+  width: auto;
+  margin-top: 0.05rem;
+  border: 0;
+  background: transparent;
+}
+
+.dashboard-mode-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.5rem 0.65rem;
+  border: none;
+  border-right: 1px solid var(--hc-border-dim);
+  background: transparent;
+  color: var(--hc-fg-dim);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: default;
+}
+
+.skill-map-card .dashboard-mode-tab {
+  flex: 0 0 auto;
+  justify-content: center;
+  min-width: 9.25rem;
+  min-height: 2rem;
+  padding: 0.42rem 0.68rem;
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-card-surface-soft);
+}
+
+.skill-map-card .dashboard-mode-tab:last-child {
+  border-right: 1px solid var(--hc-border-dim);
+}
+
+.skill-map-card .dashboard-mode-tab:hover {
+  border-color: var(--hc-accent);
+}
+
+.dashboard-mode-tab:last-child {
+  border-right: none;
+}
+
+.dashboard-mode-tab:disabled {
+  opacity: 0.6;
+}
+
+.dashboard-mode-tab-actionable {
+  cursor: pointer;
+}
+
+.dashboard-mode-tab-actionable:hover {
+  background: var(--hc-option-hover-bg);
+  color: var(--hc-fg);
+}
+
+.dashboard-mode-tab-label {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.dashboard-mode-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.dashboard-mode-meta {
+  margin: 0.3rem 0 0;
+  color: var(--hc-fg-dim);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.dashboard-mode-frequency {
+  position: relative;
+  margin-top: 0.8rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--hc-border-dim);
+}
+
+.dashboard-mode-frequency-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.6rem;
+  margin-bottom: 0.45rem;
+}
+
+.dashboard-mode-frequency-label {
+  color: var(--hc-fg-dim);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dashboard-mode-frequency-hint {
+  margin: 0.35rem 0 0;
+  color: var(--hc-fg-dim);
+  font-size: 0.68rem;
+}
+
+.dashboard-mode-frequency-trigger {
+  width: 100%;
+  margin-top: 0.45rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--hc-border-dim);
+  background: var(--hc-panel-bg);
+  color: var(--hc-fg);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.dashboard-mode-frequency-trigger:hover {
+  border-color: var(--hc-accent);
+  background: var(--hc-option-hover-bg);
+}
+
+.dashboard-mode-launch-hint {
+  margin: 0.65rem 0 0;
+  color: var(--hc-accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.submission-feedback-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.62);
+  z-index: 10010;
+}
+
+.submission-feedback-popover {
+  position: relative;
+  width: min(28rem, calc(100vw - 2rem));
+  padding: 0.9rem;
+  border: 2px solid var(--hc-accent);
+  outline: 1px solid var(--hc-border-dim);
+  background: var(--hc-menu-bg), var(--hc-bg);
+  box-shadow:
+    0 24px 54px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(0, 0, 0, 0.9);
+  color: var(--hc-fg);
+}
+
+.submission-feedback-popover h4 {
+  margin: 0.25rem 0 0.6rem;
+  font-size: 1rem;
+  color: var(--hc-fg);
+}
+
+.dashboard-activity-eyebrow {
+  margin: 0;
+  color: var(--hc-accent);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.app-dashboard .dashboard {
+  margin-bottom: 1rem;
+  padding: 0.7rem;
+}
+
+.app-dashboard .dashboard h2 {
+  margin-bottom: 0.65rem;
+  font-size: 1.05rem;
+}
+
+.app-dashboard .skill-map-intro {
+  margin-bottom: 0.7rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.app-dashboard .dashboard-summary {
+  gap: 0.38rem;
+  margin-bottom: 0.65rem;
+}
+
+.app-dashboard .dashboard-summary.skill-map-card-stats {
+  gap: 0.25rem;
+  margin: 0;
+}
+
+.app-dashboard .coach-metric-chip {
+  padding: 0.18rem 0.32rem;
+  font-size: 0.56rem;
+  line-height: 1.2;
+}
+
+.app-dashboard .coach-status-value {
+  font-size: 0.64rem;
+}
+
+.app-dashboard .skill-map-grid {
+  gap: 0.45rem;
+}
+
+.app-dashboard .skill-map-card {
+  grid-template-rows: auto auto minmax(3.75rem, 1fr) auto auto;
+  gap: 0.28rem;
+  padding: 0.52rem;
+  min-height: 12rem;
+}
+
+.app-dashboard .skill-map-header {
+  gap: 0.5rem;
+  margin-bottom: 0;
+}
+
+.app-dashboard .skill-map-header h3 {
+  font-size: 0.8rem;
+}
+
+.app-dashboard .skill-map-illustration {
+  padding: 0;
+}
+
+.app-dashboard .skill-map-illustration-svg {
+  width: min(100%, 9.5rem);
+  max-height: 4.8rem;
+}
+
+.app-dashboard .skill-method-list {
+  gap: 0.36rem;
+}
+
+.app-dashboard .skill-method-panel {
+  padding: 0;
+}
+
+.app-dashboard .skill-method-chip {
+  padding: 0.26rem 0.42rem;
+  font-size: 0.7rem;
+}
+
+.app-dashboard .dashboard-mode-tab {
+  padding: 0.38rem 0.5rem;
+  font-size: 0.72rem;
+}
+
+.app-dashboard .skill-map-card .dashboard-mode-tab {
+  min-width: 7.35rem;
+  min-height: 1.6rem;
+  padding: 0.25rem 0.45rem;
+}
+
+.app-dashboard .skill-map-card .dashboard-mode-tab:last-child {
+  border-right: 1px solid var(--hc-border-dim);
+}
+
+.app-dashboard .dashboard-mode-tab-label {
+  font-size: 0.54rem;
+}
+
+.app-dashboard .dashboard-mode-meta {
+  margin-top: 0.28rem;
+  font-size: 0.65rem;
+  line-height: 1.3;
+}
+
+.app-dashboard .dashboard-mode-frequency {
+  margin-top: 0.55rem;
+  padding-top: 0.48rem;
+}
+
+.app-dashboard .dashboard-mode-frequency-header {
+  margin-bottom: 0.32rem;
+}
+
+.app-dashboard .dashboard-mode-frequency-label {
+  font-size: 0.58rem;
+}
+
+.app-dashboard .dashboard-mode-frequency-trigger {
+  margin-top: 0.34rem;
+  padding: 0.32rem 0.45rem;
+  font-size: 0.62rem;
+}
