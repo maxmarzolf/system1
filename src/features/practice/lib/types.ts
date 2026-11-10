@@ -88,6 +88,8 @@ export const CARD_MOVE_DOUBLE_TAP_WINDOW_MS = 350
 export const FLOW_TRANSITION_MINIMUM_MS = 700
 export const FLOW_TRANSITION_SETTLE_MS = 280
 export const INLINE_FEEDBACK_ENABLED = true
+/** Standalone MCQ sets are medium; a flow asks for hard questions once it reaches its challenge phase. */
+export const MULTIPLE_CHOICE_DIFFICULTY: MultipleChoiceDifficulty = 'Med.'
 
 export const emptySkillMapCard: Flashcard = {
   id: 'skill-map-loading',

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { rejectionReason } from '../requests'
+import { rejectionReason } from '../api'
 import type { MultipleChoiceCard, MultipleChoiceChoice, SubmissionSaveResponse } from '../lib/types'
 
 /**

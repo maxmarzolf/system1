@@ -1,12 +1,12 @@
 import { type CSSProperties, useEffect, useRef, useState } from 'react'
-import { FLOW_COACH_LABELS, type FlowGenerationContext } from './practiceFlow'
+import type { FlowGenerationContext } from './practiceFlow'
 import { api, unwrap } from '@/api/client'
 import type { AppTheme } from '@/app/theme'
 import { createInteractionId } from '../lib/lineReview'
-import { MicroDrillBlankEditor, MicroDrillInstructions } from '../components/markdown'
-import type { FlowMicroDrill, FlowMicroDrillPrimaryActionState, PracticeFlowTransitionState, SubmissionSaveResponse } from '../lib/types'
+import { MicroDrillBlankEditor, MicroDrillInstructions } from './MicroDrillEditor'
+import type { FlowMicroDrill, FlowMicroDrillPrimaryActionState, SubmissionSaveResponse } from '../lib/types'
 
-export function FlowMicroDrillCard({ title, prompt, target, focus, rep, context, provider, theme, syntaxTheme, actionKey, onSave, primaryActionRef, onPrimaryActionStateChange }: {
+export default function FlowMicroDrillCard({ title, prompt, target, focus, rep, context, provider, theme, syntaxTheme, actionKey, onSave, primaryActionRef, onPrimaryActionStateChange }: {
   title: string; prompt: string; target: string; focus: string; rep: number; provider: string
   context: FlowGenerationContext
   theme: AppTheme; syntaxTheme: Record<string, CSSProperties>
@@ -107,68 +107,5 @@ export function FlowMicroDrillCard({ title, prompt, target, focus, rep, context,
         <MicroDrillBlankEditor template={drill.template} language={drill.language} theme={theme} syntaxTheme={syntaxTheme} onAnswerChange={setAnswer} disabled={saving || Boolean(result)} />
       </div>}
     </div>
-  )
-}
-
-export function FlowCoachTransition({
-  transition,
-  settling,
-}: {
-  transition: PracticeFlowTransitionState
-  settling: boolean
-}) {
-  const fromLabel = transition.fromStage ? FLOW_COACH_LABELS[transition.fromStage] : 'Start'
-  const toLabel = FLOW_COACH_LABELS[transition.toStage]
-
-  return (
-    <section
-      className={[
-        'flow-transition-card',
-        `flow-transition-card-${transition.toStage}`,
-        settling ? 'flow-transition-card-settling' : '',
-      ].filter(Boolean).join(' ')}
-      role="status"
-      aria-live="polite"
-      aria-label={`Coach transition to ${toLabel}`}
-    >
-      <div className="flow-transition-topline">
-        <span className="flow-transition-eyebrow">Coach · Next modality</span>
-        <div className="flow-transition-route" aria-label={`${fromLabel} to ${toLabel}`}>
-          <span>{fromLabel}</span>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="m9 5.25 6.75 6.75L9 18.75" />
-          </svg>
-          <strong>{toLabel}</strong>
-        </div>
-      </div>
-      <div className="flow-transition-copy">
-        <h2>{transition.headline}</h2>
-        <p>{transition.detail}</p>
-      </div>
-      <div className="flow-transition-status">
-        <span className="flow-transition-status-dot" aria-hidden="true" />
-        <span>{transition.status}</span>
-      </div>
-      <div className="flow-transition-progress" aria-hidden="true"><span /></div>
-    </section>
-  )
-}
-
-export function FlowNextIcon() {
-  return (
-    <svg
-      className="flow-next-icon"
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-    </svg>
   )
 }

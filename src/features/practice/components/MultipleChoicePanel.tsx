@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import type { MultipleChoiceAttempt } from '../hooks/useMultipleChoiceAttempt'
-import { MarkdownCodeContent } from './markdown'
+import MarkdownCodeContent from './MarkdownCodeContent'
 import type { MultipleChoiceCard } from '../lib/types'
 
 /** The answer choices for an MCQ card and, once graded, the verdict with its explanation. */

@@ -19,7 +19,7 @@ import {
   requestSkillMapDrills,
   requestSkillMapDrillsStream,
   requestStaticPlaylistDrills,
-} from '../requests'
+} from '../api'
 import type { Flashcard, MultipleChoiceCard, MultipleChoiceDrillsRequest } from '../lib/types'
 
 type DeckResult<T> = { drills: T[]; error: string }

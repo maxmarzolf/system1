@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import type { AppTheme } from '@/app/theme'
-import { MarkdownCodeContent } from './markdown'
+import MarkdownCodeContent from './MarkdownCodeContent'
 import type { MultipleChoiceCard, PracticeMode } from '../lib/types'
 
 const SkeletonLines = () => (

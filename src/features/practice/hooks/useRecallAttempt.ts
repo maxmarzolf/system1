@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { RecallCodeEditorHandle } from '../editor/RecallCodeEditor'
 import { normalizeTyping } from '../lib/inlineNotes'
 import { computeLineReview, createInteractionId, extractFlowGhostFocusedInput, firstIncompleteGhostLineNumber, nextGhostLineNumber, summarizeRecallAttempt } from '../lib/lineReview'
-import { rejectionReason } from '../requests'
+import { rejectionReason } from '../api'
 import type { AttemptPayload, MultipleChoiceSpecimenFocus, RecallAttemptSnapshot, SubmissionFailureModalState, SubmissionSaveResponse, SupportLayer, TemplateMode } from '../lib/types'
 
 export type RecallPhase = 'preview' | 'typing' | 'submitted'
