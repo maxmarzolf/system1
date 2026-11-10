@@ -1,0 +1,52 @@
+/* ─── Buttons ─── */
+
+button {
+  border: 1px solid var(--hc-border);
+  background: var(--hc-button-bg);
+  color: var(--hc-button-fg);
+  padding: 0.6rem 1.4rem;
+  border-radius: 0;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  box-shadow: none;
+}
+
+button:hover {
+  background: var(--hc-button-hover-bg);
+  border-color: var(--hc-button-hover-border);
+  transform: none;
+  box-shadow: none;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--hc-accent);
+  outline-offset: 1px;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--hc-fg);
+  border-color: var(--hc-border);
+}
+
+button.secondary:hover {
+  background: var(--hc-button-hover-bg);
+  color: var(--hc-fg);
+}
+
+button.link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--hc-link);
+  font-weight: 600;
+  text-decoration: underline;
+  box-shadow: none;
+}
+
+button.link:hover {
+  color: var(--hc-fg);
+  transform: none;
+  box-shadow: none;
+}
