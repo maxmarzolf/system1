@@ -10,7 +10,7 @@ import PracticeHistoryPage from './PracticeHistoryPage.tsx'
 import { ThemeProvider } from './theme.tsx'
 import TunePage from './TunePage.tsx'
 import AdminPage from './AdminPage.tsx'
-import { queryClient } from './api/client'
+import { queryClient } from '@/api/client'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
