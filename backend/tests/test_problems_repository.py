@@ -53,10 +53,9 @@ def test_algorithm_practice_matches_dashboard_core_inventory(monkeypatch) -> Non
 def test_other_core_practice_queries_exclude_generated_and_playlist_rows(monkeypatch) -> None:
     connection = _install_connection(monkeypatch)
 
-    asyncio.run(repository.fetch_problem_practice_rows_by_technique("monotonic-deque"))
     asyncio.run(repository.fetch_problem_practice_rows_by_tag("frequency-maps", 10))
     asyncio.run(repository.fetch_random_problem_practice_rows(10))
 
-    assert len(connection.fetch_calls) == 3
+    assert len(connection.fetch_calls) == 2
     for query, _args in connection.fetch_calls:
         _assert_core_inventory_only(query)

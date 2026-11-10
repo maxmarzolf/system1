@@ -1,3 +1,5 @@
+import { storedSetting } from './storedSetting'
+
 export type SubmissionGradingMode = 'core-logic' | 'balanced' | 'strict'
 export type SubmissionContractStrictness = 'light' | 'balanced' | 'strict'
 
@@ -30,30 +32,20 @@ const isSubmissionGradingMode = (value: unknown): value is SubmissionGradingMode
 const isSubmissionContractStrictness = (value: unknown): value is SubmissionContractStrictness =>
   typeof value === 'string' && SUBMISSION_CONTRACT_STRICTNESSES.includes(value as SubmissionContractStrictness)
 
-export const loadStoredSubmissionTuning = (): SubmissionTuning => {
-  if (typeof window === 'undefined') return defaultSubmissionTuning
+export const submissionTuningSetting = storedSetting<SubmissionTuning>(
+  SUBMISSION_TUNING_STORAGE_KEY,
+  defaultSubmissionTuning,
+  (parsed) => ({
+    ...defaultSubmissionTuning,
+    ...parsed,
+    gradingMode: isSubmissionGradingMode(parsed.gradingMode)
+      ? parsed.gradingMode
+      : defaultSubmissionTuning.gradingMode,
+    contractStrictness: isSubmissionContractStrictness(parsed.contractStrictness)
+      ? parsed.contractStrictness
+      : defaultSubmissionTuning.contractStrictness,
+  }),
+)
 
-  try {
-    const raw = window.localStorage.getItem(SUBMISSION_TUNING_STORAGE_KEY)
-    if (!raw) return defaultSubmissionTuning
-
-    const parsed = JSON.parse(raw) as Partial<SubmissionTuning>
-    return {
-      ...defaultSubmissionTuning,
-      ...parsed,
-      gradingMode: isSubmissionGradingMode(parsed.gradingMode)
-        ? parsed.gradingMode
-        : defaultSubmissionTuning.gradingMode,
-      contractStrictness: isSubmissionContractStrictness(parsed.contractStrictness)
-        ? parsed.contractStrictness
-        : defaultSubmissionTuning.contractStrictness,
-    }
-  } catch {
-    return defaultSubmissionTuning
-  }
-}
-
-export const saveStoredSubmissionTuning = (tuning: SubmissionTuning) => {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(SUBMISSION_TUNING_STORAGE_KEY, JSON.stringify(tuning))
-}
+export const loadStoredSubmissionTuning = submissionTuningSetting.load
+export const saveStoredSubmissionTuning = submissionTuningSetting.save

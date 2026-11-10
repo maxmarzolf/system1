@@ -50,25 +50,6 @@ async def fetch_problem_practice_rows(algorithm_slug: str) -> list[ProblemPracti
     return [cast(ProblemPracticeRow, dict(row)) for row in rows]
 
 
-async def fetch_problem_practice_rows_by_technique(technique_slug: str) -> list[ProblemPracticeRow]:
-    async with acquire_connection() as conn:
-        rows = await conn.fetch(
-            f"""
-            {_PROBLEM_PRACTICE_SELECT}
-            WHERE {_CORE_PRACTICE_FILTER}
-              AND EXISTS (
-                SELECT 1
-                FROM problem_technique pt2
-                WHERE pt2.problem_slug = p.slug
-                  AND pt2.technique_slug = $1
-            )
-            ORDER BY p.display_order ASC
-            """,
-            technique_slug,
-        )
-    return [cast(ProblemPracticeRow, dict(row)) for row in rows]
-
-
 async def fetch_problem_practice_rows_by_tag(tag_slug: str, count: int) -> list[ProblemPracticeRow]:
     async with acquire_connection() as conn:
         rows = await conn.fetch(

@@ -3,13 +3,12 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from app.core.llm import llm_provider_label as _llm_provider_label
-from app.domain.llm_resilience import SubmissionFeedbackUnavailableError, coach_llm_http_exception
+from app.core.llm import resolve_llm_provider
+from app.core.taxonomy import algorithm_slug_for_tags
 from app.models import (
-    AdaptiveVariationRequest,
+    CoachProviderDefaultResponse,
     CoachSessionPlanRequest,
     MultipleChoiceDrillsRequest,
-    SequentialVariationRequest,
     SkillMapDrillsRequest,
 )
 from app.repositories.coach_repository import insert_generated_multiple_choice_question_rows
@@ -17,7 +16,6 @@ from app.repositories.unified_catalog_repository import upsert_generated_problem
 from app.services import history_service
 from app.services import drill_generation_service
 from app.services import session_service
-from app.services import variation_service
 from app.services.contracts import (
     MultipleChoiceQuestionPayload,
     SkillMapCardGenerationContext,
@@ -27,18 +25,12 @@ from app.services.contracts import (
 
 
 async def coach_provider_default():
-    from app.core.llm import resolve_llm_provider
-    from app.models import CoachProviderDefaultResponse
-
     configured = resolve_llm_provider("")
     return CoachProviderDefaultResponse(provider=configured)
 
 
 async def coach_session_plan(body: CoachSessionPlanRequest):
-    try:
-        return await session_service.coach_session_plan(body)
-    except SubmissionFeedbackUnavailableError as error:
-        raise coach_llm_http_exception(error, _llm_provider_label(error.provider)) from error
+    return await session_service.coach_session_plan(body)
 
 
 async def _persist_skill_map_drills(
@@ -63,7 +55,6 @@ async def _persist_skill_map_drills(
             missing=drill["missing"],
             hint=drill["hint"],
             tags=drill["tags"],
-            llm_used=llm_used,
             generation_context_json=json.dumps(generation_context),
         )
 
@@ -86,35 +77,23 @@ async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
     )
 
 
-async def _persist_generated_questions(drills: list[MultipleChoiceQuestionPayload]) -> None:
-    now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
-    await insert_generated_multiple_choice_question_rows(
+async def _persist_generated_questions(
+    drills: list[MultipleChoiceQuestionPayload],
+) -> list[MultipleChoiceQuestionPayload | None]:
+    stored = await insert_generated_multiple_choice_question_rows(
         questions=drills,
-        user_id="0000",
-        created_date=now,
-        modified_date=now,
+        algorithm_slugs=[algorithm_slug_for_tags(list(drill.get("tags") or [])) or None for drill in drills],
+        created_at=datetime.now(tz=timezone.utc),
     )
+    return [
+        {"id": row["id"], "choices": row["choices"], "correctChoiceId": row["correctChoiceId"]} if row else None
+        for row in stored
+    ]
 
 
 async def coach_multiple_choice_drills(body: MultipleChoiceDrillsRequest):
-    try:
-        return await drill_generation_service.coach_multiple_choice_drills(
-            body,
-            persist_generated_questions=_persist_generated_questions,
-        )
-    except SubmissionFeedbackUnavailableError as error:
-        raise coach_llm_http_exception(error, _llm_provider_label(error.provider)) from error
+    return await drill_generation_service.coach_multiple_choice_drills(
+        body,
+        persist_generated_questions=_persist_generated_questions,
+    )
 
-
-async def coach_adaptive_variation(body: AdaptiveVariationRequest):
-    try:
-        return await variation_service.coach_adaptive_variation(body)
-    except SubmissionFeedbackUnavailableError as error:
-        raise coach_llm_http_exception(error, _llm_provider_label(error.provider)) from error
-
-
-async def coach_sequential_variation(body: SequentialVariationRequest):
-    try:
-        return await variation_service.coach_sequential_variation(body)
-    except SubmissionFeedbackUnavailableError as error:
-        raise coach_llm_http_exception(error, _llm_provider_label(error.provider)) from error

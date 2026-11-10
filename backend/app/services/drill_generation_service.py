@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 
 from app.config import settings
 from app.core.generator import (
@@ -16,19 +16,12 @@ from app.core.llm import (
     preferred_provider_chain as _preferred_provider_chain,
     resolve_available_llm_provider as _resolve_available_llm_provider,
 )
-from app.domain.llm_resilience import SubmissionFeedbackUnavailableError
 from app.models import MultipleChoiceDrillsRequest, MultipleChoiceDrillsResponse, SkillMapDrillsRequest
-from app.core.generator import GeneratorUnavailableError
 from app.services.contracts import PersistGeneratedQuestions, PersistSkillMapDrills, SkillMapProgressSummary
 
 import logging
 
 logger = logging.getLogger(__name__)
-
-DRILL_GEN_MAX_TOKENS = 8000
-DRILL_GEN_OPENAI_TIMEOUT_SECONDS = 90
-DRILL_GEN_TEMPERATURE = 0.7
-
 
 def _make_skill_map_drill_generator(
     persist_skill_map_drills: PersistSkillMapDrills,
@@ -36,9 +29,6 @@ def _make_skill_map_drill_generator(
     runtime = GeneratorRuntime(
         call_llm_json=_call_llm_json,
         persist_skill_map_drills=persist_skill_map_drills,
-        drill_gen_max_tokens=DRILL_GEN_MAX_TOKENS,
-        drill_gen_openai_timeout_seconds=DRILL_GEN_OPENAI_TIMEOUT_SECONDS,
-        drill_gen_temperature=DRILL_GEN_TEMPERATURE,
         logger=logger,
     )
     return SkillMapDrillGenerator(
@@ -94,22 +84,14 @@ async def coach_multiple_choice_drills(
         for candidate in _preferred_provider_chain(body.llmProvider)
     ]
 
-    try:
-        return await generate_multiple_choice_drills_response(
-            body,
-            provider=provider,
-            provider_label=provider_label,
-            provider_available=_llm_provider_available(provider),
-            call_llm_json=_call_llm_json,
-            fallback_providers=fallback_providers,
-            provider_timeout_seconds=int(getattr(settings, "coach_generator_timeout_seconds", 90)),
-            persist_generated_questions=persist_generated_questions,
-            logger=logger,
-        )
-    except GeneratorUnavailableError as error:
-        raise SubmissionFeedbackUnavailableError(
-            code=error.code,
-            message=error.message,
-            provider=error.provider,
-            api_error_code=error.api_error_code,
-        ) from error
+    return await generate_multiple_choice_drills_response(
+        body,
+        provider=provider,
+        provider_label=provider_label,
+        provider_available=_llm_provider_available(provider),
+        call_llm_json=_call_llm_json,
+        fallback_providers=fallback_providers,
+        provider_timeout_seconds=settings.coach_generator_timeout_seconds,
+        persist_generated_questions=persist_generated_questions,
+        logger=logger,
+    )

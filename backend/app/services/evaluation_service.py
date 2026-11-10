@@ -9,7 +9,7 @@ from app.core.llm import (
     llm_provider_available as _llm_provider_available,
     resolve_available_llm_provider as _resolve_available_llm_provider,
 )
-from app.domain.template_evaluator import evaluate_attempt_by_template_mode
+from app.domain.recall_soundness import evaluate_recall_soundness
 from app.models import CoachAttemptEvaluationRequest
 
 logger = logging.getLogger(__name__)
@@ -24,13 +24,7 @@ Return strict JSON with exactly these fields: {"sound": boolean, "syntaxValid": 
 
 
 def _deterministic_evaluation(body: CoachAttemptEvaluationRequest) -> dict[str, Any]:
-    result = evaluate_attempt_by_template_mode(
-        body.expectedAnswer,
-        body.userAnswer,
-        body.skillTags,
-        body.templateMode.value,
-        body.submissionTuning,
-    )
+    result = evaluate_recall_soundness(body.expectedAnswer, body.userAnswer)
     return {
         "sound": bool(result.get("sound")),
         "syntaxValid": bool(result.get("syntaxValid")),

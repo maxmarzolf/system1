@@ -1,0 +1,85 @@
+# Layer rules for the backend, checked by `lint-imports` (run from backend/).
+# Higher layers may import lower ones, never the reverse.
+
+[importlinter]
+root_package = app
+include_external_packages = True
+
+[importlinter:contract:layers]
+name = Endpoints -> services -> domain -> core -> contracts
+type = layers
+layers =
+    app.endpoints
+    app.services
+    app.domain
+    app.core
+    app.contracts
+
+[importlinter:contract:inner-layers-stay-pure]
+name = Contracts, core and domain never reach the database, the API layer or services
+type = forbidden
+source_modules =
+    app.contracts
+    app.core
+    app.domain
+forbidden_modules =
+    app.repositories
+    app.database
+    app.models
+    app.api_schemas
+    app.endpoints
+    app.services
+
+[importlinter:contract:no-web-framework-below-endpoints]
+name = Only endpoints (and the app factory) use the web framework
+type = forbidden
+source_modules =
+    app.services
+    app.domain
+    app.core
+    app.contracts
+    app.repositories
+forbidden_modules =
+    fastapi
+    starlette
+
+[importlinter:contract:repositories-are-sql-only]
+name = Repositories never depend on business logic or the API
+type = forbidden
+source_modules =
+    app.repositories
+forbidden_modules =
+    app.services
+    app.endpoints
+    app.core
+    app.domain
+    app.models
+
+[importlinter:contract:endpoints-go-through-services]
+name = Endpoints never reach core or repositories directly
+type = forbidden
+source_modules =
+    app.endpoints
+forbidden_modules =
+    app.core
+    app.repositories
+    app.database
+allow_indirect_imports = True
+
+[importlinter:contract:contracts-are-independent]
+name = Contracts depend on nothing else in the app
+type = independence
+modules =
+    app.contracts
+    app.config
+
+[importlinter:contract:services-stay-below-the-app]
+name = Services never import endpoints, API response schemas or the boot module
+type = forbidden
+source_modules =
+    app.services
+forbidden_modules =
+    app.endpoints
+    app.api_schemas
+    app.database
+    app.main

@@ -8,10 +8,6 @@ from app.models import (
     SlidingWindowLadderResponse,
     InlineCompletionRequest,
     InlineCompletionResponse,
-    AdaptiveVariationRequest,
-    AdaptiveVariationResponse,
-    CoachAttemptFeedbackRequest,
-    CoachAttemptFeedbackResponse,
     CoachPracticeHistoryRequest,
     CoachPracticeHistoryResponse,
     CoachProviderDefaultResponse,
@@ -19,13 +15,11 @@ from app.models import (
     CoachSessionPlanResponse,
     MultipleChoiceDrillsRequest,
     MultipleChoiceDrillsResponse,
-    SequentialVariationRequest,
-    SequentialVariationResponse,
     SkillMapDrillsRequest,
     SkillMapDrillsResponse,
 )
 from app.services import inline_completion_service, live_coach_service, micro_drill_service, sliding_window_ladder_service
-from app.services import coach_service
+from app.services import coach_orchestration_service, history_service
 from app.services import problem_practice_service
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])
@@ -48,32 +42,27 @@ async def coach_inline_completion(body: InlineCompletionRequest):
 
 @router.get("/provider-default", response_model=CoachProviderDefaultResponse)
 async def coach_provider_default():
-    return await coach_service.coach_provider_default()
-
-
-@router.post("/live-feedback", response_model=CoachAttemptFeedbackResponse)
-async def coach_attempt_feedback(body: CoachAttemptFeedbackRequest):
-    return await coach_service.coach_attempt_feedback(body)
+    return await coach_orchestration_service.coach_provider_default()
 
 
 @router.post("/session-plan", response_model=CoachSessionPlanResponse)
 async def coach_session_plan(body: CoachSessionPlanRequest):
-    return await coach_service.coach_session_plan(body)
+    return await coach_orchestration_service.coach_session_plan(body)
 
 
 @router.post("/history", response_model=CoachPracticeHistoryResponse)
 async def coach_practice_history(body: CoachPracticeHistoryRequest):
-    return await coach_service.coach_practice_history(body)
+    return await history_service.coach_practice_history(body)
 
 
 @router.post("/skill-map-drills", response_model=SkillMapDrillsResponse)
 async def coach_skill_map_drills(body: SkillMapDrillsRequest):
-    return await coach_service.coach_skill_map_drills(body)
+    return await coach_orchestration_service.coach_skill_map_drills(body)
 
 
 @router.post("/skill-map-drills-stream")
 async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
-    stream = await coach_service.coach_skill_map_drills_stream(body)
+    stream = await coach_orchestration_service.coach_skill_map_drills_stream(body)
     return StreamingResponse(stream, media_type="text/event-stream")
 
 
@@ -92,11 +81,6 @@ async def coach_problem_drills(algorithm_slug: str):
     return await problem_practice_service.problem_drills_for_algorithm(algorithm_slug)
 
 
-@router.get("/problem-drills/technique/{technique_slug}", response_model=SkillMapDrillsResponse)
-async def coach_problem_drills_by_technique(technique_slug: str):
-    return await problem_practice_service.problem_drills_for_technique(technique_slug)
-
-
 @router.get("/playlist-drills/{playlist_slug}", response_model=SkillMapDrillsResponse)
 async def coach_static_playlist_drills(
     playlist_slug: str,
@@ -107,17 +91,7 @@ async def coach_static_playlist_drills(
 
 @router.post("/multiple-choice-drills", response_model=MultipleChoiceDrillsResponse)
 async def coach_multiple_choice_drills(body: MultipleChoiceDrillsRequest):
-    return await coach_service.coach_multiple_choice_drills(body)
-
-
-@router.post("/adaptive-variation", response_model=AdaptiveVariationResponse)
-async def coach_adaptive_variation(body: AdaptiveVariationRequest):
-    return await coach_service.coach_adaptive_variation(body)
-
-
-@router.post("/sequential-variation", response_model=SequentialVariationResponse)
-async def coach_sequential_variation(body: SequentialVariationRequest):
-    return await coach_service.coach_sequential_variation(body)
+    return await coach_orchestration_service.coach_multiple_choice_drills(body)
 
 
 @router.post("/micro-drill", response_model=FlowMicroDrillResponse)

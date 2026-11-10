@@ -1,8 +1,46 @@
 from __future__ import annotations
 
+import asyncio
+
+import asyncpg
 import pytest
 
 from app.models import SkillMapDrillsRequest, SkillMapNode, TemplateMode
+from app.services.evaluators import EVALUATORS
+from app.services.evaluators.defaults import register_default_evaluators
+
+
+@pytest.fixture(scope="session")
+def migrated_database():
+    """Create the schema before integration tests that seed rows without starting the app."""
+    from app.config import settings
+    from app.database import connect, disconnect
+
+    async def bootstrap() -> None:
+        await connect()
+        await disconnect()
+
+    try:
+        asyncio.run(bootstrap())
+    except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - infrastructure guard
+        pytest.skip(f"Postgres not available for integration test: {exc}")
+
+
+@pytest.fixture(autouse=True)
+def integration_schema(request):
+    if request.node.get_closest_marker("integration"):
+        request.getfixturevalue("migrated_database")
+
+
+@pytest.fixture(autouse=True)
+def default_evaluators():
+    """Register evaluators the way the app factory does, and undo test overrides afterwards."""
+    saved = dict(EVALUATORS)
+    EVALUATORS.clear()
+    register_default_evaluators()
+    yield
+    EVALUATORS.clear()
+    EVALUATORS.update(saved)
 
 
 @pytest.fixture

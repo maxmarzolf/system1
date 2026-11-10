@@ -81,6 +81,26 @@ class Settings(BaseSettings):
         default=0,
         validation_alias=AliasChoices("COACH_GENERATOR_PATTERN_HISTORY_LIMIT"),
     )
+    typesafe_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("TYPESAFE_API_KEY"),
+    )
+    typesafe_base_url: str = Field(
+        default="https://api.typesafe.ai",
+        validation_alias=AliasChoices("TYPESAFE_BASE_URL"),
+    )
+    jev_model: str = Field(
+        default="jev-1.13.0",
+        validation_alias=AliasChoices("JEV_MODEL", "TYPESAFE_DEFAULT_MODEL"),
+    )
+    jev_timeout_seconds: float = Field(
+        default=20.0,
+        validation_alias=AliasChoices("JEV_TIMEOUT_SECONDS"),
+    )
+    jev_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("JEV_ENABLED"),
+    )
 
     model_config = SettingsConfigDict(
         env_prefix="",

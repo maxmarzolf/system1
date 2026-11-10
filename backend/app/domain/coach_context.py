@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import re
 from collections import Counter
 from typing import Any, TypedDict
 
-from app.models import SkillMapNode, TemplateMode
-from app.readiness import READINESS_MODE_ORDER, summarize_readiness
-from app.submission_rubric import summarize_submission_rubrics
-from app.domain.submission_evaluation import evaluation_feedback
+from app.contracts.coaching import SkillMapNode, TemplateMode
+from app.domain.readiness import READINESS_MODE_ORDER, summarize_readiness
+from app.domain.rubric_summary import summarize_submission_rubrics
+from app.contracts.evaluation import evaluation_feedback
+from app.core.taxonomy import primary_pattern_tag, slugify
 
 
 class AttemptHistoryEntry(TypedDict, total=False):
@@ -48,14 +48,6 @@ class PatternProgressSummary(TypedDict, total=False):
 class SkillMapProgressSummary(TypedDict):
     overall: dict[str, Any]
     patterns: dict[str, PatternProgressSummary]
-
-
-def _pattern_slug(text: str) -> str:
-    return re.sub(
-        r"\s+",
-        "-",
-        re.sub(r"[^a-z0-9\s-]", " ", text.lower().replace("/", " ").replace("&", " ").replace("-", " ")).strip(),
-    )
 
 
 def summarize_attempt_history(history: list[AttemptHistoryEntry]) -> AttemptHistorySummary:
@@ -133,7 +125,7 @@ def summarize_skill_map_progress(
     progress_by_pattern: dict[str, PatternProgressSummary] = {}
 
     for node in skill_map:
-        slug = _pattern_slug(getattr(node, "algorithm", ""))
+        slug = slugify(getattr(node, "algorithm", ""))
         if not slug:
             continue
         progress_by_pattern[slug] = {
@@ -197,49 +189,6 @@ def summarize_skill_map_progress(
         },
         "patterns": progress_by_pattern,
     }
-
-
-def progress_focus_note(progress: PatternProgressSummary | dict[str, Any]) -> str:
-    if not progress or int(progress.get("attemptCount", 0)) == 0:
-        return ""
-    repeated = [str(tag) for tag in progress.get("repeatedErrorTags", []) if str(tag).strip()]
-    if repeated:
-        return f"Recent weak spot: {', '.join(repeated[:2])}."
-    latest_focus = str(progress.get("latestPrimaryFocus", "")).strip()
-    if latest_focus:
-        return latest_focus
-    return ""
-
-
-def primary_pattern_tag(skill_tags: list[str]) -> str:
-    for tag in (
-        "sliding-window",
-        "two-pointers",
-        "binary-search",
-        "trees",
-        "graphs",
-        "dfs-bfs",
-        "graph-traversal",
-        "backtracking",
-        "heap-priority-queue",
-        "heap",
-        "union-find",
-        "dynamic-programming",
-        "dp",
-        "intervals",
-        "prefix-sums",
-        "monotonic-stack",
-        "stacks-queues",
-        "linked-lists",
-        "matrix-grid",
-        "trie",
-        "sorting",
-        "greedy-sorting",
-        "stack",
-    ):
-        if tag in skill_tags:
-            return tag
-    return ""
 
 
 def pattern_display_name(skill_tags: list[str]) -> str:

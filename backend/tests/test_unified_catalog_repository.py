@@ -20,6 +20,7 @@ class FakeConnection:
         self.rows = rows or []
         self.fetch_calls: list[tuple[str, tuple[object, ...]]] = []
         self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
+        self.executemany_calls: list[tuple[str, list[tuple[object, ...]]]] = []
 
     async def fetch(self, query, *args):
         self.fetch_calls.append((query, args))
@@ -28,6 +29,9 @@ class FakeConnection:
     async def execute(self, query, *args):
         self.execute_calls.append((query, args))
         return "OK"
+
+    async def executemany(self, query, rows):
+        self.executemany_calls.append((query, list(rows)))
 
     def transaction(self):
         return FakeTransaction()
@@ -83,7 +87,6 @@ def test_upsert_generated_problem_writes_problem_only(monkeypatch):
         missing="# missing",
         hint="Think in states",
         tags=["skill-map", "sliding-window"],
-        llm_used=True,
         generation_context_json=json.dumps({"llmUsed": True}),
     ))
 
@@ -91,6 +94,7 @@ def test_upsert_generated_problem_writes_problem_only(monkeypatch):
     query, args = connection.execute_calls[0]
     assert "INSERT INTO problem" in query
     assert "generated_skill_map_cards" not in query
+    assert "prompt" not in query and "llm_used" not in query
     assert args[0] == "generated-1"
 
 
@@ -120,3 +124,34 @@ def test_catalog_service_groups_problem_backed_playlist_rows(monkeypatch):
         "coreShape": "Arrays / Hash Maps",
         "methods": ["pair lookup"],
     }]
+
+
+def test_seed_static_playlist_batches_problems_and_orderings(monkeypatch):
+    connection = FakeConnection()
+    monkeypatch.setattr(repository, "acquire_connection", lambda: FakeConnectionContext(connection))
+    items = [
+        {
+            "id": item_id, "title": item_id.title(), "difficulty": "Easy", "prompt": "p",
+            "solution": "s", "missing": "m", "hint": "h", "tags": ["t"], "family": "two-pointers",
+            "tier": "tier-1", "playlistMetadata": {"tier": "tier-1"},
+            "metadata": {"plainEnglishPromptDetail": {"leetcodeExamples": ["1. Two Sum"]}},
+        }
+        for item_id in ("a", "b")
+    ]
+
+    asyncio.run(repository.seed_static_playlist(
+        slug="google", title="Google", description="d", show_on_skill_map=True,
+        items=items, orderings={"curated": ["a", "b"], "reverse": ["b", "a"]},
+    ))
+
+    assert len(connection.execute_calls) == 2  # playlist upsert + clear its order rows
+    (problem_sql, problem_rows), (order_sql, order_rows) = connection.executemany_calls
+    assert "INSERT INTO problem" in problem_sql
+    assert [row[0] for row in problem_rows] == ["a", "b"]
+    assert json.loads(problem_rows[0][11])["templatePrompts"] == {}
+    assert "INSERT INTO playlist_problem_order" in order_sql
+    assert [(row[1], row[2], row[3]) for row in order_rows] == [
+        ("curated", "a", 0), ("curated", "b", 1), ("reverse", "b", 0), ("reverse", "a", 1),
+    ]
+    assert json.loads(order_rows[0][4]) == {"tier": "tier-1"}
+    assert "tier, family" not in order_sql

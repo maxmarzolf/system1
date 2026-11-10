@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { apiUrl } from './api'
+import { api, unwrap } from './api/client'
 import RecallCodeEditor from './RecallCodeEditor'
 import { LADDER_REPS_PER_RUNG, LADDER_RUNGS, type SlidingWindowTechnique } from './windowLadderPlan'
 import type { AppTheme } from './theme'
@@ -125,22 +125,19 @@ export default function SlidingWindowLadder({
     const controller = new AbortController()
     const load = async () => {
       try {
-        const response = await fetch(apiUrl('/api/coach/sliding-window-ladder'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const result = await api.POST('/api/coach/sliding-window-ladder', {
           signal: controller.signal,
-          body: JSON.stringify({
+          body: {
             cardTitle, cardPrompt, cardTarget, technique,
             rungIndex: request.rungIndex,
             rep: request.rep,
             recentAttempts: request.recentAttempts,
             llmProvider: provider,
-          }),
+          },
         })
-        const payload = await response.json()
-        if (!response.ok) throw new Error(typeof payload.detail === 'string' ? payload.detail : 'Unable to generate a Ladder question.')
+        const payload = unwrap(result, 'Unable to generate a Ladder question.')
         if (controller.signal.aborted) return
-        const next = payload as LadderQuestion
+        const next = payload as unknown as LadderQuestion
         setQuestion(next)
         setAnswer(next.starterCode)
         startedAt.current = Date.now()

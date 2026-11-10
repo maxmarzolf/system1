@@ -1,38 +1,21 @@
 from __future__ import annotations
 
 from app.models import TemplateMode
-from app.core.generator import (
-    TEMPLATE_MODE_ORDER,
-    _clean_concise_prompt,
-    _core_shape_template_target,
-    _normalize_drill_difficulty,
-    _pattern_slug,
-    _template_mode_value,
-    _normalize_inline_template_target,
-    apply_specimen_tuning_to_target,
-)
-
-
-def test_pattern_slug_normalizes_common_variants() -> None:
-    assert _pattern_slug("Sliding Window") == "sliding-window"
-    assert _pattern_slug("Binary/Search") == "binary-search"
-    assert _pattern_slug("A & B") == "a-b"
-
-
-def test_pattern_slug_is_stable() -> None:
-    slug = _pattern_slug("Graph Traversal")
-    assert _pattern_slug(slug) == slug
+from app.core.generator import TEMPLATE_MODE_ORDER, apply_specimen_tuning_to_target
+from app.core.generator.inline_notes import core_shape_template_target, normalize_inline_template_target
+from app.core.generator.prompts import normalize_drill_difficulty
+from app.core.generator.text import clean_concise_prompt, template_mode_value
 
 
 def test_clean_concise_prompt_truncates_on_word_boundary() -> None:
     text = "This is a very long prompt that should be shortened for concise output behavior"
-    compact = _clean_concise_prompt(text, max_chars=40)
+    compact = clean_concise_prompt(text, max_chars=40)
     assert compact.endswith("...")
     assert len(compact) <= 43
 
 
 def test_clean_concise_prompt_normalizes_whitespace() -> None:
-    assert _clean_concise_prompt(" Recall   the\tpattern ", max_chars=80) == "Recall the pattern"
+    assert clean_concise_prompt(" Recall   the\tpattern ", max_chars=80) == "Recall the pattern"
 
 
 def test_specimen_tuning_normalizes_python_skeletons_to_pep8() -> None:
@@ -80,16 +63,16 @@ def test_specimen_tuning_normalizes_python_skeletons_to_pep8() -> None:
 
 
 def test_template_mode_value_defaults_to_algorithm() -> None:
-    assert _template_mode_value(None) == TemplateMode.algorithm.value
-    assert _template_mode_value("unknown") == TemplateMode.algorithm.value
+    assert template_mode_value(None) == TemplateMode.algorithm.value
+    assert template_mode_value("unknown") == TemplateMode.algorithm.value
 
 
 def test_template_mode_value_accepts_enum_and_casefolds_strings() -> None:
-    assert _template_mode_value(TemplateMode.algorithm) == TemplateMode.algorithm.value
-    assert _template_mode_value("PSEUDO") == TemplateMode.algorithm.value
-    assert _template_mode_value("INVARIANT") == TemplateMode.algorithm.value
-    assert _template_mode_value("TOTAL") == TemplateMode.algorithm.value
-    assert _template_mode_value("INLINE") == TemplateMode.algorithm.value
+    assert template_mode_value(TemplateMode.algorithm) == TemplateMode.algorithm.value
+    assert template_mode_value("PSEUDO") == TemplateMode.algorithm.value
+    assert template_mode_value("INVARIANT") == TemplateMode.algorithm.value
+    assert template_mode_value("TOTAL") == TemplateMode.algorithm.value
+    assert template_mode_value("INLINE") == TemplateMode.algorithm.value
 
 
 def test_template_mode_order_contains_expected_values() -> None:
@@ -97,9 +80,9 @@ def test_template_mode_order_contains_expected_values() -> None:
 
 
 def test_normalize_drill_difficulty_handles_aliases_and_unknowns() -> None:
-    assert _normalize_drill_difficulty("easy") == "Easy"
-    assert _normalize_drill_difficulty("advanced") == "Hard"
-    assert _normalize_drill_difficulty("?") == "Med."
+    assert normalize_drill_difficulty("easy") == "Easy"
+    assert normalize_drill_difficulty("advanced") == "Hard"
+    assert normalize_drill_difficulty("?") == "Med."
 
 
 def test_inline_template_normalization_does_not_duplicate_existing_notes() -> None:
@@ -116,7 +99,7 @@ def test_inline_template_normalization_does_not_duplicate_existing_notes() -> No
         "    return left                                 return final answer"
     )
 
-    normalized = _normalize_inline_template_target("binary-search", target)
+    normalized = normalize_inline_template_target("binary-search", target)
 
     assert "update state for next decision  update state for next decision" not in normalized
     assert "restore rule before continuing  restore rule before continuing" not in normalized
@@ -136,7 +119,7 @@ def test_inline_template_normalization_refines_dynamic_programming_notes() -> No
         "    return max(take, skip)                      return final answer"
     )
 
-    normalized = _normalize_inline_template_target("dynamic-programming", target)
+    normalized = normalize_inline_template_target("dynamic-programming", target)
 
     assert "best if previous was taken" in normalized
     assert "best if previous was skipped" in normalized
@@ -170,7 +153,7 @@ def test_inline_template_normalization_keeps_sliding_window_notes_sparse() -> No
         "    return out                                       return final answer"
     )
 
-    normalized = _normalize_inline_template_target("sliding-window", target)
+    normalized = normalize_inline_template_target("sliding-window", target)
 
     assert "window valid before scoring" in normalized
     assert "include entering value" in normalized
@@ -201,7 +184,7 @@ def test_core_shape_extracts_nested_backtracking_helper() -> None:
         "    return res"
     )
 
-    core_shape = _core_shape_template_target("backtracking", target)
+    core_shape = core_shape_template_target("backtracking", target)
 
     assert core_shape.startswith("def dfs(i):")
     assert "def enumerate_all" not in core_shape
@@ -211,7 +194,7 @@ def test_core_shape_extracts_nested_backtracking_helper() -> None:
     assert "choose current item" not in core_shape
     assert "undo current choice" not in core_shape
 
-    inline_core_shape = _normalize_inline_template_target("backtracking", core_shape)
+    inline_core_shape = normalize_inline_template_target("backtracking", core_shape)
 
     assert "choose current item" in inline_core_shape
     assert "undo current choice" in inline_core_shape

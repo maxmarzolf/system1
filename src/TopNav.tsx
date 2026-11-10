@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 import { type ReactNode, type RefObject } from 'react'
 import { useTheme } from './theme'
 
@@ -10,6 +10,10 @@ type TopNavProps = {
   llmProviderMenuRef?: RefObject<HTMLDivElement | null>
   practiceHistoryHref?: string
   rightExtras?: ReactNode
+  /** Keep the bar fixed to the top of the window while the page scrolls. */
+  pinned?: boolean
+  /** Give the pinned bar a mostly opaque, full-width background. */
+  solid?: boolean
 }
 
 export default function TopNav({
@@ -20,6 +24,8 @@ export default function TopNav({
   llmProviderMenuRef,
   practiceHistoryHref = '/practice-history',
   rightExtras,
+  pinned = false,
+  solid = false,
 }: TopNavProps) {
   const { theme, setTheme } = useTheme()
   const lightModeEnabled = theme === 'light-high-contrast'
@@ -27,7 +33,7 @@ export default function TopNav({
   const toggleTheme = () => setTheme(lightModeEnabled ? 'dark-high-contrast' : 'light-high-contrast')
 
   return (
-    <nav className="navbar">
+    <nav className={['navbar', pinned ? 'navbar-pinned' : '', pinned && solid ? 'navbar-solid' : ''].filter(Boolean).join(' ')}>
       <div className="navbar-left">
         <Link to="/" className="navbar-brand">System 1</Link>
         <span className="navbar-divider" />
@@ -53,6 +59,11 @@ export default function TopNav({
         </div>
       </div>
       <div className="navbar-right">
+        <NavLink to="/dashboard" className="navbar-dashboard">Dashboard</NavLink>
+        <NavLink to={practiceHistoryHref} className="navbar-dashboard">Journey</NavLink>
+        <NavLink to="/tune" className="navbar-dashboard">Tune</NavLink>
+        <NavLink to="/evolve" className="navbar-dashboard">Evolve</NavLink>
+        <NavLink to="/admin" className="navbar-dashboard">Admin</NavLink>
         <div className="navbar-theme">
           <button
             type="button"
@@ -77,10 +88,6 @@ export default function TopNav({
             </svg>
           </button>
         </div>
-        <Link to="/tune" className="navbar-dashboard">Tune</Link>
-        <Link to="/evolve" className="navbar-dashboard">Evolve</Link>
-        <Link to={practiceHistoryHref} className="navbar-dashboard">History</Link>
-        <Link to="/dashboard" className="navbar-dashboard">Dashboard</Link>
         {rightExtras}
       </div>
     </nav>

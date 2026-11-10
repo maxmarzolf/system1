@@ -2,25 +2,9 @@ from __future__ import annotations
 
 import re
 from typing import Any
-
-
-def pattern_slug(value: str) -> str:
-    return re.sub(
-        r"\s+",
-        "-",
-        re.sub(r"[^a-z0-9\s-]", " ", str(value or "").lower().replace("/", " ").replace("&", " ").replace("-", " ")).strip(),
-    )
-
-
-def method_slug(method: str) -> str:
-    return pattern_slug(method)
-
-
-def pattern_family_slug(pattern_or_slug: str) -> str:
-    slug = pattern_slug(pattern_or_slug)
-    return {
-        "heap-priority-queue": "heap",
-    }.get(slug, slug)
+from app.core.taxonomy import algorithm_slug as pattern_family_slug
+from app.core.taxonomy import slugify as method_slug
+from app.core.taxonomy import slugify as pattern_slug
 
 
 def _limit_words(value: str, max_words: int) -> str:

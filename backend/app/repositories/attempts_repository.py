@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import hashlib
-import json
-import re
 from datetime import datetime
-from typing import cast
+from typing import Any, cast
 
+from app.contracts.catalog_ids import problem_slug_candidates
 from app.repositories.base import acquire_connection
 from app.repositories.types import (
     AlgorithmSkillRow,
@@ -14,122 +12,6 @@ from app.repositories.types import (
     SkillMapOverviewAttemptRow,
     SkillMapOverviewGeneratedRow,
 )
-
-
-def _normalize_question_fingerprint_text(value: str) -> str:
-    text = str(value or "").replace("\r\n", "\n").strip()
-    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.split("\n")]
-    return "\n".join(lines).strip()
-
-
-def _attempt_problem_fingerprint(
-    *,
-    question: str,
-    correct_answer: str,
-    question_type: str,
-    generated_card_json: str | None,
-) -> str:
-    payload = json.dumps(
-        {
-            "kind": "attempt-problem",
-            "question": _normalize_question_fingerprint_text(question),
-            "correctAnswer": _normalize_question_fingerprint_text(correct_answer),
-            "questionType": _normalize_question_fingerprint_text(question_type),
-            "generatedCard": generated_card_json or "",
-        },
-        separators=(",", ":"),
-        ensure_ascii=True,
-        sort_keys=True,
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def _is_multiple_choice_attempt(
-    *,
-    generated_card_id: str | None,
-    question_type: str,
-    category_tags: list[str],
-    modality: str | None,
-) -> bool:
-    return (
-        modality == "mcq"
-        or str(question_type or "").startswith("skill-map-mcq")
-        or "skill-map-mcq" in category_tags
-        or str(generated_card_id or "").startswith("mcq-")
-    )
-
-
-async def _resolve_multiple_choice_problem_id(
-    *,
-    generated_card_id: str | None,
-    question: str,
-    question_type: str,
-    correct_answer: str,
-    generated_card_json: str | None,
-    category_tags: list[str],
-    modality: str | None,
-    created_at: datetime,
-    updated_at: datetime,
-) -> str | None:
-    if not _is_multiple_choice_attempt(
-        generated_card_id=generated_card_id,
-        question_type=question_type,
-        category_tags=category_tags,
-        modality=modality,
-    ):
-        return None
-
-    fingerprint = _attempt_problem_fingerprint(
-        question=question,
-        correct_answer=correct_answer,
-        question_type=question_type,
-        generated_card_json=generated_card_json,
-    )
-    default_problem_id = f"mcq-{fingerprint[:24]}"
-    problem_id = (generated_card_id or "").strip() or default_problem_id
-    if not problem_id.startswith("mcq-"):
-        problem_id = default_problem_id
-    created_date = created_at.replace(tzinfo=None) if created_at.tzinfo else created_at
-    modified_date = updated_at.replace(tzinfo=None) if updated_at.tzinfo else updated_at
-
-    async with acquire_connection() as conn:
-        if generated_card_id:
-            existing = await conn.fetchrow("SELECT id FROM multiple_choice_problem WHERE id = $1", generated_card_id)
-            if existing:
-                return str(existing["id"])
-
-        row = await conn.fetchrow(
-            """
-            INSERT INTO multiple_choice_problem (
-                id,
-                user_id,
-                question_text,
-                question_help_text,
-                recall_answer,
-                multiple_choice_correct_answer_text,
-                fingerprint,
-                created_date,
-                modified_date
-            )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-            ON CONFLICT (fingerprint) DO UPDATE
-            SET modified_date = EXCLUDED.modified_date
-            RETURNING id
-            """,
-            problem_id,
-            "0000",
-            question,
-            "",
-            None,
-            correct_answer,
-            fingerprint,
-            created_date,
-            modified_date,
-        )
-
-    if not row:
-        return problem_id
-    return str(row["id"])
 
 
 async def insert_submission_attempt_row(
@@ -152,54 +34,39 @@ async def insert_submission_attempt_row(
     support_layer: str,
     live_coach_used: bool,
     modality: str,
-    target_source: str | None,
-    target_control: str | None,
-    format_control: str | None,
     created_at: datetime,
-    updated_at: datetime,
+    multiple_choice_problem_id: str | None = None,
 ) -> SubmissionInsertResult | None:
-    del card_id, card_title, mode
+    """Insert a submission. MCQ rows reference the stored problem the evaluator graded against."""
+    del card_id, card_title, mode, question
 
-    normalized_question = str(question or "")
     normalized_correct_answer = str(correct_answer or "")
     normalized_user_answer = str(user_answer or "")
-    multiple_choice_problem_id = await _resolve_multiple_choice_problem_id(
-        generated_card_id=generated_card_id,
-        question=normalized_question,
-        question_type=question_type,
-        correct_answer=normalized_correct_answer,
-        generated_card_json=generated_card_json,
-        category_tags=category_tags,
-        modality=modality,
-        created_at=created_at,
-        updated_at=updated_at,
-    )
 
     async with acquire_connection() as conn, conn.transaction():
         problem_slug = None
-        if generated_card_id and not _is_multiple_choice_attempt(
-            generated_card_id=generated_card_id,
-            question_type=question_type,
-            category_tags=category_tags,
-            modality=modality,
-        ):
+        if generated_card_id and modality != "mcq":
+            candidates = problem_slug_candidates([generated_card_id])
             problem_slug = await conn.fetchval(
-                "SELECT slug FROM problem WHERE slug = $1",
-                generated_card_id,
+                """
+                SELECT slug FROM problem
+                WHERE slug = ANY($1::text[])
+                ORDER BY array_position($1::text[], slug::text)
+                LIMIT 1
+                """,
+                candidates,
             )
         row = await conn.fetchrow(
             """
             INSERT INTO submission
-                (session_id, user_id, multiple_choice_problem_id, answer, question_type, category_tags,
+                (session_id, multiple_choice_problem_id, answer, question_type, category_tags,
                  correct_answer, successful, signals, interaction_id,
                  generated_card_id, problem_slug, generated_card, template_mode, support_layer,
-                 live_coach_used, modality,
-                 target_source, target_control, format_control, created_at, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+                 live_coach_used, modality, created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
             RETURNING id
             """,
             session_id or "0000",
-            "0000",
             multiple_choice_problem_id,
             normalized_user_answer,
             question_type,
@@ -215,11 +82,7 @@ async def insert_submission_attempt_row(
             support_layer,
             live_coach_used,
             modality,
-            target_source,
-            target_control,
-            format_control,
             created_at,
-            updated_at,
         )
         if not row:
             return None
@@ -308,10 +171,18 @@ async def fetch_skill_map_overview_generated_rows() -> list[SkillMapOverviewGene
     return [cast(SkillMapOverviewGeneratedRow, dict(row)) for row in rows]
 
 
+# Submissions the daily work grid counts and the history day view show.
+_DAILY_WORK_SUBMISSION_FILTER = """
+    (a.question_type LIKE 'skill-map%'
+     OR a.question_type LIKE 'playlist:%'
+     OR a.category_tags && ARRAY['skill-map']::text[])
+"""
+
+
 async def fetch_skill_map_overview_attempt_rows() -> list[SkillMapOverviewAttemptRow]:
     async with acquire_connection() as conn:
         rows = await conn.fetch(
-            """
+            f"""
             SELECT
                 COALESCE(a.generated_card_id, a.multiple_choice_problem_id) AS tracked_card_id,
                 COALESCE(NULLIF(a.generated_card->>'title', ''), q.question_text, a.multiple_choice_problem_id) AS card_title,
@@ -326,10 +197,41 @@ async def fetch_skill_map_overview_attempt_rows() -> list[SkillMapOverviewAttemp
                 a.signals
             FROM submission a
             LEFT JOIN multiple_choice_problem q ON q.id = a.multiple_choice_problem_id
-            WHERE a.question_type LIKE 'skill-map%'
-               OR a.question_type LIKE 'playlist:%'
-               OR a.category_tags && ARRAY['skill-map']::text[]
+            WHERE {_DAILY_WORK_SUBMISSION_FILTER}
             ORDER BY a.created_at DESC
             """
         )
     return [cast(SkillMapOverviewAttemptRow, dict(row)) for row in rows]
+
+
+async def fetch_history_day_rows(day_start: datetime, day_end: datetime) -> list[dict[str, Any]]:
+    """Every daily-work submission created in [day_start, day_end), oldest first, with MCQ choices."""
+    async with acquire_connection() as conn:
+        rows = await conn.fetch(
+            f"""
+            SELECT
+                a.id,
+                a.created_at,
+                a.modality,
+                a.question_type,
+                a.category_tags,
+                a.successful,
+                a.answer,
+                a.correct_answer,
+                a.signals,
+                a.multiple_choice_problem_id,
+                a.problem_slug,
+                COALESCE(NULLIF(a.generated_card->>'title', ''), a.generated_card_id, a.multiple_choice_problem_id) AS title,
+                COALESCE(q.question_text, NULLIF(a.generated_card->>'question', ''), NULLIF(a.generated_card->>'prompt', ''), '') AS question,
+                q.choices AS multiple_choice_choices,
+                q.correct_choice_id AS multiple_choice_correct_choice_id
+            FROM submission a
+            LEFT JOIN multiple_choice_problem q ON q.id = a.multiple_choice_problem_id
+            WHERE {_DAILY_WORK_SUBMISSION_FILTER}
+              AND a.created_at >= $1 AND a.created_at < $2
+            ORDER BY a.created_at ASC, a.id ASC
+            """,
+            day_start,
+            day_end,
+        )
+    return [dict(row) for row in rows]

@@ -6,20 +6,13 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from app.domain.llm_resilience import SUBMISSION_LLM_MAX_RETRIES, SUBMISSION_LLM_RETRY_DELAYS_SECONDS
-from app.domain.submission_evaluation import evaluation_feedback
-from app.models import CoachAttemptFeedbackRequest, TemplateMode
+from app.core.llm import LlmUnavailableError
+from app.contracts.evaluation import evaluation_feedback
+from app.contracts.coaching import CoachAttemptFeedbackRequest, TemplateMode
 
 
-class NarratorFeedbackUnavailableError(RuntimeError):
-    def __init__(self, code: str, message: str, provider: str, api_error_code: str = ""):
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.provider = provider
-        self.api_error_code = api_error_code
-
-
+SUBMISSION_LLM_MAX_RETRIES = 3
+SUBMISSION_LLM_RETRY_DELAYS_SECONDS = (0.3, 0.6, 0.9)
 @dataclass(frozen=True)
 class NarratorContext:
     provider: str
@@ -182,7 +175,7 @@ async def attempt_feedback_with_narrator(
             last_error_message
             or f"Feedback cannot be generated at this time. No response from {context.provider_label}."
         )
-        raise NarratorFeedbackUnavailableError(
+        raise LlmUnavailableError(
             code="submission_feedback_no_response",
             message=fallback_message,
             provider=context.provider,

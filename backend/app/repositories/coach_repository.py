@@ -7,7 +7,12 @@ from datetime import datetime
 from typing import Any, cast
 
 from app.repositories.base import acquire_connection
-from app.repositories.types import MultipleChoiceProblemInsertResult, PracticeHistoryEntry, PracticeHistoryRow
+from app.repositories.multiple_choice_repository import (
+    MULTIPLE_CHOICE_PROBLEM_COLUMNS,
+    StoredMultipleChoiceProblem,
+    stored_multiple_choice_problem,
+)
+from app.repositories.types import PracticeHistoryEntry, PracticeHistoryRow
 
 _PRACTICE_HISTORY_SELECT = """
     SELECT
@@ -159,7 +164,7 @@ async def fetch_practice_history_entries(
             "successful": bool(row["successful"]),
             "signals": {
                 "elapsedMs": int(stored_signals.get("elapsed_ms") or 0),
-                "evaluation": evaluation,
+                "evaluation": evaluation or None,
                 "flow": _parse_json_field(stored_signals.get("flow"), {}),
                 "modality": _parse_json_field(stored_signals.get("modality"), {}),
             },
@@ -177,66 +182,44 @@ async def fetch_practice_history_entries(
 async def insert_generated_multiple_choice_question_rows(
     *,
     questions: list[dict[str, Any]],
-    user_id: str,
-    created_date: datetime,
-    modified_date: datetime,
-) -> list[str]:
-    saved_ids: list[str] = []
+    algorithm_slugs: list[str | None],
+    created_at: datetime,
+) -> list[StoredMultipleChoiceProblem | None]:
+    """Upsert generated questions; rows are immutable once stored.
+
+    Returns one entry per input question (``None`` when it was skipped). A
+    question that matches an existing fingerprint returns the *stored* row, so
+    callers serve the stored id and choice order that submissions grade against.
+    ``algorithm_slugs`` runs parallel to ``questions``; a slug not in ``algorithm`` is stored as NULL.
+    """
+    stored: list[StoredMultipleChoiceProblem | None] = []
     async with acquire_connection() as conn:
-        for question in questions:
+        for question, algorithm_slug in zip(questions, algorithm_slugs, strict=True):
             choices = [choice for choice in question.get("choices", []) if isinstance(choice, dict)]
             if len(choices) < 4:
+                stored.append(None)
                 continue
 
-            correct_label = str(question.get("correctChoiceId") or "")
-            correct_text = next(
-                (str(choice.get("text") or "") for choice in choices if str(choice.get("id") or "") == correct_label),
-                "",
+            choices_json = json.dumps(
+                [{"id": str(choice.get("id") or ""), "text": str(choice.get("text") or "")} for choice in choices[:4]]
             )
             fingerprint = _multiple_choice_question_fingerprint(question)
             row = await conn.fetchrow(
-                """
-                INSERT INTO multiple_choice_problem (
-                    id, user_id, question_text, question_help_text, recall_answer,
-                    multiple_choice_answer_label_1, multiple_choice_answer_text_1,
-                    multiple_choice_answer_label_2, multiple_choice_answer_text_2,
-                    multiple_choice_answer_label_3, multiple_choice_answer_text_3,
-                    multiple_choice_answer_label_4, multiple_choice_answer_text_4,
-                    multiple_choice_correct_answer_label, multiple_choice_correct_answer_text,
-                    fingerprint, created_date, modified_date
-                )
-                VALUES (
-                    $1,$2,$3,$4,$5,
-                    $6,$7,
-                    $8,$9,
-                    $10,$11,
-                    $12,$13,
-                    $14,$15,
-                    $16,$17,$18
-                )
-                ON CONFLICT (fingerprint) DO UPDATE
-                SET modified_date = EXCLUDED.modified_date
-                RETURNING id
+                f"""
+                INSERT INTO multiple_choice_problem
+                    (id, question_text, explanation, choices, correct_choice_id, algorithm_slug, fingerprint, created_at)
+                VALUES ($1, $2, $3, $4::jsonb, $5, (SELECT slug FROM algorithm WHERE slug = $6), $7, $8)
+                ON CONFLICT (fingerprint) DO UPDATE SET fingerprint = EXCLUDED.fingerprint
+                RETURNING {MULTIPLE_CHOICE_PROBLEM_COLUMNS}
                 """,
                 str(question.get("id") or ""),
-                user_id,
                 str(question.get("question") or ""),
                 str(question.get("explanation") or ""),
-                None,
-                str(choices[0].get("id") or ""),
-                str(choices[0].get("text") or ""),
-                str(choices[1].get("id") or ""),
-                str(choices[1].get("text") or ""),
-                str(choices[2].get("id") or ""),
-                str(choices[2].get("text") or ""),
-                str(choices[3].get("id") or ""),
-                str(choices[3].get("text") or ""),
-                correct_label,
-                correct_text,
+                choices_json,
+                str(question.get("correctChoiceId") or ""),
+                algorithm_slug,
                 fingerprint,
-                created_date,
-                modified_date,
+                created_at,
             )
-            if row:
-                saved_ids.append(cast(MultipleChoiceProblemInsertResult, dict(row))["id"])
-    return saved_ids
+            stored.append(stored_multiple_choice_problem(dict(row)) if row else None)
+    return stored

@@ -4,9 +4,11 @@ import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 
+from app.contracts.evaluation import Evaluation
 from app.models import AttemptCreate
-from app.services import attempts_service
-from app.services.attempts_service import build_skill_map_overview
+from app.services import submission_store
+from app.services.read_models import common as read_common, history, overview
+from app.services.read_models.overview import build_skill_map_overview
 
 
 def test_create_attempt_forwards_multiple_choice_metadata(monkeypatch) -> None:
@@ -16,7 +18,7 @@ def test_create_attempt_forwards_multiple_choice_metadata(monkeypatch) -> None:
         captured.update(kwargs)
         return {"id": 91}
 
-    monkeypatch.setattr(attempts_service, "insert_submission_attempt_row", _insert)
+    monkeypatch.setattr(submission_store, "insert_submission_attempt_row", _insert)
     body = AttemptCreate.model_validate({
         "cardId": "mcq-1",
         "mode": "main-recall",
@@ -27,15 +29,15 @@ def test_create_attempt_forwards_multiple_choice_metadata(monkeypatch) -> None:
         "formatControl": "user",
     })
 
-    evaluation = {"version": 1, "verdict": "needs-work"}
-    result = asyncio.run(attempts_service.create_attempt(body, successful=False, evaluation=evaluation))
+    evaluation = Evaluation.model_validate({"version": 1, "verdict": "needs-work"})
+    result = asyncio.run(submission_store.create_attempt(body, successful=False, evaluation=evaluation))
 
     assert result == {"saved": True, "attemptId": 91}
     assert captured["modality"] == "mcq"
-    assert captured["target_source"] == "skill-map"
+    assert "target_source" not in captured
     assert json.loads(str(captured["signals_json"])) == {
         "elapsed_ms": 875,
-        "evaluation": {"version": 1, "verdict": "needs-work"},
+        "evaluation": evaluation.to_stored(),
         "modality": {"kind": "mcq"},
     }
 
@@ -47,14 +49,14 @@ def test_create_attempt_normalizes_legacy_activity_format(monkeypatch) -> None:
         captured.update(kwargs)
         return {"id": 92}
 
-    monkeypatch.setattr(attempts_service, "insert_submission_attempt_row", _insert)
+    monkeypatch.setattr(submission_store, "insert_submission_attempt_row", _insert)
     body = AttemptCreate.model_validate({
         "cardId": "mcq-legacy",
         "mode": "main-recall",
         "activityFormat": "multiple-choice",
     })
 
-    result = asyncio.run(attempts_service.create_attempt(body, successful=True, evaluation={"verdict": "sound"}))
+    result = asyncio.run(submission_store.create_attempt(body, successful=True, evaluation=Evaluation(verdict="sound")))
 
     assert result == {"saved": True, "attemptId": 92}
     assert captured["session_id"] == "0000"
@@ -68,7 +70,7 @@ def test_create_attempt_persists_flow_and_modality_signals(monkeypatch) -> None:
         captured.update(kwargs)
         return {"id": 93}
 
-    monkeypatch.setattr(attempts_service, "insert_submission_attempt_row", _insert)
+    monkeypatch.setattr(submission_store, "insert_submission_attempt_row", _insert)
     body = AttemptCreate.model_validate({
         "cardId": "flow-card",
         "mode": "main-recall",
@@ -90,14 +92,14 @@ def test_create_attempt_persists_flow_and_modality_signals(monkeypatch) -> None:
         },
     })
 
-    result = asyncio.run(attempts_service.create_attempt(body, successful=True, evaluation={"verdict": "sound"}))
+    result = asyncio.run(submission_store.create_attempt(body, successful=True, evaluation=Evaluation(verdict="sound")))
 
     assert result == {"saved": True, "attemptId": 93}
     assert captured["session_id"] == "flow-1"
     assert captured["modality"] == "ghost-rep"
     assert json.loads(str(captured["signals_json"])) == {
         "elapsed_ms": 1500,
-        "evaluation": {"verdict": "sound"},
+        "evaluation": Evaluation(verdict="sound").to_stored(),
         "flow": {
             "runId": "flow-1",
             "anchorCardId": "flow-card",
@@ -119,7 +121,7 @@ def test_create_attempt_prefers_explicit_session_id_over_flow_signal(monkeypatch
         captured.update(kwargs)
         return {"id": 94}
 
-    monkeypatch.setattr(attempts_service, "insert_submission_attempt_row", _insert)
+    monkeypatch.setattr(submission_store, "insert_submission_attempt_row", _insert)
     body = AttemptCreate.model_validate({
         "cardId": "flow-card",
         "mode": "main-recall",
@@ -128,7 +130,7 @@ def test_create_attempt_prefers_explicit_session_id_over_flow_signal(monkeypatch
         "signals": {"flow": {"runId": "flow-signal-fallback"}},
     })
 
-    result = asyncio.run(attempts_service.create_attempt(body, successful=True, evaluation={"verdict": "sound"}))
+    result = asyncio.run(submission_store.create_attempt(body, successful=True, evaluation=Evaluation(verdict="sound")))
 
     assert result == {"saved": True, "attemptId": 94}
     assert captured["session_id"] == "flow-session-explicit"
@@ -159,6 +161,7 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
                 "created_at": five_days_ago,
                 "template_mode": "algorithm",
                 "support_layer": "ghost-reps",
+                "modality": "ghost-rep",
                 "live_coach_used": False,
                 "signals": {},
             },
@@ -170,6 +173,7 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
                 "created_at": yesterday,
                 "template_mode": "algorithm",
                 "support_layer": "ghost-reps",
+                "modality": "ghost-rep",
                 "live_coach_used": False,
                 "signals": {},
             },
@@ -278,7 +282,6 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
     assert pattern_freshness["binary-search"]["daysSinceLastGhostRep"] == 1
     assert pattern_freshness["binary-search"]["daysSinceLastPractice"] == 0
     assert pattern_freshness["binary-search"]["totalWork"] == 4
-    assert overview["summary"]["workCount"] == 5
 
 
 def test_skill_map_overview_counts_static_catalog_cards() -> None:
@@ -334,7 +337,6 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
     assert google["overallAttemptCount"] == 1
     assert skeletons["totalCards"] == 1
     assert skeletons["overallAttemptCount"] == 1
-    assert overview["summary"]["totalGeneratedCards"] == 3
 
     today_bucket = next(
         day for day in overview["ghostRepActivity"]["days"]
@@ -419,69 +421,99 @@ def test_skill_map_overview_keeps_generated_cards_out_of_core_catalog_counts() -
     assert heap["overallAttemptCount"] == 1
     assert heap["practicedCards"] == 0
     assert google["totalCards"] == 1
-    assert overview["reviewQueue"][0]["cardId"] == "skill-map-20260921000000000000-1"
 
 
-def test_spaced_repetition_schedules_algorithm_and_method_tracks_after_ghost_reps() -> None:
+def _activity_row(created_at: datetime) -> dict[str, object]:
+    return {
+        "created_at": created_at,
+        "category_tags": ["skill-map", "sliding-window"],
+        "question_type": "skill-map-mcq:card:random",
+        "modality": "mcq",
+        "successful": True,
+    }
+
+
+def test_daily_activity_groups_by_the_viewers_calendar_day() -> None:
     now = datetime.now(timezone.utc)
-    today = now.replace(hour=12, minute=0, second=0, microsecond=0)
-    tomorrow = (today + timedelta(days=1)).date().isoformat()
+    # 01:00 UTC today is the previous evening in New York (UTC-4 or UTC-5).
+    late_evening = now.replace(hour=1, minute=0, second=0, microsecond=0)
+    rows = [_activity_row(late_evening)]
+    slugs = {"sliding-window": "Sliding Window"}
 
-    overview = build_skill_map_overview(
-        algorithm_rows=[
-            {"algorithm_id": 1, "algorithm_name": "Sliding Window", "skill_name": "fixed vs variable window"},
-            {"algorithm_id": 1, "algorithm_name": "Sliding Window", "skill_name": "valid window rule"},
-        ],
-        generated_rows=[
-            {
-                "id": "sw-fixed",
-                "title": "Fixed Window",
-                "tags": ["skill-map", "sliding-window", "fixed-vs-variable-window"],
-            },
-            {
-                "id": "sw-valid",
-                "title": "Valid Window",
-                "tags": ["skill-map", "sliding-window", "valid-window-rule"],
-            },
-        ],
-        attempt_rows=[
-            {
-                "tracked_card_id": "sw-fixed",
-                "card_title": "Fixed Window",
-                "category_tags": ["skill-map", "sliding-window", "fixed-vs-variable-window"],
-                "successful": False,
-                "created_at": today,
-                "template_mode": "algorithm",
-                "support_layer": "ghost-reps",
-                "live_coach_used": False,
-                "signals": {},
-            },
-            {
-                "tracked_card_id": "sw-valid",
-                "card_title": "Valid Window",
-                "category_tags": ["skill-map", "sliding-window", "valid-window-rule"],
-                "successful": False,
-                "created_at": today,
-                "template_mode": "algorithm",
-                "support_layer": "ghost-reps",
-                "live_coach_used": False,
-                "signals": {},
-            },
-        ],
+    utc = overview._build_ghost_rep_activity(rows, slugs, {}, window_days=7)
+    new_york = overview._build_ghost_rep_activity(
+        rows, slugs, {}, window_days=7, tz=read_common.resolve_timezone("America/New_York"),
     )
 
-    spaced_repetition = overview["spacedRepetition"]
-    sliding_window = next(track for track in spaced_repetition["tracks"] if track["id"] == "sliding-window")
-    fixed_window = next(track for track in spaced_repetition["tracks"] if track["id"] == "sliding-window:fixed-vs-variable-window")
+    def active(activity):
+        return [day["date"] for day in activity["days"] if day["total"]]
 
-    assert sliding_window["level"] == "pattern"
-    assert sliding_window["status"] == "scheduled"
-    assert sliding_window["completedSessions"] == 1
-    assert sliding_window["lastCompletedAt"] == today.date().isoformat()
-    assert sliding_window["nextDueAt"] == tomorrow
-    assert sliding_window["coreAlgorithmCount"] == 2
-    assert fixed_window["level"] == "method"
-    assert fixed_window["parentSlug"] == "sliding-window"
-    assert fixed_window["status"] == "scheduled"
-    assert fixed_window["completedSessions"] == 1
-    assert not spaced_repetition["queue"]
+    assert active(utc) == [late_evening.date().isoformat()]
+    assert active(new_york) == [(late_evening.date() - timedelta(days=1)).isoformat()]
+
+
+def test_all_time_activity_starts_at_the_first_attempt() -> None:
+    now = datetime.now(timezone.utc)
+    first = now - timedelta(days=90)
+    rows = [_activity_row(first), _activity_row(now)]
+
+    activity = overview._build_ghost_rep_activity(rows, {"sliding-window": "Sliding Window"}, {}, window_days=None)
+
+    assert activity["windowStart"] == first.date().isoformat()
+    assert len(activity["days"]) == 91
+    assert sum(day["total"] for day in activity["days"]) == 2
+
+
+def test_unknown_timezones_fall_back_to_utc() -> None:
+    assert read_common.resolve_timezone("Not/AZone") is timezone.utc
+    assert read_common.resolve_timezone(None) is timezone.utc
+    assert str(read_common.resolve_timezone("Europe/Paris")) == "Europe/Paris"
+
+
+def test_signal_history_lists_scored_signals_from_counted_submissions(monkeypatch) -> None:
+    def _row(created_at: datetime, tags: list[str], dimensions: dict, modifiers: dict | None = None) -> dict[str, object]:
+        return {
+            "created_at": created_at,
+            "category_tags": tags,
+            "question_type": "skill-map-mcq:card:random",
+            "modality": "mcq",
+            "card_title": "Window question",
+            "signals": {"evaluation": {"dimensions": dimensions, "modifiers": modifiers or {}}},
+        }
+
+    late_evening = datetime(2026, 1, 15, 3, 30, tzinfo=timezone.utc)  # Jan 14 in New York
+    rows = [
+        _row(late_evening, ["skill-map", "sliding-window"], {
+            "correctness": {"label": "Correct choice", "status": "pass", "score": 100.0},
+            "nearMiss": {"label": "Near miss", "status": "not_applicable", "score": 0.0},
+        }, {"completionTime": {"label": "Speed and fluency", "status": "partial", "score": 140}}),
+        _row(late_evening - timedelta(days=1), ["skill-map", "sliding-window"], {
+            "correctness": {"label": "Correct choice", "status": "fail", "score": 0.0},
+        }),
+        _row(late_evening, ["skill-map", "no-such-algorithm"], {
+            "correctness": {"label": "Correct choice", "status": "pass", "score": 100.0},
+        }),
+    ]
+
+    async def _attempt_rows():
+        return rows
+
+    async def _algorithm_rows():
+        return [{"algorithm_slug": "sliding-window", "algorithm_name": "Sliding Window"}]
+
+    monkeypatch.setattr(history, "fetch_skill_map_overview_attempt_rows", _attempt_rows)
+    monkeypatch.setattr(history, "fetch_skill_map_overview_algorithm_rows", _algorithm_rows)
+
+    signal_history = asyncio.run(history.get_signal_history("America/New_York"))
+
+    assert signal_history["signals"] == [
+        {"key": "correctness", "label": "Correct choice", "count": 2},
+        {"key": "completionTime", "label": "Speed and fluency", "count": 1},
+    ]
+    assert [(point["signal"], point["score"], point["date"]) for point in signal_history["points"]] == [
+        ("correctness", 0.0, "2026-01-13"),
+        ("correctness", 100.0, "2026-01-14"),
+        ("completionTime", 100.0, "2026-01-14"),
+    ]
+    assert signal_history["points"][0]["algorithm"] == "Sliding Window"
+    assert signal_history["points"][0]["title"] == "Window question"

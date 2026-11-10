@@ -1,5 +1,5 @@
 import { forwardRef, type CSSProperties, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
-import { Compartment, EditorSelection, EditorState, Prec, RangeSetBuilder, type Extension } from '@codemirror/state'
+import { Compartment, EditorSelection, EditorState, Prec, type Extension, type Range } from '@codemirror/state'
 import {
   crosshairCursor,
   Decoration,
@@ -51,7 +51,7 @@ import { clearLocalCache, inlineCopilot } from 'codemirror-copilot'
 import type { AppTheme } from './theme'
 import type { CodeEditorStyleGuide } from './codeEditorTuning'
 import { getEditorHotkeyKey } from './hotkeys'
-import { apiUrl } from './api'
+import { api } from './api/client'
 
 export type RecallEditorLineStatus = 'match' | 'mismatch' | 'missing' | 'extra'
 export type RecallEditorLiveTone = 'positive' | 'negative' | 'neutral'
@@ -352,7 +352,10 @@ const buildRecallDecorations = (
   ghostTarget: string | undefined,
   inlineTask: string | undefined
 ): DecorationSet => {
-  const builder = new RangeSetBuilder<Decoration>()
+  // Collected, then sorted by Decoration.set: widgets at the same position (an inline task and the
+  // ghost block on an empty last line) are not added in side order.
+  const ranges: Range<Decoration>[] = []
+  const builder = { add: (from: number, to: number, decoration: Decoration) => ranges.push(decoration.range(from, to)) }
   const doc = view.state.doc
   const documentText = doc.toString()
   const inputLines = documentText.split('\n')
@@ -407,7 +410,7 @@ const buildRecallDecorations = (
     )
   }
 
-  return builder.finish()
+  return Decoration.set(ranges, true)
 }
 
 const recallDecorations = (lineMeta: RecallEditorLineMeta[], ghostTarget?: string, inlineTask?: string) =>
@@ -658,27 +661,24 @@ const RecallCodeEditor = forwardRef<RecallCodeEditorHandle, RecallCodeEditorProp
     const controller = new AbortController()
     aiCompletionRequestRef.current = controller
     try {
-      const response = await fetch(apiUrl('/api/coach/inline-completion'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const { data: payload, response } = await api.POST('/api/coach/inline-completion', {
         signal: controller.signal,
-        body: JSON.stringify({
+        body: {
           prefix: prefix.slice(-8000),
           suffix: suffix.slice(0, 4000),
           language,
           cardTitle: context.cardTitle.slice(0, 200),
           prompt: context.prompt.slice(0, 3000),
           llmProvider: context.provider,
-        }),
+        },
       })
       if (controller.signal.aborted || requestContextKey !== aiCompletionContextKeyRef.current) return ''
-      if (!response.ok) {
+      if (!response.ok || !payload) {
         onAiCompletionStatusRef.current?.(response.status === 503
           ? 'Configure a model provider for AI completion.'
           : 'AI completion is unavailable right now.')
         return ''
       }
-      const payload = await response.json() as { prediction?: string }
       if (controller.signal.aborted || requestContextKey !== aiCompletionContextKeyRef.current) return ''
       const prediction = typeof payload.prediction === 'string' ? payload.prediction : ''
       onAiCompletionStatusRef.current?.('')

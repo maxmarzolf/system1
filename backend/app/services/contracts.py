@@ -112,21 +112,6 @@ class SkillMapAlgorithmSummary(TypedDict):
 	modes: dict[str, SkillMapModeSummary]
 
 
-class SkillMapReviewQueueItem(TypedDict):
-	cardId: str
-	title: str
-	algorithm: str
-	templateMode: str
-	readiness: float
-	attemptCount: int
-	ghostRepCount: int
-	unsupportedAttemptCount: int
-	workCount: int
-	daysSinceLastSubmit: int | None
-	stale: bool
-	dimensionSummary: dict[str, Any]
-
-
 class SkillMapGhostRepSkillSegment(TypedDict):
 	skill: str
 	slug: str
@@ -174,65 +159,9 @@ class SkillMapGhostRepActivity(TypedDict):
 	days: list[SkillMapGhostRepActivityDay]
 	algorithms: list[SkillMapGhostRepAlgorithm]
 
-class SkillMapSpacedRepetitionDay(TypedDict):
-	date: str
-	status: str
-	label: str
-
-
-class SkillMapSpacedRepetitionTrack(TypedDict):
-	id: str
-	label: str
-	slug: str
-	level: str
-	parentSlug: str | None
-	parentLabel: str | None
-	coreAlgorithmCount: int
-	requiredGhostReps: int
-	status: str
-	statusLabel: str
-	stageLabel: str
-	completedSessions: int
-	startedAt: str | None
-	lastAttemptedAt: str | None
-	lastCompletedAt: str | None
-	nextDueAt: str | None
-	daysUntilDue: int | None
-	days: list[SkillMapSpacedRepetitionDay]
-
-
-class SkillMapSpacedRepetitionPayload(TypedDict):
-	today: str
-	windowStart: str
-	windowEnd: str
-	intervals: list[int]
-	requiredGhostReps: int
-	tracks: list[SkillMapSpacedRepetitionTrack]
-	queue: list[SkillMapSpacedRepetitionTrack]
-
-
-class SkillMapOverviewSummary(TypedDict):
-	totalGeneratedCards: int
-	attemptedCards: int
-	untouchedCards: int
-	staleCards: int
-	ghostRepCount: int
-	unsupportedAttemptCount: int
-	workCount: int
-	algorithmsStarted: int
-	algorithmsUntouched: int
-	avgAlgorithmReadiness: float
-	modeOrder: list[str]
-	successThreshold: int
-	staleAfterDays: int
-
-
 class SkillMapOverviewPayload(TypedDict):
-	summary: SkillMapOverviewSummary
 	algorithms: list[SkillMapAlgorithmSummary]
-	reviewQueue: list[SkillMapReviewQueueItem]
 	ghostRepActivity: SkillMapGhostRepActivity
-	spacedRepetition: SkillMapSpacedRepetitionPayload
 
 class FeedbackPayload(TypedDict, total=False):
 	diagnosis: str
@@ -253,4 +182,7 @@ class FeedbackPayload(TypedDict, total=False):
 	signals: dict[str, Any]
 
 PersistSkillMapDrills: TypeAlias = Callable[[list[SkillMapDrillPayload], bool, SkillMapProgressSummary], Awaitable[None]]
-PersistGeneratedQuestions: TypeAlias = Callable[[list[MultipleChoiceQuestionPayload]], Awaitable[None]]
+PersistGeneratedQuestions: TypeAlias = Callable[
+	[list[MultipleChoiceQuestionPayload]],
+	Awaitable[list[MultipleChoiceQuestionPayload | None] | None],
+]

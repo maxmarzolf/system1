@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { apiUrl } from './api'
+import { API_BASE_URL } from './api/client'
 
 type LiveAiCoachProps = {
   cardId: string
@@ -17,7 +17,7 @@ type LiveAiCoachProps = {
 type Observation = Omit<LiveAiCoachProps, 'onFeedbackShown'> & { sequence: number }
 
 const liveCoachUrl = () => {
-  const url = new URL(apiUrl('/api/coach/live-coaching'), window.location.href)
+  const url = new URL(`${API_BASE_URL}/api/coach/live-coaching`)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   return url.toString()
 }

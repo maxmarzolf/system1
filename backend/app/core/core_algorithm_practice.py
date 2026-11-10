@@ -4,6 +4,9 @@ import json
 import re
 from typing import Any
 
+from app.contracts.catalog_ids import CORE_ALGORITHM_CARD_ID_PREFIX, problem_slug_candidates  # noqa: F401
+
+
 def _examples(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value]
@@ -45,7 +48,7 @@ def build_core_algorithm_drill(row: dict[str, Any]) -> dict[str, Any]:
     entry_name = _entry_point_name(code) or slug
     examples = _examples(row.get("leetcode_examples"))
     return {
-        "id": f"core-algorithm-{slug}",
+        "id": f"{CORE_ALGORITHM_CARD_ID_PREFIX}{slug}",
         "title": title,
         "difficulty": str(row["difficulty"]),
         "prompt": prompt,
@@ -73,21 +76,3 @@ def build_core_algorithm_drill(row: dict[str, Any]) -> dict[str, Any]:
             "leetcodeExamples": examples,
         },
     }
-
-
-async def problem_drills_for_algorithm(algorithm_slug: str) -> dict[str, Any]:
-    from app.services import problem_practice_service
-
-    return await problem_practice_service.problem_drills_for_algorithm(algorithm_slug)
-
-
-async def problem_drills_for_tag(tag_slug: str, count: int = 10) -> dict[str, Any]:
-    from app.services import problem_practice_service
-
-    return await problem_practice_service.problem_drills_for_tag(tag_slug, count)
-
-
-async def random_problem_drills(count: int = 10) -> dict[str, Any]:
-    from app.services import problem_practice_service
-
-    return await problem_practice_service.random_problem_drills(count)

@@ -1,8 +1,7 @@
 # PostgreSQL Dockerfile
 FROM postgres:16-alpine
 
-# Init scripts are mounted from the host via docker-compose:
-# ./backend/init-scripts:/docker-entrypoint-initdb.d:ro
+# The backend creates the schema from backend/app/schema.sql on startup.
 
 # Expose default PostgreSQL port
 EXPOSE 5432

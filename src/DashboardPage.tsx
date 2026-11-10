@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { apiUrl } from './api'
+import { useCatalogPlaylists, useSkillMapOverview } from './api/queries'
 import { practicePlaylists, type PracticePlaylist } from './data/playlists'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
@@ -46,7 +45,6 @@ type SkillMapAlgorithmReadiness = {
 
 type SkillMapOverviewResponse = {
   algorithms: SkillMapAlgorithmReadiness[]
-  spacedRepetition?: SkillMapSpacedRepetition
 }
 
 type PlaylistCatalogResponse = {
@@ -54,48 +52,6 @@ type PlaylistCatalogResponse = {
 }
 
 type TemplateMode = 'algorithm'
-
-type SpacedRepetitionDay = {
-  date: string
-  status: 'empty' | 'completed' | 'failed' | 'due' | 'scheduled' | 'overdue'
-  label: string
-}
-
-type SpacedRepetitionFamily = {
-  algorithm: string
-  slug: string
-  coreAlgorithmCount: number
-}
-
-type SpacedRepetitionPacket = {
-  id: string
-  label: string
-  group: string
-  families: SpacedRepetitionFamily[]
-  coreAlgorithmCount: number
-  requiredGhostReps: number
-  status: 'not_started' | 'acquisition' | 'failed' | 'overdue' | 'due' | 'scheduled' | 'maintenance'
-  statusLabel: string
-  stageLabel: string
-  completedSessions: number
-  startedAt: string | null
-  lastAttemptedAt: string | null
-  lastCompletedAt: string | null
-  nextDueAt: string | null
-  daysUntilDue: number | null
-  days: SpacedRepetitionDay[]
-}
-
-type SkillMapSpacedRepetition = {
-  today: string
-  windowStart: string
-  windowEnd: string
-  intervals: number[]
-  requiredGhostReps: number
-  tracks?: SpacedRepetitionPacket[]
-  packets?: SpacedRepetitionPacket[]
-  queue?: SpacedRepetitionPacket[]
-}
 
 const readinessTone = (readiness: number) => {
   if (readiness >= 80) return 'success'
@@ -105,150 +61,6 @@ const readinessTone = (readiness: number) => {
 
 const isRetiredArraysHashMaps = (slug: string, title: string) =>
   slug === 'arrays-hash-maps' || title === 'Arrays / Hash Maps'
-
-const spacedStatusTone = (status: SpacedRepetitionPacket['status']) => {
-  if (status === 'overdue' || status === 'failed' || status === 'acquisition') return 'error'
-  if (status === 'due') return 'warning'
-  return 'success'
-}
-
-const formatShortDate = (value?: string | null) => {
-  if (!value) return 'Not scheduled'
-  return new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
-
-const dueCopy = (packet: SpacedRepetitionPacket) => {
-  if (!packet.nextDueAt) return 'Not scheduled'
-  if (packet.daysUntilDue === null) return formatShortDate(packet.nextDueAt)
-  if (packet.daysUntilDue < 0) return `${Math.abs(packet.daysUntilDue)}d overdue`
-  if (packet.daysUntilDue === 0) return 'Today'
-  if (packet.daysUntilDue === 1) return 'Tomorrow'
-  return formatShortDate(packet.nextDueAt)
-}
-
-const nextScheduledPacket = (packets: SpacedRepetitionPacket[]) =>
-  packets
-    .filter(packet => packet.nextDueAt && packet.daysUntilDue !== null && packet.daysUntilDue > 0)
-    .sort((left, right) => (left.daysUntilDue ?? 999) - (right.daysUntilDue ?? 999))[0]
-
-export function SpacedRepetitionPanel({
-  spacedRepetition,
-  onStartFamily,
-}: {
-  spacedRepetition?: SkillMapSpacedRepetition
-  onStartFamily: (patternSlug: string) => void
-}) {
-  if (!spacedRepetition) {
-    return (
-      <section className="spaced-repetition-panel" aria-label="Spaced repetition">
-        <div className="spaced-repetition-header">
-          <div>
-            <p className="dashboard-activity-eyebrow">Spaced Repetition</p>
-            <h2>Loading schedule...</h2>
-          </div>
-        </div>
-      </section>
-    )
-  }
-
-  const scheduleItems = spacedRepetition.tracks ?? spacedRepetition.packets ?? []
-  const activeReviews = spacedRepetition.queue ?? []
-  const reviewPacket = activeReviews[0]
-    ?? nextScheduledPacket(scheduleItems)
-    ?? scheduleItems.find(packet => packet.status === 'not_started')
-  const hiddenActiveReviewCount = Math.max(activeReviews.length - 1, 0)
-  const activeReviewCopy = activeReviews.length === 0
-    ? 'No reviews due'
-    : activeReviews.length === 1
-      ? '1 needs review'
-      : `${activeReviews.length} need review`
-
-  return (
-    <section className="spaced-repetition-panel" aria-label="Spaced repetition">
-      <div className="spaced-repetition-header">
-        <div>
-          <p className="dashboard-activity-eyebrow">Spaced Repetition</p>
-          <h2>{reviewPacket ? `${reviewPacket.label}: ${reviewPacket.statusLabel}` : 'All packets scheduled'}</h2>
-        </div>
-        <div className="spaced-repetition-summary">
-          <span className="coach-metric-chip">{spacedRepetition.requiredGhostReps} ghost/core</span>
-          <span className="coach-metric-chip">{activeReviewCopy}</span>
-          <span className="coach-metric-chip">0 · 1 · 3 · 7 · 14 · 30</span>
-        </div>
-      </div>
-
-      {reviewPacket && (
-        <div className="spaced-repetition-focus" aria-label="Review focus">
-          <article className={`spaced-repetition-focus-card spaced-repetition-focus-card-${spacedStatusTone(reviewPacket.status)}`}>
-            <div>
-              <div className="spaced-repetition-focus-topline">
-                <strong>{activeReviews.length > 0 ? 'Review now' : 'Next review'}</strong>
-                <span>{reviewPacket.statusLabel}</span>
-              </div>
-              <p>{reviewPacket.families.map(family => family.algorithm).join(' / ')}</p>
-            </div>
-            <div className="spaced-repetition-focus-actions">
-              <span className="coach-metric-chip">Due {dueCopy(reviewPacket)}</span>
-              <span className="coach-metric-chip">{reviewPacket.coreAlgorithmCount} cores</span>
-              <span className="coach-metric-chip">{reviewPacket.stageLabel}</span>
-              {reviewPacket.families.map(family => (
-                <button key={family.slug} type="button" onClick={() => onStartFamily(family.slug)}>
-                  {family.algorithm}
-                </button>
-              ))}
-            </div>
-
-            <div className="spaced-repetition-focus-more">
-              +{hiddenActiveReviewCount} more due after this
-            </div>
-          </article>
-        </div>
-      )}
-
-      {reviewPacket && (
-        <div className="spaced-repetition-table" aria-label="Packet schedule">
-          <article key={reviewPacket.id} className="spaced-repetition-row">
-            <div className="spaced-repetition-row-meta">
-              <div className="spaced-repetition-row-title">
-                <strong>{reviewPacket.label}</strong>
-                <span className={`spaced-repetition-status spaced-repetition-status-${reviewPacket.status}`}>
-                  {reviewPacket.statusLabel}
-                </span>
-              </div>
-              <p>{reviewPacket.families.map(family => family.algorithm).join(' / ')}</p>
-              <div className="spaced-repetition-row-chips">
-                <span>{reviewPacket.coreAlgorithmCount} cores</span>
-                <span>{reviewPacket.stageLabel}</span>
-                <span>Due {dueCopy(reviewPacket)}</span>
-              </div>
-            </div>
-            <div className="spaced-repetition-days">
-              {reviewPacket.days.map(day => {
-                const isToday = day.date === spacedRepetition.today
-                return (
-                  <span
-                    key={`${reviewPacket.id}-${day.date}`}
-                    className={`spaced-repetition-day spaced-repetition-day-${day.status}${isToday ? ' spaced-repetition-day-today' : ''}`}
-                    title={`${formatShortDate(day.date)}${day.label ? `: ${day.label}` : ''}`}
-                    aria-label={`${reviewPacket.label} ${formatShortDate(day.date)} ${day.label || 'not due'}`}
-                  />
-                )
-              })}
-            </div>
-          </article>
-        </div>
-      )}
-
-      <div className="spaced-repetition-legend" aria-label="Schedule legend">
-        <span><i className="spaced-repetition-day spaced-repetition-day-completed" /> Completed</span>
-        <span><i className="spaced-repetition-day spaced-repetition-day-failed" /> Incomplete</span>
-        <span><i className="spaced-repetition-day spaced-repetition-day-due" /> Due</span>
-        <span><i className="spaced-repetition-day spaced-repetition-day-overdue" /> Overdue</span>
-        <span><i className="spaced-repetition-day spaced-repetition-day-scheduled" /> Scheduled</span>
-      </div>
-    </section>
-  )
-}
 
 const normalizePatternKey = (slug: string, pattern: string) =>
   (slug || pattern)
@@ -679,55 +491,14 @@ function SkillAlgorithmIllustration({ slug, pattern }: { slug: string; pattern: 
 
 export default function DashboardPage() {
   const navigate = useNavigate()
-  const [overview, setOverview] = useState<SkillMapOverviewResponse | null>(null)
-  const [catalogPlaylists, setCatalogPlaylists] = useState<PracticePlaylist[] | null>(null)
+  const overviewQuery = useSkillMapOverview<SkillMapOverviewResponse>()
+  const overview = overviewQuery.error ? null : overviewQuery.data ?? null
+  const loading = overviewQuery.isPending
+  const error = overviewQuery.error ? 'Unable to load readiness tracking right now.' : ''
+  // The local catalog stays the fallback when the API is unavailable or empty.
+  const servedPlaylists = useCatalogPlaylists<PlaylistCatalogResponse>().data?.playlists
+  const catalogPlaylists = Array.isArray(servedPlaylists) && servedPlaylists.length > 0 ? servedPlaylists : null
   const configuredProviderLabel = useConfiguredProviderLabel()
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    const loadOverview = async () => {
-      setLoading(true)
-      setError('')
-
-      try {
-        const response = await fetch(apiUrl('/api/skill-map-overview'))
-        if (!response.ok) {
-          throw new Error('Failed to load skill map overview')
-        }
-        const payload = (await response.json()) as SkillMapOverviewResponse
-        setOverview(payload)
-      } catch {
-        setOverview(null)
-        setError('Unable to load readiness tracking right now.')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    void loadOverview()
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    const loadCatalogPlaylists = async () => {
-      try {
-        const response = await fetch(apiUrl('/api/catalog/playlists'))
-        if (!response.ok) return
-        const payload = (await response.json()) as PlaylistCatalogResponse
-        if (!cancelled && Array.isArray(payload.playlists) && payload.playlists.length > 0) {
-          setCatalogPlaylists(payload.playlists)
-        }
-      } catch {
-        // Keep the local catalog fallback available when the API is unavailable.
-      }
-    }
-
-    void loadCatalogPlaylists()
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const skillMapPlaylists = [...(catalogPlaylists ?? []), ...practicePlaylists]
     .filter((playlist, index, playlists) =>
@@ -795,7 +566,7 @@ export default function DashboardPage() {
 
   return (
     <div className="app app-dashboard">
-      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} />
+      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} pinned solid />
 
       <section className="dashboard">
         {error && <p className="skill-map-intro">{error}</p>}

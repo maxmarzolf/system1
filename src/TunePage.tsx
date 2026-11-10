@@ -1,20 +1,17 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { useStoredSetting } from './storedSetting'
 import {
   defaultSubmissionTuning,
-  loadStoredSubmissionTuning,
-  saveStoredSubmissionTuning,
+  submissionTuningSetting,
 } from './submissionTuning'
 import type { SubmissionTuning } from './submissionTuning'
 import {
   defaultSpecimenTuning,
-  loadStoredSpecimenTuning,
-  saveStoredSpecimenTuning,
+  specimenTuningSetting,
 } from './specimenTuning'
 import type { SpecimenTuning } from './specimenTuning'
 import {
   defaultCodeEditorTuning,
-  loadStoredCodeEditorTuning,
-  saveStoredCodeEditorTuning,
+  codeEditorTuningSetting,
 } from './codeEditorTuning'
 import type { CodeEditorTuning } from './codeEditorTuning'
 import {
@@ -22,175 +19,27 @@ import {
   MCQ_MIN_QUESTION_COUNT,
   clampMcqQuestionCount,
   defaultMcqTuning,
-  loadStoredMcqTuning,
-  saveStoredMcqTuning,
+  mcqTuningSetting,
 } from './mcqTuning'
 import type { McqTuning } from './mcqTuning'
 import {
   defaultGooglePlaylistTuning,
-  loadStoredGooglePlaylistTuning,
-  saveStoredGooglePlaylistTuning,
+  googlePlaylistTuningSetting,
 } from './googlePlaylistTuning'
 import type { GooglePlaylistTuning } from './googlePlaylistTuning'
 import { useConfiguredProviderLabel } from './llmProviderDefault'
 import TopNav from './TopNav'
 import { getHotkeyReferenceGroups } from './hotkeys'
-
-const trackedDimensions = [
-  {
-    title: 'Inputs and outputs',
-    copy: 'Whether the submission keeps the same overall function purpose and return path.',
-  },
-  {
-    title: 'State management',
-    copy: 'Whether the important tracked state is still named or clearly implied.',
-  },
-  {
-    title: 'Control flow',
-    copy: 'Whether the main loop or branching structure stays intact.',
-  },
-  {
-    title: 'Decision logic',
-    copy: 'Whether the rule that makes the algorithm valid is preserved.',
-  },
-  {
-    title: 'Answer update',
-    copy: 'Whether the submission still says when the answer gets recorded.',
-  },
-]
-
-type TuneSectionProps = {
-  eyebrow: string
-  title: string
-  copy: string
-  action?: ReactNode
-  children: ReactNode
-}
-
-type SelectOption<T extends string> = {
-  value: T
-  label: string
-}
-
-type SelectControlProps<T extends string> = {
-  label: string
-  value: T
-  options: SelectOption<T>[]
-  onChange: (value: T) => void
-  description?: string
-}
-
-function TuneSection({ eyebrow, title, copy, action, children }: TuneSectionProps) {
-  return (
-    <section className="tune-section">
-      <div className="tune-section-header">
-        <div>
-          <p className="tune-eyebrow">{eyebrow}</p>
-          <h3>{title}</h3>
-          <p className="tune-copy">{copy}</p>
-        </div>
-        {action ? <div className="tune-section-action">{action}</div> : null}
-      </div>
-      <div className="tune-section-body">{children}</div>
-    </section>
-  )
-}
-
-function SelectControl<T extends string>({ label, value, options, onChange, description }: SelectControlProps<T>) {
-  return (
-    <label className="tune-control">
-      <span className="tune-control-label">{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value as T)}>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      {description ? <span className="tune-control-description">{description}</span> : null}
-    </label>
-  )
-}
-
-function ToggleControl({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean
-  onChange: (value: boolean) => void
-  label: string
-}) {
-  return (
-    <label className="tune-toggle">
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-      <span>{label}</span>
-    </label>
-  )
-}
-
-function NumberControl({
-  label,
-  value,
-  min,
-  max,
-  onChange,
-  description,
-}: {
-  label: string
-  value: number
-  min: number
-  max: number
-  onChange: (value: number) => void
-  description?: string
-}) {
-  return (
-    <label className="tune-control">
-      <span className="tune-control-label">{label}</span>
-      <input
-        type="number"
-        min={min}
-        max={max}
-        step="1"
-        value={value}
-        onChange={(event) => {
-          const nextValue = Number.parseInt(event.currentTarget.value, 10)
-          onChange(Number.isNaN(nextValue) ? min : nextValue)
-        }}
-      />
-      {description ? <span className="tune-control-description">{description}</span> : null}
-    </label>
-  )
-}
+import { NumberControl, SelectControl, ToggleControl, TuneSection } from './tuneControls'
 
 export default function TunePage() {
   const configuredProviderLabel = useConfiguredProviderLabel()
   const hotkeyGroups = getHotkeyReferenceGroups(navigator.platform.includes('Mac'))
-  const [submissionTuning, setSubmissionTuning] = useState<SubmissionTuning>(() => loadStoredSubmissionTuning())
-  const [specimenTuning, setSpecimenTuning] = useState<SpecimenTuning>(() => loadStoredSpecimenTuning())
-  const [codeEditorTuning, setCodeEditorTuning] = useState<CodeEditorTuning>(() => loadStoredCodeEditorTuning())
-  const [mcqTuning, setMcqTuning] = useState<McqTuning>(() => loadStoredMcqTuning())
-  const [googlePlaylistTuning, setGooglePlaylistTuning] = useState<GooglePlaylistTuning>(() => loadStoredGooglePlaylistTuning())
-
-  useEffect(() => {
-    saveStoredSubmissionTuning(submissionTuning)
-  }, [submissionTuning])
-
-  useEffect(() => {
-    saveStoredSpecimenTuning(specimenTuning)
-  }, [specimenTuning])
-
-  useEffect(() => {
-    saveStoredCodeEditorTuning(codeEditorTuning)
-  }, [codeEditorTuning])
-
-  useEffect(() => {
-    saveStoredMcqTuning(mcqTuning)
-  }, [mcqTuning])
-
-  useEffect(() => {
-    saveStoredGooglePlaylistTuning(googlePlaylistTuning)
-  }, [googlePlaylistTuning])
+  const [submissionTuning, setSubmissionTuning] = useStoredSetting(submissionTuningSetting)
+  const [specimenTuning, setSpecimenTuning] = useStoredSetting(specimenTuningSetting)
+  const [codeEditorTuning, setCodeEditorTuning] = useStoredSetting(codeEditorTuningSetting)
+  const [mcqTuning, setMcqTuning] = useStoredSetting(mcqTuningSetting)
+  const [googlePlaylistTuning, setGooglePlaylistTuning] = useStoredSetting(googlePlaylistTuningSetting)
 
   const updateSubmissionTuning = <K extends keyof SubmissionTuning>(key: K, value: SubmissionTuning[K]) => {
     setSubmissionTuning((prev) => ({ ...prev, [key]: value }))
@@ -214,7 +63,7 @@ export default function TunePage() {
 
   return (
     <div className="app app-tune">
-      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} />
+      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} pinned solid />
 
       <section className="tune-surface">
         <div className="tune-hero">
@@ -236,7 +85,6 @@ export default function TunePage() {
             <a href="#mcq">MCQ</a>
             <a href="#ai-completion">AI completion</a>
             <a href="#submission">Submission</a>
-            <a href="#dimensions">Dimensions</a>
             <a href="#hotkeys">Hotkeys</a>
           </aside>
 
@@ -477,25 +325,6 @@ export default function TunePage() {
 
             <TuneSection
               eyebrow="07"
-              title="Tracked Dimensions"
-              copy="Signals the Signal Assessor checks for submitted attempts."
-            >
-              <div className="tune-dimension-list" id="dimensions">
-                {trackedDimensions.map((dimension) => (
-                  <div key={dimension.title} className="tune-dimension-row">
-                    <strong>{dimension.title}</strong>
-                    <span>{dimension.copy}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="tune-footnote">
-                Full-template grading also tracks syntax validity, indentation drift, early line drift, and omitted
-                versus extra lines.
-              </p>
-            </TuneSection>
-
-            <TuneSection
-              eyebrow="08"
               title="Hotkeys"
               copy="Reference the keyboard controls available whenever a practice card is showing."
             >

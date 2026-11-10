@@ -1,0 +1,296 @@
+-- Alembic baseline (revision 0001): the schema as it stood when migrations were introduced.
+-- Frozen: never edit this file. Change the schema with a new revision in this directory.
+-- Every statement is IF NOT EXISTS so the baseline also applies cleanly to databases
+-- created before Alembic (no manual `alembic stamp` needed).
+
+-- ============================================================================
+-- Multiple Choice Problem Table
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS multiple_choice_problem (
+    id VARCHAR(80) PRIMARY KEY,
+    user_id VARCHAR(80) NOT NULL DEFAULT '0000',
+    question_text TEXT NOT NULL,
+    question_help_text TEXT NOT NULL DEFAULT '',
+    recall_answer TEXT,
+    multiple_choice_answer_label_1 VARCHAR(1),
+    multiple_choice_answer_text_1 TEXT,
+    multiple_choice_answer_label_2 VARCHAR(1),
+    multiple_choice_answer_text_2 TEXT,
+    multiple_choice_answer_label_3 VARCHAR(1),
+    multiple_choice_answer_text_3 TEXT,
+    multiple_choice_answer_label_4 VARCHAR(1),
+    multiple_choice_answer_text_4 TEXT,
+    multiple_choice_correct_answer_label VARCHAR(1),
+    multiple_choice_correct_answer_text TEXT,
+    fingerprint VARCHAR(64) NOT NULL,
+    created_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    modified_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_multiple_choice_problem_fingerprint
+    ON multiple_choice_problem(fingerprint);
+
+CREATE INDEX IF NOT EXISTS idx_multiple_choice_problem_user_id
+    ON multiple_choice_problem(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_multiple_choice_problem_created_date
+    ON multiple_choice_problem(created_date DESC);
+
+-- ============================================================================
+-- Submission Table
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS submission (
+    id BIGSERIAL PRIMARY KEY,
+    session_id VARCHAR(80) NOT NULL DEFAULT '0000',
+    user_id VARCHAR(80) NOT NULL DEFAULT '0000',
+    multiple_choice_problem_id VARCHAR(80) REFERENCES multiple_choice_problem(id) ON DELETE SET NULL,
+    answer TEXT NOT NULL,
+    question_type VARCHAR(50) NOT NULL DEFAULT '',
+    category_tags TEXT[] NOT NULL DEFAULT '{}',
+    correct_answer TEXT,
+    successful BOOLEAN NOT NULL DEFAULT FALSE,
+    signals JSONB NOT NULL DEFAULT '{"elapsed_ms": 0}'::jsonb CONSTRAINT submission_signals_object_check CHECK (
+        jsonb_typeof(signals) = 'object'
+        AND signals ? 'elapsed_ms'
+        AND jsonb_typeof(signals->'elapsed_ms') = 'number'
+        AND (signals - 'elapsed_ms' - 'evaluation' - 'flow' - 'modality') = '{}'::jsonb
+        AND (
+            NOT (signals ? 'evaluation')
+            OR jsonb_typeof(signals->'evaluation') = 'object'
+        )
+        AND (
+            NOT (signals ? 'flow')
+            OR jsonb_typeof(signals->'flow') = 'object'
+        )
+        AND (
+            NOT (signals ? 'modality')
+            OR jsonb_typeof(signals->'modality') = 'object'
+        )
+    ),
+    interaction_id VARCHAR(80),
+    generated_card_id VARCHAR(80),
+    problem_slug VARCHAR(120),
+    generated_card JSONB,
+    template_mode VARCHAR(20) NOT NULL DEFAULT 'algorithm' CHECK (template_mode IN ('algorithm')),
+    support_layer VARCHAR(30) NOT NULL DEFAULT 'none' CHECK (support_layer IN ('none', 'ghost-reps')),
+    live_coach_used BOOLEAN NOT NULL DEFAULT FALSE,
+    modality VARCHAR(30) NOT NULL DEFAULT 'total-recall' CHECK (modality IN ('total-recall', 'ghost-rep', 'mcq', 'microdrill')),
+    target_source VARCHAR(30),
+    target_control VARCHAR(20),
+    format_control VARCHAR(20),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_submission_multiple_choice_problem_id
+    ON submission(multiple_choice_problem_id);
+
+CREATE INDEX IF NOT EXISTS idx_submission_session_user
+    ON submission(session_id, user_id);
+
+CREATE INDEX IF NOT EXISTS idx_submission_created_at
+    ON submission(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_submission_question_type_created_at
+    ON submission(question_type, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_submission_generated_card_id
+    ON submission(generated_card_id);
+
+CREATE INDEX IF NOT EXISTS idx_submission_problem_slug_created_at
+    ON submission(problem_slug, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_submission_interaction_id
+    ON submission(interaction_id);
+
+CREATE INDEX IF NOT EXISTS idx_submission_category_tags
+    ON submission USING GIN(category_tags);
+
+CREATE INDEX IF NOT EXISTS idx_submission_template_support_created_at
+    ON submission(template_mode, support_layer, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_submission_multiple_choice_problem_id_created_at
+    ON submission(multiple_choice_problem_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_submission_session_id_created_at
+    ON submission(session_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_submission_flow_anchor_created_at
+    ON submission ((signals->'flow'->>'anchorCardId'), created_at DESC)
+    WHERE signals ? 'flow';
+
+-- ============================================================================
+-- Taxonomy: algorithm -> problem -> [skill, technique]
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS algorithm (
+    slug VARCHAR(80) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    -- Signal spec seeded from app/core/signal_catalog.py.
+    signal_spec JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS technique (
+    slug VARCHAR(80) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS skill (
+    slug VARCHAR(120) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS problem (
+    slug VARCHAR(120) PRIMARY KEY,
+    algorithm_slug VARCHAR(80) NOT NULL REFERENCES algorithm(slug) ON DELETE RESTRICT,
+    title VARCHAR(255) NOT NULL,
+    difficulty VARCHAR(20) NOT NULL CHECK (difficulty IN ('Easy', 'Med.', 'Hard')),
+    description TEXT NOT NULL DEFAULT '',
+    code TEXT NOT NULL,
+    source_type VARCHAR(40) NOT NULL DEFAULT 'core-catalog',
+    question_type VARCHAR(50) NOT NULL DEFAULT 'skill-map',
+    prompt TEXT NOT NULL DEFAULT '',
+    missing TEXT NOT NULL DEFAULT '',
+    hint TEXT NOT NULL DEFAULT '',
+    llm_used BOOLEAN NOT NULL DEFAULT FALSE,
+    generation_context JSONB NOT NULL DEFAULT '{}'::jsonb,
+    tags TEXT[] DEFAULT '{}',
+    leetcode_examples JSONB NOT NULL DEFAULT '[]'::jsonb,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_problem_algorithm
+    ON problem(algorithm_slug, display_order);
+
+CREATE INDEX IF NOT EXISTS idx_problem_tags
+    ON problem USING GIN(tags);
+
+CREATE TABLE IF NOT EXISTS playlist (
+    slug VARCHAR(120) PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    show_on_skill_map BOOLEAN NOT NULL DEFAULT FALSE,
+    static_deck BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS playlist_problem_order (
+    playlist_slug VARCHAR(120) NOT NULL REFERENCES playlist(slug) ON DELETE CASCADE,
+    order_slug VARCHAR(40) NOT NULL,
+    problem_slug VARCHAR(120) NOT NULL REFERENCES problem(slug) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    tier VARCHAR(120),
+    family VARCHAR(120),
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    PRIMARY KEY (playlist_slug, order_slug, problem_slug),
+    UNIQUE (playlist_slug, order_slug, position)
+);
+
+CREATE INDEX IF NOT EXISTS idx_playlist_problem_order_position
+    ON playlist_problem_order(playlist_slug, order_slug, position);
+
+CREATE TABLE IF NOT EXISTS problem_skill (
+    problem_slug VARCHAR(120) NOT NULL REFERENCES problem(slug) ON DELETE CASCADE,
+    skill_slug VARCHAR(120) NOT NULL REFERENCES skill(slug) ON DELETE CASCADE,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (problem_slug, skill_slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_problem_skill_skill
+    ON problem_skill(skill_slug);
+
+CREATE TABLE IF NOT EXISTS problem_technique (
+    problem_slug VARCHAR(120) NOT NULL REFERENCES problem(slug) ON DELETE CASCADE,
+    technique_slug VARCHAR(80) NOT NULL REFERENCES technique(slug) ON DELETE CASCADE,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (problem_slug, technique_slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_problem_technique_technique
+    ON problem_technique(technique_slug);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'submission_problem_slug_fkey'
+    ) THEN
+        ALTER TABLE submission
+            ADD CONSTRAINT submission_problem_slug_fkey
+            FOREIGN KEY (problem_slug) REFERENCES problem(slug) ON DELETE RESTRICT;
+    END IF;
+END $$;
+
+-- ============================================================================
+-- Jev signal definitions (edited on /admin; seeded once from app/core/signals)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS signal_definition (
+    key VARCHAR(64) PRIMARY KEY,
+    modality VARCHAR(30) NOT NULL CHECK (modality IN ('mcq')),
+    -- 'general' applies to every submission of the modality; otherwise an algorithm slug.
+    scope VARCHAR(80) NOT NULL DEFAULT 'general',
+    label TEXT NOT NULL,
+    -- For admins only; never sent to Jev (that is what instructions and criteria are for).
+    description TEXT NOT NULL DEFAULT '',
+    source VARCHAR(20) NOT NULL CHECK (source IN ('jev', 'deterministic')),
+    primitive VARCHAR(10) CHECK (primitive IN ('choice', 'score', 'noul')),
+    implementation VARCHAR(64),
+    instructions TEXT NOT NULL DEFAULT '',
+    -- JSON (not JSONB) so Choice labels keep the order they were written in.
+    criteria JSON,
+    score_map JSONB NOT NULL DEFAULT '{}'::jsonb,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('dimension', 'modifier', 'diagnostic')),
+    axis VARCHAR(20) CHECK (axis IN ('fidelity', 'executable', 'fluency')),
+    applies_when VARCHAR(20) NOT NULL DEFAULT 'always' CHECK (applies_when IN ('always', 'correct', 'incorrect')),
+    needs_correctness BOOLEAN NOT NULL DEFAULT FALSE,
+    weight DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (weight >= 0 AND weight <= 1),
+    display_order INTEGER NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+    version INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    archived_at TIMESTAMPTZ,
+    CONSTRAINT signal_definition_source_fields_check CHECK (
+        (source = 'jev' AND primitive IS NOT NULL AND implementation IS NULL)
+        OR (source = 'deterministic' AND primitive IS NULL AND implementation IS NOT NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_signal_definition_active
+    ON signal_definition(modality, status, scope, display_order);
+
+-- The correctness question per modality; its labels are fixed in code ("1"/"0").
+CREATE TABLE IF NOT EXISTS signal_evaluation_directive (
+    modality VARCHAR(30) PRIMARY KEY,
+    instructions TEXT NOT NULL,
+    criteria JSONB NOT NULL,
+    correctness_weight DOUBLE PRECISION NOT NULL DEFAULT 0.6 CHECK (correctness_weight >= 0 AND correctness_weight <= 1),
+    version INTEGER NOT NULL DEFAULT 1,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Append-only history of every change made to signals and directives.
+CREATE TABLE IF NOT EXISTS signal_definition_revision (
+    id BIGSERIAL PRIMARY KEY,
+    -- A signal key, or 'directive:<modality>'.
+    subject VARCHAR(80) NOT NULL,
+    action VARCHAR(20) NOT NULL CHECK (action IN ('seed', 'create', 'update', 'archive', 'restore')),
+    before JSONB,
+    after JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_signal_definition_revision_subject
+    ON signal_definition_revision(subject, id DESC);

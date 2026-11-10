@@ -1,112 +1,22 @@
+"""Layer boundaries, enforced by the import-linter contracts in ``backend/.importlinter``.
+
+Running them from pytest means a plain ``pytest`` catches a violation; CI also runs ``lint-imports``.
+"""
+
 from __future__ import annotations
 
-import ast
+import os
 from pathlib import Path
 
+from importlinter.cli import lint_imports
 
-ENDPOINTS_DIR = Path(__file__).resolve().parents[1] / "app" / "endpoints"
-SERVICES_DIR = Path(__file__).resolve().parents[1] / "app" / "services"
-DOMAIN_DIR = Path(__file__).resolve().parents[1] / "app" / "domain"
-CORE_DIR = Path(__file__).resolve().parents[1] / "app" / "core"
+BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
-def _core_import_violations(file_path: Path) -> list[str]:
-    tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=str(file_path))
-    violations: list[str] = []
-
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module:
-            module = node.module
-            if module == "app.core" or module.startswith("app.core."):
-                violations.append(f"{file_path.name}:{node.lineno} -> from {module} import ...")
-
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                name = alias.name
-                if name == "app.core" or name.startswith("app.core."):
-                    violations.append(f"{file_path.name}:{node.lineno} -> import {name}")
-
-    return violations
-
-
-def test_endpoints_do_not_import_core_modules() -> None:
-    violations: list[str] = []
-    for file_path in sorted(ENDPOINTS_DIR.glob("*.py")):
-        if file_path.name == "__init__.py":
-            continue
-        violations.extend(_core_import_violations(file_path))
-
-    assert not violations, "Endpoint layer must depend on services, not core:\n" + "\n".join(violations)
-
-
-def _import_violations(file_path: Path, blocked_prefixes: tuple[str, ...]) -> list[str]:
-    tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=str(file_path))
-    violations: list[str] = []
-
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module:
-            module = node.module
-            if module.startswith(blocked_prefixes):
-                violations.append(f"{file_path.name}:{node.lineno} -> from {module} import ...")
-
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                name = alias.name
-                if name.startswith(blocked_prefixes):
-                    violations.append(f"{file_path.name}:{node.lineno} -> import {name}")
-
-    return violations
-
-
-def test_services_do_not_import_endpoints_or_fastapi() -> None:
-    violations: list[str] = []
-    blocked_prefixes = ("app.endpoints", "fastapi")
-    for file_path in sorted(SERVICES_DIR.glob("*.py")):
-        if file_path.name == "__init__.py":
-            continue
-        violations.extend(_import_violations(file_path, blocked_prefixes))
-
-    assert not violations, "Service layer must stay framework-agnostic and endpoint-independent:\n" + "\n".join(violations)
-
-
-def test_domain_does_not_import_repositories() -> None:
-    violations: list[str] = []
-    for file_path in sorted(DOMAIN_DIR.glob("*.py")):
-        if file_path.name == "__init__.py":
-            continue
-        violations.extend(_import_violations(file_path, ("app.repositories",)))
-
-    assert not violations, "Domain layer must not depend on repositories:\n" + "\n".join(violations)
-
-
-def test_core_does_not_import_repositories() -> None:
-    violations: list[str] = []
-    for file_path in sorted(CORE_DIR.glob("*.py")):
-        if file_path.name == "__init__.py":
-            continue
-        violations.extend(_import_violations(file_path, ("app.repositories",)))
-
-    assert not violations, "Core layer must not depend on repositories:\n" + "\n".join(violations)
-
-
-def test_core_does_not_import_fastapi_or_starlette() -> None:
-    violations: list[str] = []
-    blocked_prefixes = ("fastapi", "starlette")
-    for file_path in sorted(CORE_DIR.glob("*.py")):
-        if file_path.name == "__init__.py":
-            continue
-        violations.extend(_import_violations(file_path, blocked_prefixes))
-
-    assert not violations, "Core layer must stay framework-agnostic:\n" + "\n".join(violations)
-
-
-def test_repositories_do_not_import_services_or_endpoints() -> None:
-    repositories_dir = Path(__file__).resolve().parents[1] / "app" / "repositories"
-    violations: list[str] = []
-    blocked_prefixes = ("app.services", "app.endpoints")
-    for file_path in sorted(repositories_dir.glob("*.py")):
-        if file_path.name == "__init__.py":
-            continue
-        violations.extend(_import_violations(file_path, blocked_prefixes))
-
-    assert not violations, "Repository layer must not depend on services or endpoints:\n" + "\n".join(violations)
+def test_import_linter_contracts_hold() -> None:
+    cwd = os.getcwd()
+    os.chdir(BACKEND_DIR)
+    try:
+        assert lint_imports(config_filename=".importlinter", no_cache=True) == 0, "Run `lint-imports` in backend/ for details"
+    finally:
+        os.chdir(cwd)

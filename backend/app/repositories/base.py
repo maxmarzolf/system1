@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from app.database import get_pool
+from app.db import get_pool
 
 
 @asynccontextmanager
