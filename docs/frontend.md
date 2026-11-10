@@ -9,7 +9,7 @@ Routes are defined in `src/app/routes.tsx`; every page shares `TopNav` (the acti
 | Route | Component | What it does |
 |---|---|---|
 | `/` | `features/journey/JourneyPage.tsx` | Journey, the home page: the score terrain, the daily work grid and the day detail. Enter opens `/practice` |
-| `/practice` | `features/practice/PracticePage.tsx` | The practice screen: recall, MCQ, Ghost Reps, Inline notes, AI completion, the Sliding Window Ladder, and flows |
+| `/practice` | `features/practice/PracticePage.tsx` | The practice screen: MCQ, Recall and Ghost question types, Inline notes, AI completion, and flows. The card is flat (no frame, header or Previous/Next buttons; its title shows as "TOPIC: …" under the Question or Prompt label) and has no toolbar: Cmd/Ctrl + a double-tapped ↑ or ↓ steps through MCQ, Recall and Ghost, and the navbar shows the current type (or the flow's stage) |
 | `/dashboard` | `features/dashboard/DashboardPage.tsx` | A readiness card per algorithm and playlist; each starts focused practice |
 | `/tune` | `features/tune/TunePage.tsx` | Local preferences; saved as you change them |
 | `/admin` | `features/admin/AdminPage.tsx` | MCQ signal editor and the read-only recall specs |
@@ -25,7 +25,7 @@ The practice screen reads its starting deck from the URL:
 | `focusPattern=<slug>` | That algorithm's core cards (from Dashboard) |
 | `focusTag=<tag>` | Cards with that tag |
 | `playlist=<slug>` | A playlist: static decks load from the catalog; other playlists stream generated cards, with a single non-streaming request as the fallback |
-| `panel=flow` | Opens the Flow configuration (Journey's **/build** link) |
+| `panel=flow` | Opens the Flow configuration (the only way in now the card has no toolbar) |
 
 ## Source layout
 
@@ -101,10 +101,14 @@ Defined once in `shared/lib/hotkeys.ts` and listed on Tune. Mod is ⌘ on macOS 
 | Keys | Action |
 |---|---|
 | Mod+D / W / A / S | Switch to Recall / Ghost / MCQ / Microdrill |
-| Mod+Enter | The card's primary button (Start, Submit, Next) |
+| Mod+Shift+Enter | Start or submit Recall, Ghost and MCQ (they have no Start or Submit button) |
+| A–D / 1–4 | Choose the first to fourth MCQ answer (MCQ only) |
+| Mod+Enter | The button under the card, when there is one (a Flow's Next, a Microdrill's Submit) |
 | Mod+G | Toggle Ghost Reps |
 | Mod+L | Toggle AI completion |
-| Mod+← ← / Mod+→ → | Previous or next card |
+| Mod+← ← / Mod+→ → | The page to the left or right in the navbar |
+| Enter | On Journey, open the practice page |
+| Mod+↑ ↑ / Mod+↓ ↓ | On Practice, step through MCQ, Recall and Ghost (the navbar label slides with it) |
 | Enter | Next targeted line, during a Ghost Rep |
 | Tab / Shift+Tab | Indent or outdent |
 

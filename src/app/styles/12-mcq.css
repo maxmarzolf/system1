@@ -3,45 +3,8 @@
   content: none;
 }
 
-.mcq-session-meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.3rem 0.45rem;
-  margin-top: 0.35rem;
-  color: var(--hc-fg-dim);
-  font-size: 0.66rem;
-  line-height: 1.35;
-}
-
-.mcq-session-separator {
-  color: color-mix(in srgb, var(--hc-fg-dim) 48%, transparent);
-}
-
-.mcq-session-progress {
-  padding-left: 0.55rem;
-  border-left: 1px solid var(--workbench-edge);
-  color: var(--hc-accent);
-  font-variant-numeric: tabular-nums;
-  font-weight: 750;
-}
-
-.card-shell-mcq .card-grid {
-  --mcq-content-width: 68ch;
-}
-
-.card-shell-mcq .prompt-surface-panel .prompt-surface-section {
-  width: min(100%, calc(var(--mcq-content-width) + 3rem));
-  margin-inline: auto;
-}
-
-.card-shell-mcq .multiple-choice-question {
-  max-width: var(--mcq-content-width);
-}
-
-.card-shell-mcq .card-grid > .panel:nth-child(2) {
-  padding: 1.4rem 1.5rem 1.5rem;
-}
+/* The content column's width and padding are shared with every question type: see the end of
+   11-practice-workbench.css. */
 
 .mcq-section-heading {
   display: flex;
@@ -65,13 +28,6 @@
 
 .card-shell-mcq .multiple-choice-card {
   gap: 0;
-  width: min(100%, var(--mcq-content-width));
-  margin-inline: auto;
-}
-
-.card-shell-mcq .card-grid > .panel:nth-child(2) > .hint {
-  max-width: var(--mcq-content-width);
-  margin-inline: auto;
 }
 
 .card-shell-mcq .multiple-choice-options {
@@ -85,8 +41,9 @@
   min-height: 3.55rem;
   padding: 0.78rem 0.95rem;
   border-color: color-mix(in srgb, var(--workbench-edge) 86%, transparent);
-  background: color-mix(in srgb, var(--workbench-surface-raised) 74%, var(--hc-bg));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--hc-fg) 3%, transparent);
+  /* Outlined only: the page shows through. Selected and graded answers keep their tint. */
+  background: transparent;
+  box-shadow: none;
 }
 
 .card-shell-mcq .multiple-choice-option:hover:not(:disabled) {
@@ -154,7 +111,7 @@
   border: 1px solid var(--workbench-edge);
   border-left: 3px solid var(--mcq-feedback-color);
   border-radius: var(--workbench-radius-sm);
-  background: color-mix(in srgb, var(--mcq-feedback-color) 6%, var(--workbench-surface-raised));
+  background: transparent;
   animation: drillFadeIn 0.28s ease-out both;
 }
 
@@ -195,10 +152,6 @@
 }
 
 @media (max-width: 720px) {
-  .card-shell-mcq .card-grid > .panel:nth-child(2) {
-    padding: 1.05rem 1rem;
-  }
-
   .card-shell-mcq .multiple-choice-option {
     gap: 0.65rem;
     padding: 0.75rem;

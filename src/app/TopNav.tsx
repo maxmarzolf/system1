@@ -1,14 +1,16 @@
 import { Link, NavLink } from 'react-router-dom'
-import { type ReactNode, type RefObject } from 'react'
+import type { ReactNode } from 'react'
 import { NAV_PAGES } from './navPages'
 import { useTheme } from './theme'
 
 type TopNavProps = {
-  llmProviderLabel?: string
-  llmProviderMenu?: ReactNode
-  llmProviderMenuOpen?: boolean
-  onToggleLlmProviderMenu?: () => void
-  llmProviderMenuRef?: RefObject<HTMLDivElement | null>
+  /** The practice screen's current question type (MCQ, Recall, Ghost); other pages leave it out. */
+  questionType?: string
+  /**
+   * How the question type last changed: its text slides up (Cmd + ↑↑) or down (Cmd + ↓↓) into
+   * place. A new `id` replays the slide.
+   */
+  questionTypeMotion?: { direction: 'up' | 'down'; id: number } | null
   practiceHistoryHref?: string
   rightExtras?: ReactNode
   /** Keep the bar fixed to the top of the window while the page scrolls. */
@@ -18,11 +20,8 @@ type TopNavProps = {
 }
 
 export default function TopNav({
-  llmProviderLabel = 'Auto (OpenAI)',
-  llmProviderMenu,
-  llmProviderMenuOpen = false,
-  onToggleLlmProviderMenu,
-  llmProviderMenuRef,
+  questionType,
+  questionTypeMotion = null,
   practiceHistoryHref = '/',
   rightExtras,
   pinned = false,
@@ -37,27 +36,19 @@ export default function TopNav({
     <nav className={['navbar', pinned ? 'navbar-pinned' : '', pinned && solid ? 'navbar-solid' : ''].filter(Boolean).join(' ')}>
       <div className="navbar-left">
         <Link to="/" className="navbar-brand">System 1</Link>
-        <span className="navbar-divider" />
-        <div className="navbar-group llm-provider-group" ref={llmProviderMenuRef}>
-          {onToggleLlmProviderMenu || llmProviderMenu ? (
-            <button
-              type="button"
-              className={llmProviderMenuOpen ? 'navbar-picker active' : 'navbar-picker'}
-              aria-haspopup="listbox"
-              aria-expanded={llmProviderMenuOpen}
-              aria-label="Coach model"
-              onClick={onToggleLlmProviderMenu}
-              disabled={!onToggleLlmProviderMenu}
-            >
-              {llmProviderLabel}
-            </button>
-          ) : (
-            <span className="navbar-picker" aria-label="Coach model auto selection">
-              {llmProviderLabel}
+        {questionType ? (
+          <>
+            <span className="navbar-divider" />
+            <span className="navbar-question-type" aria-label="Question type" aria-live="polite">
+              <span
+                key={questionTypeMotion?.id ?? 0}
+                className={questionTypeMotion ? `navbar-question-type-text navbar-question-type-slide-${questionTypeMotion.direction}` : 'navbar-question-type-text'}
+              >
+                {questionType}
+              </span>
             </span>
-          )}
-          {llmProviderMenu}
-        </div>
+          </>
+        ) : null}
       </div>
       <div className="navbar-right">
         {NAV_PAGES.map((page) => (

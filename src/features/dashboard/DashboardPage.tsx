@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useCatalogPlaylists, useSkillMapOverview } from '@/api/queries'
 import { practicePlaylists, type PracticePlaylist } from '@/shared/data/playlists'
-import { useConfiguredProviderLabel } from '@/shared/lib/llmProviderDefault'
 import TopNav from '@/app/TopNav'
 import DashboardCard from './DashboardCard'
 
@@ -72,7 +71,6 @@ export default function DashboardPage() {
   // The local catalog stays the fallback when the API is unavailable or empty.
   const servedPlaylists = useCatalogPlaylists<PlaylistCatalogResponse>().data?.playlists
   const catalogPlaylists = Array.isArray(servedPlaylists) && servedPlaylists.length > 0 ? servedPlaylists : null
-  const configuredProviderLabel = useConfiguredProviderLabel()
 
   const skillMapPlaylists = [...(catalogPlaylists ?? []), ...practicePlaylists]
     .filter((playlist, index, playlists) =>
@@ -92,7 +90,7 @@ export default function DashboardPage() {
 
   return (
     <div className="app app-dashboard">
-      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} pinned solid />
+      <TopNav pinned solid />
 
       <section className="dashboard">
         {error && <p className="skill-map-intro">{error}</p>}

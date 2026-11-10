@@ -13,6 +13,10 @@ export type PrimaryActionKind =
 
 export type PrimaryAction = { kind: PrimaryActionKind; label: string; disabled: boolean }
 
+/** Recall, Ghost and MCQ start and submit by keyboard only (Mod+Shift+Enter): no button is drawn. */
+const KEY_ONLY_ACTIONS = new Set<PrimaryActionKind>(['mcq-submit', 'recall-start', 'recall-submit', 'ghost-repeat', 'recall-revise'])
+export const isKeyOnlyAction = (kind: PrimaryActionKind) => KEY_ONLY_ACTIONS.has(kind)
+
 export type PrimaryActionState = {
   ladderActive: boolean
   flowStage: FlowStage | null

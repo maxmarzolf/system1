@@ -8,9 +8,6 @@ export const NAV_PAGES = [
   { label: 'Admin', path: '/admin' },
 ] as const
 
-/** Two presses of the same Cmd/Ctrl + arrow within this window count as a double tap. */
-export const PAGE_MOVE_DOUBLE_TAP_WINDOW_MS = 350
-
 /** The navbar position of a pathname, or -1 for a page that is not in the navbar. */
 export const navPageIndex = (pathname: string) => {
   const normalized = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname

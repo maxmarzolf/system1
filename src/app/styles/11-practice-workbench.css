@@ -1882,8 +1882,7 @@
   margin-left: 0;
 }
 
-.card-shell .card-header-main > .related-problems-eyebrow,
-.card-shell .mcq-session-progress {
+.card-shell .card-header-main > .related-problems-eyebrow {
   color: var(--card-header-accent);
 }
 
@@ -2018,4 +2017,68 @@
   .card-shell .tags {
     transition: none;
   }
+}
+
+/* One content column for every question type, at the width MCQ always used (about 68 characters):
+   the header, the prompt, the response and the action bar share the same left and right edges.
+   The side padding grows to centre that column, and never drops below the gutter. */
+.card-shell {
+  --card-content-width: 43rem;
+  --card-gutter-min: 1.5rem;
+}
+
+.card-shell > .card > .card-header,
+.card-shell > .card > .card-control-bar,
+.card-shell .card-grid > .panel,
+.card-shell .card-grid > .prompt-surface-panel {
+  padding-inline: max(var(--card-gutter-min), calc((100% - var(--card-content-width)) / 2));
+}
+
+.card-shell .prompt-surface-panel .prompt-surface-section {
+  padding-inline: 0;
+}
+
+.card-shell .card-grid > .panel:not(.prompt-surface-panel) {
+  padding-block: 1.4rem 1.5rem;
+}
+
+@media (max-width: 720px) {
+  .card-shell {
+    --card-gutter-min: 1rem;
+  }
+
+  .card-shell .card-grid > .panel:not(.prompt-surface-panel) {
+    padding-block: 1.05rem;
+  }
+}
+
+/* A flat card: no frame, shadow or fills, so the page's black shows through. The editor and the
+   MCQ answers keep their borders. */
+.card-shell {
+  box-shadow: none;
+}
+
+.card-shell > .card {
+  border: 0;
+  background: transparent;
+}
+
+.card-shell .flow-stage-stack,
+.card-shell .card-control-bar {
+  border-top: 0;
+  background: none;
+}
+
+/* The primary action is the bar's only button: keep it on the right. */
+.card-shell .card-control-group-primary {
+  margin-left: auto;
+}
+
+/* The card's title, under the Question or Prompt label. */
+.prompt-topic {
+  margin: 0.4rem 0 0.75rem;
+  color: var(--hc-fg-dim);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  line-height: 1.35;
 }

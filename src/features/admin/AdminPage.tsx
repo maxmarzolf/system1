@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom'
 import { fetchSignalSpecCatalog } from './signalSpecs'
 import type { SignalSpecCatalog } from './signalSpecs'
 import TopNav from '@/app/TopNav'
-import { useConfiguredProviderLabel } from '@/shared/lib/llmProviderDefault'
 import { TuneSection } from '@/shared/components/settingControls'
 import { fetchSignalAdminCatalog } from './api'
 import type { SignalAdminCatalog } from './api'
@@ -18,7 +17,6 @@ const QUESTION_TYPE_LABELS: Record<QuestionType, string> = { mcq: 'MCQ', recall:
 const ALL_SCOPES = 'all'
 
 export default function AdminPage() {
-  const configuredProviderLabel = useConfiguredProviderLabel()
   const [catalog, setCatalog] = useState<SignalAdminCatalog | null>(null)
   const [specs, setSpecs] = useState<SignalSpecCatalog | null>(null)
   const [error, setError] = useState('')
@@ -74,7 +72,7 @@ export default function AdminPage() {
 
   return (
     <div className="app app-tune">
-      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} pinned solid />
+      <TopNav pinned solid />
 
       <section className="tune-surface">
         <div className="tune-hero">

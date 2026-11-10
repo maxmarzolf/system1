@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useConfiguredProviderLabel } from '@/shared/lib/llmProviderDefault'
 import TopNav from '@/app/TopNav'
 import EvolveMcqPreview, { type JevFeedback, type McqPreview, type McqAnswer } from './components/EvolveMcqPreview'
 import './EvolvePage.css'
@@ -78,7 +77,6 @@ async function responseJson<T>(response: Response): Promise<T> {
 }
 
 export default function EvolvePage() {
-  const configuredProviderLabel = useConfiguredProviderLabel()
   const [overview, setOverview] = useState<Overview | null>(null)
   const [seedPrompt, setSeedPrompt] = useState('')
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
@@ -283,7 +281,7 @@ export default function EvolvePage() {
 
   return (
     <div className="app app-evolve">
-      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} />
+      <TopNav />
 
       <main className="evolve-shell">
         <header className="evolve-hero">

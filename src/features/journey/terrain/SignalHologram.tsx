@@ -5,9 +5,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { errorMessage } from '@/api/client'
 import { useSignalHistory } from '@/api/queries'
 import { formatCalendarDate } from '@/shared/lib/dailyWork'
-import SignalHologramHeader from './SignalHologramHeader'
 import { LANDSCAPE_ROWS, shortfallOf, signalShortfallRows, timeFraction, timeRange } from './signalTerrain'
-import { Link } from 'react-router-dom'
 import { useTheme } from '@/app/theme'
 
 type SignalPoint = {
@@ -526,7 +524,6 @@ export default function SignalHologram() {
 
   return (
     <section ref={sectionRef} className="signal-hologram" aria-label="Signal score terrain">
-      <SignalHologramHeader summary={summary} />
       {error ? <p className="coach-error" role="alert">{error}</p> : null}
       {!history && !error ? <p className="dashboard-mode-meta signal-hologram-loading">Mapping signal scores…</p> : null}
       {history && !points.length ? <p className="dashboard-mode-meta">No scored signals yet. Answer a few questions to shape the terrain.</p> : null}
@@ -540,13 +537,8 @@ export default function SignalHologram() {
           role="img"
           aria-label={`3D terrain of signal scores over time; height is 100 minus the score, so peaks are weak spots: ${summary}. Drag to rotate; pinch or hold Ctrl or Command and scroll to zoom.`}
         >
-          {/* Portaled to <body> so it draws above the pinned nav and the page header. */}
+          {/* Portaled to <body> so it draws above the pinned nav. */}
           {tooltip ? createPortal(<DotTooltip tooltip={tooltip} />, document.body) : null}
-          {/* Inside the full-window stage, so these sit at the bottom of the screen. */}
-          <nav className="signal-hologram-actions" aria-label="Start working">
-            <Link to="/practice" className="signal-hologram-action">/do</Link>
-            <Link to="/practice?panel=flow" className="signal-hologram-action">/build</Link>
-          </nav>
           <p className="signal-hologram-hint" aria-hidden="true">Drag to rotate · pinch or ⌘/Ctrl + scroll to zoom · hover a dot</p>
         </div>
       ) : null}

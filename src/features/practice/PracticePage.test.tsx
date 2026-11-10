@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import PracticePage from './PracticePage'
 import { ThemeProvider } from '@/app/theme'
 import { mockFetch, type FetchMock } from '@/test/fetch'
-import { button, drill, evaluation, flush, mcqCard, pressKey, typeCode } from '@/test/app'
+import { button, drill, evaluation, flush, mcqCard, pressKey, submitKey, typeCode } from '@/test/app'
 
 type Options = {
   attempt?: (body: Record<string, unknown>) => unknown
@@ -56,12 +56,12 @@ beforeEach(() => setup())
 describe('practice: recall', () => {
   it('loads a deck, then starts, types and submits a recall rep', async () => {
     renderApp()
-    expect(await screen.findByText('Window a')).toBeInTheDocument()
+    expect(await screen.findByText('TOPIC: Window a')).toBeInTheDocument()
     expect(fetch.calls.some((call) => call.url.includes('/api/coach/problem-drills?count=10'))).toBe(true)
-    await userEvent.click(button('Start'))
+    submitKey()
     expect(screen.getByText('Type the full algorithm from memory')).toBeInTheDocument()
     typeCode('def f(nums, k):\n    return 0')
-    await userEvent.click(button('Submit'))
+    submitKey()
     expect(await screen.findByText('Needs work')).toBeInTheDocument()
     expect(attempts[0]).toMatchObject({ cardId: 'a', userAnswer: 'def f(nums, k):\n    return 0', modality: 'total-recall' })
   })
@@ -69,10 +69,10 @@ describe('practice: recall', () => {
   it('records a sound answer', async () => {
     setup({ attempt: () => ({ saved: true, attemptId: 1, successful: true, evaluation: evaluation(true) }) })
     renderApp()
-    await screen.findByText('Window a')
-    await userEvent.click(button('Start'))
+    await screen.findByText('TOPIC: Window a')
+    submitKey()
     typeCode('def f(nums, k):\n    total = sum(nums[:k])\n    return total')
-    await userEvent.click(button('Submit'))
+    submitKey()
     expect(await screen.findByText(/Sound|Correct/i)).toBeInTheDocument()
   })
 
@@ -87,10 +87,10 @@ describe('practice: recall', () => {
       }),
     })
     renderApp()
-    await screen.findByText('Window a')
-    await userEvent.click(button('Start'))
+    await screen.findByText('TOPIC: Window a')
+    submitKey()
     typeCode('x = 1')
-    await userEvent.click(button('Submit'))
+    submitKey()
     const panel = await screen.findByLabelText('Submission feedback unavailable')
     expect(within(panel).getByText(/Claude timed out/)).toBeInTheDocument()
   })
@@ -101,10 +101,10 @@ describe('practice: recall', () => {
       attempt: () => ({ detail: [{ loc: ['body', 'cardId'], msg: 'String should have at least 1 character' }] }),
     })
     renderApp()
-    await screen.findByText('Window a')
-    await userEvent.click(button('Start'))
+    await screen.findByText('TOPIC: Window a')
+    submitKey()
     typeCode('x = 1')
-    await userEvent.click(button('Submit'))
+    submitKey()
     expect(
       await screen.findByText('This attempt was rejected: Invalid request: cardId: String should have at least 1 character'),
     ).toBeInTheDocument()
@@ -113,21 +113,19 @@ describe('practice: recall', () => {
   it('keeps the generic message when the server is down', async () => {
     setup({ attemptStatus: 503, attempt: () => ({ detail: 'down' }) })
     renderApp()
-    await screen.findByText('Window a')
-    await userEvent.click(button('Start'))
+    await screen.findByText('TOPIC: Window a')
+    submitKey()
     typeCode('x = 1')
-    await userEvent.click(button('Submit'))
+    submitKey()
     expect(await screen.findByText('Submission evaluation unavailable for this attempt.')).toBeInTheDocument()
   })
 
-  it('moves between cards', async () => {
+  it('has no Previous, Next, Start or Submit buttons', async () => {
     renderApp()
-    await screen.findByText('Window a')
-    expect(button('Previous card')).toBeDisabled()
-    await userEvent.click(button('Next card'))
-    expect(await screen.findByText('Window b')).toBeInTheDocument()
-    await userEvent.click(button('Previous card'))
-    expect(await screen.findByText('Window a')).toBeInTheDocument()
+    await screen.findByText('TOPIC: Window a')
+    expect(screen.queryByRole('button', { name: /Previous card|Next card|Start|Submit/ })).toBeNull()
+    expect(document.querySelector('.card-control-bar')).toBeNull()
+    expect(document.querySelector('.card-header')).toBeNull()
   })
 
   it('explains a deck that will not load', async () => {
@@ -140,48 +138,64 @@ describe('practice: recall', () => {
   })
 })
 
-describe('practice: toolbar', () => {
-  it('toggles inline, ghost reps, AI completion, zen, tags, related problems and controls', async () => {
+const questionType = () => screen.getByLabelText('Question type')
+const modeKey = (key: 'ArrowUp' | 'ArrowDown') => {
+  pressKey(key, { metaKey: true })
+  pressKey(key, { metaKey: true })
+}
+
+describe('practice: question type', () => {
+  it('has no card toolbar, and shows the question type in the navbar', async () => {
     renderApp()
-    await screen.findByText('Window a')
-    await userEvent.click(button('Turn Inline on'))
-    expect(button('Turn Inline off')).toBeInTheDocument()
-    await userEvent.click(button('Turn Ghost Reps on'))
-    expect(button('Turn Ghost Reps off')).toBeInTheDocument()
-    await userEvent.click(button('Turn AI completion off'))
-    expect(button('Turn AI completion on')).toBeInTheDocument()
-    await userEvent.click(button('Show tags'))
-    expect(button('Hide tags')).toBeInTheDocument()
-    await userEvent.click(button('Show related LeetCode drawer'))
-    await userEvent.click(button('Enter Zen mode'))
-    expect(button('Exit Zen mode')).toBeInTheDocument()
-    await userEvent.click(button('Exit Zen mode'))
-    await userEvent.click(button('Hide card controls'))
-    expect(button('Show card controls')).toBeInTheDocument()
-    await userEvent.click(button('Show card controls'))
+    await screen.findByText('TOPIC: Window a')
+    expect(screen.queryByRole('group', { name: 'Practice mode' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /card controls|Ghost Reps|MCQ/ })).toBeNull()
+    expect(document.querySelector('.mcq-session-meta')).toBeNull()
+    expect(questionType()).toHaveTextContent('Recall')
+  })
+
+  it('steps through MCQ, Recall and Ghost with double-tapped Cmd + up and down', async () => {
+    renderApp()
+    await screen.findByText('TOPIC: Window a')
+    pressKey('ArrowDown', { metaKey: true })
+    expect(questionType()).toHaveTextContent('Recall')
+    pressKey('ArrowDown', { metaKey: true })
+    expect(questionType()).toHaveTextContent('Ghost')
+    modeKey('ArrowDown')
+    expect(questionType()).toHaveTextContent('Ghost')
+    modeKey('ArrowUp')
+    expect(questionType()).toHaveTextContent('Recall')
+    modeKey('ArrowUp')
+    expect(questionType()).toHaveTextContent('MCQ')
+    expect(await screen.findByRole('radiogroup', { name: 'Answer choices' })).toBeInTheDocument()
+    modeKey('ArrowUp')
+    expect(questionType()).toHaveTextContent('MCQ')
+    modeKey('ArrowDown')
+    expect(questionType()).toHaveTextContent('Recall')
   })
 
   it('opens and closes the flow menu from the URL', async () => {
     renderApp('/?panel=flow')
-    await screen.findByText('Window a')
+    await waitFor(() => expect(button('Start flow')).toBeEnabled())
     expect(screen.getByLabelText('Flow configuration')).toBeInTheDocument()
     expect(screen.getByText('Build your flow')).toBeInTheDocument()
   })
 
   it('runs the Ghost Rep support layer on the typing editor', async () => {
     renderApp()
-    await screen.findByText('Window a')
-    await userEvent.click(button('Turn Ghost Reps on'))
-    await userEvent.click(button('Start'))
+    await screen.findByText('TOPIC: Window a')
+    modeKey('ArrowDown')
+    expect(questionType()).toHaveTextContent('Ghost')
+    submitKey()
     typeCode('def f(nums, k):\n    total = sum(nums[:k])')
-    await userEvent.click(button('Submit'))
+    submitKey()
     await waitFor(() => expect(attempts[0]).toMatchObject({ modality: 'ghost-rep' }))
   })
 
   it('responds to keyboard shortcuts', async () => {
     renderApp()
-    await screen.findByText('Window a')
-    pressKey('Enter', { metaKey: true }) // primary action: Start
+    await screen.findByText('TOPIC: Window a')
+    submitKey() // start
     expect(await screen.findByText('Type the full algorithm from memory')).toBeInTheDocument()
     pressKey('g', { metaKey: true })
     pressKey('l', { metaKey: true })
@@ -196,13 +210,16 @@ describe('practice: multiple choice', () => {
   it('generates questions and records the chosen answer', async () => {
     setup({ attempt: (body) => ({ saved: true, attemptId: 1, successful: body.selectedChoiceId === 'A', evaluation: evaluation(body.selectedChoiceId === 'A') }) })
     renderApp()
-    await screen.findByText('Window a')
-    await userEvent.click(button('MCQ'))
+    await screen.findByText('TOPIC: Window a')
+    modeKey('ArrowUp')
     const choices = await screen.findByRole('radiogroup', { name: 'Answer choices' })
     expect(fetch.calls.some((call) => call.url.includes('/api/coach/multiple-choice-drills'))).toBe(true)
-    await userEvent.click(within(choices).getByText('A min-heap of size k'))
-    const submit = screen.queryByRole('button', { name: /Submit|Check/ })
-    if (submit) await userEvent.click(submit)
+    expect(screen.queryByRole('button', { name: /Submit/ })).toBeNull()
+    pressKey('2') // second answer
+    expect(within(choices).getByRole('radio', { name: /A sorted list/ })).toHaveAttribute('aria-checked', 'true')
+    pressKey('a') // first answer
+    expect(within(choices).getByRole('radio', { name: /A min-heap of size k/ })).toHaveAttribute('aria-checked', 'true')
+    submitKey()
     await waitFor(() => expect(attempts[0]).toMatchObject({ selectedChoiceId: 'A' }))
   })
 
@@ -212,12 +229,11 @@ describe('practice: multiple choice', () => {
       attempt: () => ({ detail: { code: 'mcq_unknown_problem', message: "Unknown multiple-choice problem '1'." } }),
     })
     renderApp()
-    await screen.findByText('Window a')
-    await userEvent.click(button('MCQ'))
+    await screen.findByText('TOPIC: Window a')
+    modeKey('ArrowUp')
     const choices = await screen.findByRole('radiogroup', { name: 'Answer choices' })
     await userEvent.click(within(choices).getByText('A min-heap of size k'))
-    const submit = screen.queryByRole('button', { name: /Submit|Check/ })
-    if (submit) await userEvent.click(submit)
+    submitKey()
     expect(
       await screen.findByText("Your answer could not be graded: Unknown multiple-choice problem '1'."),
     ).toBeInTheDocument()
@@ -238,7 +254,7 @@ describe('practice: deck sources', () => {
   it('loads a static playlist from the URL', async () => {
     setup({ extra: [{ match: '/api/catalog/playlists', body: playlists }] })
     renderApp('/?playlist=blind')
-    expect(await screen.findByText('Playlist card')).toBeInTheDocument()
+    expect(await screen.findByText('TOPIC: Playlist card')).toBeInTheDocument()
   })
 
   it('streams a generated playlist', async () => {
@@ -249,7 +265,7 @@ describe('practice: deck sources', () => {
       ],
     })
     renderApp('/?playlist=live')
-    expect(await screen.findByText('Streamed card')).toBeInTheDocument()
+    expect(await screen.findByText('TOPIC: Streamed card')).toBeInTheDocument()
   })
 
   it('falls back to a single request when streaming fails', async () => {
@@ -260,7 +276,7 @@ describe('practice: deck sources', () => {
       ],
     })
     renderApp('/?playlist=live')
-    expect(await screen.findByText('Generated card')).toBeInTheDocument()
+    expect(await screen.findByText('TOPIC: Generated card')).toBeInTheDocument()
   })
 
   it('reports an unavailable static playlist', async () => {
@@ -282,7 +298,7 @@ describe('practice: deck sources', () => {
 
   it('focuses a tag', async () => {
     renderApp('/?focusTag=heap')
-    await screen.findByText('Window a')
+    await screen.findByText('TOPIC: Window a')
     expect(fetch.calls.some((call) => call.url.includes('tag=heap'))).toBe(true)
   })
 })

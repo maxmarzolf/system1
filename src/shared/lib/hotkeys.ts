@@ -9,6 +9,10 @@ export type HotkeyId =
   | 'next-targeted-line'
   | 'toggle-ghost-reps'
   | 'move-pages'
+  | 'switch-question-type'
+  | 'journey-start-practice'
+  | 'submit-card'
+  | 'mcq-choice'
   | 'indent-outdent'
   | 'toggle-ai-completion'
   | 'toggle-inline-feedback'
@@ -45,6 +49,38 @@ const hotkeyDefinitions: HotkeyDefinition[] = [
     displayKeys: ['Mod + ← ← / Mod + → →'],
     label: 'Move between pages',
     description: 'Double-tap the modified arrow shortcut to open the page to the left or right in the navbar.',
+    bindings: [],
+  },
+  {
+    id: 'switch-question-type',
+    group: 'Navigation',
+    displayKeys: ['Mod + ↑ ↑ / Mod + ↓ ↓'],
+    label: 'Change question type',
+    description: 'On the practice page, double-tap to step through MCQ, Recall and Ghost (outside a Flow).',
+    bindings: [],
+  },
+  {
+    id: 'journey-start-practice',
+    group: 'Navigation',
+    displayKeys: ['Enter'],
+    label: 'Start practicing',
+    description: 'On Journey, open the practice page (unless a button or field has focus).',
+    bindings: [],
+  },
+  {
+    id: 'submit-card',
+    group: 'Card modalities',
+    displayKeys: ['Mod', 'Shift', 'Enter'],
+    label: 'Start or submit',
+    description: 'Recall, Ghost and MCQ have no Start or Submit button: start a rep, submit it, or submit the chosen answer.',
+    bindings: [{ key: 'Enter', modifier: 'mod', shift: true }],
+  },
+  {
+    id: 'mcq-choice',
+    group: 'Card modalities',
+    displayKeys: ['A–D / 1–4'],
+    label: 'Choose an MCQ answer',
+    description: 'Pick the first to fourth answer. MCQ only.',
     bindings: [],
   },
   {
@@ -87,8 +123,8 @@ const hotkeyDefinitions: HotkeyDefinition[] = [
     id: 'primary-card-action',
     group: 'Card modalities',
     displayKeys: ['Mod', 'Enter'],
-    label: 'Primary card action',
-    description: 'Activate the bottom-right card button, such as Start, Submit, or Next.',
+    label: 'Card button',
+    description: 'Press the button under the card when there is one, such as a Flow\'s Next or a Microdrill\'s Submit.',
     bindings: [{ key: 'Enter', modifier: 'mod' }],
   },
   {

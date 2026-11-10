@@ -7,7 +7,7 @@ describe('usePracticeHotkeys', () => {
     const button = document.createElement('button')
     const click = vi.fn()
     button.addEventListener('click', click)
-    const handlers = { onToggleAiCompletion: vi.fn(), onToggleGhostReps: vi.fn(), onToggleInline: vi.fn() }
+    const handlers = { onSubmitKey: vi.fn(), onToggleAiCompletion: vi.fn(), onToggleGhostReps: vi.fn(), onToggleInline: vi.fn() }
     renderHook(() => usePracticeHotkeys({ primaryButtonRef: { current: button }, recallActive: true, flowActive: false, ...handlers, ...overrides }))
     return { button, click, ...handlers }
   }
@@ -20,6 +20,17 @@ describe('usePracticeHotkeys', () => {
     button.disabled = true
     press('Enter')
     expect(click).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs the card action on Mod+Shift+Enter, without pressing the button', () => {
+    const { click, onSubmitKey } = setup()
+    fireEvent.keyDown(window, { key: 'Enter', metaKey: true, shiftKey: true })
+    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true, shiftKey: true })
+    expect(onSubmitKey).toHaveBeenCalledTimes(2)
+    expect(click).not.toHaveBeenCalled()
+    fireEvent.keyDown(window, { key: 'Enter', shiftKey: true })
+    fireEvent.keyDown(window, { key: 'Enter', metaKey: true, shiftKey: true, repeat: true })
+    expect(onSubmitKey).toHaveBeenCalledTimes(2)
   })
 
   it('toggles recall support, except what a flow fixes', () => {

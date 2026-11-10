@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import TopNav from './TopNav'
 import { ThemeProvider } from './theme'
 
@@ -44,16 +44,33 @@ describe('TopNav', () => {
     expect(document.documentElement.dataset.theme).toBe('dark-high-contrast')
   })
 
-  it('shows the provider picker when it can open', async () => {
-    const onToggle = vi.fn()
-    renderNav('/', { onToggleLlmProviderMenu: onToggle, llmProviderLabel: 'Claude', llmProviderMenuOpen: true, rightExtras: <span>extra</span> })
-    await userEvent.click(screen.getByRole('button', { name: 'Coach model' }))
-    expect(onToggle).toHaveBeenCalled()
-    expect(screen.getByText('extra')).toBeInTheDocument()
+  it('shows the question type only when the page passes one', () => {
+    const { unmount } = renderNav('/practice', { questionType: 'Ghost' })
+    expect(screen.getByLabelText('Question type')).toHaveTextContent('Ghost')
+    unmount()
+    renderNav('/')
+    expect(screen.queryByLabelText('Question type')).toBeNull()
+    expect(screen.queryByText(/Auto \(/)).toBeNull()
   })
 
-  it('shows a static label without a picker', () => {
-    renderNav('/')
-    expect(screen.getByLabelText('Coach model auto selection')).toHaveTextContent('Auto (OpenAI)')
+  it('slides the question type up or down with the motion it is given', () => {
+    const { rerender } = renderNav('/practice', { questionType: 'Recall' })
+    expect(screen.getByText('Recall')).not.toHaveClass('navbar-question-type-slide-up')
+    rerender(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/practice']}>
+          <TopNav questionType="MCQ" questionTypeMotion={{ direction: 'up', id: 1 }} />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+    expect(screen.getByText('MCQ')).toHaveClass('navbar-question-type-slide-up')
+    rerender(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/practice']}>
+          <TopNav questionType="Recall" questionTypeMotion={{ direction: 'down', id: 2 }} />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+    expect(screen.getByText('Recall')).toHaveClass('navbar-question-type-slide-down')
   })
 })

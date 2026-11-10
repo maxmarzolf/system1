@@ -7,7 +7,10 @@ import Skeleton from '@/shared/components/Skeleton'
 const PROMPT_LINES = ['w95 tall', 'w80', 'w60']
 
 /** The left panel: the MCQ question, or the recall prompt (an explanation for skeleton cards). */
-export default function PromptPanel({ mode, hasDeck, loading, error, onRetry, mcqCard, prompt, explanation, syntaxTheme, theme }: {
+/** The card's title under the section label, in small type. */
+const Topic = ({ topic }: { topic: string }) => <p className="prompt-topic">TOPIC: {topic}</p>
+
+export default function PromptPanel({ mode, hasDeck, loading, error, onRetry, mcqCard, prompt, explanation, topic, syntaxTheme, theme }: {
   mode: PracticeMode
   hasDeck: boolean
   loading: boolean
@@ -17,6 +20,8 @@ export default function PromptPanel({ mode, hasDeck, loading, error, onRetry, mc
   mcqCard: MultipleChoiceCard | null
   prompt: string
   explanation: string | null
+  /** The card's title, shown as "TOPIC: …" under the Question or Prompt label. */
+  topic: string
   syntaxTheme: Record<string, CSSProperties>
   theme: AppTheme
 }) {
@@ -43,6 +48,7 @@ export default function PromptPanel({ mode, hasDeck, loading, error, onRetry, mc
           <div className="prompt-surface-section">
             <div className="prompt-section-content">
               <span className="prompt-section-label">Question</span>
+              <Topic topic={topic} />
               <div className="prompt prompt-surface-body multiple-choice-question">
                 <MarkdownCodeContent text={mcqCard.question} syntaxTheme={syntaxTheme} theme={theme} editorBlocks />
               </div>
@@ -73,6 +79,7 @@ export default function PromptPanel({ mode, hasDeck, loading, error, onRetry, mc
           <div className="prompt-surface-section">
             <div className="prompt-section-content">
               <span className="prompt-section-label">{explanation !== null ? 'Explanation' : 'Prompt'}</span>
+              <Topic topic={topic} />
               <p className="prompt prompt-surface-body">{explanation ?? prompt}</p>
             </div>
           </div>

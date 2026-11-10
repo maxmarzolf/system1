@@ -78,6 +78,9 @@ export const pressKey = (key: string, init: KeyboardEventInit = {}) =>
     window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }))
   })
 
+/** Mod+Shift+Enter: start or submit a Recall, Ghost or MCQ card (they have no button). */
+export const submitKey = () => pressKey('Enter', { metaKey: true, shiftKey: true })
+
 export const button = (name: string | RegExp) => screen.getByRole('button', { name })
 
 export const flush = (ms = 0) => act(() => new Promise((resolve) => setTimeout(resolve, ms)))

@@ -106,8 +106,9 @@ describe('SignalHologram', () => {
     mockFetch([{ match: '/api/history/signals', body: history }])
     const { unmount } = renderTerrain()
     expect(screen.getByText('Mapping signal scores…')).toBeInTheDocument()
-    await screen.findByText(/3 scores across 2 signals/)
-    expect(screen.getByRole('link', { name: '/build' })).toHaveAttribute('href', '/practice?panel=flow')
+    await screen.findByRole('img', { name: /3 scores across 2 signals/ })
+    expect(screen.queryByRole('link')).toBeNull()
+    expect(screen.queryByText('Signal Score Terrain')).toBeNull()
     runFrames()
     expect(renderers).toHaveLength(1)
     expect(renderers[0].rendered).toBe(1) // drawn once on mount
@@ -123,7 +124,7 @@ describe('SignalHologram', () => {
   it('shows a tooltip for the dot under the pointer and pauses on it', async () => {
     mockFetch([{ match: '/api/history/signals', body: history }])
     renderTerrain()
-    await screen.findByText(/3 scores across 2 signals/)
+    await screen.findByRole('img', { name: /3 scores across 2 signals/ })
     runFrames()
     const canvas = renderers[0].domElement
     vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 800, height: 600 } as DOMRect)
@@ -149,7 +150,7 @@ describe('SignalHologram', () => {
   it('zooms only with Ctrl or Command held', async () => {
     mockFetch([{ match: '/api/history/signals', body: history }])
     renderTerrain()
-    await screen.findByText(/3 scores/)
+    await screen.findByRole('img', { name: /3 scores/ })
     runFrames()
     const canvas = renderers[0].domElement
     const plain = new WheelEvent('wheel', { deltaY: 100, cancelable: true })
@@ -163,7 +164,7 @@ describe('SignalHologram', () => {
   it('rebuilds with the new theme colors', async () => {
     mockFetch([{ match: '/api/history/signals', body: history }])
     renderTerrain()
-    await screen.findByText(/3 scores/)
+    await screen.findByRole('img', { name: /3 scores/ })
     runFrames()
     await userEvent.click(screen.getByRole('button', { name: 'light' }))
     runFrames()
@@ -198,7 +199,7 @@ describe('SignalHologram', () => {
     const single = { signals: [history.signals[0]], points: [history.points[0]] }
     mockFetch([{ match: '/api/history/signals', body: single }])
     renderTerrain()
-    await screen.findByText(/1 scores across 1 signals/)
+    await screen.findByRole('img', { name: /1 scores across 1 signals/ })
     runFrames()
     expect(renderers.length).toBeGreaterThan(0)
   })
@@ -209,7 +210,7 @@ describe('SignalHologram', () => {
     })
     mockFetch([{ match: '/api/history/signals', body: history }])
     renderTerrain()
-    await screen.findByText(/3 scores/)
+    await screen.findByRole('img', { name: /3 scores/ })
     runFrames()
     expect(renderers).toHaveLength(0)
   })

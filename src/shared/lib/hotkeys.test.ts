@@ -19,6 +19,8 @@ describe('hotkeys', () => {
     expect(matchesHotkey(key({ key: 'x', metaKey: true }), 'flow-full-recall')).toBe(false)
     expect(matchesHotkey(key({ key: 'Enter' }), 'next-targeted-line')).toBe(true)
     expect(matchesHotkey(key({ key: 'Tab', shiftKey: true }), 'indent-outdent')).toBe(true)
+    expect(matchesHotkey(key({ key: 'Enter', metaKey: true, shiftKey: true }), 'submit-card')).toBe(true)
+    expect(matchesHotkey(key({ key: 'Enter', metaKey: true }), 'submit-card')).toBe(false)
     expect(matchesHotkey(key({ key: 'ArrowLeft', metaKey: true }), 'move-pages')).toBe(false)
   })
 
@@ -26,6 +28,11 @@ describe('hotkeys', () => {
     const groups = getHotkeyReferenceGroups(true)
     expect(groups.map((group) => group.title)).toEqual(['Navigation', 'Card modalities', 'Recall and Ghost Reps', 'Editor and coaching'])
     expect(groups[0].hotkeys[0]).toMatchObject({ id: 'move-pages', keys: ['⌘ + ← ← / ⌘ + → →'] })
-    expect(groups[1].hotkeys[0]).toMatchObject({ keys: ['⌘', 'D'], flowStage: 'recall' })
+    expect(groups[0].hotkeys.map((hotkey) => hotkey.id)).toEqual(['move-pages', 'switch-question-type', 'journey-start-practice'])
+    expect(groups[1].hotkeys.slice(0, 3)).toMatchObject([
+      { id: 'submit-card', keys: ['⌘', 'Shift', 'Enter'] },
+      { id: 'mcq-choice', keys: ['A–D / 1–4'] },
+      { keys: ['⌘', 'D'], flowStage: 'recall' },
+    ])
   })
 })

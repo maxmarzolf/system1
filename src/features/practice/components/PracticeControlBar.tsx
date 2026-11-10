@@ -1,14 +1,15 @@
 import type { RefObject } from 'react'
-import type { PrimaryAction, PrimaryActionKind } from '../lib/primaryAction'
+import { isKeyOnlyAction, type PrimaryAction, type PrimaryActionKind } from '../lib/primaryAction'
 import Icon from '@/shared/components/Icon'
 
 /**
  * The bar under the card. With the Flow panel open it starts or stops the flow; otherwise it
- * moves between cards and carries the card's primary action.
+ * carries the card's primary action, unless that action is keyboard-only (Recall, Ghost and MCQ
+ * start and submit with Mod+Shift+Enter), in which case there is no bar.
  */
 export default function PracticeControlBar({
   primaryButtonRef, flowPanelOpen, flowRunning, canStartFlow, onStartFlow, onStopFlow,
-  canGoPrev, canGoNext, onPrev, onNext, action, onAction,
+  action, onAction,
 }: {
   /** The primary-action hotkey presses this button. */
   primaryButtonRef: RefObject<HTMLButtonElement | null>
@@ -17,10 +18,6 @@ export default function PracticeControlBar({
   canStartFlow: boolean
   onStartFlow: () => void
   onStopFlow: () => void
-  canGoPrev: boolean
-  canGoNext: boolean
-  onPrev: () => void
-  onNext: () => void
   action: PrimaryAction | null
   onAction: () => void
 }) {
@@ -42,51 +39,40 @@ export default function PracticeControlBar({
     )
   }
 
+  if (!action || isKeyOnlyAction(action.kind)) return null
+
   // In a flow, "Next" moves to the next modality, so it reads label-first like a forward arrow.
-  const flowNext = flowRunning && action?.label === 'Next'
+  const flowNext = flowRunning && action.label === 'Next'
   return (
     <div className="card-control-bar">
-      <div className="card-control-group">
-        <button type="button" className="secondary card-control-button" onClick={onPrev} disabled={!canGoPrev} aria-label="Previous card">
-          <Icon name="previous" size={16} />
-          <span>Previous</span>
-        </button>
-        <button type="button" className="secondary card-control-button" onClick={onNext} disabled={!canGoNext} aria-label="Next card">
-          <Icon name="next" size={16} />
-          <span>Next</span>
+      <div className="card-control-group card-control-group-primary">
+        <button
+          type="button"
+          ref={primaryButtonRef}
+          className={flowNext ? 'card-control-button card-control-button-flow-next' : 'card-control-button'}
+          onClick={onAction}
+          disabled={action.disabled}
+          aria-label={flowNext ? 'Continue to the next modality' : undefined}
+        >
+          {flowNext ? (
+            <>
+              <span>{action.label}</span>
+              <PrimaryActionIcon kind={action.kind} />
+            </>
+          ) : (
+            <>
+              <PrimaryActionIcon kind={action.kind} />
+              <span>{action.label}</span>
+            </>
+          )}
         </button>
       </div>
-      {action && (
-        <div className="card-control-group card-control-group-primary">
-          <button
-            type="button"
-            ref={primaryButtonRef}
-            className={flowNext ? 'card-control-button card-control-button-flow-next' : 'card-control-button'}
-            onClick={onAction}
-            disabled={action.disabled}
-            aria-label={flowNext ? 'Continue to the next modality' : undefined}
-          >
-            {flowNext ? (
-              <>
-                <span>{action.label}</span>
-                <PrimaryActionIcon kind={action.kind} />
-              </>
-            ) : (
-              <>
-                <PrimaryActionIcon kind={action.kind} />
-                <span>{action.label}</span>
-              </>
-            )}
-          </button>
-        </div>
-      )}
     </div>
   )
 }
 
-/** The primary action's icon; a flow's "Next" is a larger forward arrow. */
+/** The primary action's icon (only button actions get here): a flow's "Next" is a larger forward arrow. */
 function PrimaryActionIcon({ kind }: { kind: PrimaryActionKind }) {
   if (kind === 'flow-next') return <Icon name="arrow-right" size={18} className="flow-next-icon" />
-  const name = kind === 'microdrill-submit' || kind === 'mcq-submit' ? 'check' : kind === 'recall-start' ? 'start' : 'submit'
-  return <Icon name={name} size={16} />
+  return <Icon name="check" size={16} />
 }

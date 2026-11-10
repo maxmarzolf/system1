@@ -27,7 +27,7 @@ const renderTune = () => {
 describe('TunePage', () => {
   it('saves every setting as it changes and resets each section', async () => {
     renderTune()
-    expect(await screen.findByText('Auto (Gemma)')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Question type')).toBeNull()
 
     // Pick the last option of every select.
     for (const select of screen.getAllByRole('combobox') as HTMLSelectElement[]) {

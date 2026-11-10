@@ -20,9 +20,9 @@ import { useMultipleChoiceAttempt } from './hooks/useMultipleChoiceAttempt'
 import { useRecallAttempt, type RecallSubmitted } from './hooks/useRecallAttempt'
 import { usePracticeSession, useSessionPlan } from './hooks/usePracticeSession'
 import { usePracticeHotkeys } from './hooks/usePracticeHotkeys'
+import { useMultipleChoiceHotkeys } from './hooks/useMultipleChoiceHotkeys'
 import { usePracticePanels } from './hooks/usePracticePanels'
 import { usePracticeFocus } from './hooks/usePracticeFocus'
-import CardHeader from './components/CardHeader'
 import FlowPanel from './flow/FlowPanel'
 import MultipleChoicePanel from './components/MultipleChoicePanel'
 import PracticeControlBar from './components/PracticeControlBar'
@@ -36,11 +36,13 @@ import { resolvePrimaryAction, type PrimaryActionKind } from './lib/primaryActio
 import { derivePracticeTargets } from './lib/targets'
 import { focusMicroDrillInput } from './lib/markdownText'
 import { describeCard } from './lib/cardMeta'
+import { questionTypeLabel, questionTypeOf, stepQuestionType, type QuestionType } from './lib/questionType'
+import { useDoubleTapArrows } from '@/shared/lib/useDoubleTapArrows'
 import { INLINE_FEEDBACK_ENABLED, emptySkillMapCard, EMPTY_FLOW_MICRODRILL_ACTION_STATE, type AttemptPayload, type MultipleChoiceCard, type MultipleChoiceSpecimenContext, type PracticeMode, type SupportLayer, type TemplateMode } from './lib/types'
 
 function PracticePage() {
   const { theme } = useTheme()
-  const { focus: practiceFocus, flowPanelRequested, toggleTag } = usePracticeFocus()
+  const { focus: practiceFocus, flowPanelRequested } = usePracticeFocus()
   const [practiceMode, setPracticeMode] = useState<PracticeMode>('recall')
   const [mcqSourceSpecimen, setMcqSourceSpecimen] = useState<MultipleChoiceSpecimenContext | null>(null)
   const [mcqRequestId, setMcqRequestId] = useState(0)
@@ -63,7 +65,7 @@ function PracticePage() {
   const googlePlaylistTuning = useMemo(() => loadStoredGooglePlaylistTuning(), [])
   const multipleChoiceQuestionCount = mcqTuning.questionCount
   const flowStageContentRef = useRef<HTMLDivElement | null>(null)
-  const { focusedPatternSlug, focusedTagSlug, focusedPatternLabel, requestedPlaylist, focusedCardPending, focusedCardNotFound, requestedQuestionType } = practiceFocus
+  const { focusedCardPending, focusedCardNotFound, requestedQuestionType } = practiceFocus
   const recallDeck = useRecallDeck(practiceFocus, googlePlaylistTuning.order, requestLlmProvider)
   const filteredDeck = recallDeck.deck
   const skillMapLoading = recallDeck.loading
@@ -140,10 +142,6 @@ function PracticePage() {
     [practiceFlow, practiceTarget]
   )
   const activeRecallTarget = practiceFlow?.stage === 'ghost' && flowGhostTarget ? flowGhostTarget : practiceTarget
-  const handleTagClick = (tag: string) => {
-    panels.closeTags()
-    toggleTag(tag)
-  }
 
   const hasRecallDeck = filteredDeck.length > 0
   const hasMultipleChoiceDeck = isFlowActive ? flowMultipleChoiceDeck.length > 0 : multipleChoiceDeck.length > 0
@@ -348,10 +346,6 @@ function PracticePage() {
     && mainPhase === 'typing'
     && recall.evaluating
     && effectiveSupportLayer !== 'ghost-reps'
-  const multipleChoicePosition = isFlowActive ? 1 : session.position + 1
-  const multipleChoiceTotal = isFlowActive
-    ? flowMultipleChoiceDeck.length || 1
-    : multipleChoiceDeck.length || multipleChoiceQuestionCount
   const flowMicroDrillActionKey = practiceFlow?.stage === 'microdrill'
     ? `${practiceFlow.runId}-${practiceFlow.step}`
     : ''
@@ -387,11 +381,24 @@ function PracticePage() {
 
   usePracticeHotkeys({
     primaryButtonRef: primaryCardButtonRef,
+    // Same rules as the button it replaces: not while a flow stage is changing or the Flow panel is up.
+    onSubmitKey: () => {
+      if (flowTransition || panels.flowOpen || !primaryCardAction || primaryCardAction.disabled) return
+      primaryActionHandlers[primaryCardAction.kind]()
+    },
     recallActive: currentPracticeMode === 'recall',
     flowActive: isFlowActive,
     onToggleAiCompletion: toggleAiCompletion,
     onToggleGhostReps: () => setSupportLayer((current) => (current === 'ghost-reps' ? 'none' : 'ghost-reps')),
     onToggleInline: toggleInlineHelper,
+  })
+
+  useMultipleChoiceHotkeys({
+    enabled: currentPracticeMode === 'multiple-choice'
+      && !mcqView.submitted && !hasAnsweredCurrent && !session.finished
+      && !flowTransition && !panels.flowOpen,
+    choiceIds: activeMultipleChoiceCard?.choices.map((choice) => choice.id) ?? [],
+    onChoose: mcq.select,
   })
 
   const microDrillEditorReady = !flowTransition && !panels.flowOpen
@@ -412,6 +419,28 @@ function PracticePage() {
     setMcqRequestId((id) => id + 1)
     setPracticeMode('multiple-choice')
   }
+  const questionType = questionTypeOf(currentPracticeMode, effectiveSupportLayer)
+  /** Switch to a question type; false when it is not available yet (MCQ needs a loaded deck). */
+  const selectQuestionType = (next: QuestionType) => {
+    if (next === 'mcq') {
+      if (skillMapLoading || filteredDeck.length === 0) return false
+      setSupportLayer('none')
+      chooseMultipleChoice()
+      return true
+    }
+    setPracticeMode('recall')
+    setSupportLayer(next === 'ghost' ? 'ghost-reps' : 'none')
+    return true
+  }
+  // Cmd/Ctrl + ↑↑ / ↓↓ steps through MCQ, Recall and Ghost; a running flow picks its own stages.
+  const [questionTypeMotion, setQuestionTypeMotion] = useState<{ direction: 'up' | 'down'; id: number } | null>(null)
+  useDoubleTapArrows(['ArrowUp', 'ArrowDown'], (key) => {
+    const direction = key === 'ArrowUp' ? 'up' : 'down'
+    const next = stepQuestionType(questionType, direction)
+    if (!next || !selectQuestionType(next)) return
+    setQuestionTypeMotion((previous) => ({ direction, id: (previous?.id ?? 0) + 1 }))
+  }, !isFlowActive && !ladderActive)
+
   const saveMicroDrill = (payload: Pick<AttemptPayload, 'correctAnswer' | 'userAnswer' | 'question' | 'elapsedMs' | 'interactionId' | 'signals' | 'outsideFlow'>) =>
     submitAttemptToServer({
       mode: 'main-recall', microdrill: true, templateMode: currentTemplateMode, supportLayer: 'none', liveCoachUsed: false, modality: 'microdrill', ...payload,
@@ -475,6 +504,7 @@ function PracticePage() {
         mcqCard={activeMultipleChoiceCard}
         prompt={practicePrompt}
         explanation={skeletonReference ? skeletonReference.explanation : null}
+        topic={cardMeta.headerTitle}
         syntaxTheme={syntaxTheme}
         theme={theme}
       />
@@ -513,7 +543,7 @@ function PracticePage() {
   return (
     <div className={['app', panels.relatedOpen && relatedLeetCodeSet ? 'app-side-drawer-open' : '', panels.zen ? 'app-zen-mode' : ''].filter(Boolean).join(' ')}>
       {recall.failure && <SubmissionFailureModal failure={recall.failure} onClose={recall.dismissFailure} />}
-      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} practiceHistoryHref={cardMeta.historyHref} />
+      <TopNav questionType={questionTypeLabel(questionType, practiceFlow?.stage ?? null)} questionTypeMotion={questionTypeMotion} practiceHistoryHref={cardMeta.historyHref} />
 
       {focusedCardNotFound || focusedCardPending ? (
         <div className="card-shell">
@@ -530,39 +560,6 @@ function PracticePage() {
       ) : (
         <div className={['card-shell', currentPracticeMode === 'multiple-choice' ? 'card-shell-mcq' : '', relatedLeetCodeSet ? 'card-shell-has-drawer' : ''].filter(Boolean).join(' ')}>
           <section className="card">
-            <CardHeader
-              title={cardMeta.headerTitle}
-              flowSubtitle={practiceFlow
-                ? `${practiceFlow.config.mode === 'adaptive' ? `Adaptive · ${flowState.mastery.proficiency}%` : practiceFlow.config.mode === 'random' ? 'Random flow' : `Cycle ${practiceFlow.cycle}`} on ${practiceFlow.anchorTitle}`
-                : card.title}
-              mcqMeta={currentPracticeMode === 'multiple-choice' ? {
-                inFlow: isFlowActive,
-                flowModeLabel: isFlowActive ? 'Missed-line remediation' : mcqTuning.flowMode === 'progressive' ? 'Socratic chain' : 'Balanced random',
-                focusLabel: requestedPlaylist ? 'Playlist bias' : focusedPatternSlug ? `Focus ${focusedPatternLabel}` : null,
-                position: multipleChoicePosition,
-                total: multipleChoiceTotal,
-              } : null}
-              controls={{
-                mode: currentPracticeMode,
-                inFlow: isFlowActive,
-                canChooseMcq: !skillMapLoading && filteredDeck.length > 0,
-                onChooseRecall: () => setPracticeMode('recall'),
-                onChooseMcq: chooseMultipleChoice,
-                inlineEnabled,
-                onToggleInline: toggleInlineHelper,
-                ghostReps: isGhostRepsEnabled,
-                onToggleGhostReps: () => setSupportLayer(isGhostRepsEnabled ? 'none' : 'ghost-reps'),
-                aiCompletion: codeEditorTuning.aiCompletion,
-                onToggleAiCompletion: toggleAiCompletion,
-                ladderTechnique,
-                ladderActive,
-                onToggleLadder: () => panels.toggleLadder(card.id),
-                hasRelated: relatedLeetCodeSet !== null,
-              }}
-              panels={panels}
-              tags={{ id: `card-tags-${card.id}`, badges: cardMeta.badges, tags: cardMeta.visibleTags, activeTag: focusedTagSlug, onTagClick: handleTagClick }}
-            />
-
             {session.finished && (
               <SessionSummary mode={currentPracticeMode} correctCount={session.correctCount} attempts={session.attempts} plan={sessionPlan} />
             )}
@@ -592,10 +589,6 @@ function PracticePage() {
                 canStartFlow={hasRecallDeck && !session.finished && !flowState.historyLoading}
                 onStartFlow={() => void flowControls.start()}
                 onStopFlow={flowControls.stop}
-                canGoPrev={session.canGoPrev}
-                canGoNext={session.canGoNext}
-                onPrev={session.prev}
-                onNext={session.next}
                 action={primaryCardAction}
                 onAction={primaryCardAction ? primaryActionHandlers[primaryCardAction.kind] : () => {}}
               />

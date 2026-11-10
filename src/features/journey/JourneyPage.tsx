@@ -7,8 +7,6 @@ import DailyWorkHistory, {
 } from './DailyWorkHistory'
 import { DAILY_WORK_RANGES, type DailyWorkRange, viewerTimeZone } from '@/shared/lib/dailyWork'
 import HistoryDayDetail from './HistoryDayDetail'
-import SignalHologramHeader from './terrain/SignalHologramHeader'
-import { useConfiguredProviderLabel } from '@/shared/lib/llmProviderDefault'
 import TopNav from '@/app/TopNav'
 
 // three.js is large; load the score terrain only when this page renders it.
@@ -25,7 +23,6 @@ const latestActiveDate =(activity: DailyWorkActivity) =>
   [...activity.days].reverse().find(day => day.segments.some(segment => segment.count > 0))?.date ?? null
 
 export default function JourneyPage() {
-  const configuredProviderLabel = useConfiguredProviderLabel()
   const [range, setRange] = useState<DailyWorkRange>('month')
   const historyDays = DAILY_WORK_RANGES.find(option => option.value === range)?.days ?? 30
   const overviewQuery = useSkillMapOverview<SkillMapOverview>(historyDays, viewerTimeZone())
@@ -140,11 +137,10 @@ export default function JourneyPage() {
 
   return (
     <div className="app app-history">
-      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} pinned solid={navSolid} />
+      <TopNav pinned solid={navSolid} />
       <Suspense
         fallback={(
           <section className="signal-hologram" aria-label="Signal score terrain">
-            <SignalHologramHeader summary="" />
             <p className="dashboard-mode-meta signal-hologram-loading">Mapping signal scores…</p>
           </section>
         )}

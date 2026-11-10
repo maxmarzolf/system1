@@ -27,13 +27,11 @@ import {
   googlePlaylistTuningSetting,
 } from '@/shared/settings/googlePlaylistTuning'
 import type { GooglePlaylistTuning } from '@/shared/settings/googlePlaylistTuning'
-import { useConfiguredProviderLabel } from '@/shared/lib/llmProviderDefault'
 import TopNav from '@/app/TopNav'
 import { getHotkeyReferenceGroups } from '@/shared/lib/hotkeys'
 import { NumberControl, SelectControl, ToggleControl, TuneSection } from '@/shared/components/settingControls'
 
 export default function TunePage() {
-  const configuredProviderLabel = useConfiguredProviderLabel()
   const hotkeyGroups = getHotkeyReferenceGroups(navigator.platform.includes('Mac'))
   const [submissionTuning, setSubmissionTuning] = useStoredSetting(submissionTuningSetting)
   const [specimenTuning, setSpecimenTuning] = useStoredSetting(specimenTuningSetting)
@@ -63,7 +61,7 @@ export default function TunePage() {
 
   return (
     <div className="app app-tune">
-      <TopNav llmProviderLabel={`Auto (${configuredProviderLabel})`} pinned solid />
+      <TopNav pinned solid />
 
       <section className="tune-surface">
         <div className="tune-hero">
@@ -326,7 +324,7 @@ export default function TunePage() {
             <TuneSection
               eyebrow="07"
               title="Hotkeys"
-              copy="Reference the keyboard controls available whenever a practice card is showing."
+              copy="Every keyboard control: Navigation works on any page; the rest apply while a practice card is showing."
             >
               <div className="tune-hotkey-groups" id="hotkeys">
                 {hotkeyGroups.map((group) => (
