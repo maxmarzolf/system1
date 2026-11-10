@@ -93,7 +93,7 @@ Docs ([index](docs/README.md)):
 | `backend/app/services/read_models/` | Readiness, daily activity, day detail and signal history |
 | `src/api/` | The typed API client: `client.ts` (openapi-fetch typed from the generated `schema.d.ts`, one `ApiError` for every error shape) and `queries.ts` (TanStack Query hooks for shared reads) |
 | `src/app/` | The shell: routes, TopNav, theme and the global styles (`app/styles/`, imported in cascade order) |
-| `src/features/` | One folder per page: `practice/` (the practice screen and its flow, ladder and editor), `dashboard/`, `journey/` (incl. the score terrain), `admin/`, `tune/` |
+| `src/features/` | One folder per page: `practice/` (the practice screen and its flow, ladder and editor), `dashboard/`, `journey/` (incl. the score terrain), `admin/`, `tune/`, `evolve/` |
 | `src/shared/` | Components, helpers, settings and catalogs used by more than one page |
 
 ## API

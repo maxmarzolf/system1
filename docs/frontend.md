@@ -13,6 +13,7 @@ Routes are defined in `src/app/routes.tsx`; every page shares `TopNav` (the acti
 | `/practice-history` | `features/journey/JourneyPage.tsx` | Journey: the score terrain, the daily work grid and the day detail |
 | `/tune` | `features/tune/TunePage.tsx` | Local preferences; saved as you change them |
 | `/admin` | `features/admin/AdminPage.tsx` | MCQ signal editor and the read-only recall specs |
+| `/evolve` | `features/evolve/EvolvePage.tsx` | AlphaEvolve-style prompt runs for MCQ generation |
 
 `/coach-tuning` and `/submission-tuning` redirect to `/tune`.
 
@@ -46,6 +47,7 @@ src/
     journey/      /practice-history   the score terrain, daily work grid and day detail
     admin/        /admin       the signal editor
     tune/         /tune        preferences
+    evolve/       /evolve      OpenEvolve MCQ-prompt runs (talks to the evolve service on :3002)
   test/           Vitest setup and helpers
 ```
 
