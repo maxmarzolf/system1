@@ -205,7 +205,8 @@ async def fetch_skill_map_overview_attempt_rows() -> list[SkillMapOverviewAttemp
 
 
 async def fetch_history_day_rows(day_start: datetime, day_end: datetime) -> list[dict[str, Any]]:
-    """Every daily-work submission created in [day_start, day_end), oldest first, with MCQ choices."""
+    """Every daily-work submission created in [day_start, day_end), oldest first, with MCQ choices
+    and the LLM exchanges that generated the MCQ."""
     async with acquire_connection() as conn:
         rows = await conn.fetch(
             f"""
@@ -224,7 +225,8 @@ async def fetch_history_day_rows(day_start: datetime, day_end: datetime) -> list
                 COALESCE(NULLIF(a.generated_card->>'title', ''), a.generated_card_id, a.multiple_choice_problem_id) AS title,
                 COALESCE(q.question_text, NULLIF(a.generated_card->>'question', ''), NULLIF(a.generated_card->>'prompt', ''), '') AS question,
                 q.choices AS multiple_choice_choices,
-                q.correct_choice_id AS multiple_choice_correct_choice_id
+                q.correct_choice_id AS multiple_choice_correct_choice_id,
+                q.generation_trace AS multiple_choice_generation_trace
             FROM submission a
             LEFT JOIN multiple_choice_problem q ON q.id = a.multiple_choice_problem_id
             WHERE {_DAILY_WORK_SUBMISSION_FILTER}

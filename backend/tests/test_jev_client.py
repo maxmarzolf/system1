@@ -49,6 +49,7 @@ async def test_system_one_posts_wire_format_and_parses_answers() -> None:
     assert response.request_id == "req-1"
     assert response.answers["correctness"]["choice"] == "1"
     assert response.usage == {"input_tokens": 10, "output_tokens": 3}
+    assert response.attempts == 1 and response.latency_ms >= 0
 
 
 @pytest.mark.asyncio
@@ -64,6 +65,7 @@ async def test_system_one_retries_retryable_statuses() -> None:
     response = await _gateway(handler).system_one("state", QUESTIONS)
 
     assert calls["count"] == 2
+    assert response.attempts == 2
     assert response.answers["seen"]["noul"] == 0.7
 
 

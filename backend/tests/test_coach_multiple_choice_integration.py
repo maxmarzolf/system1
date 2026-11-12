@@ -76,8 +76,8 @@ def test_multiple_choice_route_persists_generated_question(monkeypatch: pytest.M
         provider_label,
         provider_available,
         call_llm_json,
+        call,
         fallback_providers,
-        provider_timeout_seconds,
         persist_generated_questions,
         logger,
     ) -> MultipleChoiceDrillsResponse:
@@ -86,9 +86,10 @@ def test_multiple_choice_route_persists_generated_question(monkeypatch: pytest.M
         assert isinstance(provider_available, bool)
         assert call_llm_json is not None
         assert fallback_providers
-        assert provider_timeout_seconds > 0
+        assert call.timeout_seconds > 0
+        assert call.models["claude"] == settings.coach_mcq_anthropic_model
         assert logger is not None
-        await persist_generated_questions([question_payload])
+        await persist_generated_questions([question_payload], [[{"provider": "openai", "ok": True}]])
         return MultipleChoiceDrillsResponse.model_validate({"drills": [question_payload], "llmUsed": True})
 
     monkeypatch.setattr(

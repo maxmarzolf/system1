@@ -8,7 +8,7 @@ describe('SubmissionSignalDetails', () => {
     expect(screen.getByText('No evaluation was stored for this submission.')).toBeInTheDocument()
   })
 
-  it('renders spec, verdict, provenance, scores, rubric and Jev answers', () => {
+  it('renders spec, verdict, provenance, scores and rubric, leaving raw Jev calls to Model calls', () => {
     render(
       <SubmissionSignalDetails
         evaluation={{
@@ -37,7 +37,7 @@ describe('SubmissionSignalDetails', () => {
     expect(screen.getByText('88.3')).toBeInTheDocument()
     expect(screen.getByText('good')).toBeInTheDocument()
     expect(screen.getByText('Named the heap.')).toBeInTheDocument()
-    expect(screen.getByText('Jev answers')).toBeInTheDocument()
+    expect(screen.queryByText('Jev answers')).toBeNull()
     expect(screen.getByText('0.80')).toBeInTheDocument()
   })
 

@@ -96,3 +96,34 @@ async def test_final_recall_uses_one_evaluation_flow_and_persists_its_result(mon
     assert result["evaluation"] == canonical.to_stored()
     assert result["successful"] is True
     assert result["feedbackUnavailable"] is None
+
+
+@pytest.mark.asyncio
+async def test_llm_calls_made_while_grading_are_stored_on_the_evaluation(monkeypatch) -> None:
+    from app.core.llm import record_llm_exchange
+
+    async def _evaluate(_body, _spec):
+        # Stand-in for the assessor and narrator, whose LLM calls record themselves.
+        record_llm_exchange({"provider": "claude", "systemPrompt": "assess", "payload": {"userAnswer": "attempt"}, "ok": True})
+        record_llm_exchange({"provider": "claude", "systemPrompt": "narrate", "payload": {}, "ok": True})
+        return Evaluation.model_validate({"verdict": "sound", "provenance": {"source": "assessor-narrator"}})
+
+    async def _persist(_body, *, successful, evaluation, record=None):
+        return {"saved": True, "attemptId": 45}
+
+    async def _resolve(_card_ids, _skill_tags):
+        return BINARY_SEARCH_SIGNAL_SPEC
+
+    monkeypatch.setattr(feedback_service, "coach_submission_evaluation", _evaluate)
+    monkeypatch.setattr(submission_store, "create_attempt", _persist)
+    monkeypatch.setattr(signal_spec_service, "resolve_signal_spec", _resolve)
+
+    body = AttemptCreate.model_validate({
+        "cardId": "bfs-1", "mode": "main-recall", "question": "Write grid BFS.",
+        "correctAnswer": "target", "userAnswer": "attempt", "elapsedMs": 1000, "categoryTags": ["binary-search"],
+    })
+    result = await submission_service.create_submission(body)
+
+    trace = result["evaluation"]["llmTrace"]
+    assert [exchange["systemPrompt"] for exchange in trace] == ["assess", "narrate"]
+    assert [exchange["attempt"] for exchange in trace] == [1, 2]

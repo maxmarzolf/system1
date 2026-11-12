@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -18,8 +19,22 @@ async def lifespan(_app: FastAPI):
     await disconnect()
 
 
+def _configure_app_logging() -> None:
+    """Send the app's own INFO logs (LLM call timing, generator warnings) to stderr. Only the
+    ``app`` logger: libraries keep Python's default WARNING threshold."""
+    app_logger = logging.getLogger("app")
+    if app_logger.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s - %(message)s"))
+    app_logger.addHandler(handler)
+    app_logger.setLevel(logging.INFO)
+    app_logger.propagate = False
+
+
 def create_app() -> FastAPI:
     """Composition root: builds the app and wires its pluggable parts."""
+    _configure_app_logging()
     register_default_evaluators()
     app = FastAPI(title="System1 API", lifespan=lifespan)
 

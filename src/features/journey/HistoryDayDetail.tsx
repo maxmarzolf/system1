@@ -1,6 +1,7 @@
 import { errorMessage } from '@/api/client'
 import { useHistoryDay } from '@/api/queries'
 import { formatLongCalendarDate } from '@/shared/lib/dailyWork'
+import ModelCallDetails from './ModelCallDetails'
 import SubmissionSignalDetails from './SubmissionSignalDetails'
 
 type HistoryChoice = { id: string; text: string; correct: boolean }
@@ -18,6 +19,8 @@ export type HistorySubmission = {
   elapsedMs: number
   algorithms: { slug: string; algorithm: string }[]
   evaluation: Record<string, unknown>
+  /** The LLM exchanges that generated the MCQ; empty for other modalities and older questions. */
+  generationTrace?: Record<string, unknown>[]
 }
 
 type HistoryDay = { date: string; submissions: HistorySubmission[] }
@@ -130,6 +133,10 @@ function SubmissionCard({ submission }: { submission: HistorySubmission }) {
         <details className="history-day-signals" open>
           <summary>Signals</summary>
           <SubmissionSignalDetails evaluation={submission.evaluation} />
+        </details>
+        <details className="history-day-signals">
+          <summary>Model calls</summary>
+          <ModelCallDetails generationTrace={submission.generationTrace} evaluation={submission.evaluation} />
         </details>
       </div>
     </details>

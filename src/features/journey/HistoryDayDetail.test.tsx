@@ -35,7 +35,7 @@ describe('HistoryDayDetail', () => {
         body: {
           date: '2026-03-03',
           submissions: [
-            submission(),
+            submission({ generationTrace: [{ attempt: 1, provider: 'claude', model: 'claude-fast', latencyMs: 900, ok: true }] }),
             submission({
               id: 2,
               modality: 'total-recall',
@@ -68,6 +68,8 @@ describe('HistoryDayDetail', () => {
     expect(within(cards[0] as HTMLElement).getByText('score 42.0')).toBeInTheDocument()
     expect(within(cards[0] as HTMLElement).getByText('heapq.heappush(h, x)')).toBeInTheDocument()
     expect(within(cards[0] as HTMLElement).getByText('Chosen')).toBeInTheDocument()
+    expect(within(cards[0] as HTMLElement).getByText('Model calls')).toBeInTheDocument()
+    expect(within(cards[0] as HTMLElement).getByText('#1 · claude · claude-fast · 900 ms')).toBeInTheDocument()
     expect(within(cards[1] as HTMLElement).getByText('✓ Correct')).toBeInTheDocument()
     expect(within(cards[1] as HTMLElement).getByText('(empty)')).toBeInTheDocument()
     expect(within(cards[1] as HTMLElement).getByText('Expected')).toBeInTheDocument()

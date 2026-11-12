@@ -60,11 +60,16 @@ def _plugin_questions(plugins: list[SignalPlugin], context: SignalContext) -> di
     return questions
 
 
-def _trace(response: JevResponse, questions: dict[str, JevQuestion]) -> dict[str, Any]:
+def _trace(response: JevResponse, questions: dict[str, JevQuestion], state: Any) -> dict[str, Any]:
+    """One Jev call as sent and received: the state and full questions in, the answers out."""
     return {
         "model": response.model,
         "requestId": response.request_id,
         "usage": response.usage,
+        "latencyMs": response.latency_ms,
+        "attempts": response.attempts,
+        "state": state,
+        "questions": questions,
         "questionIds": list(questions),
         "answers": response.answers,
     }
@@ -104,7 +109,7 @@ class JevMcqEvaluator:
         label = str(correctness.get("choice", ""))
         successful = label == "1"
         answers: dict[str, Any] = dict(response.answers)
-        traces = [_trace(response, questions)]
+        traces = [_trace(response, questions, signal_context.state)]
 
         second_pass_error: JevUnavailableError | None = None
         second_questions = _plugin_questions(second_pass, signal_context)
@@ -113,7 +118,7 @@ class JevMcqEvaluator:
             try:
                 second = await gateway.system_one(state, second_questions)
                 answers.update(second.answers)
-                traces.append(_trace(second, second_questions))
+                traces.append(_trace(second, second_questions, state))
             except JevUnavailableError as error:
                 second_pass_error = error
 

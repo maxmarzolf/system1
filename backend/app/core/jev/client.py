@@ -8,8 +8,9 @@ which this service does not pin yet; the wire contract is identical.
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 import httpx
@@ -54,6 +55,9 @@ class JevResponse:
     answers: dict[str, dict[str, Any]]
     usage: dict[str, int] = field(default_factory=dict)
     request_id: str = ""
+    # Wall time of the whole call, retries included, and how many HTTP attempts it took.
+    latency_ms: int = 0
+    attempts: int = 1
 
 
 class JevGateway(Protocol):
@@ -111,6 +115,7 @@ class HttpJevGateway:
         body = {"model": self._model, "state": state, "questions": dict(questions)}
         headers = {"Authorization": f"Bearer {self._api_key}", "Accept": "application/json"}
         last_error: JevUnavailableError | None = None
+        clock = time.perf_counter()
         async with httpx.AsyncClient(
             base_url=self._base_url,
             timeout=self._timeout_seconds,
@@ -145,7 +150,11 @@ class HttpJevGateway:
                     raise JevUnavailableError(
                         "jev_invalid_response", "Jev returned invalid JSON.", request_id=request_id
                     ) from error
-                return _validate_answers(questions, payload, request_id)
+                return replace(
+                    _validate_answers(questions, payload, request_id),
+                    latency_ms=round((time.perf_counter() - clock) * 1000),
+                    attempts=attempt + 1,
+                )
 
         assert last_error is not None
         raise last_error

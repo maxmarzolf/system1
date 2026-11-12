@@ -72,7 +72,7 @@ Top-level modules:
 | MCQ grading | `core/jev/client.py`, `services/jev_gateway.py` (shared gateway factory), `core/signals/` (`base`, `definitions`, `registry`, `spec`, `mcq`), `services/signal_registry_service.py`, `services/submission_context_service.py`, `domain/feedback_builder.py` |
 | `/admin` | `services/signal_admin_service.py`, `domain/signal_definition_rules.py`, `repositories/signal_definition_repository.py`, `endpoints/admin.py` |
 | Recall grading | `services/feedback_service.py`, `core/assessor.py`, `core/narrator.py`, `services/evaluation_service.py`, `domain/recall_soundness.py`, `services/signal_spec_service.py`, `core/signal_catalog.py` |
-| Drills | `services/drill_generation_service.py` and `core/generator/` (generated cards and MCQs, split into `mcq`, `skill_map`, `prompts`, `inline_notes`, `code_style`, `text`, `types`), `services/problem_practice_service.py` (catalog drills), `services/micro_drill_service.py`, `services/sliding_window_ladder_service.py`, `services/inline_completion_service.py` |
+| Drills | `services/drill_generation_service.py` and `core/generator/` (generated cards and MCQs, split into `mcq`, `mcq_prompt`, `skill_map`, `prompts`, `inline_notes`, `code_style`, `text`, `types`), `services/problem_practice_service.py` (catalog drills), `services/micro_drill_service.py`, `services/sliding_window_ladder_service.py`, `services/inline_completion_service.py` |
 | Coach orchestration | `services/coach_orchestration_service.py` wires persistence callbacks into the drill and feedback services |
 | Catalog content | `core/core_algorithm_catalog.py`, `core/core_algorithms.py` and `core/core_meta.py` (answer bank), `core/static_playlists.py`, `core/taxonomy_catalog.py`, `core/taxonomy.py` (slugs and aliases), `services/unified_catalog_service.py`, `services/catalog_service.py` |
 | LLM providers | `core/llm.py`: provider selection, the OpenAI, Claude and Gemma adapters, the error taxonomy, streaming |
@@ -104,6 +104,21 @@ The client never supplies its own verdict or scores; the evaluator is the only p
 8. If Jev is unavailable, the answer key decides, Jev signals are recorded as `unavailable`, and deterministic signals still score.
 
 Generated MCQs are stored when they are generated, and the served card always uses the stored id and choice order, so an answer is graded against exactly what was shown.
+
+### MCQ generation: `POST /api/coach/multiple-choice-drills`
+
+- `core/generator/mcq_prompt.py` builds what to ask; `core/generator/mcq.py` runs the calls and validates each card; `core/llm.complete_json_with_fallback` owns retries and the provider chain.
+- A **random** set fans out into one concurrent call per question, each from a different angle (invariant, edge case, state update, common bug, tradeoff), so it takes about as long as one question. A **progressive** set (a Socratic chain) stays one call. A bad reply retries only its own question; the set fails only when a question still has no valid card.
+- The model is asked only for what the server can't derive (`title`, `skill`, `question`, `choices`, `correctChoiceId`, `explanation`).
+- Calls use `COACH_MCQ_*_MODEL` (default Claude Haiku), via `LlmCall.models`; an unavailable model falls back to the provider model.
+
+### What went into and out of the models
+
+Every `core/llm` call logs its provider, model, latency and tokens at INFO. Inside a `capture_llm_exchanges()` block it is also recorded as an exchange: settings, system prompt, payload, raw reply, parsed reply, usage, latency, and any error (failed attempts included). API keys and headers are never recorded.
+
+- Generation: each MCQ's exchanges are stored in `multiple_choice_problem.generation_trace`.
+- Grading: `submission_service` captures the evaluator's LLM calls into `evaluation.llmTrace`. Jev calls are in `evaluation.jevTrace` with the state and full questions sent, the answers, usage, latency and attempts.
+- `GET /api/history/day` returns `generationTrace` with each submission; Journey's day detail shows all three under **Model calls**.
 
 ### Recall grading
 

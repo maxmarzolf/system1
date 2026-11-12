@@ -133,7 +133,8 @@ class Evaluation(BaseModel):
     """A stored evaluation. Dimension and modifier keys are the referenced spec's signal keys.
 
     Jev MCQ evaluations also carry ``correctness``, ``signalResults``,
-    ``signalSpecSnapshot`` and ``jevTrace``.
+    ``signalSpecSnapshot`` and ``jevTrace``. Any evaluation that called an LLM while grading
+    carries ``llmTrace``: each exchange's prompt, payload, reply, usage and timing.
     """
 
     model_config = ConfigDict(extra="allow", validate_assignment=False)
@@ -153,6 +154,7 @@ class Evaluation(BaseModel):
     signalResults: dict[str, Any] | None = None
     signalSpecSnapshot: dict[str, Any] | None = None
     jevTrace: list[dict[str, Any]] | None = None
+    llmTrace: list[dict[str, Any]] | None = None
 
     @field_validator("score", mode="before")
     @classmethod

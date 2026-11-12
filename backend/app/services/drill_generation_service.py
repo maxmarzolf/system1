@@ -10,7 +10,9 @@ from app.core.generator import (
     generate_multiple_choice_drills_response,
 )
 from app.core.llm import (
+    LlmCall,
     call_llm_json as _call_llm_json,
+    call_llm_json_with as _call_llm_json_with,
     llm_provider_available as _llm_provider_available,
     llm_provider_label as _llm_provider_label,
     preferred_provider_chain as _preferred_provider_chain,
@@ -89,9 +91,22 @@ async def coach_multiple_choice_drills(
         provider=provider,
         provider_label=provider_label,
         provider_available=_llm_provider_available(provider),
-        call_llm_json=_call_llm_json,
+        call_llm_json=_call_llm_json_with,
+        call=mcq_generation_call(),
         fallback_providers=fallback_providers,
-        provider_timeout_seconds=settings.coach_generator_timeout_seconds,
         persist_generated_questions=persist_generated_questions,
         logger=logger,
+    )
+
+
+def mcq_generation_call() -> LlmCall:
+    """MCQ generation's call settings: the generator timeout and the MCQ-only models."""
+    return LlmCall(
+        timeout_seconds=settings.coach_generator_timeout_seconds,
+        temperature=0.7,
+        models={
+            "claude": settings.coach_mcq_anthropic_model,
+            "openai": settings.coach_mcq_openai_model,
+            "gemma": settings.coach_mcq_gemma_model,
+        },
     )

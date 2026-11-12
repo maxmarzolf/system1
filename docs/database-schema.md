@@ -90,6 +90,7 @@ erDiagram
         varchar algorithm_slug FK "nullable"
         varchar fingerprint UK
         timestamptz created_at
+        jsonb generation_trace "LLM exchanges that made it"
     }
     submission {
         bigserial id PK
@@ -152,7 +153,7 @@ erDiagram
 | `skill`, `technique` | Finer-grained labels. | Seed |
 | `problem_skill`, `problem_technique` | Many-to-many links from problems to skills and techniques. | Seed |
 | `playlist`, `playlist_problem_order` | Ordered decks of problems. A playlist can have several named orders (`order_slug`). | Seed |
-| `multiple_choice_problem` | A generated MCQ: its `choices` array (four `{id, text}` objects, in served order), the answer key (`correct_choice_id`), and the algorithm it was generated for (`algorithm_slug`, when known). `fingerprint` deduplicates identical questions. MCQ grading scopes signals by `algorithm_slug`, falling back to the submission's tags. | Generated during practice |
+| `multiple_choice_problem` | A generated MCQ: its `choices` array (four `{id, text}` objects, in served order), the answer key (`correct_choice_id`), and the algorithm it was generated for (`algorithm_slug`, when known). `fingerprint` deduplicates identical questions. `generation_trace` holds the LLM exchanges that generated it (prompt, payload, reply, usage, timing, failed attempts); `[]` for questions made before migration 0010. MCQ grading scopes signals by `algorithm_slug`, falling back to the submission's tags. | Generated during practice |
 
 ### Content rules
 

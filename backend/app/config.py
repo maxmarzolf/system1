@@ -53,6 +53,20 @@ class Settings(BaseSettings):
         default="https://generativelanguage.googleapis.com/v1beta",
         validation_alias=AliasChoices("COACH_GEMMA_BASE_URL"),
     )
+    # Models for MCQ generation only (empty: the provider's general model). A faster model
+    # here makes questions quicker; grading and the other generators keep the general model.
+    coach_mcq_anthropic_model: str = Field(
+        default="claude-haiku-4-5",
+        validation_alias=AliasChoices("COACH_MCQ_ANTHROPIC_MODEL"),
+    )
+    coach_mcq_openai_model: str = Field(
+        default="",
+        validation_alias=AliasChoices("COACH_MCQ_OPENAI_MODEL"),
+    )
+    coach_mcq_gemma_model: str = Field(
+        default="",
+        validation_alias=AliasChoices("COACH_MCQ_GEMMA_MODEL"),
+    )
     coach_generator_max_tokens: int = Field(
         default=8000,
         validation_alias=AliasChoices("COACH_GENERATOR_MAX_TOKENS"),
