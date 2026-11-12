@@ -7,7 +7,7 @@ describe('usePracticeHotkeys', () => {
     const button = document.createElement('button')
     const click = vi.fn()
     button.addEventListener('click', click)
-    const handlers = { onSubmitKey: vi.fn(), onToggleAiCompletion: vi.fn(), onToggleGhostReps: vi.fn(), onToggleInline: vi.fn() }
+    const handlers = { onSubmitKey: vi.fn(), onHiddenPrimaryKey: vi.fn(() => false), onToggleAiCompletion: vi.fn(), onToggleGhostReps: vi.fn(), onToggleInline: vi.fn() }
     renderHook(() => usePracticeHotkeys({ primaryButtonRef: { current: button }, recallActive: true, flowActive: false, ...handlers, ...overrides }))
     return { button, click, ...handlers }
   }
@@ -20,6 +20,14 @@ describe('usePracticeHotkeys', () => {
     button.disabled = true
     press('Enter')
     expect(click).toHaveBeenCalledTimes(1)
+  })
+
+  it('advances a keyboard-only primary action when there is no button', () => {
+    const onHiddenPrimaryKey = vi.fn(() => true)
+    const { click } = setup({ primaryButtonRef: { current: null }, onHiddenPrimaryKey })
+    press('Enter')
+    expect(onHiddenPrimaryKey).toHaveBeenCalledTimes(1)
+    expect(click).not.toHaveBeenCalled()
   })
 
   it('runs the card action on Mod+Shift+Enter, without pressing the button', () => {

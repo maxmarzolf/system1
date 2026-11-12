@@ -105,7 +105,7 @@ Defined once in `shared/lib/hotkeys.ts` and listed on Tune. Mod is ⌘ on macOS 
 | Mod+↑ ↑ / Mod+← ← / Mod+→ → / Mod+↓ ↓ | On Practice, select Total Recall / Microdrill / Ghost / MCQ directly |
 | Mod+Shift+Enter | Start or submit Recall, Ghost, MCQ or Microdrill from the keyboard |
 | A–D / 1–4 | Choose the first to fourth MCQ answer (MCQ only) |
-| Mod+Enter | On Practice, activate the button under the card when there is one (such as a Flow's Next) |
+| Mod+Enter | On Practice, advance a Flow after Recall or Ghost, or activate its visible Next button after MCQ or Microdrill |
 | Mod+G | Toggle Ghost Reps |
 | Mod+L | Toggle AI completion |
 | Enter | On Journey, open the practice page |

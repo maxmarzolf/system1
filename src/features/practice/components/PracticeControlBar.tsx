@@ -39,7 +39,7 @@ export default function PracticeControlBar({
     )
   }
 
-  if (!action || isKeyOnlyAction(action.kind)) return null
+  if (!action || action.keyboardOnly || isKeyOnlyAction(action.kind)) return null
 
   // In a flow, "Next" moves to the next modality, so it reads label-first like a forward arrow.
   const flowNext = flowRunning && action.label === 'Next'

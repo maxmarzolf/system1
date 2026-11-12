@@ -11,7 +11,7 @@ export type PrimaryActionKind =
   | 'ghost-repeat'
   | 'recall-revise'
 
-export type PrimaryAction = { kind: PrimaryActionKind; label: string; disabled: boolean }
+export type PrimaryAction = { kind: PrimaryActionKind; label: string; disabled: boolean; keyboardOnly?: boolean }
 
 /** Recall, Ghost, MCQ and Microdrill submit by keyboard only (Mod+Shift+Enter): no button is drawn. */
 const KEY_ONLY_ACTIONS = new Set<PrimaryActionKind>(['microdrill-submit', 'mcq-submit', 'recall-start', 'recall-submit', 'ghost-repeat', 'recall-revise'])
@@ -48,7 +48,7 @@ export function resolvePrimaryAction(state: PrimaryActionState): PrimaryAction |
   }
   if (!state.hasDeck) return null
   if (inFlow && state.practiceMode === 'recall' && state.mainPhase === 'submitted') {
-    return { kind: 'flow-next', label: 'Next', disabled: state.coachLoading }
+    return { kind: 'flow-next', label: 'Next', disabled: state.coachLoading, keyboardOnly: true }
   }
   if (state.practiceMode === 'multiple-choice') {
     if (inFlow && state.mcqSubmitted) return { kind: 'flow-next', label: 'Next', disabled: state.sessionFinished }

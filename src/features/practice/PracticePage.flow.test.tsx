@@ -45,6 +45,11 @@ function setup(attempt: (body: Record<string, unknown>) => boolean) {
 }
 
 const continueFlow = async () => userEvent.click(await screen.findByRole('button', { name: 'Continue to the next modality' }, SLOW))
+const continueRecallOrGhostFlow = async () => {
+  await waitFor(() => expect(document.querySelector('.recall-submit-summary:not(.recall-submit-summary-loading)')).not.toBeNull(), SLOW)
+  expect(screen.queryByRole('button', { name: 'Continue to the next modality' })).toBeNull()
+  pressKey('Enter', { metaKey: true })
+}
 
 describe('practice flow', () => {
   it('adapts from a recall miss to ghost reps, a microdrill and an MCQ', async () => {
@@ -58,7 +63,7 @@ describe('practice flow', () => {
     typeCode('def f(nums, k):\n    return 0')
     submitKey()
     await waitFor(() => expect(attempts).toHaveLength(1))
-    await continueFlow()
+    await continueRecallOrGhostFlow()
 
     // Ghost reps on the missed lines.
     expect(await screen.findByText(/Type only the \d+ targeted lines? from memory/, undefined, SLOW)).toBeInTheDocument()
@@ -66,7 +71,7 @@ describe('practice flow', () => {
     submitKey()
     await waitFor(() => expect(attempts).toHaveLength(2))
     expect(attempts[1]).toMatchObject({ modality: 'ghost-rep' })
-    await continueFlow()
+    await continueRecallOrGhostFlow()
 
     // Microdrill: fill the blank.
     expect(await screen.findByText('Fill the window', undefined, SLOW)).toBeInTheDocument()

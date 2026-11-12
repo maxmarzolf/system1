@@ -123,8 +123,8 @@ const hotkeyDefinitions: HotkeyDefinition[] = [
     id: 'primary-card-action',
     group: 'Card modalities',
     displayKeys: ['Mod', 'Enter'],
-    label: 'Card button',
-    description: 'Press the button under the card when there is one, such as a Flow\'s Next.',
+    label: 'Advance Flow / card button',
+    description: 'Advance a Flow after Recall or Ghost, or press the button under the card when one is visible.',
     bindings: [{ key: 'Enter', modifier: 'mod' }],
   },
   {

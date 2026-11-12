@@ -43,9 +43,9 @@ describe('resolvePrimaryAction', () => {
   })
 
   it('moves a flow on after each modality', () => {
-    expect(act({ flowStage: 'recall', mainPhase: 'submitted', coachLoading: true })).toMatchObject({ kind: 'flow-next', disabled: true })
+    expect(act({ flowStage: 'recall', mainPhase: 'submitted', coachLoading: true })).toMatchObject({ kind: 'flow-next', disabled: true, keyboardOnly: true })
     expect(act({ flowStage: 'multiple-choice', practiceMode: 'multiple-choice', mcqSubmitted: true })).toMatchObject({ kind: 'flow-next' })
-    expect(act({ flowStage: 'ghost', mainPhase: 'submitted' })).toMatchObject({ kind: 'flow-next' })
+    expect(act({ flowStage: 'ghost', mainPhase: 'submitted' })).toMatchObject({ kind: 'flow-next', keyboardOnly: true })
   })
 
   it('follows the microdrill card, even without a deck', () => {

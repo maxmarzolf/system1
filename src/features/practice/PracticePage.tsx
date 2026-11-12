@@ -392,6 +392,11 @@ function PracticePage() {
       if (panels.flowOpen || !primaryCardAction || primaryCardAction.disabled) return
       primaryActionHandlers[primaryCardAction.kind]()
     },
+    onHiddenPrimaryKey: () => {
+      if (panels.flowOpen || !primaryCardAction?.keyboardOnly || primaryCardAction.disabled) return false
+      primaryActionHandlers[primaryCardAction.kind]()
+      return true
+    },
     recallActive: currentPracticeMode === 'recall',
     flowActive: isFlowActive,
     onToggleAiCompletion: toggleAiCompletion,
