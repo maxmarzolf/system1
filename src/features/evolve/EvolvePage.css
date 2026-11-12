@@ -1,5 +1,5 @@
 .app-evolve {
-  max-width: 1240px;
+  max-width: 1080px;
 }
 
 .evolve-shell {
@@ -11,12 +11,10 @@
 .evolve-hero {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
-  gap: 2rem;
-  min-height: 12rem;
-  padding: 1.8rem 2rem 1.55rem;
+  align-items: flex-start;
+  gap: 1.5rem;
+  padding: 1.35rem 1.5rem 1.2rem;
   border-bottom: 1px solid var(--hc-border-dim);
-  background: var(--hc-banner-bg);
 }
 
 .evolve-kicker {
@@ -31,38 +29,34 @@
 .evolve-hero h1 {
   margin: 0;
   color: var(--hc-fg);
-  font-size: clamp(2.4rem, 4.8vw, 4.2rem);
-  font-weight: 690;
-  line-height: 1;
-  letter-spacing: -0.055em;
+  font-size: 1.65rem;
+  font-weight: 650;
+  line-height: 1.15;
 }
 
 .evolve-hero p:last-child {
-  max-width: 40rem;
-  margin: 0.8rem 0 0;
+  max-width: 44rem;
+  margin: 0.4rem 0 0;
   color: var(--hc-fg-dim);
-  font-size: 0.95rem;
-  line-height: 1.5;
+  font-size: 0.9rem;
+  line-height: 1.55;
 }
 
 .evolve-hero-mark {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  width: 8.3rem;
-  min-width: 8.3rem;
-  height: 8.3rem;
-  padding: 0.8rem;
-  border: 1px solid var(--hc-border);
-  background: var(--hc-panel-bg);
-  color: var(--hc-accent);
-  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-  font-weight: 800;
-  letter-spacing: -0.09em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  padding: 0.22rem 0.55rem;
+  border: 1px solid var(--hc-border-dim);
+  color: var(--hc-fg-dim);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
 }
 
-.evolve-hero-mark span:first-child { font-size: 1.55rem; }
-.evolve-hero-mark span:last-child { font-size: 2.1rem; line-height: 0.8; }
+.evolve-hero-mark span:first-child { text-transform: uppercase; }
 
 .evolve-facts {
   display: grid;

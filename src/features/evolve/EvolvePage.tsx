@@ -281,7 +281,7 @@ export default function EvolvePage() {
 
   return (
     <div className="app app-evolve">
-      <TopNav />
+      <TopNav pinned solid />
 
       <main className="evolve-shell">
         <header className="evolve-hero">
