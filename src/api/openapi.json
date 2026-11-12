@@ -891,7 +891,7 @@
       },
       "Evaluation": {
         "additionalProperties": true,
-        "description": "A stored evaluation. Dimension and modifier keys are the referenced spec's signal keys.\n\nJev MCQ evaluations also carry ``correctness``, ``signalResults``,\n``signalSpecSnapshot`` and ``jevTrace``.",
+        "description": "A stored evaluation. Dimension and modifier keys are the referenced spec's signal keys.\n\nJev MCQ evaluations also carry ``correctness``, ``signalResults``,\n``signalSpecSnapshot`` and ``jevTrace``. Any evaluation that called an LLM while grading\ncarries ``llmTrace``: each exchange's prompt, payload, reply, usage and timing.",
         "properties": {
           "correctness": {
             "anyOf": [
@@ -931,6 +931,21 @@
               }
             ],
             "title": "Jevtrace"
+          },
+          "llmTrace": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llmtrace"
           },
           "modifiers": {
             "additionalProperties": {
@@ -1269,6 +1284,15 @@
             "additionalProperties": true,
             "title": "Flow",
             "type": "object"
+          },
+          "generationTrace": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Generationtrace",
+            "type": "array"
           },
           "id": {
             "title": "Id",

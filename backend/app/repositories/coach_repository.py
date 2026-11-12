@@ -184,6 +184,7 @@ async def insert_generated_multiple_choice_question_rows(
     questions: list[dict[str, Any]],
     algorithm_slugs: list[str | None],
     created_at: datetime,
+    generation_traces: list[list[dict[str, Any]]] | None = None,
 ) -> list[StoredMultipleChoiceProblem | None]:
     """Upsert generated questions; rows are immutable once stored.
 
@@ -191,10 +192,13 @@ async def insert_generated_multiple_choice_question_rows(
     question that matches an existing fingerprint returns the *stored* row, so
     callers serve the stored id and choice order that submissions grade against.
     ``algorithm_slugs`` runs parallel to ``questions``; a slug not in ``algorithm`` is stored as NULL.
+    ``generation_traces`` (also parallel) are the LLM exchanges that made each question; a
+    question that matches a stored one keeps the stored row's trace.
     """
+    traces = generation_traces if generation_traces is not None else [[] for _ in questions]
     stored: list[StoredMultipleChoiceProblem | None] = []
     async with acquire_connection() as conn:
-        for question, algorithm_slug in zip(questions, algorithm_slugs, strict=True):
+        for question, algorithm_slug, trace in zip(questions, algorithm_slugs, traces, strict=True):
             choices = [choice for choice in question.get("choices", []) if isinstance(choice, dict)]
             if len(choices) < 4:
                 stored.append(None)
@@ -207,8 +211,9 @@ async def insert_generated_multiple_choice_question_rows(
             row = await conn.fetchrow(
                 f"""
                 INSERT INTO multiple_choice_problem
-                    (id, question_text, explanation, choices, correct_choice_id, algorithm_slug, fingerprint, created_at)
-                VALUES ($1, $2, $3, $4::jsonb, $5, (SELECT slug FROM algorithm WHERE slug = $6), $7, $8)
+                    (id, question_text, explanation, choices, correct_choice_id, algorithm_slug, fingerprint, created_at,
+                     generation_trace)
+                VALUES ($1, $2, $3, $4::jsonb, $5, (SELECT slug FROM algorithm WHERE slug = $6), $7, $8, $9::jsonb)
                 ON CONFLICT (fingerprint) DO UPDATE SET fingerprint = EXCLUDED.fingerprint
                 RETURNING {MULTIPLE_CHOICE_PROBLEM_COLUMNS}
                 """,
@@ -220,6 +225,7 @@ async def insert_generated_multiple_choice_question_rows(
                 algorithm_slug,
                 fingerprint,
                 created_at,
+                json.dumps(trace, default=str),
             )
             stored.append(stored_multiple_choice_problem(dict(row)) if row else None)
     return stored

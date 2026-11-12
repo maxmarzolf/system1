@@ -44,6 +44,7 @@ Configuration lives in `backend/.env` (gitignored). The backend reads it only wh
 | `LLM_DEFAULT` | Default coach provider: `openai`, `claude` or `gemma`. |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `COACH_GEMMA_API_KEY` | Provider keys (each also has a `COACH_*` alias). |
 | `COACH_OPENAI_MODEL`, `COACH_ANTHROPIC_MODEL`, `COACH_GEMMA_MODEL` | Provider models; `*_BASE_URL` overrides exist too. |
+| `COACH_MCQ_ANTHROPIC_MODEL`, `COACH_MCQ_OPENAI_MODEL`, `COACH_MCQ_GEMMA_MODEL` | Models for MCQ generation only (default `claude-haiku-4-5` for Claude; empty uses the provider model). Grading keeps the provider model. An unavailable model falls back to the provider model. |
 | `COACH_LIVE_MODEL` | OpenAI model for live recall coaching (default `gpt-6-astra`). |
 | `COACH_GENERATOR_*` | Drill generator tuning: tokens, timeout, temperature, readiness threshold, prompt length. |
 | `ADMIN_RESET_TOKEN` | Confirmation token for `npm run reset:practice-history`. |

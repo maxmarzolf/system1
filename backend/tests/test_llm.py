@@ -295,3 +295,84 @@ def test_http_error_taxonomy(status, body, code) -> None:
 def test_exception_taxonomy() -> None:
     assert llm.submission_provider_error_from_exception("X", ValueError())[0] == "provider_unknown_error"
     assert "(refused)" in llm.submission_provider_error_from_exception("X", urllib.error.URLError("refused"))[1]
+
+
+# ─── Call settings, usage and exchange capture ───
+
+
+def test_a_task_model_goes_first_and_falls_back_to_the_configured_model(keys, calls) -> None:
+    calls.script += [http_error(404, "model not found"), {**claude_reply('{"ok": 1}'), "usage": {"input_tokens": 9, "output_tokens": 4}}]
+    call = llm.LlmCall(max_tokens=50, timeout_seconds=5, temperature=0.1, models={"claude": "claude-fast"})
+    assert llm.complete_json_call("sys", {}, "claude", call) == {"ok": 1}
+    assert [request["body"]["model"] for request in calls.requests] == ["claude-fast", "claude-configured"]
+    assert calls.requests[0]["body"]["max_tokens"] == 50 and calls.requests[0]["timeout"] == 5
+
+
+def test_openai_and_gemma_use_a_task_model(keys, calls) -> None:
+    calls.script += [openai_reply('{"a": 1}'), {"candidates": [{"content": {"parts": [{"text": '{"g": 1}'}]}}]}]
+    call = llm.LlmCall(models={"openai": "gpt-fast", "gemma": "gemma-fast"})
+    llm.complete_json_call("sys", {}, "openai", call)
+    llm.complete_json_call("sys", {}, "gemma", call)
+    assert calls.requests[0]["body"]["model"] == "gpt-fast"
+    assert calls.requests[1]["url"].endswith("/models/gemma-fast:generateContent")
+
+
+def test_capture_records_successes_and_failures_with_usage_but_never_keys(keys, calls) -> None:
+    calls.script += [
+        {**openai_reply('{"answer": 1}'), "model": "gpt-x", "usage": {"prompt_tokens": 12, "completion_tokens": 5}},
+        openai_reply("not json"),
+    ]
+    with llm.capture_llm_exchanges() as exchanges:
+        llm.complete_json("sys prompt", {"q": 1}, "openai", max_tokens=40, temperature=0.3)
+        with pytest.raises(LlmUnavailableError):
+            llm.complete_json("sys prompt", {"q": 2}, "openai")
+    ok, failed = exchanges
+    assert ok["attempt"] == 1 and ok["ok"] is True and ok["model"] == "gpt-x"
+    assert ok["systemPrompt"] == "sys prompt" and ok["payload"] == {"q": 1}
+    assert ok["parsed"] == {"answer": 1} and ok["reply"] == '{"answer": 1}'
+    assert ok["usage"] == {"inputTokens": 12, "outputTokens": 5}
+    assert ok["maxTokens"] == 40 and ok["temperature"] == 0.3 and isinstance(ok["latencyMs"], int)
+    assert failed["attempt"] == 2 and failed["ok"] is False and failed["reply"] == "not json"
+    assert failed["error"]["code"] == "provider_invalid_json"
+    stored = json.dumps(exchanges)
+    assert "Bearer" not in stored and "headers" not in stored and '"sk"' not in stored
+
+
+def test_nothing_is_recorded_outside_a_capture(keys, calls) -> None:
+    calls.script.append(openai_reply('{"a": 1}'))
+    llm.complete_json("sys", {}, "openai")
+    with llm.capture_llm_exchanges() as exchanges:
+        pass
+    assert exchanges == []
+
+
+@pytest.mark.asyncio
+async def test_capture_sees_calls_made_in_worker_threads(keys, calls) -> None:
+    import asyncio
+
+    calls.script.append(openai_reply('{"a": 1}'))
+    with llm.capture_llm_exchanges() as exchanges:
+        await asyncio.to_thread(llm.complete_json, "sys", {}, "openai")
+    assert len(exchanges) == 1 and exchanges[0]["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_fallback_retries_then_walks_the_provider_chain() -> None:
+    seen: list[str] = []
+
+    def call_json(_system, _payload, provider, _call):
+        seen.append(provider)
+        return {"value": 7} if provider == "openai" else {"wrong": True}
+
+    outcome = await llm.complete_json_with_fallback(
+        "sys", {}, ["claude", "openai"], llm.LlmCall(), lambda reply: reply.get("value"),
+        call_json=call_json, retry_delays_seconds=(0, 0),
+    )
+    assert outcome == (7, "openai")
+    assert seen == ["claude", "claude", "claude", "openai"]
+
+    nothing = await llm.complete_json_with_fallback(
+        "sys", {}, ["claude"], llm.LlmCall(), lambda _reply: None, call_json=lambda *_a: None, retry_delays_seconds=(0,),
+    )
+    assert nothing is None
+

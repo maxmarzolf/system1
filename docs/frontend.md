@@ -8,7 +8,7 @@ Routes are defined in `src/app/routes.tsx`; every page shares `TopNav` (the acti
 
 | Route | Component | What it does |
 |---|---|---|
-| `/` | `features/journey/JourneyPage.tsx` | Journey, the home page: the score terrain, the daily work grid and the day detail. Enter opens `/practice` |
+| `/` | `features/journey/JourneyPage.tsx` | Journey, the home page: the score terrain, the daily work grid and the day detail. Each submission in the day detail shows its signals and its **Model calls** (`ModelCallDetails`): the LLM calls that generated it, the LLM calls that graded it, and its Jev calls, each with the full request and response. Enter opens `/practice` |
 | `/practice` | `features/practice/PracticePage.tsx` | The practice screen: MCQ, Recall and Ghost question types, Inline notes, AI completion, and flows. The card is flat (no frame, header or Previous/Next buttons; its title shows as "TOPIC: …" under the Question or Prompt label) and has no toolbar: Cmd/Ctrl + a double-tapped ↑ or ↓ steps through MCQ, Recall and Ghost, and the navbar shows the current type (or the flow's stage) |
 | `/dashboard` | `features/dashboard/DashboardPage.tsx` | A readiness card per algorithm and playlist; each starts focused practice |
 | `/tune` | `features/tune/TunePage.tsx` | Local preferences; saved as you change them |

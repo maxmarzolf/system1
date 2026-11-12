@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from typing import Any
 
 from app.core.llm import resolve_llm_provider
 from app.core.taxonomy import algorithm_slug_for_tags
@@ -79,11 +80,13 @@ async def coach_skill_map_drills_stream(body: SkillMapDrillsRequest):
 
 async def _persist_generated_questions(
     drills: list[MultipleChoiceQuestionPayload],
+    generation_traces: list[list[dict[str, Any]]],
 ) -> list[MultipleChoiceQuestionPayload | None]:
     stored = await insert_generated_multiple_choice_question_rows(
         questions=drills,
         algorithm_slugs=[algorithm_slug_for_tags(list(drill.get("tags") or [])) or None for drill in drills],
         created_at=datetime.now(tz=timezone.utc),
+        generation_traces=generation_traces,
     )
     return [
         {"id": row["id"], "choices": row["choices"], "correctChoiceId": row["correctChoiceId"]} if row else None

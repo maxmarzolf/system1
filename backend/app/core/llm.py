@@ -8,21 +8,35 @@ whose ``code`` comes from a single taxonomy. Callers choose how to fail:
 - :func:`call_llm_json` returns ``None`` instead (and logs why);
 - :func:`call_llm_json_for_submission` returns ``(data, code, message, retryable)``
   for the narrator's retry loop;
-- :func:`stream_openai_text` yields streamed text deltas.
+- :func:`stream_openai_text` yields streamed text deltas;
+- :func:`complete_json_with_fallback` (async) retries and walks a provider chain.
 
-Calls are synchronous; services run them off the event loop with ``asyncio.to_thread``.
+Call settings travel as one :class:`LlmCall` (token cap, timeout, temperature, and an optional
+model per provider). Every :func:`complete_json` call is logged with its latency and token use,
+and recorded as an exchange (prompt, payload, reply, usage, timing, error) inside an active
+:func:`capture_llm_exchanges` block, so callers can store exactly what went in and came out.
+API keys and headers are never recorded.
+
+Calls are synchronous; services run them off the event loop with ``asyncio.to_thread``, which
+copies the context, so a capture opened around the ``await`` still sees the call.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
 import ssl
+import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Iterator
-from typing import Any
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any, TypeVar
 
 from app.config import settings
 from app.contracts.errors import LlmUnavailableError, provider_label
@@ -42,6 +56,53 @@ ANTHROPIC_MODEL_CANDIDATES = (
 )
 DEFAULT_GEMMA_MODEL = "gemma-4-31b-it"
 JSON_ONLY = "Return only valid JSON. Do not include markdown."
+
+T = TypeVar("T")
+
+
+@dataclass(frozen=True)
+class LlmCall:
+    """How to make one call. ``models`` overrides a provider's configured model (e.g. a faster
+    model for one task); a provider not in it uses its configured model."""
+
+    max_tokens: int = 1800
+    timeout_seconds: int = 30
+    temperature: float = 0.2
+    models: Mapping[str, str] = field(default_factory=dict)
+
+    def model_for(self, provider: str) -> str:
+        return str(self.models.get(provider) or "").strip()
+
+
+@dataclass(frozen=True)
+class _Reply:
+    text: str
+    model: str
+    usage: dict[str, int]
+
+
+# ─── Exchange capture ───
+
+_ACTIVE_CAPTURE: ContextVar[list[dict[str, Any]] | None] = ContextVar("llm_exchange_capture", default=None)
+
+
+@contextmanager
+def capture_llm_exchanges() -> Iterator[list[dict[str, Any]]]:
+    """Collect every LLM exchange made inside the block (including in ``asyncio.to_thread``
+    workers started from it). The innermost capture wins."""
+    exchanges: list[dict[str, Any]] = []
+    token = _ACTIVE_CAPTURE.set(exchanges)
+    try:
+        yield exchanges
+    finally:
+        _ACTIVE_CAPTURE.reset(token)
+
+
+def record_llm_exchange(exchange: dict[str, Any]) -> None:
+    """Add an exchange to the active capture; a no-op outside one."""
+    exchanges = _ACTIVE_CAPTURE.get()
+    if exchanges is not None:
+        exchanges.append({"attempt": len(exchanges) + 1, **exchange})
 
 
 # ─── Provider selection ───
@@ -233,11 +294,22 @@ def _invalid(provider: str, message: str, code: str = "provider_invalid_json") -
     return LlmUnavailableError(code, f"{llm_provider_label(provider)} API error: {message}", provider, code, retryable=True)
 
 
-def _openai_text(system_prompt: str, payload: dict[str, Any], max_tokens: int, timeout: int, temperature: float) -> str:
+def _usage(input_tokens: Any, output_tokens: Any) -> dict[str, int]:
+    usage: dict[str, int] = {}
+    if isinstance(input_tokens, int):
+        usage["inputTokens"] = input_tokens
+    if isinstance(output_tokens, int):
+        usage["outputTokens"] = output_tokens
+    return usage
+
+
+def _openai_text(system_prompt: str, payload: dict[str, Any], call: LlmCall) -> _Reply:
+    max_tokens, timeout, temperature = call.max_tokens, call.timeout_seconds, call.temperature
     url = f"{settings.coach_openai_base_url.rstrip('/')}/chat/completions"
     headers = {"Authorization": f"Bearer {settings.coach_openai_api_key}"}
+    model = call.model_for("openai") or settings.coach_openai_model
     body: dict[str, Any] = {
-        "model": settings.coach_openai_model,
+        "model": model,
         "messages": [
             {"role": "system", "content": f"{system_prompt}\n{JSON_ONLY}"},
             {"role": "user", "content": json.dumps(payload)},
@@ -256,16 +328,20 @@ def _openai_text(system_prompt: str, payload: dict[str, Any], max_tokens: int, t
         retry_body = {key: value for key, value in body.items() if key != "max_completion_tokens"}
         reply = _post_json(url, {**retry_body, "max_tokens": max_tokens}, headers, timeout)
     try:
-        return str(reply["choices"][0]["message"]["content"])
+        text = str(reply["choices"][0]["message"]["content"])
     except (KeyError, IndexError, TypeError) as error:
         raise _invalid("openai", "unexpected response format.", "provider_response_format_error") from error
+    usage = reply.get("usage") if isinstance(reply.get("usage"), dict) else {}
+    return _Reply(text, str(reply.get("model") or model), _usage(usage.get("prompt_tokens"), usage.get("completion_tokens")))
 
 
-def _claude_text(system_prompt: str, payload: dict[str, Any], max_tokens: int, timeout: int, temperature: float) -> str:
+def _claude_text(system_prompt: str, payload: dict[str, Any], call: LlmCall) -> _Reply:
+    max_tokens, timeout, temperature = call.max_tokens, call.timeout_seconds, call.temperature
     url = f"{settings.coach_anthropic_base_url.rstrip('/')}/messages"
     headers = {"x-api-key": settings.coach_anthropic_api_key, "anthropic-version": "2023-06-01"}
     configured = str(settings.coach_anthropic_model or "").strip()
-    models = list(dict.fromkeys(model for model in (configured, *ANTHROPIC_MODEL_CANDIDATES) if model))
+    # A task's model first, then the configured model, then the known-good fallbacks.
+    models = list(dict.fromkeys(model for model in (call.model_for("claude"), configured, *ANTHROPIC_MODEL_CANDIDATES) if model))
     last_error: LlmUnavailableError | None = None
     for model in models:
         body = {
@@ -297,12 +373,14 @@ def _claude_text(system_prompt: str, payload: dict[str, Any], max_tokens: int, t
         texts = [str(item.get("text", "")) for item in content if isinstance(item, dict) and item.get("type") == "text"]
         if not texts:
             raise _invalid("claude", "empty response.", "provider_empty_response")
-        return "\n".join(texts)
+        usage = reply.get("usage") if isinstance(reply.get("usage"), dict) else {}
+        return _Reply("\n".join(texts), str(reply.get("model") or model), _usage(usage.get("input_tokens"), usage.get("output_tokens")))
     raise last_error or _invalid("claude", "no usable model found.", "provider_model_error")
 
 
-def _gemma_text(system_prompt: str, payload: dict[str, Any], max_tokens: int, timeout: int, temperature: float) -> str:
-    model = str(settings.coach_gemma_model or "").strip() or DEFAULT_GEMMA_MODEL
+def _gemma_text(system_prompt: str, payload: dict[str, Any], call: LlmCall) -> _Reply:
+    max_tokens, timeout, temperature = call.max_tokens, call.timeout_seconds, call.temperature
+    model = call.model_for("gemma") or str(settings.coach_gemma_model or "").strip() or DEFAULT_GEMMA_MODEL
     # The key goes in a header, not the URL, so it never lands in logs or proxies.
     url = f"{settings.coach_gemma_base_url.rstrip('/')}/models/{model}:generateContent"
     body = {
@@ -315,11 +393,12 @@ def _gemma_text(system_prompt: str, payload: dict[str, Any], max_tokens: int, ti
         parts = candidates[0].get("content", {}).get("parts", [])
         texts = [part.get("text", "") for part in parts if isinstance(part, dict) and part.get("text")]
         if texts:
-            return "\n".join(texts)
+            usage = reply.get("usageMetadata") if isinstance(reply.get("usageMetadata"), dict) else {}
+            return _Reply("\n".join(texts), model, _usage(usage.get("promptTokenCount"), usage.get("candidatesTokenCount")))
     raise _invalid("gemma", "response could not be parsed as JSON.")
 
 
-_ADAPTERS: dict[str, Callable[[str, dict[str, Any], int, int, float], str]] = {
+_ADAPTERS: dict[str, Callable[[str, dict[str, Any], LlmCall], _Reply]] = {
     "openai": _openai_text,
     "claude": _claude_text,
     "gemma": _gemma_text,
@@ -345,6 +424,65 @@ def _missing_key(provider: str) -> LlmUnavailableError:
 # ─── Public calls ───
 
 
+def _exchange(
+    provider: str, call: LlmCall, system_prompt: str, user_payload: dict[str, Any], started_at: datetime, latency_ms: int
+) -> dict[str, Any]:
+    return {
+        "provider": provider,
+        "model": call.model_for(provider),
+        "maxTokens": call.max_tokens,
+        "timeoutSeconds": call.timeout_seconds,
+        "temperature": call.temperature,
+        "systemPrompt": system_prompt,
+        "payload": user_payload,
+        "startedAt": started_at.isoformat(),
+        "latencyMs": latency_ms,
+    }
+
+
+def complete_json_call(system_prompt: str, user_payload: dict[str, Any], provider: str, call: LlmCall) -> dict[str, Any]:
+    """The JSON object the model replies with, or :class:`LlmUnavailableError`. Logs the call's
+    latency and token use, and records the exchange in an active capture."""
+    provider = provider if provider in _ADAPTERS else "openai"
+    started_at = datetime.now(tz=timezone.utc)
+    clock = time.perf_counter()
+    reply: _Reply | None = None
+    try:
+        if not llm_provider_available(provider):
+            raise _missing_key(provider)
+        try:
+            reply = _ADAPTERS[provider](system_prompt, user_payload, call)
+        except LlmUnavailableError:
+            raise
+        except urllib.error.HTTPError as error:
+            raise _http_error(provider, error.code, error.read().decode("utf-8", errors="replace")) from error
+        except (urllib.error.URLError, KeyError, IndexError, ValueError, TypeError, TimeoutError) as error:
+            raise _exception_error(provider, error) from error
+        parsed = extract_json_dict(reply.text)
+        if parsed is None:
+            raise _invalid(provider, "response could not be parsed as JSON.")
+    except LlmUnavailableError as error:
+        latency_ms = round((time.perf_counter() - clock) * 1000)
+        exchange = _exchange(provider, call, system_prompt, user_payload, started_at, latency_ms)
+        if reply is not None:
+            exchange.update(model=reply.model, reply=reply.text, usage=reply.usage)
+        record_llm_exchange({**exchange, "ok": False, "error": {"code": error.code, "message": error.message}})
+        logger.info("LLM %s %s failed after %sms (%s)", provider, exchange["model"] or "default", latency_ms, error.code)
+        raise
+    latency_ms = round((time.perf_counter() - clock) * 1000)
+    exchange = _exchange(provider, call, system_prompt, user_payload, started_at, latency_ms)
+    record_llm_exchange({**exchange, "model": reply.model, "reply": reply.text, "parsed": parsed, "usage": reply.usage, "ok": True})
+    logger.info(
+        "LLM %s %s %sms in=%s out=%s",
+        provider,
+        reply.model,
+        latency_ms,
+        reply.usage.get("inputTokens", "?"),
+        reply.usage.get("outputTokens", "?"),
+    )
+    return parsed
+
+
 def complete_json(
     system_prompt: str,
     user_payload: dict[str, Any],
@@ -353,22 +491,18 @@ def complete_json(
     timeout_seconds: int = 30,
     temperature: float = 0.2,
 ) -> dict[str, Any]:
-    """The JSON object the model replies with, or :class:`LlmUnavailableError`."""
-    provider = provider if provider in _ADAPTERS else "openai"
-    if not llm_provider_available(provider):
-        raise _missing_key(provider)
+    """:func:`complete_json_call` with the settings passed one by one."""
+    return complete_json_call(system_prompt, user_payload, provider, LlmCall(max_tokens, timeout_seconds, temperature))
+
+
+def call_llm_json_with(system_prompt: str, user_payload: dict[str, Any], provider: str, call: LlmCall) -> dict[str, Any] | None:
+    """Like :func:`complete_json_call`, but ``None`` on any failure."""
     try:
-        text = _ADAPTERS[provider](system_prompt, user_payload, max_tokens, timeout_seconds, temperature)
-    except LlmUnavailableError:
-        raise
-    except urllib.error.HTTPError as error:
-        raise _http_error(provider, error.code, error.read().decode("utf-8", errors="replace")) from error
-    except (urllib.error.URLError, KeyError, IndexError, ValueError, TypeError, TimeoutError) as error:
-        raise _exception_error(provider, error) from error
-    parsed = extract_json_dict(text)
-    if parsed is None:
-        raise _invalid(provider, "response could not be parsed as JSON.")
-    return parsed
+        return complete_json_call(system_prompt, user_payload, provider, call)
+    except LlmUnavailableError as error:
+        if error.code != "provider_auth_error" or "missing" not in error.message:
+            logger.warning("%s request failed (%s): %s", llm_provider_label(error.provider), error.code, error.message)
+        return None
 
 
 def call_llm_json(
@@ -380,12 +514,37 @@ def call_llm_json(
     temperature: float = 0.2,
 ) -> dict[str, Any] | None:
     """Like :func:`complete_json`, but ``None`` on any failure."""
-    try:
-        return complete_json(system_prompt, user_payload, provider, max_tokens, timeout_seconds, temperature)
-    except LlmUnavailableError as error:
-        if error.code != "provider_auth_error" or "missing" not in error.message:
-            logger.warning("%s request failed (%s): %s", llm_provider_label(error.provider), error.code, error.message)
-        return None
+    return call_llm_json_with(system_prompt, user_payload, provider, LlmCall(max_tokens, timeout_seconds, temperature))
+
+
+CallJson = Callable[[str, dict[str, Any], str, LlmCall], "dict[str, Any] | None"]
+
+
+async def complete_json_with_fallback(
+    system_prompt: str,
+    user_payload: dict[str, Any],
+    providers: Sequence[str],
+    call: LlmCall,
+    accept: Callable[[dict[str, Any]], T | None],
+    *,
+    call_json: CallJson = call_llm_json_with,
+    retry_delays_seconds: Sequence[float] = (0.4, 0.8),
+    label: str = "LLM request",
+) -> tuple[T, str] | None:
+    """Try each provider in order, retrying after each delay, until ``accept`` turns a reply into
+    a value. ``(value, provider)``, or ``None`` when every provider and retry is spent."""
+    for provider in providers:
+        attempts = len(retry_delays_seconds) + 1
+        for attempt in range(attempts):
+            reply = await asyncio.to_thread(call_json, system_prompt, user_payload, provider, call)
+            value = accept(reply) if isinstance(reply, dict) else None
+            if value is not None:
+                return value, provider
+            logger.warning("%s: invalid or empty reply from %s (attempt %s/%s).", label, llm_provider_label(provider), attempt + 1, attempts)
+            if attempt < len(retry_delays_seconds):
+                await asyncio.sleep(retry_delays_seconds[attempt])
+        logger.warning("%s: retries exhausted for %s; trying the next provider.", label, llm_provider_label(provider))
+    return None
 
 
 def call_llm_json_for_submission(
@@ -396,7 +555,7 @@ def call_llm_json_for_submission(
     """``(data, error_code, error_message, retryable)`` for the narrator's retry loop."""
     try:
         timeout = 60 if provider == "gemma" else 30
-        return complete_json(system_prompt, user_payload, provider, 1800, timeout, 0.2), "", "", False
+        return complete_json_call(system_prompt, user_payload, provider, LlmCall(1800, timeout, 0.2)), "", "", False
     except LlmUnavailableError as error:
         return None, error.code, error.message, error.retryable
 

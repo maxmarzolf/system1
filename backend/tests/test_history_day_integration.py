@@ -21,15 +21,19 @@ EVALUATION = {
 }
 
 
+GENERATION_TRACE = [{"attempt": 1, "provider": "claude", "model": "claude-fast", "systemPrompt": "write", "ok": True}]
+
+
 async def _insert_submission(problem_id: str) -> int:
     conn = await asyncpg.connect(settings.database_url)
     try:
         await conn.execute(
             """
-            INSERT INTO multiple_choice_problem (id, question_text, choices, correct_choice_id, fingerprint)
-            VALUES ($1, 'When does the window shrink?', '[{"id": "A", "text": "While invalid"}, {"id": "B", "text": "Never"}]'::jsonb, 'A', $1)
+            INSERT INTO multiple_choice_problem (id, question_text, choices, correct_choice_id, fingerprint, generation_trace)
+            VALUES ($1, 'When does the window shrink?', '[{"id": "A", "text": "While invalid"}, {"id": "B", "text": "Never"}]'::jsonb, 'A', $1, $2::jsonb)
             """,
             problem_id,
+            json.dumps(GENERATION_TRACE),
         )
         return await conn.fetchval(
             """
@@ -91,3 +95,4 @@ def test_history_day_lists_the_days_submissions_in_the_viewers_timezone() -> Non
     assert submission["elapsedMs"] == 4200
     assert submission["algorithms"] == [{"slug": "sliding-window", "algorithm": "Sliding Window"}]
     assert submission["evaluation"]["signalResults"]["conceptRecognition"]["score"] == 90.0
+    assert submission["generationTrace"] == GENERATION_TRACE

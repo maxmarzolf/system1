@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -21,6 +22,17 @@ def _history_day_choices(row: dict[str, Any]) -> list[dict[str, Any]]:
         {"id": choice["id"], "text": choice["text"], "correct": choice["id"] == correct}
         for choice in stored_choices(row.get("multiple_choice_choices"))
     ]
+
+
+def _generation_trace(row: dict[str, Any]) -> list[dict[str, Any]]:
+    """The LLM exchanges that generated the submission's MCQ; ``[]`` for other modalities and old rows."""
+    value = row.get("multiple_choice_generation_trace")
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return []
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
 
 
 async def get_history_day(day: date, timezone_name: str | None = None) -> dict[str, Any]:
@@ -57,6 +69,7 @@ async def get_history_day(day: date, timezone_name: str | None = None) -> dict[s
             "algorithms": [{"slug": slug, "algorithm": algorithm_names[slug]} for slug in slugs],
             "evaluation": coerce_json_object(signals.get("evaluation")),
             "flow": coerce_json_object(signals.get("flow")),
+            "generationTrace": _generation_trace(row),
         })
     return {"date": day.isoformat(), "submissions": submissions}
 

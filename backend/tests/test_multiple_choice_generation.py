@@ -145,7 +145,7 @@ async def test_generate_multiple_choice_drills_response_calls_persist_callback()
             ]
         }
 
-    async def persist_generated_questions(drills):
+    async def persist_generated_questions(drills, _traces):
         persisted["count"] = len(drills)
         persisted["question"] = drills[0]["question"]
 
@@ -211,6 +211,8 @@ async def test_generate_multiple_choice_drills_response_sends_card_context(flow_
     )
     if not with_focus:
         request.specimen.focus = None
+    if flow_mode == "progressive":
+        request.count = 2  # a chain; one question would take the single-question path
     captured: dict[str, object] = {}
 
     def call_llm_json(system_prompt, payload, *_args, **_kwargs):
@@ -234,6 +236,7 @@ async def test_generate_multiple_choice_drills_response_sends_card_context(flow_
                     "tags": ["sliding-window"],
                 }
             ]
+            * request.count
         }
 
     response = await generate_multiple_choice_drills_response(
@@ -291,7 +294,7 @@ async def test_generate_multiple_choice_drills_response_fails_closed_when_persis
             ]
         }
 
-    async def persist_generated_questions(_drills):
+    async def persist_generated_questions(_drills, _traces):
         raise RuntimeError("db unavailable")
 
     with pytest.raises(LlmUnavailableError) as error:
@@ -315,7 +318,7 @@ async def test_generate_multiple_choice_drills_response_serves_the_stored_card()
         difficulty="Hard",
     )
 
-    def call_llm_json(_system_prompt, _payload, _provider, _max_tokens, _timeout_seconds, _temperature):
+    def call_llm_json(_system_prompt, _payload, _provider, _call):
         return {
             "drills": [
                 {
@@ -344,7 +347,7 @@ async def test_generate_multiple_choice_drills_response_serves_the_stored_card()
         {"id": "D", "text": "The array is always tiny."},
     ]
 
-    async def persist_generated_questions(_drills):
+    async def persist_generated_questions(_drills, _traces):
         return [{"id": "mcq-stored", "choices": stored_choices, "correctChoiceId": "B"}]
 
     response = await generate_multiple_choice_drills_response(
@@ -371,7 +374,7 @@ async def test_generate_multiple_choice_drills_response_falls_back_to_next_provi
     )
     providers_seen: list[str] = []
 
-    def call_llm_json(_system_prompt, _payload, provider, _max_tokens, _timeout_seconds, _temperature):
+    def call_llm_json(_system_prompt, _payload, provider, _call):
         providers_seen.append(provider)
         if provider == "claude":
             return None
@@ -421,7 +424,7 @@ async def test_generate_multiple_choice_drills_response_retries_transient_provid
     )
     attempts = {"count": 0}
 
-    def call_llm_json(_system_prompt, _payload, _provider, _max_tokens, _timeout_seconds, _temperature):
+    def call_llm_json(_system_prompt, _payload, _provider, _call):
         attempts["count"] += 1
         if attempts["count"] < 3:
             return None
@@ -458,3 +461,156 @@ async def test_generate_multiple_choice_drills_response_retries_transient_provid
     assert attempts["count"] == 3
     assert response.llmUsed is True
     assert len(response.drills) == 1
+
+
+# ─── Fan-out, partial retries and traces ───
+
+
+def _card_reply(question: str) -> dict:
+    return {
+        "drill": {
+            "title": "Binary Search Boundary",
+            "skill": "left / right bounds",
+            "question": question,
+            "choices": [
+                {"id": "A", "text": "The answer space is monotonic."},
+                {"id": "B", "text": "The array is always tiny."},
+                {"id": "C", "text": "Every candidate is visited."},
+                {"id": "D", "text": "A heap tracks the best midpoint."},
+            ],
+            "correctChoiceId": "A",
+            "explanation": "A monotonic decision lets each midpoint discard one side.",
+        }
+    }
+
+
+def _random_request(count: int) -> MultipleChoiceDrillsRequest:
+    return MultipleChoiceDrillsRequest(
+        count=count,
+        skillMap=[SkillMapNode(algorithm="Binary Search", skills=["left / right bounds"])],
+        difficulty="Hard",
+        flowMode="random",
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_random_set_fans_out_one_concurrent_call_per_question_from_different_angles() -> None:
+    import threading
+
+    from app.core.generator.mcq_prompt import QUESTION_ANGLES
+
+    count = 3
+    # Every call waits for the others: sequential calls would time the barrier out.
+    barrier = threading.Barrier(count, timeout=5)
+    payloads: list[dict] = []
+
+    def call_llm_json(system_prompt, payload, _provider, call):
+        payloads.append(payload)
+        barrier.wait()
+        assert call.max_tokens == 1200 and '"drill"' in system_prompt
+        return _card_reply(f"Question about {payload['angle']}?")
+
+    response = await generate_multiple_choice_drills_response(
+        _random_request(count), provider="claude", provider_label="Claude", provider_available=True, call_llm_json=call_llm_json
+    )
+
+    assert len(response.drills) == count
+    assert sorted(payload["angle"] for payload in payloads) == sorted(QUESTION_ANGLES[:count])
+    assert all(len(payload["skillMap"]) == 1 and "count" not in payload for payload in payloads)
+    assert len({payload["generationSeed"] for payload in payloads}) == count
+    # Served in slot order, whatever order the calls finished in.
+    assert [drill.question for drill in response.drills] == [f"Question about {angle}?" for angle in QUESTION_ANGLES[:count]]
+    assert all(drill.tags[:3] == ["skill-map", "skill-map-mcq", "binary-search"] for drill in response.drills)
+
+
+@pytest.mark.asyncio
+async def test_a_progressive_set_stays_one_call() -> None:
+    calls: list[dict] = []
+
+    def call_llm_json(_system_prompt, payload, _provider, call):
+        calls.append(payload)
+        assert call.max_tokens == 900 * 3 + 300
+        return {"drills": [_card_reply(f"Step {index}?")["drill"] for index in range(3)]}
+
+    request = _random_request(3)
+    request.flowMode = "progressive"
+    response = await generate_multiple_choice_drills_response(
+        request, provider="claude", provider_label="Claude", provider_available=True, call_llm_json=call_llm_json
+    )
+    assert len(calls) == 1 and calls[0]["count"] == 3
+    assert [drill.question for drill in response.drills] == ["Step 0?", "Step 1?", "Step 2?"]
+
+
+@pytest.mark.asyncio
+async def test_one_bad_reply_retries_only_its_own_question() -> None:
+    import threading
+
+    lock = threading.Lock()
+    calls: dict[str, int] = {}
+
+    def call_llm_json(_system_prompt, payload, _provider, _call):
+        angle = payload["angle"]
+        with lock:
+            calls[angle] = calls.get(angle, 0) + 1
+            first_try = calls[angle] == 1
+        if angle.startswith("a boundary") and first_try:
+            return {"drill": {"question": "incomplete"}}
+        return _card_reply(f"About {angle}?")
+
+    response = await generate_multiple_choice_drills_response(
+        _random_request(3),
+        provider="claude",
+        provider_label="Claude",
+        provider_available=True,
+        call_llm_json=call_llm_json,
+        retry_delays_seconds=(0, 0),
+    )
+    assert len(response.drills) == 3
+    assert sorted(calls.values()) == [1, 1, 2]
+
+
+@pytest.mark.asyncio
+async def test_a_question_that_never_recovers_fails_the_set() -> None:
+    def call_llm_json(_system_prompt, payload, _provider, _call):
+        return None if payload["angle"].startswith("a state update") else _card_reply("Fine?")
+
+    with pytest.raises(LlmUnavailableError) as error:
+        await generate_multiple_choice_drills_response(
+            _random_request(3),
+            provider="claude",
+            provider_label="Claude",
+            provider_available=True,
+            call_llm_json=call_llm_json,
+            retry_delays_seconds=(0,),
+        )
+    assert error.value.code == "mcq_generation_no_response"
+
+
+@pytest.mark.asyncio
+async def test_each_question_is_persisted_with_its_own_llm_exchanges() -> None:
+    from app.core.llm import LlmCall, record_llm_exchange
+
+    def call_llm_json(_system_prompt, payload, provider, call):
+        # Stand-in for complete_json_call, which records each exchange it makes.
+        record_llm_exchange({"provider": provider, "model": call.model_for(provider), "payload": payload, "ok": True})
+        return _card_reply(f"About {payload['angle']}?")
+
+    saved: dict[str, object] = {}
+
+    async def persist_generated_questions(drills, traces):
+        saved["drills"], saved["traces"] = drills, traces
+
+    await generate_multiple_choice_drills_response(
+        _random_request(2),
+        provider="claude",
+        provider_label="Claude",
+        provider_available=True,
+        call_llm_json=call_llm_json,
+        call=LlmCall(timeout_seconds=30, models={"claude": "claude-fast"}),
+        persist_generated_questions=persist_generated_questions,
+    )
+
+    traces = saved["traces"]
+    assert [len(trace) for trace in traces] == [1, 1]
+    assert [trace[0]["payload"]["angle"] for trace in traces] == [drill["question"][6:-1] for drill in saved["drills"]]
+    assert all(trace[0]["model"] == "claude-fast" and trace[0]["attempt"] == 1 for trace in traces)

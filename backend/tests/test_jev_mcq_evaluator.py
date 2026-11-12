@@ -134,6 +134,10 @@ async def test_one_call_carries_correctness_and_every_signal_question(patched) -
     assert evaluation["signalResults"]["conceptRecognition"]["score"] == 90.0
     assert evaluation["signalResults"]["completionTime"]["score"] == 100.0
     assert evaluation["jevTrace"][0]["questionIds"] == list(questions)
+    # The full request is stored: the state sent and every question definition, not just ids.
+    trace = evaluation["jevTrace"][0]
+    assert trace["state"] == state and trace["questions"] == questions
+    assert isinstance(trace["latencyMs"], int) and trace["attempts"] == 1
 
 
 @pytest.mark.asyncio

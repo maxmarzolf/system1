@@ -60,6 +60,8 @@ class HistorySubmission(ApiModel):
     # The stored evaluation exactly as saved (see app.contracts.evaluation); {} when none.
     evaluation: dict[str, Any]
     flow: dict[str, Any]
+    # The LLM exchanges that generated the MCQ (prompt, payload, reply, usage, timing); [] otherwise.
+    generationTrace: list[dict[str, Any]] = []
 
 
 class HistoryDayResponse(ApiModel):

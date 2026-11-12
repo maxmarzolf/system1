@@ -182,7 +182,8 @@ class FeedbackPayload(TypedDict, total=False):
 	signals: dict[str, Any]
 
 PersistSkillMapDrills: TypeAlias = Callable[[list[SkillMapDrillPayload], bool, SkillMapProgressSummary], Awaitable[None]]
+# The cards, then each card's LLM exchanges (prompt, payload, reply, usage, timing), in order.
 PersistGeneratedQuestions: TypeAlias = Callable[
-	[list[MultipleChoiceQuestionPayload]],
+	[list[MultipleChoiceQuestionPayload], list[list[dict[str, Any]]]],
 	Awaitable[list[MultipleChoiceQuestionPayload | None] | None],
 ]

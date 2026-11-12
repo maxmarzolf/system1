@@ -95,10 +95,11 @@ async def test_generated_questions_are_stored_and_mapped(monkeypatch) -> None:
     async def insert(**kwargs):
         assert "user_id" not in kwargs and kwargs["created_at"].tzinfo is not None
         assert kwargs["algorithm_slugs"] == [None, None]
+        assert kwargs["generation_traces"] == [[{"attempt": 1}], []]
         return [{"id": "q1", "choices": [], "correctChoiceId": "A"}, None]
 
     async def generate(body, *, persist_generated_questions):
-        return {"stored": await persist_generated_questions([{}, {}])}
+        return {"stored": await persist_generated_questions([{}, {}], [[{"attempt": 1}], []])}
 
     monkeypatch.setattr(orchestration, "insert_generated_multiple_choice_question_rows", insert)
     monkeypatch.setattr(orchestration.drill_generation_service, "coach_multiple_choice_drills", generate)

@@ -940,7 +940,8 @@ export interface components {
          * @description A stored evaluation. Dimension and modifier keys are the referenced spec's signal keys.
          *
          *     Jev MCQ evaluations also carry ``correctness``, ``signalResults``,
-         *     ``signalSpecSnapshot`` and ``jevTrace``.
+         *     ``signalSpecSnapshot`` and ``jevTrace``. Any evaluation that called an LLM while grading
+         *     carries ``llmTrace``: each exchange's prompt, payload, reply, usage and timing.
          */
         Evaluation: {
             /** Correctness */
@@ -957,6 +958,10 @@ export interface components {
             };
             /** Jevtrace */
             jevTrace?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Llmtrace */
+            llmTrace?: {
                 [key: string]: unknown;
             }[] | null;
             /** Modifiers */
@@ -1139,6 +1144,13 @@ export interface components {
             flow: {
                 [key: string]: unknown;
             };
+            /**
+             * Generationtrace
+             * @default []
+             */
+            generationTrace?: {
+                [key: string]: unknown;
+            }[];
             /** Id */
             id: number;
             /** Modality */

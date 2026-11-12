@@ -1,3 +1,6 @@
+import { JsonBlock } from './TraceBlocks'
+import { asRecord } from './traceFormat'
+
 type RubricEntry = {
   key?: string
   label?: string
@@ -16,12 +19,6 @@ type SignalResultEntry = {
   confidence?: number | null
 }
 
-const asRecord = (value: unknown): Record<string, unknown> =>
-  value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
-
-function JsonBlock({ value }: { value: unknown }) {
-  return <pre className="signal-trace-json">{JSON.stringify(value, null, 2)}</pre>
-}
 
 function RubricRows({ title, entries }: { title: string; entries: Record<string, unknown> }) {
   const rows = Object.entries(entries).map(([key, raw]) => ({ key, ...(asRecord(raw) as RubricEntry) }))
@@ -91,7 +88,10 @@ function SignalResultRows({ entries }: { entries: Record<string, unknown> }) {
   )
 }
 
-/** Everything a stored submission evaluation says: spec, verdict, provenance, scores, and every signal. */
+/**
+ * Everything a stored submission evaluation says: spec, verdict, provenance, scores, and every
+ * signal. The raw model and Jev exchanges are shown by ModelCallDetails.
+ */
 export default function SubmissionSignalDetails({ evaluation: rawEvaluation }: { evaluation: unknown }) {
   const evaluation = asRecord(rawEvaluation)
   if (!Object.keys(evaluation).length) {
@@ -133,12 +133,6 @@ export default function SubmissionSignalDetails({ evaluation: rawEvaluation }: {
       <RubricRows title="Dimensions" entries={asRecord(evaluation.dimensions)} />
       <RubricRows title="Modifiers" entries={asRecord(evaluation.modifiers)} />
       <SignalResultRows entries={asRecord(evaluation.signalResults)} />
-      {Array.isArray(evaluation.jevTrace) ? (
-        <details className="signal-trace-raw">
-          <summary>Jev answers</summary>
-          <JsonBlock value={evaluation.jevTrace} />
-        </details>
-      ) : null}
       <details className="signal-trace-raw">
         <summary>Raw evaluation</summary>
         <JsonBlock value={evaluation} />

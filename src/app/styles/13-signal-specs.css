@@ -157,3 +157,63 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Model calls: each LLM or Jev exchange, its settings, and its request and response. */
+.model-call-details {
+  display: grid;
+  gap: 1rem;
+}
+
+.model-call-section h5 {
+  margin: 0 0 0.45rem;
+  color: var(--hc-fg);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.model-call-list {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.model-call {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--hc-border-dim);
+  border-radius: 0.3rem;
+}
+
+.model-call-header {
+  color: var(--hc-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.7rem;
+  overflow-wrap: anywhere;
+}
+
+.model-call-header-failed,
+.model-call-error {
+  color: var(--hc-error);
+}
+
+.model-call-error {
+  margin: 0.3rem 0;
+  font-size: 0.72rem;
+}
+
+.model-call h6 {
+  margin: 0.55rem 0 0.25rem;
+  color: var(--hc-fg-dim);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.signal-trace-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
