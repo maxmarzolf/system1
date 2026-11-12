@@ -54,6 +54,6 @@ describe('TunePage', () => {
   it('lists the hotkey reference', () => {
     renderTune()
     expect(screen.getByText('Card modalities')).toBeInTheDocument()
-    expect(screen.getByText('Recall from right')).toBeInTheDocument()
+    expect(screen.getByText('Total Recall')).toBeInTheDocument()
   })
 })

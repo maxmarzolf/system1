@@ -2,7 +2,7 @@
 
 System 1 is a practice app for coding-interview algorithms. You recall code from memory, get graded, and track where you're weak over time.
 
-- **Practice** (`/practice`): recall a card's code from memory, or answer multiple-choice questions (MCQs). Cmd/Ctrl + ↑↑ / ↓↓ switches between MCQ, Recall and Ghost; the navbar shows which is on. Optional supports: Ghost Reps (type over the target), Inline notes, AI completion, a Sliding Window Ladder, and adaptive or custom **flows** that mix all four modalities.
+- **Practice** (`/practice`): recall a card's code from memory, or answer multiple-choice questions (MCQs). Cmd/Ctrl + double arrows selects Total Recall (↑), Microdrill (←), Ghost (→), or MCQ (↓); the navbar shows which is on. From any other page, Cmd/Ctrl + Enter opens Total Recall with the code editor focused. Optional supports: Ghost Reps (type over the target), Inline notes, AI completion, a Sliding Window Ladder, and adaptive or custom **flows** that mix all four modalities.
 - **Dashboard** (`/dashboard`): readiness per algorithm and playlist; start focused practice from any card.
 - **Journey** (`/`, the home page): a 3D *Signal Score Terrain* of every graded signal over time, a daily work grid, and the full stored evaluation of each submission on any day.
 - **Tune** (`/tune`): local preferences: specimen style, editor, MCQ set size, grading strictness, hotkeys.

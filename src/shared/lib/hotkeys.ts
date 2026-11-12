@@ -9,8 +9,8 @@ export type HotkeyId =
   | 'next-targeted-line'
   | 'toggle-ghost-reps'
   | 'move-pages'
-  | 'switch-question-type'
   | 'journey-start-practice'
+  | 'start-total-recall'
   | 'submit-card'
   | 'mcq-choice'
   | 'indent-outdent'
@@ -46,18 +46,18 @@ const hotkeyDefinitions: HotkeyDefinition[] = [
   {
     id: 'move-pages',
     group: 'Navigation',
-    displayKeys: ['Mod + ← ← / Mod + → →'],
+    displayKeys: ['Mod + A / Mod + D'],
     label: 'Move between pages',
-    description: 'Double-tap the modified arrow shortcut to open the page to the left or right in the navbar.',
-    bindings: [],
+    description: 'Move left or right through the navbar, wrapping at either end.',
+    bindings: [{ key: 'a', modifier: 'mod' }, { key: 'd', modifier: 'mod' }],
   },
   {
-    id: 'switch-question-type',
+    id: 'start-total-recall',
     group: 'Navigation',
-    displayKeys: ['Mod + ↑ ↑ / Mod + ↓ ↓'],
-    label: 'Change question type',
-    description: 'On the practice page, double-tap to step through MCQ, Recall and Ghost (outside a Flow).',
-    bindings: [],
+    displayKeys: ['Mod + Enter'],
+    label: 'Jump to Total Recall',
+    description: 'From any other page, open Practice and focus the Total Recall editor.',
+    bindings: [{ key: 'Enter', modifier: 'mod' }],
   },
   {
     id: 'journey-start-practice',
@@ -72,7 +72,7 @@ const hotkeyDefinitions: HotkeyDefinition[] = [
     group: 'Card modalities',
     displayKeys: ['Mod', 'Shift', 'Enter'],
     label: 'Start or submit',
-    description: 'Recall, Ghost and MCQ have no Start or Submit button: start a rep, submit it, or submit the chosen answer.',
+    description: 'Start or submit Recall, Ghost, MCQ or Microdrill from the keyboard.',
     bindings: [{ key: 'Enter', modifier: 'mod', shift: true }],
   },
   {
@@ -86,37 +86,37 @@ const hotkeyDefinitions: HotkeyDefinition[] = [
   {
     id: 'flow-full-recall',
     group: 'Card modalities',
-    displayKeys: ['Mod', 'D'],
-    label: 'Recall from right',
-    description: 'Bring Recall in from the right, anchored to the current card.',
-    bindings: [{ key: 'd', modifier: 'mod' }],
+    displayKeys: ['Mod + ↑ ↑'],
+    label: 'Total Recall',
+    description: 'Open Total Recall on the current card.',
+    bindings: [],
     flowStage: 'recall',
   },
   {
     id: 'flow-targeted-ghost',
     group: 'Card modalities',
-    displayKeys: ['Mod', 'W'],
-    label: 'Ghost from top',
-    description: 'Drop Ghost in from the top, anchored to the current card.',
-    bindings: [{ key: 'w', modifier: 'mod' }],
+    displayKeys: ['Mod + → →'],
+    label: 'Ghost',
+    description: 'Open Ghost on the current card.',
+    bindings: [],
     flowStage: 'ghost',
   },
   {
     id: 'flow-targeted-mcq',
     group: 'Card modalities',
-    displayKeys: ['Mod', 'A'],
-    label: 'MCQ from left',
-    description: 'Bring MCQ in from the left, anchored to the current card.',
-    bindings: [{ key: 'a', modifier: 'mod' }],
+    displayKeys: ['Mod + ↓ ↓'],
+    label: 'MCQ',
+    description: 'Open MCQ on the current card.',
+    bindings: [],
     flowStage: 'multiple-choice',
   },
   {
     id: 'flow-targeted-microdrill',
     group: 'Card modalities',
-    displayKeys: ['Mod', 'S'],
-    label: 'Microdrill from bottom',
-    description: 'Raise Microdrill from the bottom, anchored to the current card.',
-    bindings: [{ key: 's', modifier: 'mod' }],
+    displayKeys: ['Mod + ← ←'],
+    label: 'Microdrill',
+    description: 'Open Microdrill on the current card.',
+    bindings: [],
     flowStage: 'microdrill',
   },
   {
@@ -124,7 +124,7 @@ const hotkeyDefinitions: HotkeyDefinition[] = [
     group: 'Card modalities',
     displayKeys: ['Mod', 'Enter'],
     label: 'Card button',
-    description: 'Press the button under the card when there is one, such as a Flow\'s Next or a Microdrill\'s Submit.',
+    description: 'Press the button under the card when there is one, such as a Flow\'s Next.',
     bindings: [{ key: 'Enter', modifier: 'mod' }],
   },
   {

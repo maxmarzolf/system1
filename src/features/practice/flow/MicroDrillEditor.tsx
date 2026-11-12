@@ -1,5 +1,6 @@
 import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import type { AppTheme } from '@/app/theme'
 import RecallCodeEditor from '../editor/RecallCodeEditor'
 import { renderInlineMarkdownText } from '../lib/markdownText'
@@ -18,6 +19,7 @@ export function MicroDrillBlankEditor({ template, language, syntaxTheme, theme, 
   const [fallbackValue, setFallbackValue] = useState(template)
   const lines = useMemo(() => template.split('\n'), [template])
   const blankCount = useMemo(() => (template.match(/_{3,}/g) ?? []).length, [template])
+  const codeTypography = { fontFamily: 'inherit', fontSize: 'inherit', lineHeight: 'inherit' } as const
 
   useEffect(() => {
     let index = 0
@@ -47,8 +49,8 @@ export function MicroDrillBlankEditor({ template, language, syntaxTheme, theme, 
       <SyntaxHighlighter
         language={language}
         style={syntaxTheme}
-        customStyle={{ margin: 0, padding: 0, background: 'transparent', font: 'inherit' }}
-        codeTagProps={{ style: { font: 'inherit' } }}
+        customStyle={{ margin: 0, padding: 0, background: 'transparent', ...codeTypography }}
+        codeTagProps={{ style: codeTypography }}
         wrapLines
         renderer={({ rows, stylesheet }) => {
           let blankIndex = 0
@@ -75,7 +77,15 @@ export function MicroDrillBlankEditor({ template, language, syntaxTheme, theme, 
               })
             }
             const classes = node.properties?.className ?? []
-            const style = Object.assign({}, ...classes.map((name: string) => stylesheet[name]))
+            const style = Object.assign({}, ...classes.map((name: string) => stylesheet[name])) as CSSProperties
+            if (theme === 'light-high-contrast') {
+              const darkStyle = Object.assign({}, ...classes.map((name: string) =>
+                (vscDarkPlus as Record<string, CSSProperties>)[name])) as CSSProperties
+              if (darkStyle.fontStyle === undefined) delete style.fontStyle
+              else style.fontStyle = darkStyle.fontStyle
+              if (darkStyle.fontWeight === undefined) delete style.fontWeight
+              else style.fontWeight = darkStyle.fontWeight
+            }
             return (
               <span key={key} style={style}>
                 {node.children?.map((child, index) => renderNode(child, `${key}-${index}`, lineIndex))}

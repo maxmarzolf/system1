@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { vs, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { loadFlowConfig, saveFlowConfig, type FlowStage } from './flow/practiceFlow'
 import RelatedLeetCodeDrawer from './components/RelatedLeetCodeDrawer'
@@ -12,7 +13,6 @@ import TopNav from '@/app/TopNav'
 import { useTheme } from '@/app/theme'
 import SlidingWindowLadder from './ladder/WindowLadderPanel'
 import { slidingWindowTechnique } from './ladder/windowLadderPlan'
-import FlowCoachTransition from './flow/FlowCoachTransition'
 import FlowMicroDrillCard from './flow/FlowMicroDrillCard'
 import { buildFlowFocusSummary, buildFlowGhostScaffold, buildFlowGhostTarget, firstIncompleteGhostLineNumber, toMultipleChoiceFocusLines } from './lib/lineReview'
 import { usePracticeFlowControls, usePracticeFlowState, type FlowChange } from './flow/usePracticeFlow'
@@ -36,11 +36,14 @@ import { resolvePrimaryAction, type PrimaryActionKind } from './lib/primaryActio
 import { derivePracticeTargets } from './lib/targets'
 import { focusMicroDrillInput } from './lib/markdownText'
 import { describeCard } from './lib/cardMeta'
-import { questionTypeLabel, questionTypeOf, stepQuestionType, type QuestionType } from './lib/questionType'
+import { questionTypeLabel, questionTypeOf, type QuestionType } from './lib/questionType'
 import { useDoubleTapArrows } from '@/shared/lib/useDoubleTapArrows'
 import { INLINE_FEEDBACK_ENABLED, emptySkillMapCard, EMPTY_FLOW_MICRODRILL_ACTION_STATE, type AttemptPayload, type MultipleChoiceCard, type MultipleChoiceSpecimenContext, type PracticeMode, type SupportLayer, type TemplateMode } from './lib/types'
 
 function PracticePage() {
+  const { state: arrivalState } = useLocation()
+  const startTotalRecallOnArrival = (arrivalState as { startTotalRecall?: boolean } | null)?.startTotalRecall === true
+  const autoStartedRecallRef = useRef(false)
   const { theme } = useTheme()
   const { focus: practiceFocus, flowPanelRequested } = usePracticeFocus()
   const [practiceMode, setPracticeMode] = useState<PracticeMode>('recall')
@@ -51,7 +54,6 @@ function PracticePage() {
   const [flowConfig, setFlowConfig] = useState(loadFlowConfig)
   const flowState = usePracticeFlowState()
   const practiceFlow = flowState.flow
-  const flowTransition = flowState.transition
   const flowMicroDrillPrimaryActionRef = useRef<() => void>(() => undefined)
   const primaryCardButtonRef = useRef<HTMLButtonElement | null>(null)
 
@@ -198,12 +200,6 @@ function PracticePage() {
     deck: filteredDeck,
     canStart: hasRecallDeck && !session.finished,
     onChange: (change) => handleFlowChange(change),
-    stageReady: {
-      recallTyping: mainPhase === 'typing',
-      mcqLoaded: flowMultipleChoiceDeck.length > 0,
-      mcqFailed: Boolean(flowMcqDeck.error && !flowMcqDeck.loading),
-    },
-    onSettled: (toStage) => focusStageEditor(toStage),
   })
   const targetedGhostLineCount = practiceFlow?.focus.missedLines.filter((line) => line.expected.trim().length > 0).length ?? 0
   const relatedLeetCodeSet = useMemo(
@@ -283,7 +279,7 @@ function PracticePage() {
     resetPerCardInteraction()
   }
 
-  /** Once the transition card has gone, put the cursor where the new recall or ghost stage starts. */
+  /** Put the cursor in a newly selected Recall or Ghost editor. */
   const focusStageEditor = (toStage: FlowStage) => {
     if (toStage !== 'recall' && toStage !== 'ghost') return
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
@@ -307,10 +303,20 @@ function PracticePage() {
     resetPerCardInteraction()
     if (practiceFlow?.stage === 'recall' || practiceFlow?.stage === 'ghost') {
       recall.start()
+      focusStageEditor(practiceFlow.stage)
     }
     // Flow stages should begin as soon as they are selected; standalone recall still begins from preview.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCardId, currentPracticeMode, practiceFlow?.cycle, practiceFlow?.stage, practiceFlow?.step, session.position])
+
+  useEffect(() => {
+    if (!startTotalRecallOnArrival || autoStartedRecallRef.current || skillMapLoading || !hasRecallDeck || focusedCardPending || focusedCardNotFound) return
+    autoStartedRecallRef.current = true
+    recall.start()
+    focusStageEditor('recall')
+    // The earlier card and session effects have reset the new deck before this arrival action runs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startTotalRecallOnArrival, skillMapLoading, hasRecallDeck, focusedCardPending, focusedCardNotFound, activeCardId])
 
   const toggleAiCompletion = () => {
     setCodeEditorTuning((prev) => ({ ...prev, aiCompletion: !prev.aiCompletion }))
@@ -381,9 +387,9 @@ function PracticePage() {
 
   usePracticeHotkeys({
     primaryButtonRef: primaryCardButtonRef,
-    // Same rules as the button it replaces: not while a flow stage is changing or the Flow panel is up.
+    // The card action is unavailable while the Flow panel is open.
     onSubmitKey: () => {
-      if (flowTransition || panels.flowOpen || !primaryCardAction || primaryCardAction.disabled) return
+      if (panels.flowOpen || !primaryCardAction || primaryCardAction.disabled) return
       primaryActionHandlers[primaryCardAction.kind]()
     },
     recallActive: currentPracticeMode === 'recall',
@@ -396,12 +402,12 @@ function PracticePage() {
   useMultipleChoiceHotkeys({
     enabled: currentPracticeMode === 'multiple-choice'
       && !mcqView.submitted && !hasAnsweredCurrent && !session.finished
-      && !flowTransition && !panels.flowOpen,
+      && !panels.flowOpen,
     choiceIds: activeMultipleChoiceCard?.choices.map((choice) => choice.id) ?? [],
     onChoose: mcq.select,
   })
 
-  const microDrillEditorReady = !flowTransition && !panels.flowOpen
+  const microDrillEditorReady = !panels.flowOpen
     && practiceFlow?.stage === 'microdrill'
     && flowState.microDrillAction.interactionKey === flowMicroDrillActionKey
     && flowState.microDrillAction.ready
@@ -432,14 +438,19 @@ function PracticePage() {
     setSupportLayer(next === 'ghost' ? 'ghost-reps' : 'none')
     return true
   }
-  // Cmd/Ctrl + ↑↑ / ↓↓ steps through MCQ, Recall and Ghost; a running flow picks its own stages.
-  const [questionTypeMotion, setQuestionTypeMotion] = useState<{ direction: 'up' | 'down'; id: number } | null>(null)
-  useDoubleTapArrows(['ArrowUp', 'ArrowDown'], (key) => {
-    const direction = key === 'ArrowUp' ? 'up' : 'down'
-    const next = stepQuestionType(questionType, direction)
-    if (!next || !selectQuestionType(next)) return
-    setQuestionTypeMotion((previous) => ({ direction, id: (previous?.id ?? 0) + 1 }))
-  }, !isFlowActive && !ladderActive)
+  // The four modified double arrows select a modality directly. Microdrill begins a Flow.
+  useDoubleTapArrows(['ArrowUp', 'ArrowLeft', 'ArrowRight', 'ArrowDown'], (key) => {
+    const stage: FlowStage = key === 'ArrowUp' ? 'recall'
+      : key === 'ArrowLeft' ? 'microdrill'
+        : key === 'ArrowRight' ? 'ghost'
+          : 'multiple-choice'
+    if (isFlowActive || ladderActive || stage === 'microdrill') {
+      void flowControls.activateStage(stage)
+      return
+    }
+    const next: QuestionType = stage === 'multiple-choice' ? 'mcq' : stage
+    selectQuestionType(next)
+  })
 
   const saveMicroDrill = (payload: Pick<AttemptPayload, 'correctAnswer' | 'userAnswer' | 'question' | 'elapsedMs' | 'interactionId' | 'signals' | 'outsideFlow'>) =>
     submitAttemptToServer({
@@ -543,7 +554,7 @@ function PracticePage() {
   return (
     <div className={['app', panels.relatedOpen && relatedLeetCodeSet ? 'app-side-drawer-open' : '', panels.zen ? 'app-zen-mode' : ''].filter(Boolean).join(' ')}>
       {recall.failure && <SubmissionFailureModal failure={recall.failure} onClose={recall.dismissFailure} />}
-      <TopNav questionType={questionTypeLabel(questionType, practiceFlow?.stage ?? null)} questionTypeMotion={questionTypeMotion} practiceHistoryHref={cardMeta.historyHref} />
+      <TopNav questionType={questionTypeLabel(questionType, practiceFlow?.stage ?? null)} practiceHistoryHref={cardMeta.historyHref} />
 
       {focusedCardNotFound || focusedCardPending ? (
         <div className="card-shell">
@@ -564,35 +575,23 @@ function PracticePage() {
               <SessionSummary mode={currentPracticeMode} correctCount={session.correctCount} attempts={session.attempts} plan={sessionPlan} />
             )}
 
-            <div className={flowTransition ? 'flow-stage-stack flow-stage-stack-transitioning' : 'flow-stage-stack'}>
-              {flowTransition && <FlowCoachTransition transition={flowTransition} settling={flowState.settlingId === flowTransition.id} />}
-              <div
-                ref={flowStageContentRef}
-                className={[
-                  'flow-stage-content',
-                  practiceFlow ? `flow-stage-content-${practiceFlow.stage}` : '',
-                  flowTransition ? (flowState.settlingId === flowTransition.id ? 'flow-stage-content-settling' : 'flow-stage-content-preparing') : '',
-                ].filter(Boolean).join(' ')}
-                aria-hidden={flowTransition ? true : undefined}
-                inert={flowTransition ? true : undefined}
-              >
+            <div className="flow-stage-stack">
+              <div ref={flowStageContentRef} className="flow-stage-content">
                 {isFlowActive && recall.error && mainPhase === 'typing' && <p className="flow-submit-error" role="alert">{recall.error}</p>}
                 {stage}
               </div>
             </div>
 
-            {!flowTransition && (
-              <PracticeControlBar
-                primaryButtonRef={primaryCardButtonRef}
-                flowPanelOpen={panels.flowOpen}
-                flowRunning={isFlowActive}
-                canStartFlow={hasRecallDeck && !session.finished && !flowState.historyLoading}
-                onStartFlow={() => void flowControls.start()}
-                onStopFlow={flowControls.stop}
-                action={primaryCardAction}
-                onAction={primaryCardAction ? primaryActionHandlers[primaryCardAction.kind] : () => {}}
-              />
-            )}
+            <PracticeControlBar
+              primaryButtonRef={primaryCardButtonRef}
+              flowPanelOpen={panels.flowOpen}
+              flowRunning={isFlowActive}
+              canStartFlow={hasRecallDeck && !session.finished && !flowState.historyLoading}
+              onStartFlow={() => void flowControls.start()}
+              onStopFlow={flowControls.stop}
+              action={primaryCardAction}
+              onAction={primaryCardAction ? primaryActionHandlers[primaryCardAction.kind] : () => {}}
+            />
           </section>
           {relatedLeetCodeSet && (
             <RelatedLeetCodeDrawer relatedSet={relatedLeetCodeSet} open={panels.relatedOpen} onClose={panels.closeRelated} />

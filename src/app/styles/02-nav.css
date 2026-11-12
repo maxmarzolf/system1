@@ -52,36 +52,6 @@
   line-height: 1.1;
 }
 
-/* Cmd + ↑↑ slides the new type up into place, Cmd + ↓↓ slides it down. */
-.navbar-question-type-text {
-  display: inline-block;
-}
-
-.navbar-question-type-slide-up {
-  animation: navbar-question-type-up 240ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.navbar-question-type-slide-down {
-  animation: navbar-question-type-down 240ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-@keyframes navbar-question-type-up {
-  from { transform: translateY(110%); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
-
-@keyframes navbar-question-type-down {
-  from { transform: translateY(-110%); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .navbar-question-type-slide-up,
-  .navbar-question-type-slide-down {
-    animation: none;
-  }
-}
-
 .navbar-theme {
   position: relative;
 }

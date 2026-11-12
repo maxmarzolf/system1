@@ -9,7 +9,7 @@ type Sweep = { id: number; direction: 'left' | 'right' }
  * the way the navbar moved (rightward when the new page sits to the right).
  */
 export default function PageSweep() {
-  const { pathname } = useLocation()
+  const { pathname, state } = useLocation()
   const [seenPath, setSeenPath] = useState(pathname)
   const [sweep, setSweep] = useState<Sweep | null>(null)
 
@@ -17,7 +17,11 @@ export default function PageSweep() {
     const from = navPageIndex(seenPath)
     const to = navPageIndex(pathname)
     setSeenPath(pathname)
-    if (from >= 0 && to >= 0) setSweep((previous) => ({ id: (previous?.id ?? 0) + 1, direction: to > from ? 'right' : 'left' }))
+    if (from >= 0 && to >= 0) {
+      const requested = (state as { pageSweep?: { from: string; direction: 'left' | 'right' } } | null)?.pageSweep
+      const direction = requested?.from === seenPath ? requested.direction : to > from ? 'right' : 'left'
+      setSweep((previous) => ({ id: (previous?.id ?? 0) + 1, direction }))
+    }
   }
 
   if (!sweep) return null

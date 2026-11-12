@@ -1,11 +1,9 @@
 /**
- * The practice flow as data: where it is (anchor card, stage, step), the coach's transition card
- * between stages, and the evidence (attempts) that drives an adaptive flow. Everything here is
- * pure; practice/hooks/usePracticeFlow.ts runs the effects (history requests, timers, hotkeys).
+ * The practice flow as data: its anchor card, stage, step, and the attempts that steer adaptation.
+ * Effects such as history requests live in usePracticeFlow.ts.
  */
 import {
   FLOW_LABELS,
-  buildFlowTransitionCopy,
   expandFlow,
   mergeFlowAttempts,
   nextFlowStep,
@@ -22,14 +20,10 @@ import {
   type FlowMicroDrillPrimaryActionState,
   type MultipleChoiceSpecimenFocus,
   type PracticeFlowState,
-  type PracticeFlowTransitionState,
 } from '../lib/types'
 
 export type FlowState = {
   flow: PracticeFlowState | null
-  transition: PracticeFlowTransitionState | null
-  /** The transition card that is fading out. */
-  settlingId: string | null
   attempts: FlowAttempt[]
   historyLoading: boolean
   historyError: string
@@ -38,8 +32,6 @@ export type FlowState = {
 
 export const initialFlowState: FlowState = {
   flow: null,
-  transition: null,
-  settlingId: null,
   attempts: [],
   historyLoading: false,
   historyError: '',
@@ -53,12 +45,9 @@ export type FlowAction =
   | { type: 'historyLoaded'; attempts: FlowAttempt[] }
   | { type: 'historyFailed' }
   | { type: 'attemptsRecorded'; attempts: FlowAttempt[] }
-  | { type: 'transitionStarted'; transition: PracticeFlowTransitionState }
   | { type: 'flowChanged'; flow: PracticeFlowState }
   | { type: 'focusChanged'; focus: MultipleChoiceSpecimenFocus }
   | { type: 'stopped' }
-  | { type: 'transitionSettling'; id: string }
-  | { type: 'transitionFinished'; id: string }
   | { type: 'microDrillActionChanged'; state: FlowMicroDrillPrimaryActionState }
 
 export function flowReducer(state: FlowState, action: FlowAction): FlowState {
@@ -71,49 +60,23 @@ export function flowReducer(state: FlowState, action: FlowAction): FlowState {
       return { ...state, historyLoading: false, historyError: FLOW_HISTORY_UNAVAILABLE }
     case 'attemptsRecorded':
       return { ...state, attempts: mergeFlowAttempts(state.attempts, action.attempts) }
-    case 'transitionStarted':
-      return { ...state, transition: action.transition, settlingId: null, microDrillAction: EMPTY_FLOW_MICRODRILL_ACTION_STATE }
     case 'flowChanged':
-      return { ...state, flow: action.flow }
+      return { ...state, flow: action.flow, microDrillAction: EMPTY_FLOW_MICRODRILL_ACTION_STATE }
     case 'focusChanged':
       return state.flow ? { ...state, flow: { ...state.flow, focus: action.focus } } : state
     case 'stopped':
-      return { ...state, flow: null, transition: null, settlingId: null }
-    case 'transitionSettling':
-      return { ...state, settlingId: action.id }
-    case 'transitionFinished':
-      return {
-        ...state,
-        transition: state.transition?.id === action.id ? null : state.transition,
-        settlingId: state.settlingId === action.id ? null : state.settlingId,
-      }
+      return { ...state, flow: null, microDrillAction: EMPTY_FLOW_MICRODRILL_ACTION_STATE }
     case 'microDrillActionChanged':
       return { ...state, microDrillAction: action.state }
   }
 }
 
-/** What the coach's transition card announces: from which stage to which, and why. */
-export type TransitionRequest = {
-  fromStage: FlowStage | null
-  toStage: FlowStage
-  anchorCardId: string
-  step: number
-  mode: FlowConfig['mode']
-  latestAttempt?: FlowAttempt
-  newAnchor?: boolean
-}
-
-export function buildTransition(request: TransitionRequest, id: string, startedAt: number): PracticeFlowTransitionState {
-  const { fromStage, toStage, anchorCardId, step, mode, latestAttempt, newAnchor = false } = request
-  return { id, fromStage, toStage, anchorCardId, step, startedAt, ...buildFlowTransitionCopy({ fromStage, toStage, mode, latestAttempt, newAnchor }) }
-}
-
-export type FlowMove = { flow: PracticeFlowState; transition: TransitionRequest }
+export type FlowMove = { flow: PracticeFlowState }
 
 export const anchorAttempts = (attempts: FlowAttempt[], anchorCardId: string) =>
   attempts.filter((attempt) => attempt.anchorCardId === anchorCardId)
 
-/** A new flow on ``card`` from the configured sequence (or adaptively, from its history). */
+/** A new flow on `card` from the configured sequence (or adaptively, from its history). */
 export function planFlowStart(config: FlowConfig, card: Flashcard, history: FlowAttempt[], runId: string, random = Math.random): FlowMove {
   const first = nextFlowStep(config, 0, random, history)
   return {
@@ -127,14 +90,10 @@ export function planFlowStart(config: FlowConfig, card: Flashcard, history: Flow
       focus: initialFlowFocus(card),
       completedAnchorIds: [],
     },
-    transition: { fromStage: null, toStage: first.stage, anchorCardId: card.id, step: 0, mode: config.mode },
   }
 }
 
-/**
- * The next rep. An adaptive flow that has mastered its anchor moves to the next card in the deck
- * (`newAnchor`), starting again from recall; otherwise the flow picks the next stage.
- */
+/** Advance the flow, moving an adaptive run to the next card once its anchor is mastered. */
 export function planFlowAdvance(
   flow: PracticeFlowState,
   deck: Flashcard[],
@@ -143,9 +102,7 @@ export function planFlowAdvance(
 ): FlowMove & { newAnchor: Flashcard | null } {
   const step = flow.step + 1
   const history = anchorAttempts(attempts, flow.anchorCardId)
-  const latestAttempt = history.at(-1)
-  const mode = flow.config.mode
-  if (mode === 'adaptive' && summarizeFlowMastery(history).mastered) {
+  if (flow.config.mode === 'adaptive' && summarizeFlowMastery(history).mastered) {
     const anchor = nextFlowAnchor(deck, flow.anchorCardId, flow.completedAnchorIds)
     if (anchor) {
       return {
@@ -160,36 +117,20 @@ export function planFlowAdvance(
           focus: initialFlowFocus(anchor),
           completedAnchorIds: [...flow.completedAnchorIds, flow.anchorCardId],
         },
-        transition: { fromStage: flow.stage, toStage: 'recall', anchorCardId: anchor.id, step, mode, latestAttempt, newAnchor: true },
       }
     }
   }
   const next = nextFlowStep(flow.config, step, random, history)
-  return {
-    newAnchor: null,
-    flow: { ...flow, ...next, step },
-    transition: { fromStage: flow.stage, toStage: next.stage, anchorCardId: flow.anchorCardId, step, mode, latestAttempt },
-  }
+  return { newAnchor: null, flow: { ...flow, ...next, step } }
 }
 
-/** Jump the running flow to ``stage`` (the stage hotkeys). */
-export function planStageJump(flow: PracticeFlowState, stage: FlowStage, attempts: FlowAttempt[]): FlowMove {
-  const step = flow.step + 1
-  return {
-    flow: { ...flow, stage, step },
-    transition: {
-      fromStage: flow.stage,
-      toStage: stage,
-      anchorCardId: flow.anchorCardId,
-      step,
-      mode: flow.config.mode,
-      latestAttempt: anchorAttempts(attempts, flow.anchorCardId).at(-1),
-    },
-  }
+/** Jump the running flow directly to a modality. */
+export function planStageJump(flow: PracticeFlowState, stage: FlowStage): FlowMove {
+  return { flow: { ...flow, stage, step: flow.step + 1 } }
 }
 
-/** Start an adaptive flow on ``card`` directly at ``stage`` (a stage hotkey with no flow running). */
-export function planFlowAtStage(config: FlowConfig, card: Flashcard, stage: FlowStage, history: FlowAttempt[], runId: string): FlowMove {
+/** Start an adaptive flow on `card` directly at a chosen modality. */
+export function planFlowAtStage(config: FlowConfig, card: Flashcard, stage: FlowStage, runId: string): FlowMove {
   const adaptive: FlowConfig = { ...structuredClone(config), mode: 'adaptive' }
   return {
     flow: {
@@ -203,24 +144,7 @@ export function planFlowAtStage(config: FlowConfig, card: Flashcard, stage: Flow
       focus: initialFlowFocus(card),
       completedAnchorIds: [],
     },
-    transition: { fromStage: null, toStage: stage, anchorCardId: card.id, step: 0, mode: 'adaptive', latestAttempt: history.at(-1) },
   }
-}
-
-/**
- * Whether the stage behind the transition card is ready to show: recall is typing, the targeted
- * MCQ loaded (or failed), or the microdrill for this rep is ready (or failed).
- */
-export function isTransitionReady(
-  state: FlowState,
-  stage: { recallTyping: boolean; mcqLoaded: boolean; mcqFailed: boolean },
-): boolean {
-  const { flow, transition, microDrillAction } = state
-  if (!transition || !flow) return false
-  if (flow.anchorCardId !== transition.anchorCardId || flow.step !== transition.step || flow.stage !== transition.toStage) return false
-  if (transition.toStage === 'recall' || transition.toStage === 'ghost') return stage.recallTyping
-  if (transition.toStage === 'multiple-choice') return stage.mcqLoaded || stage.mcqFailed
-  return microDrillAction.interactionKey === `${flow.runId}-${flow.step}` && (microDrillAction.ready || microDrillAction.failed)
 }
 
 /** The Flow panel's one-line status. */

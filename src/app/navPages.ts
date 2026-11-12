@@ -1,4 +1,4 @@
-/** The top-level pages, in navbar order (left to right). Cmd/Ctrl + double-tapped arrows walk this list. */
+/** The top-level pages, in navbar order (left to right). Cmd/Ctrl + A/D walks this list with wraparound. */
 export const NAV_PAGES = [
   { label: 'Practice', path: '/practice' },
   { label: 'Journey', path: '/' },

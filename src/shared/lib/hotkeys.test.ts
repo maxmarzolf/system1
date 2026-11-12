@@ -6,17 +6,18 @@ describe('hotkeys', () => {
 
   it('labels the modifier per platform', () => {
     expect(getHotkeyModifierLabel(true)).toBe('⌘')
-    expect(getHotkeyDisplayKeys('flow-full-recall', false)).toEqual(['Ctrl', 'D'])
+    expect(getHotkeyDisplayKeys('flow-full-recall', false)).toEqual(['Ctrl + ↑ ↑'])
     expect(getEditorHotkeyKey('indent-outdent')).toBe('Tab')
     expect(() => getEditorHotkeyKey('toggle-ghost-reps' as never)).toThrow('does not define an editor key')
     expect(() => getHotkeyDisplayKeys('nope' as never, true)).toThrow('Unknown hotkey')
   })
 
   it('matches key, modifier and shift bindings', () => {
-    expect(matchesHotkey(key({ key: 'D', metaKey: true }), 'flow-full-recall')).toBe(true)
-    expect(matchesHotkey(key({ key: 'd', ctrlKey: true }), 'flow-full-recall')).toBe(true)
-    expect(matchesHotkey(key({ key: 'd' }), 'flow-full-recall')).toBe(false)
-    expect(matchesHotkey(key({ key: 'x', metaKey: true }), 'flow-full-recall')).toBe(false)
+    expect(matchesHotkey(key({ key: 'Enter', metaKey: true }), 'start-total-recall')).toBe(true)
+    expect(matchesHotkey(key({ key: 'D', metaKey: true }), 'move-pages')).toBe(true)
+    expect(matchesHotkey(key({ key: 'a', ctrlKey: true }), 'move-pages')).toBe(true)
+    expect(matchesHotkey(key({ key: 'd' }), 'move-pages')).toBe(false)
+    expect(matchesHotkey(key({ key: 'w', metaKey: true }), 'flow-targeted-ghost')).toBe(false)
     expect(matchesHotkey(key({ key: 'Enter' }), 'next-targeted-line')).toBe(true)
     expect(matchesHotkey(key({ key: 'Tab', shiftKey: true }), 'indent-outdent')).toBe(true)
     expect(matchesHotkey(key({ key: 'Enter', metaKey: true, shiftKey: true }), 'submit-card')).toBe(true)
@@ -27,12 +28,12 @@ describe('hotkeys', () => {
   it('groups the reference sheet', () => {
     const groups = getHotkeyReferenceGroups(true)
     expect(groups.map((group) => group.title)).toEqual(['Navigation', 'Card modalities', 'Recall and Ghost Reps', 'Editor and coaching'])
-    expect(groups[0].hotkeys[0]).toMatchObject({ id: 'move-pages', keys: ['⌘ + ← ← / ⌘ + → →'] })
-    expect(groups[0].hotkeys.map((hotkey) => hotkey.id)).toEqual(['move-pages', 'switch-question-type', 'journey-start-practice'])
+    expect(groups[0].hotkeys[0]).toMatchObject({ id: 'move-pages', keys: ['⌘ + A / ⌘ + D'] })
+    expect(groups[0].hotkeys.map((hotkey) => hotkey.id)).toEqual(['move-pages', 'start-total-recall', 'journey-start-practice'])
     expect(groups[1].hotkeys.slice(0, 3)).toMatchObject([
       { id: 'submit-card', keys: ['⌘', 'Shift', 'Enter'] },
       { id: 'mcq-choice', keys: ['A–D / 1–4'] },
-      { keys: ['⌘', 'D'], flowStage: 'recall' },
+      { keys: ['⌘ + ↑ ↑'], flowStage: 'recall' },
     ])
   })
 })

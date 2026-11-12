@@ -4,8 +4,8 @@ import Icon from '@/shared/components/Icon'
 
 /**
  * The bar under the card. With the Flow panel open it starts or stops the flow; otherwise it
- * carries the card's primary action, unless that action is keyboard-only (Recall, Ghost and MCQ
- * start and submit with Mod+Shift+Enter), in which case there is no bar.
+ * carries the card's primary action, unless that action is keyboard-only (Recall, Ghost, MCQ
+ * and Microdrill use Mod+Shift+Enter), in which case there is no bar.
  */
 export default function PracticeControlBar({
   primaryButtonRef, flowPanelOpen, flowRunning, canStartFlow, onStartFlow, onStopFlow,

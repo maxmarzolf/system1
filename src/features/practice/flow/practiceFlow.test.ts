@@ -3,7 +3,6 @@ import {
   DEFAULT_FLOW,
   adaptiveNextFlowStep,
   buildFlowGenerationContext,
-  buildFlowTransitionCopy,
   expandFlow,
   loadFlowConfig,
   mergeFlowAttempts,
@@ -131,27 +130,6 @@ describe('merging attempts', () => {
     expect(merged.map((item) => item.score)).toEqual([99, 88, 95])
     const many = Array.from({ length: 45 }, (_, index) => attempt('mcq', { attemptId: index + 1 }))
     expect(mergeFlowAttempts([], many)).toHaveLength(40)
-  })
-})
-
-describe('transition copy', () => {
-  it('covers the first step, a new anchor and configured flows', () => {
-    expect(buildFlowTransitionCopy({ fromStage: null, toStage: 'recall', mode: 'adaptive' }).headline).toBe('Establish a clean baseline')
-    expect(buildFlowTransitionCopy({ fromStage: null, toStage: 'ghost', mode: 'adaptive' }).headline).toBe('Begin with Ghost')
-    expect(buildFlowTransitionCopy({ fromStage: 'mcq' as never, toStage: 'recall', mode: 'adaptive', newAnchor: true }).headline)
-      .toBe('Move to the next pattern')
-    expect(buildFlowTransitionCopy({ fromStage: 'recall', toStage: 'ghost', mode: 'custom' }).detail).toContain('Total Recall is complete')
-  })
-
-  it('explains each adaptive move', () => {
-    const copy = (toStage: 'ghost' | 'multiple-choice' | 'microdrill' | 'recall', latestAttempt?: FlowAttempt) =>
-      buildFlowTransitionCopy({ fromStage: 'recall', toStage, mode: 'adaptive', latestAttempt }).headline
-    expect(copy('ghost')).toBe('Reinforce the missed steps')
-    expect(copy('multiple-choice', attempt('total-recall'))).toBe('Check the decision')
-    expect(buildFlowTransitionCopy({ fromStage: 'recall', toStage: 'multiple-choice', mode: 'adaptive' }).detail)
-      .toContain('before returning')
-    expect(copy('microdrill')).toBe('Turn feedback into code')
-    expect(copy('recall')).toBe('Return to independent recall')
   })
 })
 

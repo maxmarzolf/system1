@@ -51,11 +51,10 @@ describe('practice flow', () => {
     const { attempts, fetch } = setup(() => false)
     await waitFor(() => expect(button('Start flow')).toBeEnabled())
     await userEvent.click(button('Start flow'))
-    expect(screen.getByText('Establish a clean baseline')).toBeInTheDocument()
+    expect(screen.getByLabelText('Question type')).toHaveTextContent('Total Recall')
 
     // Recall, missed.
     await screen.findByText('Type the full algorithm from memory', undefined, SLOW)
-    await waitFor(() => expect(document.querySelector('.flow-stage-stack-transitioning')).toBeNull(), SLOW)
     typeCode('def f(nums, k):\n    return 0')
     submitKey()
     await waitFor(() => expect(attempts).toHaveLength(1))
@@ -63,7 +62,6 @@ describe('practice flow', () => {
 
     // Ghost reps on the missed lines.
     expect(await screen.findByText(/Type only the \d+ targeted lines? from memory/, undefined, SLOW)).toBeInTheDocument()
-    await waitFor(() => expect(document.querySelector('.flow-stage-stack-transitioning')).toBeNull(), SLOW)
     typeCode('def f(nums, k):\n    total = sum(nums[:k])\n    return total')
     submitKey()
     await waitFor(() => expect(attempts).toHaveLength(2))
@@ -72,7 +70,7 @@ describe('practice flow', () => {
 
     // Microdrill: fill the blank.
     expect(await screen.findByText('Fill the window', undefined, SLOW)).toBeInTheDocument()
-    await waitFor(() => expect(screen.queryByText('Building a focused Microdrill…')).toBeNull(), SLOW)
+    expect(screen.queryByRole('button', { name: 'Submit' })).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Blank 1, line 1'), { target: { value: 'sum(nums[:k])' } })
     submitKey()
     await waitFor(() => expect(attempts).toHaveLength(3), SLOW)
@@ -80,12 +78,14 @@ describe('practice flow', () => {
     expect(fetch.calls.some((call) => call.url.includes('/api/coach/micro-drill'))).toBe(true)
     await continueFlow()
 
-    // Then whatever the coach picks next; the mode keys stay out of a running flow.
-    await waitFor(() => expect(screen.queryByText(/Preparing|Building/)).toBeNull(), SLOW)
-    const stage = screen.getByLabelText('Question type').textContent
+    // The direct modality keys also work inside a running flow.
     pressKey('ArrowUp', { metaKey: true })
     pressKey('ArrowUp', { metaKey: true })
-    expect(screen.getByLabelText('Question type')).toHaveTextContent(stage ?? '')
+    expect(screen.getByLabelText('Question type')).toHaveTextContent('Total Recall')
+    pressKey('ArrowRight', { metaKey: true })
+    pressKey('ArrowRight', { metaKey: true })
+    expect(screen.getByLabelText('Question type')).toHaveTextContent('Ghost')
+    expect(document.querySelector('.flow-coach-transition')).toBeNull()
   }, 30000)
 
   it('runs a custom MCQ-only flow', async () => {

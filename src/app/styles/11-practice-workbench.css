@@ -382,7 +382,6 @@
   position: relative;
   min-height: var(--flow-stage-min-height);
   overflow: hidden;
-  perspective: 1200px;
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--hc-accent) 3%, transparent), transparent 70%),
     var(--flow-stage-surface);
@@ -407,242 +406,7 @@
 }
 
 .flow-stage-content {
-  position: relative;
-  z-index: 1;
   min-height: var(--flow-stage-min-height);
-  transform: translate3d(0, 0, 0) scale(1);
-  transform-origin: center;
-  opacity: 1;
-  filter: saturate(1) brightness(1);
-  transition:
-    transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 220ms ease,
-    filter 280ms ease;
-  will-change: transform, opacity, filter;
-}
-
-.flow-stage-content-recall {
-  --flow-stage-offset-x: 0.85rem;
-  --flow-stage-offset-y: 0;
-}
-
-.flow-stage-content-multiple-choice {
-  --flow-stage-offset-x: -0.85rem;
-  --flow-stage-offset-y: 0;
-}
-
-.flow-stage-content-ghost {
-  --flow-stage-offset-x: 0;
-  --flow-stage-offset-y: -0.7rem;
-}
-
-.flow-stage-content-microdrill {
-  --flow-stage-offset-x: 0;
-  --flow-stage-offset-y: 0.7rem;
-}
-
-.flow-stage-content-preparing {
-  transform:
-    translate3d(
-      var(--flow-stage-offset-x, 0),
-      var(--flow-stage-offset-y, 0),
-      -1px
-    )
-    scale(0.982);
-  opacity: 0;
-  filter: none;
-  pointer-events: none;
-  user-select: none;
-}
-
-.flow-stage-content-settling {
-  transform: translate3d(0, 0, 0) scale(1);
-  opacity: 1;
-  filter: saturate(1) brightness(1);
-}
-
-.flow-transition-card {
-  position: absolute;
-  inset: clamp(0.55rem, 1.25vw, 0.9rem);
-  z-index: 3;
-  display: flex;
-  min-height: 0;
-  padding: clamp(2rem, 7vw, 4.5rem);
-  flex-direction: column;
-  justify-content: center;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--workbench-edge-strong) 86%, var(--hc-fg-dim));
-  border-radius: calc(var(--workbench-radius) - 0.2rem);
-  background:
-    linear-gradient(145deg, color-mix(in srgb, var(--hc-accent) 8%, transparent), transparent 42%),
-    var(--workbench-surface-raised);
-  box-shadow:
-    0 1.6rem 3.4rem color-mix(in srgb, var(--hc-bg) 62%, transparent),
-    0 0.25rem 0.75rem color-mix(in srgb, var(--hc-bg) 34%, transparent),
-    inset 0 1px color-mix(in srgb, white 8%, transparent);
-  transform-origin: center;
-  will-change: transform, opacity;
-}
-
-.flow-transition-card::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--hc-accent) 62%, transparent), transparent);
-  opacity: 0.72;
-}
-
-.flow-transition-card-recall {
-  animation: flowCardPlaceFromRight 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.flow-transition-card-multiple-choice {
-  animation: flowCardPlaceFromLeft 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.flow-transition-card-ghost {
-  animation: flowCardPlaceFromTop 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.flow-transition-card-microdrill {
-  animation: flowCardPlaceFromBottom 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.flow-transition-card-settling,
-.flow-transition-card-recall.flow-transition-card-settling,
-.flow-transition-card-multiple-choice.flow-transition-card-settling,
-.flow-transition-card-ghost.flow-transition-card-settling,
-.flow-transition-card-microdrill.flow-transition-card-settling {
-  animation: flowCardSettleAway 280ms cubic-bezier(0.4, 0, 0.2, 1) both;
-}
-
-.flow-transition-topline {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: clamp(2rem, 5vw, 3.25rem);
-}
-
-.flow-transition-eyebrow {
-  color: var(--hc-accent);
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.flow-transition-route {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  color: var(--hc-fg-dim);
-  font-size: 0.72rem;
-  white-space: nowrap;
-}
-
-.flow-transition-route svg {
-  width: 0.85rem;
-  height: 0.85rem;
-  opacity: 0.55;
-}
-
-.flow-transition-route strong {
-  color: var(--hc-fg);
-  font-weight: 650;
-}
-
-.flow-transition-copy {
-  max-width: 42rem;
-}
-
-.flow-transition-copy h2 {
-  margin: 0;
-  color: var(--hc-fg);
-  font-size: clamp(1.35rem, 3vw, 2rem);
-  font-weight: 650;
-  letter-spacing: -0.025em;
-  line-height: 1.15;
-}
-
-.flow-transition-copy p {
-  max-width: 38rem;
-  margin: 0.85rem 0 0;
-  color: var(--hc-fg-dim);
-  font-size: 0.9rem;
-  line-height: 1.65;
-}
-
-.flow-transition-status {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  margin-top: clamp(2.25rem, 6vw, 3.75rem);
-  color: var(--hc-fg-dim);
-  font-size: 0.72rem;
-}
-
-.flow-transition-status-dot {
-  width: 0.4rem;
-  height: 0.4rem;
-  border-radius: 50%;
-  background: var(--hc-accent);
-  animation: flowTransitionPulse 1.4s ease-in-out infinite;
-}
-
-.flow-transition-progress {
-  height: 1px;
-  margin-top: 0.8rem;
-  overflow: hidden;
-  background: var(--workbench-edge);
-}
-
-.flow-transition-progress span {
-  display: block;
-  width: 30%;
-  height: 100%;
-  background: var(--hc-accent);
-  animation: flowTransitionProgress 1.45s ease-in-out infinite;
-}
-
-@keyframes flowCardPlaceFromRight {
-  0% { opacity: 0.25; transform: translate3d(calc(100% + 1.5rem), 0, 0) rotate(0.7deg) scale(0.985); }
-  72% { opacity: 1; transform: translate3d(-0.28rem, 0, 0) rotate(-0.08deg) scale(1); }
-  100% { opacity: 1; transform: translate3d(0, 0, 0) rotate(0) scale(1); }
-}
-
-@keyframes flowCardPlaceFromLeft {
-  0% { opacity: 0.25; transform: translate3d(calc(-100% - 1.5rem), 0, 0) rotate(-0.7deg) scale(0.985); }
-  72% { opacity: 1; transform: translate3d(0.28rem, 0, 0) rotate(0.08deg) scale(1); }
-  100% { opacity: 1; transform: translate3d(0, 0, 0) rotate(0) scale(1); }
-}
-
-@keyframes flowCardPlaceFromTop {
-  0% { opacity: 0.25; transform: translate3d(0, calc(-100% - 1.5rem), 0) rotate(-0.45deg) scale(0.985); }
-  72% { opacity: 1; transform: translate3d(0, 0.28rem, 0) rotate(0.06deg) scale(1); }
-  100% { opacity: 1; transform: translate3d(0, 0, 0) rotate(0) scale(1); }
-}
-
-@keyframes flowCardPlaceFromBottom {
-  0% { opacity: 0.25; transform: translate3d(0, calc(100% + 1.5rem), 0) rotate(0.45deg) scale(0.985); }
-  72% { opacity: 1; transform: translate3d(0, -0.28rem, 0) rotate(-0.06deg) scale(1); }
-  100% { opacity: 1; transform: translate3d(0, 0, 0) rotate(0) scale(1); }
-}
-
-@keyframes flowCardSettleAway {
-  from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-  to { opacity: 0; transform: translate3d(0, -0.15rem, 0) scale(1.012); }
-}
-
-@keyframes flowTransitionPulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
-}
-
-@keyframes flowTransitionProgress {
-  0% { transform: translateX(-110%); }
-  100% { transform: translateX(440%); }
 }
 
 .micro-drill-card-grid {
@@ -709,7 +473,7 @@
 
 .card-shell .micro-drill-answer-card {
   padding: 1.35rem 1.5rem;
-  background: var(--workbench-surface-soft);
+  background: transparent;
 }
 
 .ladder-rung-title {
@@ -889,10 +653,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .flow-stage-content,
-  .flow-transition-card,
-  .flow-transition-status-dot,
-  .flow-transition-progress span,
   .card-shell .submission-feedback-detail,
   .card-shell .recall-editor-container-recall-evaluating::after,
   .card-shell .recall-editor-container-ghost-submitted::after,
@@ -902,28 +662,12 @@
     animation: none;
   }
 
-  .flow-stage-content {
-    transition: none;
-  }
-
   .card-shell .recall-editor-container-recall-evaluating::after {
     background: #58a6ff;
   }
 
   .card-shell .recall-editor-container-ghost-submitted::after {
     display: none;
-  }
-}
-
-@media (max-width: 620px) {
-  .flow-transition-card {
-    inset: 0.4rem;
-    padding: 2rem 1.25rem;
-  }
-
-  .flow-transition-topline {
-    align-items: flex-start;
-    flex-direction: column;
   }
 }
 

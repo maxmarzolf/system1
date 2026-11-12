@@ -6,11 +6,6 @@ import { useTheme } from './theme'
 type TopNavProps = {
   /** The practice screen's current question type (MCQ, Recall, Ghost); other pages leave it out. */
   questionType?: string
-  /**
-   * How the question type last changed: its text slides up (Cmd + ↑↑) or down (Cmd + ↓↓) into
-   * place. A new `id` replays the slide.
-   */
-  questionTypeMotion?: { direction: 'up' | 'down'; id: number } | null
   practiceHistoryHref?: string
   rightExtras?: ReactNode
   /** Keep the bar fixed to the top of the window while the page scrolls. */
@@ -21,7 +16,6 @@ type TopNavProps = {
 
 export default function TopNav({
   questionType,
-  questionTypeMotion = null,
   practiceHistoryHref = '/',
   rightExtras,
   pinned = false,
@@ -40,12 +34,7 @@ export default function TopNav({
           <>
             <span className="navbar-divider" />
             <span className="navbar-question-type" aria-label="Question type" aria-live="polite">
-              <span
-                key={questionTypeMotion?.id ?? 0}
-                className={questionTypeMotion ? `navbar-question-type-text navbar-question-type-slide-${questionTypeMotion.direction}` : 'navbar-question-type-text'}
-              >
-                {questionType}
-              </span>
+              <span className="navbar-question-type-text">{questionType}</span>
             </span>
           </>
         ) : null}

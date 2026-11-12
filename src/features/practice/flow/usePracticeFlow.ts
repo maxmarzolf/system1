@@ -1,13 +1,10 @@
-import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useReducer, useRef } from 'react'
-import { matchesHotkey, type PracticeFlowStage } from '@/shared/lib/hotkeys'
-import { buildFlowGenerationContext, mergeFlowAttempts, saveFlowConfig, summarizeFlowMastery, type FlowAttempt, type FlowConfig, type SubmissionModality } from './practiceFlow'
+import { useCallback, useLayoutEffect, useMemo, useReducer, useRef } from 'react'
+import { buildFlowGenerationContext, mergeFlowAttempts, saveFlowConfig, summarizeFlowMastery, type FlowAttempt, type FlowConfig, type FlowStage, type SubmissionModality } from './practiceFlow'
 import {
   anchorAttempts,
-  buildTransition,
   flowReducer,
   flowStatusText,
   initialFlowState,
-  isTransitionReady,
   planFlowAdvance,
   planFlowAtStage,
   planFlowStart,
@@ -16,7 +13,7 @@ import {
 } from './flowReducer'
 import { compactFeedbackItems, flowEvaluationScore, flowEvaluationWeaknesses, flowModalityWeakness, requestFlowAttemptHistory } from './flowHistory'
 import { createInteractionId } from '../lib/lineReview'
-import { FLOW_TRANSITION_MINIMUM_MS, FLOW_TRANSITION_SETTLE_MS, type Flashcard, type FlowMicroDrillPrimaryActionState, type MultipleChoiceSpecimenFocus, type SubmissionSaveResponse } from '../lib/types'
+import { type Flashcard, type FlowMicroDrillPrimaryActionState, type MultipleChoiceSpecimenFocus, type SubmissionSaveResponse } from '../lib/types'
 
 /**
  * The flow's state and evidence. Kept apart from the controls below because the page needs the
@@ -111,13 +108,10 @@ export function usePracticeFlowState() {
 
 export type PracticeFlowStateApi = ReturnType<typeof usePracticeFlowState>
 
-/** ``start``: a flow began; ``move``: it changed stage or card; ``stop``: it ended. */
+/** `start`: a flow began; `move`: it changed stage or card; `stop`: it ended. */
 export type FlowChange = 'start' | 'move' | 'stop'
 
-/**
- * Starting, advancing, jumping and stopping the flow, plus the transition card's timing and the
- * stage hotkeys. ``onChange`` lets the page reset the card on screen for each change.
- */
+/** Starting, advancing, switching and stopping a flow without an intermediate card. */
 export function usePracticeFlowControls(
   flowState: PracticeFlowStateApi,
   options: {
@@ -127,16 +121,12 @@ export function usePracticeFlowControls(
     /** A recall deck is loaded and the session is not finished. */
     canStart: boolean
     onChange: (change: FlowChange) => void
-    stageReady: { recallTyping: boolean; mcqLoaded: boolean; mcqFailed: boolean }
-    /** The transition card has gone; ``toStage`` is now on screen. */
-    onSettled: (toStage: PracticeFlowStage) => void
   },
 ) {
-  const { flow, transition, dispatch, versionRef, latestRef, loadHistory } = flowState
+  const { flow, dispatch, versionRef, latestRef, loadHistory } = flowState
   const { config, card, deck, canStart, onChange } = options
 
   const apply = (move: FlowMove, change: FlowChange) => {
-    dispatch({ type: 'transitionStarted', transition: buildTransition(move.transition, createInteractionId(), Date.now()) })
     dispatch({ type: 'flowChanged', flow: move.flow })
     onChange(change)
   }
@@ -157,72 +147,27 @@ export function usePracticeFlowControls(
   }
 
   const advance = async () => {
-    if (!flow || transition) return
+    if (!flow) return
     const advanced = ++versionRef.current
     const move = planFlowAdvance(flow, deck, latestRef.current.attempts)
-    if (!move.newAnchor) {
-      apply(move, 'move')
-      return
+    if (move.newAnchor) {
+      await loadHistory(move.newAnchor)
+      if (versionRef.current !== advanced) return
     }
-    // A new anchor: announce it now, and switch once its history is in.
-    dispatch({ type: 'transitionStarted', transition: buildTransition(move.transition, createInteractionId(), Date.now()) })
-    await loadHistory(move.newAnchor)
-    if (versionRef.current !== advanced) return
-    dispatch({ type: 'flowChanged', flow: move.flow })
-    onChange('move')
+    apply(move, 'move')
   }
 
-  const activateStage = async (stage: PracticeFlowStage) => {
-    if (!canStart || transition) return
+  const activateStage = async (stage: FlowStage) => {
+    if (!canStart || flow?.stage === stage) return
     const activated = ++versionRef.current
     if (flow) {
-      apply(planStageJump(flow, stage, latestRef.current.attempts), 'move')
+      apply(planStageJump(flow, stage), 'move')
       return
     }
-    const anchor = card
-    const history = await loadHistory(anchor)
+    await loadHistory(card)
     if (versionRef.current !== activated) return
-    apply(planFlowAtStage(config, anchor, stage, history, createInteractionId()), 'start')
+    apply(planFlowAtStage(config, card, stage, createInteractionId()), 'start')
   }
-
-  // Stage hotkeys work from anywhere on the page, flow or not.
-  const activateFromHotkey = useEffectEvent((stage: PracticeFlowStage) => void activateStage(stage))
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if (event.repeat || event.altKey || event.shiftKey) return
-      const stage: PracticeFlowStage | null = matchesHotkey(event, 'flow-full-recall') ? 'recall'
-        : matchesHotkey(event, 'flow-targeted-ghost') ? 'ghost'
-          : matchesHotkey(event, 'flow-targeted-mcq') ? 'multiple-choice'
-            : matchesHotkey(event, 'flow-targeted-microdrill') ? 'microdrill'
-              : null
-      if (!stage) return
-      event.preventDefault()
-      event.stopPropagation()
-      activateFromHotkey(stage)
-    }
-    window.addEventListener('keydown', handler, true)
-    return () => window.removeEventListener('keydown', handler, true)
-  }, [])
-
-  // The transition card stays up for a minimum time, then fades once the next stage is ready.
-  const ready = isTransitionReady(flowState.state, options.stageReady)
-  const settled = useEffectEvent((toStage: PracticeFlowStage) => options.onSettled(toStage))
-  useEffect(() => {
-    if (!transition || !ready) return
-    const { id, startedAt, toStage } = transition
-    let settleTimeout: number | undefined
-    const readyTimeout = window.setTimeout(() => {
-      dispatch({ type: 'transitionSettling', id })
-      settleTimeout = window.setTimeout(() => {
-        dispatch({ type: 'transitionFinished', id })
-        settled(toStage)
-      }, FLOW_TRANSITION_SETTLE_MS)
-    }, Math.max(0, FLOW_TRANSITION_MINIMUM_MS - (Date.now() - startedAt)))
-    return () => {
-      window.clearTimeout(readyTimeout)
-      if (settleTimeout !== undefined) window.clearTimeout(settleTimeout)
-    }
-  }, [dispatch, ready, transition])
 
   return { start, stop, advance, activateStage, statusText: flowStatusText(flow, flowState.mastery, flowState.historyLoading) }
 }

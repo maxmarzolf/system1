@@ -53,24 +53,4 @@ describe('TopNav', () => {
     expect(screen.queryByText(/Auto \(/)).toBeNull()
   })
 
-  it('slides the question type up or down with the motion it is given', () => {
-    const { rerender } = renderNav('/practice', { questionType: 'Recall' })
-    expect(screen.getByText('Recall')).not.toHaveClass('navbar-question-type-slide-up')
-    rerender(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={['/practice']}>
-          <TopNav questionType="MCQ" questionTypeMotion={{ direction: 'up', id: 1 }} />
-        </MemoryRouter>
-      </ThemeProvider>,
-    )
-    expect(screen.getByText('MCQ')).toHaveClass('navbar-question-type-slide-up')
-    rerender(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={['/practice']}>
-          <TopNav questionType="Recall" questionTypeMotion={{ direction: 'down', id: 2 }} />
-        </MemoryRouter>
-      </ThemeProvider>,
-    )
-    expect(screen.getByText('Recall')).toHaveClass('navbar-question-type-slide-down')
-  })
 })

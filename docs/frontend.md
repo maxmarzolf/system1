@@ -4,13 +4,13 @@ A React 19 + TypeScript app built with Vite (`src/`). It talks to the backend on
 
 ## Pages
 
-Routes are defined in `src/app/routes.tsx`; every page shares `TopNav` (the active page gets an underline). The navbar order lives in `src/app/navPages.ts`: Practice, Journey, Dashboard, Tune, Evolve, Admin. Cmd/Ctrl + a double-tapped ← or → opens the neighbouring page in that order (`usePageHotkeys`), and `PageSweep` draws a faint sweep across the window in the direction of travel.
+Routes are defined in `src/app/routes.tsx`; every page shares `TopNav` (the active page gets an underline). The navbar order lives in `src/app/navPages.ts`: Practice, Journey, Dashboard, Tune, Evolve, Admin. Cmd/Ctrl + A or D moves left or right through that order and wraps at either end (`usePageHotkeys`). Cmd/Ctrl + Enter opens Practice in Total Recall from any other page, with the editor focused once the deck loads. `PageSweep` draws a faint sweep across the window in the direction of travel.
 
 | Route | Component | What it does |
 |---|---|---|
 | `/` | `features/journey/JourneyPage.tsx` | Journey, the home page: the score terrain, the daily work grid and the day detail. Enter opens `/practice` |
-| `/practice` | `features/practice/PracticePage.tsx` | The practice screen: MCQ, Recall and Ghost question types, Inline notes, AI completion, and flows. The card is flat (no frame, header or Previous/Next buttons; its title shows as "TOPIC: …" under the Question or Prompt label) and has no toolbar: Cmd/Ctrl + a double-tapped ↑ or ↓ steps through MCQ, Recall and Ghost, and the navbar shows the current type (or the flow's stage) |
-| `/dashboard` | `features/dashboard/DashboardPage.tsx` | A readiness card per algorithm and playlist; each starts focused practice |
+| `/practice` | `features/practice/PracticePage.tsx` | The practice screen: MCQ, Recall and Ghost question types, Inline notes, AI completion, and flows. The card is flat (no frame, header or Previous/Next buttons; its title shows as "TOPIC: …" under the Question or Prompt label) and has no toolbar: Cmd/Ctrl + double arrows selects Total Recall (↑), Microdrill (←), Ghost (→), or MCQ (↓), and the navbar shows the current type (or the flow's stage) |
+| `/dashboard` | `features/dashboard/DashboardPage.tsx` | A readiness card per algorithm and playlist; each starts focused practice in Total Recall |
 | `/tune` | `features/tune/TunePage.tsx` | Local preferences; saved as you change them |
 | `/admin` | `features/admin/AdminPage.tsx` | MCQ signal editor and the read-only recall specs |
 | `/evolve` | `features/evolve/EvolvePage.tsx` | AlphaEvolve-style prompt runs for MCQ generation |
@@ -100,15 +100,15 @@ Defined once in `shared/lib/hotkeys.ts` and listed on Tune. Mod is ⌘ on macOS 
 
 | Keys | Action |
 |---|---|
-| Mod+D / W / A / S | Switch to Recall / Ghost / MCQ / Microdrill |
-| Mod+Shift+Enter | Start or submit Recall, Ghost and MCQ (they have no Start or Submit button) |
+| Mod+A / Mod+D | Move left or right through all navbar pages, wrapping at either end |
+| Mod+Enter | From any page outside Practice, open Total Recall with the code editor focused |
+| Mod+↑ ↑ / Mod+← ← / Mod+→ → / Mod+↓ ↓ | On Practice, select Total Recall / Microdrill / Ghost / MCQ directly |
+| Mod+Shift+Enter | Start or submit Recall, Ghost, MCQ or Microdrill from the keyboard |
 | A–D / 1–4 | Choose the first to fourth MCQ answer (MCQ only) |
-| Mod+Enter | The button under the card, when there is one (a Flow's Next, a Microdrill's Submit) |
+| Mod+Enter | On Practice, activate the button under the card when there is one (such as a Flow's Next) |
 | Mod+G | Toggle Ghost Reps |
 | Mod+L | Toggle AI completion |
-| Mod+← ← / Mod+→ → | The page to the left or right in the navbar |
 | Enter | On Journey, open the practice page |
-| Mod+↑ ↑ / Mod+↓ ↓ | On Practice, step through MCQ, Recall and Ghost (the navbar label slides with it) |
 | Enter | Next targeted line, during a Ghost Rep |
 | Tab / Shift+Tab | Indent or outdent |
 
@@ -126,6 +126,6 @@ Patterns worth reusing:
 
 - **Real CodeMirror runs in jsdom.** Edit it through `EditorView.findFromDOM(...)` and `view.dispatch`.
 - **The terrain** swaps `THREE.WebGLRenderer` for a fake and stubs the 2D canvas and `IntersectionObserver`. Scene building, the camera, controls and hover raycasting all run for real.
-- **Flow tests** use real timers and wait for the transition card to finish before interacting.
+- **Flow tests** exercise direct stage changes and asynchronous generation of MCQ and Microdrill content.
 
 Coverage floors are set in `vitest.config.ts` (93% of statements). Raise them as coverage grows.

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import PracticePage from './PracticePage'
 import { ThemeProvider } from '@/app/theme'
 import { mockFetch, type FetchMock } from '@/test/fetch'
-import { button, drill, evaluation, flush, mcqCard, pressKey, submitKey, typeCode } from '@/test/app'
+import { button, drill, evaluation, flush, lastEditor, mcqCard, pressKey, submitKey, typeCode } from '@/test/app'
 
 type Options = {
   attempt?: (body: Record<string, unknown>) => unknown
@@ -42,10 +42,10 @@ function setup(options: Options = {}) {
   ])
 }
 
-const renderApp = (path = '/') =>
+const renderApp = (path = '/', arrivalState?: { startTotalRecall: boolean }) =>
   render(
     <ThemeProvider>
-      <MemoryRouter initialEntries={[path]}>
+      <MemoryRouter initialEntries={[arrivalState ? { pathname: path, state: arrivalState } : path]}>
         <PracticePage />
       </MemoryRouter>
     </ThemeProvider>,
@@ -58,12 +58,22 @@ describe('practice: recall', () => {
     renderApp()
     expect(await screen.findByText('TOPIC: Window a')).toBeInTheDocument()
     expect(fetch.calls.some((call) => call.url.includes('/api/coach/problem-drills?count=10'))).toBe(true)
+    expect(screen.queryByText('Type the full algorithm from memory')).toBeNull()
     submitKey()
     expect(screen.getByText('Type the full algorithm from memory')).toBeInTheDocument()
     typeCode('def f(nums, k):\n    return 0')
     submitKey()
     expect(await screen.findByText('Needs work')).toBeInTheDocument()
     expect(attempts[0]).toMatchObject({ cardId: 'a', userAnswer: 'def f(nums, k):\n    return 0', modality: 'total-recall' })
+  })
+
+  it('opens Total Recall with the code editor focused after a shortcut arrival', async () => {
+    renderApp('/', { startTotalRecall: true })
+    expect(await screen.findByText('TOPIC: Window a')).toBeInTheDocument()
+    expect(await screen.findByText('Type the full algorithm from memory')).toBeInTheDocument()
+    expect(screen.getByLabelText('Question type')).toHaveTextContent('Total Recall')
+    await waitFor(() => expect(document.activeElement).toBe(lastEditor().contentDOM))
+    expect(lastEditor().state.doc.toString()).toBe('')
   })
 
   it('records a sound answer', async () => {
@@ -139,7 +149,7 @@ describe('practice: recall', () => {
 })
 
 const questionType = () => screen.getByLabelText('Question type')
-const modeKey = (key: 'ArrowUp' | 'ArrowDown') => {
+const modeKey = (key: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight') => {
   pressKey(key, { metaKey: true })
   pressKey(key, { metaKey: true })
 }
@@ -151,27 +161,23 @@ describe('practice: question type', () => {
     expect(screen.queryByRole('group', { name: 'Practice mode' })).toBeNull()
     expect(screen.queryByRole('button', { name: /card controls|Ghost Reps|MCQ/ })).toBeNull()
     expect(document.querySelector('.mcq-session-meta')).toBeNull()
-    expect(questionType()).toHaveTextContent('Recall')
+    expect(questionType()).toHaveTextContent('Total Recall')
   })
 
-  it('steps through MCQ, Recall and Ghost with double-tapped Cmd + up and down', async () => {
+  it('selects each modality with its double-tapped Cmd + arrow', async () => {
     renderApp()
     await screen.findByText('TOPIC: Window a')
     pressKey('ArrowDown', { metaKey: true })
-    expect(questionType()).toHaveTextContent('Recall')
+    expect(questionType()).toHaveTextContent('Total Recall')
     pressKey('ArrowDown', { metaKey: true })
-    expect(questionType()).toHaveTextContent('Ghost')
-    modeKey('ArrowDown')
-    expect(questionType()).toHaveTextContent('Ghost')
-    modeKey('ArrowUp')
-    expect(questionType()).toHaveTextContent('Recall')
-    modeKey('ArrowUp')
     expect(questionType()).toHaveTextContent('MCQ')
     expect(await screen.findByRole('radiogroup', { name: 'Answer choices' })).toBeInTheDocument()
+    modeKey('ArrowRight')
+    expect(questionType()).toHaveTextContent('Ghost')
     modeKey('ArrowUp')
-    expect(questionType()).toHaveTextContent('MCQ')
-    modeKey('ArrowDown')
-    expect(questionType()).toHaveTextContent('Recall')
+    expect(questionType()).toHaveTextContent('Total Recall')
+    modeKey('ArrowLeft')
+    await waitFor(() => expect(questionType()).toHaveTextContent('Microdrill'))
   })
 
   it('opens and closes the flow menu from the URL', async () => {
@@ -184,7 +190,7 @@ describe('practice: question type', () => {
   it('runs the Ghost Rep support layer on the typing editor', async () => {
     renderApp()
     await screen.findByText('TOPIC: Window a')
-    modeKey('ArrowDown')
+    modeKey('ArrowRight')
     expect(questionType()).toHaveTextContent('Ghost')
     submitKey()
     typeCode('def f(nums, k):\n    total = sum(nums[:k])')
@@ -211,7 +217,7 @@ describe('practice: multiple choice', () => {
     setup({ attempt: (body) => ({ saved: true, attemptId: 1, successful: body.selectedChoiceId === 'A', evaluation: evaluation(body.selectedChoiceId === 'A') }) })
     renderApp()
     await screen.findByText('TOPIC: Window a')
-    modeKey('ArrowUp')
+    modeKey('ArrowDown')
     const choices = await screen.findByRole('radiogroup', { name: 'Answer choices' })
     expect(fetch.calls.some((call) => call.url.includes('/api/coach/multiple-choice-drills'))).toBe(true)
     expect(screen.queryByRole('button', { name: /Submit/ })).toBeNull()
@@ -230,7 +236,7 @@ describe('practice: multiple choice', () => {
     })
     renderApp()
     await screen.findByText('TOPIC: Window a')
-    modeKey('ArrowUp')
+    modeKey('ArrowDown')
     const choices = await screen.findByRole('radiogroup', { name: 'Answer choices' })
     await userEvent.click(within(choices).getByText('A min-heap of size k'))
     submitKey()
@@ -294,6 +300,7 @@ describe('practice: deck sources', () => {
     setup({ extra: [{ match: '/api/skill-map', body: [{ algorithm: 'Sliding Window', skills: ['expand', 'shrink'] }] }] })
     renderApp('/?focusPattern=sliding-window')
     await screen.findByText(/Window|Generated card/)
+    expect(questionType()).toHaveTextContent('Total Recall')
   })
 
   it('focuses a tag', async () => {

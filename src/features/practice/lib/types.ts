@@ -72,20 +72,6 @@ export type PracticeFlowState = {
   completedAnchorIds: string[]
 }
 
-export type PracticeFlowTransitionState = {
-  id: string
-  fromStage: FlowStage | null
-  toStage: FlowStage
-  anchorCardId: string
-  step: number
-  startedAt: number
-  headline: string
-  detail: string
-  status: string
-}
-
-export const FLOW_TRANSITION_MINIMUM_MS = 700
-export const FLOW_TRANSITION_SETTLE_MS = 280
 export const INLINE_FEEDBACK_ENABLED = true
 /** Standalone MCQ sets are medium; a flow asks for hard questions once it reaches its challenge phase. */
 export const MULTIPLE_CHOICE_DIFFICULTY: MultipleChoiceDifficulty = 'Med.'
