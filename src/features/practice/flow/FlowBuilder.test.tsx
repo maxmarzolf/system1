@@ -63,7 +63,7 @@ describe('FlowBuilder', () => {
     render(<Harness initial={{ ...DEFAULT_FLOW, mode: 'random', randomStages: ['ghost', 'recall'] }} />)
     await userEvent.click(screen.getByRole('checkbox', { name: 'Ghost' }))
     expect(current().randomStages).toEqual(['recall'])
-    expect(screen.getByRole('checkbox', { name: 'Recall' })).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: 'Total Recall' })).toBeDisabled()
     await userEvent.click(screen.getByRole('checkbox', { name: 'MCQ' }))
     expect(current().randomStages).toEqual(['recall', 'multiple-choice'])
   })

@@ -83,7 +83,7 @@ describe('practice: recall', () => {
     submitKey()
     typeCode('def f(nums, k):\n    total = sum(nums[:k])\n    return total')
     submitKey()
-    expect(await screen.findByText(/Sound|Correct/i)).toBeInTheDocument()
+    expect(await screen.findByText('Sound')).toBeInTheDocument()
   })
 
   it('shows when feedback could not be generated', async () => {

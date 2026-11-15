@@ -3,6 +3,7 @@ import { useHistoryDay } from '@/api/queries'
 import { formatLongCalendarDate } from '@/shared/lib/dailyWork'
 import ModelCallDetails from './ModelCallDetails'
 import SubmissionSignalDetails from './SubmissionSignalDetails'
+import { modalityLabel } from '@/shared/modality'
 
 type HistoryChoice = { id: string; text: string; correct: boolean }
 
@@ -24,13 +25,6 @@ export type HistorySubmission = {
 }
 
 type HistoryDay = { date: string; submissions: HistorySubmission[] }
-
-const MODALITY_LABELS: Record<string, string> = {
-  mcq: 'MCQ',
-  'total-recall': 'Total recall',
-  'ghost-rep': 'Ghost rep',
-  microdrill: 'Microdrill',
-}
 
 const timeFormatter = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
 
@@ -115,7 +109,7 @@ function SubmissionCard({ submission }: { submission: HistorySubmission }) {
         <span className={`history-day-result${submission.successful ? ' history-day-result-pass' : ' history-day-result-fail'}`}>
           {submission.successful ? '✓ Correct' : '✗ Missed'}
         </span>
-        <span className="history-day-badge">{MODALITY_LABELS[submission.modality] ?? submission.modality}</span>
+        <span className="history-day-badge">{modalityLabel(submission.modality)}</span>
         {submission.algorithms.map((algorithm) => (
           <span key={algorithm.slug} className="history-day-badge history-day-badge-dim">{algorithm.algorithm}</span>
         ))}

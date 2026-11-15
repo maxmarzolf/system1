@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@/api/client'
 import { useRecallAttempt, type RecallAttemptOptions } from './useRecallAttempt'
-import type { SubmissionSaveResponse } from '../lib/types'
+import type { SubmissionSaveResponse } from '@/features/practice/lib/types'
 
 const saved = (successful: boolean, extra: Partial<SubmissionSaveResponse> = {}) =>
   ({ saved: true, successful, attemptId: 1, evaluation: { feedback: {} }, ...extra }) as unknown as SubmissionSaveResponse

@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@/api/client'
 import { useMultipleChoiceAttempt } from './useMultipleChoiceAttempt'
-import type { MultipleChoiceCard, SubmissionSaveResponse } from '../lib/types'
+import type { MultipleChoiceCard, SubmissionSaveResponse } from '@/features/practice/lib/types'
 
 const saved = (successful: boolean, extra: Partial<SubmissionSaveResponse> = {}) =>
   ({ saved: true, successful, attemptId: 1, evaluation: { feedback: {} }, ...extra }) as unknown as SubmissionSaveResponse

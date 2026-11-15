@@ -1,8 +1,9 @@
 import type { CSSProperties } from 'react'
-import type { MultipleChoiceAttempt } from '../hooks/useMultipleChoiceAttempt'
-import MarkdownCodeContent from './MarkdownCodeContent'
-import type { MultipleChoiceCard } from '../lib/types'
+import type { MultipleChoiceAttempt } from './useMultipleChoiceAttempt'
+import MarkdownCodeContent from '@/features/practice/components/MarkdownCodeContent'
+import type { MultipleChoiceCard } from '@/features/practice/lib/types'
 import Skeleton from '@/shared/components/Skeleton'
+import EvaluationResult from '@/shared/evaluation/EvaluationResult'
 
 /** The answer choices for an MCQ card and, once graded, the verdict with its explanation. */
 export default function MultipleChoicePanel({ hasDeck, loading, error, card, attempt, locked, syntaxTheme }: {
@@ -78,6 +79,7 @@ export default function MultipleChoicePanel({ hasDeck, loading, error, card, att
               <div className="mcq-feedback-explanation">
                 <MarkdownCodeContent text={card.explanation} syntaxTheme={syntaxTheme} compact />
               </div>
+              <EvaluationResult evaluation={view.evaluation} compact />
             </div>
           )}
         </div>

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import type { RecallCodeEditorHandle } from '../editor/RecallCodeEditor'
-import { normalizeTyping } from '../lib/inlineNotes'
-import { computeLineReview, createInteractionId, extractFlowGhostFocusedInput, firstIncompleteGhostLineNumber, nextGhostLineNumber, summarizeRecallAttempt } from '../lib/lineReview'
-import { rejectionReason } from '../api'
-import type { AttemptPayload, MultipleChoiceSpecimenFocus, RecallAttemptSnapshot, SubmissionFailureModalState, SubmissionSaveResponse, SupportLayer, TemplateMode } from '../lib/types'
+import type { RecallCodeEditorHandle } from '@/features/practice/editor/RecallCodeEditor'
+import { normalizeTyping } from '@/features/practice/lib/inlineNotes'
+import type { Evaluation } from '@/shared/evaluation/evaluation'
+import { createInteractionId } from '@/features/practice/submission/submission'
+import { computeLineReview, extractFlowGhostFocusedInput, firstIncompleteGhostLineNumber, nextGhostLineNumber, summarizeRecallAttempt } from '@/features/practice/lib/lineReview'
+import { rejectionReason } from '@/features/practice/submission/submission'
+import type { AttemptPayload, MultipleChoiceSpecimenFocus, RecallAttemptSnapshot, SubmissionFailureModalState, SubmissionSaveResponse, SupportLayer, TemplateMode } from '@/features/practice/lib/types'
 
 const EMPTY_HISTORY: RecallAttemptSnapshot[] = []
 
@@ -57,7 +59,7 @@ export function useRecallAttempt(options: RecallAttemptOptions) {
   const [aiCompletionShown, setAiCompletionShown] = useState(false)
   const [aiCompletionStatus, setAiCompletionStatus] = useState('')
   const [historyByKey, setHistoryByKey] = useState<Record<string, RecallAttemptSnapshot[]>>({})
-  const [feedbackByKey, setFeedbackByKey] = useState<Record<string, object>>({})
+  const [evaluationByKey, setEvaluationByKey] = useState<Record<string, Evaluation>>({})
   const [evaluating, setEvaluating] = useState(false)
   const [error, setError] = useState('')
   const [failure, setFailure] = useState<SubmissionFailureModalState | null>(null)
@@ -70,7 +72,9 @@ export function useRecallAttempt(options: RecallAttemptOptions) {
   const missedLines = flowFocus?.missedLines ?? []
   const submissionInput = ghostStage ? extractFlowGhostFocusedInput(input, missedLines) : normalizeTyping(input)
   const history = historyByKey[options.historyKey] ?? EMPTY_HISTORY
-  const feedback = feedbackByKey[options.historyKey] ?? null
+  const evaluation = evaluationByKey[options.historyKey] ?? null
+  // The written feedback (if any) feeds the live coach.
+  const feedback = evaluation?.feedback && Object.keys(evaluation.feedback).length > 0 ? evaluation.feedback as object : null
   const latest = phase === 'submitted' ? history[history.length - 1] ?? null : null
 
   /** The interaction this answer belongs to, minting one if typing never started it. */
@@ -221,14 +225,14 @@ export function useRecallAttempt(options: RecallAttemptOptions) {
         setError(rejection ? `This attempt was rejected: ${rejection}` : 'Submission evaluation unavailable for this attempt.')
       }
       if (submission?.feedbackUnavailable) {
-        setFailure({ providerLabel: options.providerLabel, message: submission.feedbackUnavailable.message })
+        setFailure({ providerLabel: options.providerLabel, message: String(submission.feedbackUnavailable.message ?? '') })
       }
     }
     const nowCloseEnough = !isGhostRep && sound
     const key = options.historyKey
-    const evaluatedFeedback = submission?.evaluation.feedback
-    if (!isGhostRep && evaluatedFeedback && Object.keys(evaluatedFeedback).length > 0) {
-      setFeedbackByKey((previous) => ({ ...previous, [key]: evaluatedFeedback }))
+    if (submission?.evaluation) {
+      const graded = submission.evaluation
+      setEvaluationByKey((previous) => ({ ...previous, [key]: graded }))
     }
     const snapshot = summarizeRecallAttempt(inputLines, sound, elapsedMs, history.length + 1, supportLayer)
     setCloseEnough(nowCloseEnough)
@@ -263,6 +267,7 @@ export function useRecallAttempt(options: RecallAttemptOptions) {
     aiCompletionStatus,
     history,
     feedback,
+    evaluation: phase === 'submitted' ? evaluation : null,
     latest,
     evaluating,
     error,
@@ -271,7 +276,7 @@ export function useRecallAttempt(options: RecallAttemptOptions) {
     previewRef,
     ensureInteractionId,
     reset,
-    resetHistory: () => { setHistoryByKey({}); setFeedbackByKey({}) },
+    resetHistory: () => { setHistoryByKey({}); setEvaluationByKey({}) },
     start,
     repeat,
     revise,

@@ -1,6 +1,7 @@
 import type { FlowConfig, FlowGenerationContext, FlowStage, SubmissionModality } from '../flow/practiceFlow'
 import type { SkillMapNode } from '@/shared/data/skill-map'
 import type { McqFlowMode } from '@/api/queries'
+import type { SubmitResponse } from '@/shared/evaluation/evaluation'
 
 export type McqSourceMode = 'algorithm' | 'skill-map' | 'card'
 
@@ -120,51 +121,8 @@ export type AttemptPayload = {
   exerciseId?: string
 }
 
-export type CoachAttemptFeedback = {
-  diagnosis: string
-  primaryFocus: string
-  immediateCorrection: string
-  affirmation?: string
-  nextMove?: string
-  why?: string
-  keepInMind?: string
-  microDrill: string
-  nextRepTarget: string
-  strengths: string[]
-  errorTags: string[]
-  fullFeedback?: string
-  correctedVersion?: string
-  llmUsed?: boolean
-  llmProvider?: string
-}
-
-export type SubmissionEvaluation = {
-  version: number
-  verdict: string
-  score: Record<string, number>
-  primaryFailure: Record<string, unknown>
-  dimensions: Record<string, unknown>
-  modifiers: Record<string, unknown>
-  recommendedAction: string
-  feedback: CoachAttemptFeedback | Record<string, never>
-  provenance: {
-    llmUsed: boolean
-    provider: string
-    source: string
-  }
-}
-
-export type SubmissionSaveResponse = {
-  saved: boolean
-  attemptId: number | null
-  successful: boolean
-  evaluation: SubmissionEvaluation
-  feedbackUnavailable?: {
-    code: string
-    message: string
-    provider: string
-  } | null
-}
+/** The graded result of any submission (the generated API type). */
+export type SubmissionSaveResponse = SubmitResponse
 
 export type FlowHistoryEntry = {
   attemptId: number

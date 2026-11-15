@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { rejectionReason } from '../api'
-import type { MultipleChoiceCard, MultipleChoiceChoice, SubmissionSaveResponse } from '../lib/types'
+import type { Evaluation, SubmitResponse } from '@/shared/evaluation/evaluation'
+import { submissionFailureMessage } from '@/features/practice/submission/submission'
+import type { MultipleChoiceCard, MultipleChoiceChoice } from '@/features/practice/lib/types'
 
 /**
  * Answering multiple-choice cards: the selected choice, when the card was shown, and the server's
@@ -11,7 +12,7 @@ export function useMultipleChoiceAttempt() {
   const [selectedChoiceId, setSelectedChoiceId] = useState('')
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [submittedByCard, setSubmittedByCard] = useState<Record<string, string>>({})
-  const [resultByCard, setResultByCard] = useState<Record<string, boolean>>({})
+  const [resultByCard, setResultByCard] = useState<Record<string, SubmitResponse>>({})
   const [grading, setGrading] = useState(false)
   const [submitError, setSubmitError] = useState('')
 
@@ -35,8 +36,8 @@ export function useMultipleChoiceAttempt() {
    */
   const submit = async (
     card: MultipleChoiceCard,
-    save: (choice: MultipleChoiceChoice, elapsedMs: number) => Promise<SubmissionSaveResponse | null>,
-    onGraded: (saved: SubmissionSaveResponse, elapsedMs: number) => void,
+    save: (choice: MultipleChoiceChoice, elapsedMs: number) => Promise<SubmitResponse | null>,
+    onGraded: (saved: SubmitResponse, elapsedMs: number) => void,
   ) => {
     if (grading || !selectedChoiceId) return
     const choice = card.choices.find((candidate) => candidate.id === selectedChoiceId)
@@ -44,31 +45,30 @@ export function useMultipleChoiceAttempt() {
     const elapsedMs = Math.max(Date.now() - (startedAt ?? Date.now()), 1)
     setGrading(true)
     setSubmitError('')
-    let rejection = ''
+    let failure: unknown = null
     const saved = await save(choice, elapsedMs).catch((error: unknown) => {
-      rejection = rejectionReason(error)
+      failure = error
       return null
     })
     setGrading(false)
     if (!saved?.saved) {
-      setSubmitError(rejection
-        ? `Your answer could not be graded: ${rejection}`
-        : 'Your answer could not be graded. Submit again before continuing.')
+      setSubmitError(submissionFailureMessage(failure))
       return
     }
-    setResultByCard((previous) => ({ ...previous, [card.id]: saved.successful }))
+    setResultByCard((previous) => ({ ...previous, [card.id]: saved }))
     setSubmittedByCard((previous) => ({ ...previous, [card.id]: choice.id }))
     onGraded(saved, elapsedMs)
   }
 
-  /** How ``card`` stands: what is selected, what was submitted, and whether it was right. */
+  /** How ``card`` stands: what is selected, what was submitted, whether it was right, and Jev's evaluation. */
   const viewOf = (card: MultipleChoiceCard | null) => {
     const submittedChoiceId = card ? submittedByCard[card.id] ?? '' : ''
     return {
       selectedChoice: card?.choices.find((choice) => choice.id === selectedChoiceId) ?? null,
       submittedChoiceId,
       submitted: Boolean(submittedChoiceId),
-      correct: Boolean(submittedChoiceId && card && resultByCard[card.id]),
+      correct: Boolean(submittedChoiceId && card && resultByCard[card.id]?.successful),
+      evaluation: (submittedChoiceId && card ? resultByCard[card.id]?.evaluation : null) ?? null as Evaluation | null,
     }
   }
 

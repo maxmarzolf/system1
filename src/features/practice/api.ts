@@ -1,14 +1,13 @@
 /**
  * The practice page's requests: loading and generating decks, building MCQ generation requests,
- * and saving attempts (with the body each kind of attempt sends to /api/attempts).
+ * Saving attempts lives in ./submission.
  */
-import { api, ApiError, unwrap } from '@/api/client'
-import type { components } from '@/api/schema'
+import { api, unwrap } from '@/api/client'
 import type { SkillMapNode } from '@/shared/data/skill-map'
 import type { McqFlowMode, PlaylistOrder } from '@/api/queries'
 import type { FlowGenerationContext } from './flow/practiceFlow'
 import { getPrimaryPatternTag, patternLabelFromSlug } from './lib/patterns'
-import { MULTIPLE_CHOICE_DIFFICULTY, type AttemptPayload, type Flashcard, type MultipleChoiceCard, type MultipleChoiceDrillsRequest, type MultipleChoiceDrillsResponse, type MultipleChoiceSpecimenContext, type PracticeFlowState, type SkillMapDrillsRequest, type SkillMapDrillsResponse, type SubmissionSaveResponse } from './lib/types'
+import { MULTIPLE_CHOICE_DIFFICULTY, type Flashcard, type MultipleChoiceDrillsRequest, type MultipleChoiceDrillsResponse, type MultipleChoiceSpecimenContext, type PracticeFlowState, type SkillMapDrillsRequest, type SkillMapDrillsResponse } from './lib/types'
 
 // ── Deck loaders. useDecks caches and deduplicates them with TanStack Query. ──
 
@@ -43,26 +42,6 @@ export const requestMultipleChoiceDrills = async (body: MultipleChoiceDrillsRequ
     await api.POST('/api/coach/multiple-choice-drills', { body }),
     'Unable to generate multiple choice questions',
   ) as unknown as MultipleChoiceDrillsResponse
-
-export type AttemptBody = components['schemas']['AttemptCreate']
-
-/**
- * Save an attempt and return the graded result. Throws an ApiError when the server rejects it
- * (a 4xx carries the server's reason) or cannot be reached.
- */
-export const postAttempt = async (body: AttemptBody): Promise<SubmissionSaveResponse> => {
-  let result
-  try {
-    result = await api.POST('/api/attempts', { body })
-  } catch {
-    throw new ApiError(0, 'network_error', 'Could not reach the server.')
-  }
-  return unwrap(result, `Unable to submit attempt (${result.response.status})`) as unknown as SubmissionSaveResponse
-}
-
-/** The server's reason when it rejected the request itself (4xx); '' for outages and network errors. */
-export const rejectionReason = (error: unknown) =>
-  error instanceof ApiError && error.status >= 400 && error.status < 500 ? error.message : ''
 
 export const requestSkillMapDrillsStream = async (
   body: SkillMapDrillsRequest,
@@ -184,85 +163,6 @@ export function flowMultipleChoiceRequest({
         ...context,
       },
     },
-    llmProvider,
-  }
-}
-
-// ── Attempt bodies ──
-
-type Context = {
-  /** The flow context to attach, or null outside a flow. */
-  flowSignals: Record<string, unknown> | null
-  llmProvider: string
-}
-
-/** The `/api/attempts` body for a recall, ghost rep or microdrill attempt on ``card``. */
-export function recallAttemptBody(payload: AttemptPayload, { card, prompt, questionType, skillTags, flowSignals, llmProvider }: Context & {
-  card: Flashcard
-  prompt: string
-  questionType: string
-  skillTags: string[]
-}): AttemptBody {
-  const question = payload.question ?? prompt
-  return {
-    cardId: card.id,
-    cardTitle: card.title,
-    question,
-    questionType: payload.microdrill ? `${questionType}:microdrill` : questionType,
-    // An attempt made outside the flow (the Ladder) is filed under the card's own tags.
-    categoryTags: payload.outsideFlow ? card.tags : skillTags,
-    correctAnswer: payload.correctAnswer,
-    userAnswer: payload.userAnswer,
-    mode: payload.mode,
-    elapsedMs: payload.elapsedMs,
-    sessionId: payload.sessionId ?? (flowSignals?.runId as string | undefined),
-    interactionId: payload.interactionId,
-    generatedCardId: card.id,
-    generatedCard: { ...card, prompt: question },
-    templateMode: payload.templateMode,
-    supportLayer: payload.supportLayer,
-    modality: payload.modality,
-    signals: {
-      ...(payload.signals ?? {}),
-      ...(flowSignals ? { flow: flowSignals } : {}),
-      modality: { ...(payload.signals?.modality ?? {}), kind: payload.modality },
-    },
-    liveCoachUsed: payload.liveCoachUsed,
-    exerciseId: payload.exerciseId,
-    llmProvider,
-  }
-}
-
-/** The `/api/attempts` body for an answer to an MCQ card; the server grades the choice. */
-export function multipleChoiceAttemptBody(
-  { card, choiceId, elapsedMs, interactionId, questionType, skillTags, flowSignals, llmProvider }: Context & {
-    card: MultipleChoiceCard
-    choiceId: string
-    elapsedMs: number
-    interactionId: string
-    questionType: string
-    skillTags: string[]
-  },
-): AttemptBody {
-  return {
-    cardId: card.id,
-    cardTitle: card.title,
-    question: card.question,
-    questionType,
-    categoryTags: skillTags,
-    multipleChoiceProblemId: card.id,
-    selectedChoiceId: choiceId,
-    mode: 'main-recall',
-    elapsedMs,
-    sessionId: flowSignals?.runId as string | undefined,
-    interactionId,
-    generatedCardId: card.id,
-    generatedCard: { ...card, cardMode: 'multiple-choice', prompt: card.question },
-    templateMode: 'algorithm',
-    supportLayer: 'none',
-    modality: 'mcq',
-    signals: { ...(flowSignals ? { flow: flowSignals } : {}), modality: { kind: 'mcq', selectedChoiceId: choiceId } },
-    liveCoachUsed: false,
     llmProvider,
   }
 }

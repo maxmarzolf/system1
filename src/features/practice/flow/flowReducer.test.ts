@@ -84,7 +84,7 @@ describe('flowStatusText', () => {
     expect(flowStatusText(null, mastery, true)).toBe('Loading prior attempts…')
     expect(flowStatusText(null, mastery, false)).toMatch(/^Choose Adaptive/)
     const { flow } = planFlowStart(custom, card('a'), [], 'run')
-    expect(flowStatusText(flow, mastery, false)).toBe('Cycle 1 · Rep 1 of 2 · Recall')
+    expect(flowStatusText(flow, mastery, false)).toBe('Cycle 1 · Rep 1 of 2 · Total Recall')
     expect(flowStatusText({ ...flow, config: { ...custom, mode: 'random' } }, mastery, false)).toMatch(/^Rep 1 · /)
     expect(flowStatusText({ ...flow, config: adaptive }, mastery, false)).toMatch(/% proficiency · evidence across 0 modalities/)
   })

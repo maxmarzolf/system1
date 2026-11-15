@@ -5,7 +5,7 @@ import SlidingWindowLadder, { type LadderQuestion } from './WindowLadderPanel'
 import { LADDER_REPS_PER_RUNG } from './windowLadderPlan'
 import { mockFetch } from '@/test/fetch'
 
-vi.mock('../editor/RecallCodeEditor', () => ({
+vi.mock('@/features/practice/editor/RecallCodeEditor', () => ({
   default: ({ value, onChange, disabled }: { value: string; onChange: (value: string) => void; disabled?: boolean }) => (
     <textarea aria-label="code" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} />
   ),
@@ -50,7 +50,7 @@ describe('SlidingWindowLadder', () => {
     const onSave = vi.fn(async () => ({
       saved: true,
       successful: true,
-      evaluation: { feedback: { fullFeedback: 'Nice.', nextMove: 'Keep going.', affirmation: 'Clean' } },
+      evaluation: { verdict: 'sound', feedback: { fullFeedback: 'Nice.', nextMove: 'Keep going.', affirmation: 'Clean' } },
     }))
     renderLadder(onSave)
     expect(screen.getByRole('status')).toHaveTextContent('Writing a new question')
@@ -60,6 +60,8 @@ describe('SlidingWindowLadder', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Submit rep' }))
     expect(await screen.findByText('Nice.')).toBeInTheDocument()
     expect(screen.getByText('Keep going.')).toBeInTheDocument()
+    expect(screen.getByText('Sound')).toBeInTheDocument()
+    expect(screen.getByText('This rep counts.')).toBeInTheDocument()
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ question: 'Write rung 0' }), 'def f():\n    return 1', expect.any(Number), expect.any(String), 0, 1)
     await userEvent.click(screen.getByRole('button', { name: 'Next question' }))
     await waitFor(() => expect(fetch.calls).toHaveLength(2))
@@ -69,11 +71,12 @@ describe('SlidingWindowLadder', () => {
 
   it('stays on the rung after a miss', async () => {
     const fetch = mockFetch([{ method: 'POST', match: '/api/coach/sliding-window-ladder', respond: () => question() }])
-    renderLadder(vi.fn(async () => ({ saved: true, successful: false, evaluation: { feedback: { primaryFocus: 'Shrink first' } } })))
+    renderLadder(vi.fn(async () => ({ saved: true, successful: false, evaluation: { verdict: 'needs-work', feedback: { primaryFocus: 'Shrink first' } } })))
     await answer()
     await userEvent.click(screen.getByRole('button', { name: 'Submit rep' }))
-    expect(await screen.findByText('This rung needs another rep.')).toBeInTheDocument()
-    expect(screen.getByText('The next question stays on this rung.')).toBeInTheDocument()
+    expect(await screen.findByText('The next question stays on this rung.')).toBeInTheDocument()
+    expect(screen.getByText('Needs work')).toBeInTheDocument()
+    expect(screen.getByText('Shrink first')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Next question' }))
     await waitFor(() => expect(fetch.calls).toHaveLength(2))
     expect(JSON.parse(String(fetch.calls[1].init?.body)).recentAttempts[0]).toMatchObject({ successful: false, weakness: 'Shrink first' })
@@ -82,10 +85,10 @@ describe('SlidingWindowLadder', () => {
   it('finishes a rung on its last rep and the ladder on the last rung', async () => {
     localStorage.setItem(storageKey, JSON.stringify({ rungIndex: 4, rep: LADDER_REPS_PER_RUNG, recentAttempts: [] }))
     mockFetch([{ method: 'POST', match: '/api/coach/sliding-window-ladder', respond: () => question(4) }])
-    const { onClose } = renderLadder(vi.fn(async () => ({ saved: true, successful: true, evaluation: { feedback: {} } })))
+    const { onClose } = renderLadder(vi.fn(async () => ({ saved: true, successful: true, evaluation: { verdict: 'sound', feedback: {} } })))
     await answer()
     await userEvent.click(screen.getByRole('button', { name: 'Submit rep' }))
-    expect(await screen.findByText('Sound. This rep counts.')).toBeInTheDocument()
+    expect(await screen.findByText('This rep counts.')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Next rung' }))
     expect(screen.getByText(/Ladder complete/)).toBeInTheDocument()
     expect(JSON.parse(localStorage.getItem(storageKey) ?? '{}').complete).toBe(true)
@@ -114,7 +117,7 @@ describe('SlidingWindowLadder', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
     await answer()
     await userEvent.click(screen.getByRole('button', { name: 'Submit rep' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Your answer could not be saved')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your answer could not be graded')
   })
 
   it('uses a generic message for unexpected failures', async () => {

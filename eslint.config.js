@@ -40,6 +40,50 @@ export default defineConfig([
     },
   },
   {
+    // A modality is worked on alone: it may use the shared practice pieces (submission/, lib/,
+    // editor/) but never another modality.
+    files: ['src/features/practice/modalities/mcq/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [
+        { group: ['@/features/*', '!@/features/practice', '!@/features/practice/**'], message: 'A feature must not import another feature; move shared code to src/shared/.' },
+        { group: ['@/features/practice/modalities/recall', '@/features/practice/modalities/recall/*', '../recall', '../recall/*', '@/features/practice/modalities/microdrill', '@/features/practice/modalities/microdrill/*', '../microdrill', '../microdrill/*', '@/features/practice/modalities/ladder', '@/features/practice/modalities/ladder/*', '../ladder', '../ladder/*'], message: 'A modality must not import another modality; move shared code to submission/ or lib/.' },
+      ] }],
+    },
+  },
+  {
+    // A modality is worked on alone: it may use the shared practice pieces (submission/, lib/,
+    // editor/) but never another modality.
+    files: ['src/features/practice/modalities/recall/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [
+        { group: ['@/features/*', '!@/features/practice', '!@/features/practice/**'], message: 'A feature must not import another feature; move shared code to src/shared/.' },
+        { group: ['@/features/practice/modalities/mcq', '@/features/practice/modalities/mcq/*', '../mcq', '../mcq/*', '@/features/practice/modalities/microdrill', '@/features/practice/modalities/microdrill/*', '../microdrill', '../microdrill/*', '@/features/practice/modalities/ladder', '@/features/practice/modalities/ladder/*', '../ladder', '../ladder/*'], message: 'A modality must not import another modality; move shared code to submission/ or lib/.' },
+      ] }],
+    },
+  },
+  {
+    // A modality is worked on alone: it may use the shared practice pieces (submission/, lib/,
+    // editor/) but never another modality.
+    files: ['src/features/practice/modalities/microdrill/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [
+        { group: ['@/features/*', '!@/features/practice', '!@/features/practice/**'], message: 'A feature must not import another feature; move shared code to src/shared/.' },
+        { group: ['@/features/practice/modalities/mcq', '@/features/practice/modalities/mcq/*', '../mcq', '../mcq/*', '@/features/practice/modalities/recall', '@/features/practice/modalities/recall/*', '../recall', '../recall/*', '@/features/practice/modalities/ladder', '@/features/practice/modalities/ladder/*', '../ladder', '../ladder/*'], message: 'A modality must not import another modality; move shared code to submission/ or lib/.' },
+      ] }],
+    },
+  },
+  {
+    // A modality is worked on alone: it may use the shared practice pieces (submission/, lib/,
+    // editor/) but never another modality.
+    files: ['src/features/practice/modalities/ladder/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [
+        { group: ['@/features/*', '!@/features/practice', '!@/features/practice/**'], message: 'A feature must not import another feature; move shared code to src/shared/.' },
+        { group: ['@/features/practice/modalities/mcq', '@/features/practice/modalities/mcq/*', '../mcq', '../mcq/*', '@/features/practice/modalities/recall', '@/features/practice/modalities/recall/*', '../recall', '../recall/*', '@/features/practice/modalities/microdrill', '@/features/practice/modalities/microdrill/*', '../microdrill', '../microdrill/*'], message: 'A modality must not import another modality; move shared code to submission/ or lib/.' },
+      ] }],
+    },
+  },
+  {
     files: ['src/features/dashboard/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', { patterns: [
@@ -71,6 +115,15 @@ export default defineConfig([
     rules: {
       'no-restricted-imports': ['error', { patterns: [
         { group: ['@/features/*', '!@/features/tune', '!@/features/tune/**'], message: 'A feature must not import another feature; move shared code to src/shared/.' },
+        { group: ['../../*'], message: 'Import from outside this feature with @/.' },
+      ] }],
+    },
+  },
+  {
+    files: ['src/features/evolve/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [
+        { group: ['@/features/*', '!@/features/evolve', '!@/features/evolve/**'], message: 'A feature must not import another feature; move shared code to src/shared/.' },
         { group: ['../../*'], message: 'Import from outside this feature with @/.' },
       ] }],
     },

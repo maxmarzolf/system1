@@ -2,8 +2,8 @@ import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import type { AppTheme } from '@/app/theme'
-import RecallCodeEditor from '../editor/RecallCodeEditor'
-import { renderInlineMarkdownText } from '../lib/markdownText'
+import RecallCodeEditor from '@/features/practice/editor/RecallCodeEditor'
+import { renderInlineMarkdownText } from '@/features/practice/lib/markdownText'
 
 /* A microdrill: its instructions, and the code template whose blanks the learner fills in. */
 

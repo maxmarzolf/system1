@@ -1,11 +1,12 @@
 import { useMemo } from 'react'
 import type { CodeEditorTuning } from '@/shared/settings/codeEditorTuning'
-import RecallCodeEditor, { type RecallEditorLineMeta } from '../editor/RecallCodeEditor'
+import RecallCodeEditor, { type RecallEditorLineMeta } from '@/features/practice/editor/RecallCodeEditor'
 import LiveAiCoach from './LiveAiCoach'
 import type { AppTheme } from '@/app/theme'
-import type { RecallAttempt } from '../hooks/useRecallAttempt'
-import { inlineDisplayLines, splitInlineAnnotationLine } from '../lib/inlineNotes'
+import type { RecallAttempt } from './useRecallAttempt'
+import { inlineDisplayLines, splitInlineAnnotationLine } from '@/features/practice/lib/inlineNotes'
 import Skeleton from '@/shared/components/Skeleton'
+import EvaluationResult from '@/shared/evaluation/EvaluationResult'
 
 const BASE_LABEL = 'Type the full algorithm from memory'
 const BASE_PLACEHOLDER = 'Type the full algorithm from memory...'
@@ -123,10 +124,13 @@ export default function RecallPanel({
                 </div>
               ) : phase === 'submitted' && latest ? (
                 <div className="recall-submit-summary">
-                  <span className="recall-submit-metric">
-                    <span className="recall-submit-metric-name">Outcome</span>
-                    <span className="recall-submit-metric-value">{latest.exact ? 'Sound' : 'Needs work'}</span>
-                  </span>
+                  {/* The result view below names the verdict when the server graded it. */}
+                  {attempt.evaluation ? null : (
+                    <span className="recall-submit-metric">
+                      <span className="recall-submit-metric-name">Outcome</span>
+                      <span className="recall-submit-metric-value">{latest.exact ? 'Sound' : 'Needs work'}</span>
+                    </span>
+                  )}
                   <span className="recall-submit-metric">
                     <span className="recall-submit-metric-name">Time</span>
                     <span className="recall-submit-metric-value">{(latest.elapsedMs / 1000).toFixed(1)}s</span>
@@ -135,6 +139,7 @@ export default function RecallPanel({
               ) : null}
               {!inFlow && phase === 'submitted' && submitError ? <p className="flow-submit-error" role="alert">{submitError}</p> : null}
             </div>
+            {!evaluating && phase === 'submitted' ? <EvaluationResult evaluation={attempt.evaluation} compact={ghostReps} /> : null}
             <RecallCodeEditor
               {...editorOptions}
               ref={editorRef}

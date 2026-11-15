@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, unwrap } from '@/api/client'
-import RecallCodeEditor from '../editor/RecallCodeEditor'
+import RecallCodeEditor from '@/features/practice/editor/RecallCodeEditor'
 import { LADDER_REPS_PER_RUNG, LADDER_RUNGS, type SlidingWindowTechnique } from './windowLadderPlan'
 import type { AppTheme } from '@/app/theme'
+import EvaluationResult from '@/shared/evaluation/EvaluationResult'
+import { feedbackText, type SubmitResponse } from '@/shared/evaluation/evaluation'
+import { createInteractionId } from '@/features/practice/submission/submission'
+import { useSubmission } from '@/features/practice/submission/useSubmission'
 
 type LadderAttempt = {
   rungIndex: number
@@ -22,21 +26,6 @@ export type LadderQuestion = {
   language: string
 }
 
-type LadderSaveResult = {
-  saved: boolean
-  successful: boolean
-  evaluation: {
-    feedback: {
-      fullFeedback?: string
-      primaryFocus?: string
-      nextMove?: string
-      why?: string
-      affirmation?: string
-      strengths?: string[]
-    } | Record<string, never>
-  }
-}
-
 type LadderRequest = {
   rungIndex: number
   rep: number
@@ -44,15 +33,13 @@ type LadderRequest = {
   version: number
 }
 
-const interactionId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
-
-const completedAttempt = (result: LadderSaveResult, question: LadderQuestion, rungIndex: number): LadderAttempt => {
-  const feedback = result.evaluation.feedback
+const completedAttempt = (result: SubmitResponse, question: LadderQuestion, rungIndex: number): LadderAttempt => {
+  const strengths = result.evaluation.feedback?.strengths
   return {
     rungIndex,
     successful: result.successful,
-    strength: (feedback.affirmation || feedback.strengths?.join('; ') || '').slice(0, 400),
-    weakness: (feedback.primaryFocus || feedback.why || '').slice(0, 400),
+    strength: (feedbackText(result.evaluation, 'affirmation') || (Array.isArray(strengths) ? strengths.join('; ') : '')).slice(0, 400),
+    weakness: (feedbackText(result.evaluation, 'primaryFocus') || feedbackText(result.evaluation, 'why')).slice(0, 400),
     question: question.question.slice(0, 500),
   }
 }
@@ -88,7 +75,7 @@ export default function SlidingWindowLadder({
   technique: SlidingWindowTechnique
   provider: string
   theme: AppTheme
-  onSave: (question: LadderQuestion, answer: string, elapsedMs: number, interaction: string, rungIndex: number, rep: number) => Promise<LadderSaveResult | null>
+  onSave: (question: LadderQuestion, answer: string, elapsedMs: number, interaction: string, rungIndex: number, rep: number) => Promise<SubmitResponse | null>
   onClose: () => void
 }) {
   const storageKey = `system1-ladder-v1:${cardId}:${technique}`
@@ -96,14 +83,15 @@ export default function SlidingWindowLadder({
   const [request, setRequest] = useState<LadderRequest>(initialProgress.request)
   const [question, setQuestion] = useState<LadderQuestion | null>(null)
   const [answer, setAnswer] = useState('')
-  const [result, setResult] = useState<LadderSaveResult | null>(null)
-  const [error, setError] = useState('')
+  const submission = useSubmission(onSave)
+  const result = submission.result
+  const saving = submission.saving
+  const [generationError, setError] = useState('')
+  const error = generationError || submission.error
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
   const [complete, setComplete] = useState(initialProgress.complete)
   const startedAt = useRef(Date.now())
-  const savingRef = useRef(false)
-  const questionInteraction = useRef(interactionId())
+  const questionInteraction = useRef(createInteractionId())
 
   useEffect(() => {
     const counted = Boolean(result?.successful)
@@ -143,7 +131,7 @@ export default function SlidingWindowLadder({
         setQuestion(next)
         setAnswer(next.starterCode)
         startedAt.current = Date.now()
-        questionInteraction.current = interactionId()
+        questionInteraction.current = createInteractionId()
       } catch (caught) {
         if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : 'Unable to generate a Ladder question.')
       } finally {
@@ -155,23 +143,12 @@ export default function SlidingWindowLadder({
   }, [cardTitle, cardPrompt, cardTarget, technique, provider, request, complete])
 
   const submit = async () => {
-    if (!question || !answer.trim() || answer.trim() === question.starterCode.trim() || savingRef.current || result) return
-    savingRef.current = true
-    setSaving(true)
+    if (!question || !answer.trim() || answer.trim() === question.starterCode.trim() || result) return
     setError('')
-    try {
-      const saved = await onSave(
-        question, answer, Math.max(1, Date.now() - startedAt.current),
-        questionInteraction.current, request.rungIndex, request.rep,
-      )
-      if (!saved?.saved) throw new Error('Your answer could not be saved. Submit again to continue.')
-      setResult(saved)
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to submit this rung.')
-    } finally {
-      savingRef.current = false
-      setSaving(false)
-    }
+    await submission.submit(
+      question, answer, Math.max(1, Date.now() - startedAt.current),
+      questionInteraction.current, request.rungIndex, request.rep,
+    )
   }
 
   const next = () => {
@@ -184,7 +161,7 @@ export default function SlidingWindowLadder({
     }
     setQuestion(null)
     setAnswer('')
-    setResult(null)
+    submission.reset()
     setError('')
     setLoading(true)
     setRequest({
@@ -204,7 +181,7 @@ export default function SlidingWindowLadder({
   const restart = () => {
     setQuestion(null)
     setAnswer('')
-    setResult(null)
+    submission.reset()
     setError('')
     setLoading(true)
     setComplete(false)
@@ -225,9 +202,8 @@ export default function SlidingWindowLadder({
             {error && <p role="alert">{error}</p>}
             {!question && error && <button type="button" className="secondary" onClick={retryGeneration}>Try again</button>}
             {result && <div className="submission-feedback-detail" role="status">
-              <p>{result.evaluation.feedback.fullFeedback || (result.successful ? 'Sound. This rep counts.' : 'This rung needs another rep.')}</p>
-              {result.evaluation.feedback.nextMove && <p>{result.evaluation.feedback.nextMove}</p>}
-              {!result.successful && <p>The next question stays on this rung.</p>}
+              <p>{result.successful ? 'This rep counts.' : 'The next question stays on this rung.'}</p>
+              <EvaluationResult evaluation={result.evaluation} />
               <details><summary>Reference solution</summary><pre>{question?.solution}</pre></details>
             </div>}
           </div>

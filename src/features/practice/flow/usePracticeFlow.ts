@@ -12,7 +12,7 @@ import {
   type FlowMove,
 } from './flowReducer'
 import { compactFeedbackItems, flowEvaluationScore, flowEvaluationWeaknesses, flowModalityWeakness, requestFlowAttemptHistory } from './flowHistory'
-import { createInteractionId } from '../lib/lineReview'
+import { createInteractionId } from '../submission/submission'
 import { type Flashcard, type FlowMicroDrillPrimaryActionState, type MultipleChoiceSpecimenFocus, type SubmissionSaveResponse } from '../lib/types'
 
 /**
