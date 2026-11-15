@@ -11,8 +11,8 @@ Routes are defined in `src/app/routes.tsx`; every page shares `TopNav` (the acti
 | `/` | `features/journey/JourneyPage.tsx` | Journey, the home page: the score terrain, the daily work grid and the day detail. Each submission in the day detail shows its signals and **Model calls** (`ModelCallDetails`): the LLM calls that generated or graded it and its Jev calls, with full requests and responses. Enter opens `/practice` |
 | `/practice` | `features/practice/PracticePage.tsx` | The practice screen: MCQ, Recall and Ghost question types, Inline notes, AI completion, and flows. The card is flat (no frame, header or Previous/Next buttons; its title shows as "TOPIC: …" under the Question or Prompt label) and has no toolbar: Cmd/Ctrl + double arrows selects Total Recall (↑), Microdrill (←), Ghost (→), or MCQ (↓), and the navbar shows the current type (or the flow's stage) |
 | `/dashboard` | `features/dashboard/DashboardPage.tsx` | A readiness card per algorithm and playlist; each starts focused practice in Total Recall |
-| `/tune` | `features/tune/TunePage.tsx` | Local preferences; saved as you change them |
-| `/admin` | `features/admin/AdminPage.tsx` | MCQ signal editor and the read-only recall specs |
+| `/tune` | `features/tune/TunePage.tsx` | Personal preferences (code editor, AI completion, hotkeys), stored in the browser and saved as you change them. Links to Admin → Settings for everything server-side |
+| `/admin` | `features/admin/AdminPage.tsx` | Grading and generation configuration: a rail of modalities (MCQ, Total Recall, Ghost, Microdrill, Ladder), each with its correctness question, signals by scope, history and Try; plus **Settings** (grading, generation, practice). See [grading.md](grading.md) |
 | `/evolve` | `features/evolve/EvolvePage.tsx` | AlphaEvolve-style prompt runs for MCQ generation |
 
 `/coach-tuning` and `/submission-tuning` redirect to `/tune`; the old `/practice-history` redirects to `/`.
@@ -38,15 +38,17 @@ src/
   api/            the typed API client (client.ts) and shared TanStack Query reads (queries.ts)
   shared/
     components/   Icon, IconToggle, Skeleton, InfoTip, settingControls
+    evaluation/   the stored evaluation's types and readers, and EvaluationResult (the one result view)
+    modality.ts   the modality ids, labels and order (the same ids as the backend)
     lib/          storedSetting, hotkeys, dailyWork, llmProviderDefault
-    settings/     the *Tuning modules (localStorage preferences)
+    settings/     codeEditorTuning (the one localStorage preference module left)
     data/         bundled catalogs, used when the API has none
   features/
     practice/     /practice    the practice screen
     dashboard/    /dashboard   readiness cards
     journey/      /            the score terrain, daily work grid and day detail
-    admin/        /admin       the signal editor
-    tune/         /tune        preferences
+    admin/        /admin       signals and settings for every modality
+    tune/         /tune        personal preferences
     evolve/       /evolve      OpenEvolve MCQ-prompt runs (talks to the evolve service on :3002)
   test/           Vitest setup and helpers
 ```
@@ -57,10 +59,31 @@ Inside a feature:
 |---|---|
 | `<Feature>Page.tsx` | The route component. It composes the feature's hooks and components |
 | `components/` | Presentational pieces; they take props and fetch nothing |
-| `hooks/` | One hook per concern (practice: `useDecks`, `usePracticeSession`, `useRecallAttempt`, `useMultipleChoiceAttempt`, `usePracticeHotkeys`, `usePracticePanels`, `usePracticeFocus`) |
+| `hooks/` | One hook per concern (practice: `useDecks`, `usePracticeSession`, `usePracticeHotkeys`, `usePracticePanels`, `usePracticeFocus`) |
 | `lib/` (or `lib.ts`) | Pure logic, unit-tested without rendering (practice: `focus`, `targets`, `cardMeta`, `primaryAction`, `inlineNotes`, `lineReview`, `types`) |
-| `api.ts` | The feature's requests (practice: decks, MCQ generation, attempt bodies; admin: the signal admin client) |
-| Sub-areas | Practice also has `flow/` (FlowBuilder, the flow engine `practiceFlow.ts`, `flowReducer`, `usePracticeFlow`, the flow cards), `ladder/` (the Sliding Window Ladder) and `editor/` (`RecallCodeEditor`, the CodeMirror editor). Journey has `terrain/` (the three.js Signal Score Terrain) |
+| `api.ts` | The feature's requests (practice: decks and MCQ generation; admin: the signal and settings client) |
+| Sub-areas | Practice also has `modalities/` (below), `submission/` (below), `flow/` (FlowBuilder, the flow engine `practiceFlow.ts`, `flowReducer`, `usePracticeFlow`) and `editor/` (`RecallCodeEditor`, the CodeMirror editor). Journey has `terrain/` (the three.js Signal Score Terrain) |
+
+### Practice modalities
+
+The practice screen mirrors the backend's grading pipeline: every modality submits the same way and shows the same result.
+
+```
+features/practice/
+  modalities/
+    mcq/          MultipleChoicePanel, useMultipleChoiceAttempt, useMultipleChoiceHotkeys, draft.ts
+    recall/       RecallPanel, useRecallAttempt, LiveAiCoach, draft.ts   (Total Recall and Ghost)
+    microdrill/   MicroDrillCard, MicroDrillEditor, draft.ts
+    ladder/       WindowLadderPanel, windowLadderPlan, draft.ts
+  submission/     submission.ts (SubmissionDraft → POST /api/attempts), useSubmission (idle → saving → graded / failed)
+shared/evaluation/ evaluation.ts (readers), EvaluationResult.tsx (the result view)
+```
+
+- A modality's `draft.ts` turns its answer into a `ModalityDraft`: what was answered, the stored item id, timing and modality facts. `PracticePage` adds the flow context and provider, then calls `submitAnswer`.
+- `useSubmission` holds one answer's save state and the one failure wording.
+- `EvaluationResult` shows any modality's evaluation: verdict, score, who decided, overrides, flags, feedback and signals. Journey's submission detail uses it too.
+- Ghost is Total Recall with the ghost support layer, so it shares the `recall/` module; the server grades it as `ghost-rep`.
+- A modality never imports another modality. ESLint enforces this; shared pieces go in `submission/`, `lib/` or `shared/`.
 
 **Where new code goes.** Code for one page goes in that page's feature folder. Once a second feature needs it, it moves to `shared/`. A feature never imports another feature, and `shared/` and `api/` never import `features/` or `app/`; ESLint (`no-restricted-imports` in `eslint.config.js`) enforces both. Use `@/` (= `src/`) for imports across modules and relative paths within one.
 
@@ -73,15 +96,13 @@ There is no global store. Server data goes through TanStack Query (`src/api/quer
 | Key | Holds |
 |---|---|
 | `system1-theme` | Light or dark high-contrast theme |
-| `system1-specimen-tuning-v1` | Type hints, comments, variable naming in generated code |
 | `system1-code-editor-tuning-v1` | Editor language, IntelliSense, AI completion, style guide, folding, search panel |
-| `system1-mcq-tuning-v1` | MCQ flow mode and set size (1–30) |
-| `system1-submission-tuning-v1` | Grading mode, contract strictness and the grading toggles |
-| `system1-google-playlist-tuning-v1` | Order of the Google deck |
 | `practice-flow-v1` | Flow mode, custom blocks, random stages |
 | `system1-ladder-v1:<card>:<technique>` | Ladder progress per card |
 
-The Admin page keeps its view (question type and scope) in the URL, so views can be linked.
+Specimen style, MCQ set size and order, the Google playlist order and every grading setting are server-side now (Admin → Settings); the practice screen reads them with `usePracticeSettings` (`GET /api/catalog/practice-settings`).
+
+The Admin page keeps its view in the URL (`?modality=&scope=`, or `?view=settings`), so views can be linked.
 
 ## The practice flow
 

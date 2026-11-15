@@ -11,7 +11,6 @@ import logging
 
 from app.core.signals import DETERMINISTIC_IMPLEMENTATIONS, ModalitySignalSpec, build_spec
 from app.core.signals.defaults import DEFAULT_ALGORITHM, MODALITY_DEFAULTS
-from app.core.signals.mcq import MCQ_MODALITY
 from app.core.taxonomy import algorithm_slug_for_tags
 from app.repositories import signal_definition_repository
 
@@ -51,11 +50,3 @@ async def load_spec(modality: str, algorithm_slug: str) -> ModalitySignalSpec:
         directive=directive,
         definitions=definitions,
     )
-
-
-# Until every evaluator goes through the shared pipeline.
-mcq_algorithm_for_tags = algorithm_for_tags
-
-
-async def load_mcq_spec(algorithm_slug: str) -> ModalitySignalSpec:
-    return await load_spec(MCQ_MODALITY, algorithm_slug)
