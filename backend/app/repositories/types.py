@@ -129,3 +129,5 @@ class CompetencyOverallRow(TypedDict):
     day: date
     competency: float
     algorithms: int
+    week_change: float
+    trend: str  # improving | maintaining | regressing

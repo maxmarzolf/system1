@@ -135,6 +135,14 @@ def test_competency_is_the_daily_signal_average_decayed_on_days_without_practice
     assert overall_by_day["2026-01-05"]["algorithms"] == 2
     assert overall_by_day["2026-01-05"]["competency"] == pytest.approx((by_day["2026-01-05"]["competency"] + 40) / 2, abs=0.051)
 
+    # The week's change: with under 7 days of history it is measured from the first day.
+    jan6 = overall_by_day["2026-01-06"]
+    assert jan6["week_change"] == pytest.approx(jan6["competency"] - 72.5, abs=0.051)
+    assert overall_by_day["2026-01-01"]["week_change"] == 0 and overall_by_day["2026-01-01"]["trend"] == "maintaining"
+    assert overall_by_day["2026-01-02"]["trend"] == "maintaining"  # -1.5: within 2 points
+    assert overall_by_day["2026-01-03"]["trend"] == "regressing"  # -2.9
+    assert overall_by_day["2026-01-04"]["trend"] == "improving"  # back to 100: +27.5
+
 
 @pytest.mark.integration
 def test_an_algorithm_never_at_the_strong_line_is_to_learn() -> None:

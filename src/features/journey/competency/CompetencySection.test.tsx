@@ -70,6 +70,32 @@ describe('CompetencySection', () => {
     expect(row.closest('ol')).toBeNull()
     const graph = within(row).getByRole('img', { name: 'Overall competency from Mar 1 to Mar 3' })
     expect(graph.querySelector('polyline')?.getAttribute('points')?.split(' ')).toHaveLength(3)
+    // The week's trend, coloured like the standing chips.
+    expect(within(row).getByText('Improving')).toHaveClass('competency-chip-strong')
+    expect(within(row).getByText('Improving')).toHaveAttribute('data-tip', 'Up 3.4 points over the last week.')
+  })
+
+  it.each([
+    ['regressing', -5.2, 'Regressing', 'competency-chip-learn', 'Down 5.2 points over the last week.'],
+    ['maintaining', 0, 'Maintaining', 'competency-chip-review', 'No change over the last week.'],
+    ['maintaining', null, 'Maintaining', 'competency-chip-review', 'No change over the last week.'],
+  ])('labels a %s week', async (trend, weekChange, label, chip, tip) => {
+    const terrain = competencyTerrain()
+    terrain.overall = { ...terrain.overall, trend, weekChange }
+    mockFetch([{ match: '/api/history/competency', body: terrain }])
+    renderSection()
+    const badge = await screen.findByText(label)
+    expect(badge).toHaveClass(chip)
+    expect(badge).toHaveAttribute('data-tip', tip)
+  })
+
+  it('shows no trend label when the server sends none', async () => {
+    const terrain = competencyTerrain()
+    terrain.overall = { ...terrain.overall, trend: 'sideways' }
+    mockFetch([{ match: '/api/history/competency', body: terrain }])
+    renderSection()
+    await screen.findByRole('meter', { name: 'Overall competency' })
+    expect(screen.queryByText(/Improving|Maintaining|Regressing/)).toBeNull()
   })
 
   it('shows only the last 30 days in the collapsed preview', async () => {
@@ -82,7 +108,7 @@ describe('CompetencySection', () => {
   })
 
   it('has no overall row before any answer', async () => {
-    mockFetch([{ match: '/api/history/competency', body: { ...competencyTerrain(), overall: { competency: null, days: [] } } }])
+    mockFetch([{ match: '/api/history/competency', body: { ...competencyTerrain(), overall: { competency: null, weekChange: null, trend: null, days: [] } } }])
     renderSection()
     await screen.findByRole('list', { name: 'Competency today, weakest first' })
     expect(screen.queryByRole('meter', { name: 'Overall competency' })).toBeNull()
@@ -158,7 +184,7 @@ describe('CompetencySection', () => {
   })
 
   it('handles an empty history, a single day, and errors', async () => {
-    mockFetch([{ match: '/api/history/competency', body: { decayPerDay: 0.02, freeFallDays: 10, overall: { competency: null, days: [] }, algorithms: [], unpractised: [], days: [], cells: [] } }])
+    mockFetch([{ match: '/api/history/competency', body: { decayPerDay: 0.02, freeFallDays: 10, overall: { competency: null, weekChange: null, trend: null, days: [] }, algorithms: [], unpractised: [], days: [], cells: [] } }])
     const { unmount } = render(<MemoryRouter><CompetencySection onSelect={vi.fn()} /></MemoryRouter>)
     await screen.findByText('No graded answers yet.')
     unmount()
@@ -166,7 +192,7 @@ describe('CompetencySection', () => {
     const single = {
       decayPerDay: 0.02,
       freeFallDays: 10,
-      overall: { competency: 50, days: [{ date: '2026-03-01', competency: 50 }] },
+      overall: { competency: 50, weekChange: 0, trend: 'maintaining', days: [{ date: '2026-03-01', competency: 50 }] },
       unpractised: [],
       algorithms: [competencyAlgorithm({ slug: 'heap', name: 'Heap', competency: 50, kind: 'playlist', answers: 1, daysSince: 1 })],
       days: ['2026-03-01'],

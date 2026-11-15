@@ -329,24 +329,46 @@ async def fetch_competency_terrain(
 
 
 # Overall competency per day: the average of every practised algorithm's competency that day
-# (each the average of its signals, decayed on days without practice). Same parameters as the
-# terrain query.
+# (each the average of its signals, decayed on days without practice). ``week_change`` is the
+# change since 7 days earlier (or since the first day, with less history), and ``trend`` bands
+# it: improving above +$6 points, regressing below -$6, maintaining otherwise. The first five
+# parameters are the terrain query's.
 _COMPETENCY_OVERALL_SQL = f"""
-SELECT day, ROUND(AVG(competency)::numeric, 1)::float AS competency, COUNT(*)::int AS algorithms
-FROM ({_COMPETENCY_TERRAIN_SQL}) terrain
-GROUP BY day
+WITH daily AS (
+    SELECT day, AVG(competency) AS competency, COUNT(*)::int AS algorithms
+    FROM ({_COMPETENCY_TERRAIN_SQL}) terrain
+    GROUP BY day
+),
+changes AS (
+    SELECT *,
+           competency - COALESCE(LAG(competency, 7) OVER (ORDER BY day), FIRST_VALUE(competency) OVER (ORDER BY day)) AS week_change
+    FROM daily
+)
+SELECT
+    day,
+    ROUND(competency::numeric, 1)::float AS competency,
+    algorithms,
+    ROUND(week_change::numeric, 1)::float AS week_change,
+    CASE
+        WHEN week_change > $6::float THEN 'improving'
+        WHEN week_change < -$6::float THEN 'regressing'
+        ELSE 'maintaining'
+    END AS trend
+FROM changes
 ORDER BY day
 """
 
 
 async def fetch_competency_overall(
-    *, timezone_name: str, tag_slugs: dict[str, str], decay_per_day: float, today: date
+    *, timezone_name: str, tag_slugs: dict[str, str], decay_per_day: float, today: date, steady_within: float = 2.0
 ) -> list[CompetencyOverallRow]:
-    """Overall competency per calendar day, across every practised algorithm (one aggregate query)."""
+    """Overall competency per calendar day, across every practised algorithm (one aggregate query),
+    with the change over the past week and its trend (``steady_within`` points either way is
+    maintaining)."""
     tags = list(tag_slugs)
     async with acquire_connection() as conn:
         rows = await conn.fetch(
-            _COMPETENCY_OVERALL_SQL, timezone_name, tags, [tag_slugs[tag] for tag in tags], decay_per_day, today
+            _COMPETENCY_OVERALL_SQL, timezone_name, tags, [tag_slugs[tag] for tag in tags], decay_per_day, today, steady_within,
         )
     return [cast(CompetencyOverallRow, dict(row)) for row in rows]
 

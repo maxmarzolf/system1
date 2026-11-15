@@ -84,6 +84,9 @@ class CompetencyOverallDay(ApiModel):
 class CompetencyOverall(ApiModel):
     # Today's overall competency; null before any graded answer.
     competency: float | None
+    # Points gained or lost since a week ago, and its band: improving | maintaining | regressing.
+    weekChange: float | None
+    trend: str | None
     days: list[CompetencyOverallDay]
 
 

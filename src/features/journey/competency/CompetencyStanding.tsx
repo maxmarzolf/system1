@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import CompetencyDetail from './CompetencyDetail'
 import { formatCalendarDate } from '@/shared/lib/dailyWork'
 import {
-  STANDING_HINTS, STANDING_LABELS, cellsFor, competencyFill, daysAgo, pluralize, practiceHref, standingOf,
+  STANDING_HINTS, STANDING_LABELS, TREND_CHIP, TREND_LABELS, cellsFor, trendOf, competencyFill, daysAgo, pluralize, practiceHref, standingOf,
   type CompetencyAlgorithm, type CompetencyTerrainData, type UnpractisedAlgorithm,
 } from './competencyDisplay'
 
@@ -103,14 +103,22 @@ const OVERALL_HEIGHT = 40
  * its history as a graph across the rest of the width. Sits on the card, without a row outline.
  */
 function OverallRow({ terrain }: { terrain: CompetencyTerrainData }) {
-  const { competency, days } = terrain.overall
+  const { competency, days, weekChange } = terrain.overall
   if (competency === null || competency === undefined) return null
+  const trend = trendOf(terrain.overall.trend)
+  const change = weekChange ?? 0
+  const trendTip = `${change > 0 ? 'Up' : change < 0 ? 'Down' : 'No change'}${change ? ` ${Math.abs(change).toFixed(1)} points` : ''} over the last week.`
   const span = Math.max(days.length - 1, 1)
   const xOf = (index: number) => (days.length > 1 ? (index / span) * OVERALL_WIDTH : OVERALL_WIDTH)
   const yOf = (value: number) => OVERALL_HEIGHT - 3 - (value / 100) * (OVERALL_HEIGHT - 6)
   return (
     <div className="competency-row competency-overall">
-      <div className="competency-row-head"><strong className="competency-row-name">Overall</strong></div>
+      <div className="competency-row-head">
+        <strong className="competency-row-name">Overall</strong>
+        {trend ? (
+          <span className={`competency-chip competency-chip-${TREND_CHIP[trend]} competency-tip`} data-tip={trendTip}>{TREND_LABELS[trend]}</span>
+        ) : null}
+      </div>
       <div className="competency-row-bar" role="meter" aria-label="Overall competency" aria-valuemin={0} aria-valuemax={100} aria-valuenow={competency}>
         <span style={{ width: `${Math.min(Math.max(competency, 0), 100)}%`, background: competencyFill(competency) }} />
         <em>{Math.round(competency)}</em>

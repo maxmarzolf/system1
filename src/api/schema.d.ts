@@ -1005,6 +1005,10 @@ export interface components {
             competency: number | null;
             /** Days */
             days: components["schemas"]["CompetencyOverallDay"][];
+            /** Trend */
+            trend: string | null;
+            /** Weekchange */
+            weekChange: number | null;
         } & {
             [key: string]: unknown;
         };

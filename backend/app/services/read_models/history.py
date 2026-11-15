@@ -76,6 +76,8 @@ async def get_history_day(day: date, timezone_name: str | None = None) -> dict[s
 
 # Competency at or above this is "strong" (the learn/review/strong label comes from the query).
 STRONG_COMPETENCY = 70.0
+# Overall within this many points of a week ago is "maintaining".
+STEADY_WITHIN_POINTS = 2.0
 # How many strongest and weakest signals each algorithm lists.
 SIGNALS_PER_SIDE = 3
 
@@ -115,6 +117,7 @@ async def get_competency_terrain(timezone_name: str | None = None) -> dict[str, 
         tag_slugs=tag_slugs,
         decay_per_day=grading.competencyDecayPerDay,
         today=datetime.now(tz).date(),
+        steady_within=STEADY_WITHIN_POINTS,
     )
     signals: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for signal in await fetch_competency_signals(timezone_name=str(tz), tag_slugs=tag_slugs, per_side=SIGNALS_PER_SIDE):
@@ -136,6 +139,8 @@ async def get_competency_terrain(timezone_name: str | None = None) -> dict[str, 
         "freeFallDays": grading.competencyFreeFallDays,
         "overall": {
             "competency": overall[-1]["competency"] if overall else None,
+            "weekChange": overall[-1]["week_change"] if overall else None,
+            "trend": overall[-1]["trend"] if overall else None,
             "days": [{"date": row["day"].isoformat(), "competency": row["competency"]} for row in overall],
         },
         "algorithms": [

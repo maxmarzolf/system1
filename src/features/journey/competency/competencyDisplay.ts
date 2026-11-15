@@ -18,6 +18,13 @@ export const STANDING_HINTS: Record<Standing, string> = {
   strong: 'Strong right now',
 }
 
+export type Trend = 'improving' | 'maintaining' | 'regressing'
+export const TREND_LABELS: Record<Trend, string> = { improving: 'Improving', maintaining: 'Maintaining', regressing: 'Regressing' }
+/** Trends share the standing chips' colours: green, yellow, red. */
+export const TREND_CHIP: Record<Trend, Standing> = { improving: 'strong', maintaining: 'review', regressing: 'learn' }
+export const trendOf = (value: string | null | undefined): Trend | null =>
+  value === 'improving' || value === 'maintaining' || value === 'regressing' ? value : null
+
 export const standingOf = (value: string): Standing => (value === 'strong' || value === 'review' ? value : 'learn')
 
 /** Weakest first, so the list starts where practice helps most. */

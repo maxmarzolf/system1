@@ -92,7 +92,7 @@ describe('JourneyPage', () => {
   const routes = (overrides: Record<string, unknown> = {}) =>
     mockFetch([
       { match: '/api/coach/provider-default', body: { provider: 'openai' } },
-      { match: '/api/history/competency', body: { decayPerDay: 0.02, freeFallDays: 10, overall: { competency: null, days: [] }, algorithms: [], unpractised: [], days: [], cells: [] } },
+      { match: '/api/history/competency', body: { decayPerDay: 0.02, freeFallDays: 10, overall: { competency: null, weekChange: null, trend: null, days: [] }, algorithms: [], unpractised: [], days: [], cells: [] } },
       { match: '/api/history/day', respond: (url) => ({ date: new URL(url, 'http://x').searchParams.get('date'), submissions: [] }) },
       { match: '/api/skill-map-overview', body: overview, ...overrides },
     ])

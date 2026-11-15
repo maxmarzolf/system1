@@ -26,6 +26,8 @@ export const competencyTerrain = (): components['schemas']['CompetencyTerrainRes
   freeFallDays: 10,
   overall: {
     competency: 83.4,
+    weekChange: 3.4,
+    trend: 'improving',
     days: [{ date: '2026-03-01', competency: 80 }, { date: '2026-03-02', competency: 78.4 }, { date: '2026-03-03', competency: 83.4 }],
   },
   unpractised: [{ slug: 'trees', name: 'Trees', kind: 'algorithm' }],

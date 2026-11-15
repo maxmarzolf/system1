@@ -515,7 +515,10 @@ def test_competency_terrain_names_algorithms_and_shapes_query_rows(monkeypatch) 
 
     async def _overall(**kwargs):
         captured["overall"] = kwargs
-        return [{"day": date(2026, 1, 1), "competency": 70.0, "algorithms": 1}, {"day": date(2026, 1, 2), "competency": 66.2, "algorithms": 3}]
+        return [
+            {"day": date(2026, 1, 1), "competency": 70.0, "algorithms": 1, "week_change": 0.0, "trend": "maintaining"},
+            {"day": date(2026, 1, 2), "competency": 66.2, "algorithms": 3, "week_change": -3.8, "trend": "regressing"},
+        ]
 
     monkeypatch.setattr(history, "fetch_competency_overall", _overall)
 
@@ -546,8 +549,11 @@ def test_competency_terrain_names_algorithms_and_shapes_query_rows(monkeypatch) 
     assert heap["weakestSignals"] == [{"key": "speed", "label": "Speed", "average": 30.0, "answers": 1}]
     assert terrain["freeFallDays"] == 7
     assert captured["overall"]["decay_per_day"] == 0.05 and captured["overall"]["tag_slugs"] == tags
+    assert captured["overall"]["steady_within"] == history.STEADY_WITHIN_POINTS
     assert terrain["overall"] == {
         "competency": 66.2,
+        "weekChange": -3.8,
+        "trend": "regressing",
         "days": [{"date": "2026-01-01", "competency": 70.0}, {"date": "2026-01-02", "competency": 66.2}],
     }
     # Known but never practised, in catalog order (a static playlist with no answers included).
@@ -587,6 +593,6 @@ def test_competency_terrain_falls_back_to_utc_for_unknown_timezones(monkeypatch)
     monkeypatch.setattr(history.app_settings_service, "grading", _grading)
     terrain = asyncio.run(history.get_competency_terrain("Not/AZone"))
     assert terrain["decayPerDay"] == 0.02
-    assert terrain["overall"] == {"competency": None, "days": []}
+    assert terrain["overall"] == {"competency": None, "weekChange": None, "trend": None, "days": []}
     assert captured["timezone_name"] == "UTC"
     assert terrain["algorithms"] == [] and terrain["cells"] == []

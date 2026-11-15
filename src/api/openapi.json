@@ -943,10 +943,34 @@
             },
             "title": "Days",
             "type": "array"
+          },
+          "trend": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trend"
+          },
+          "weekChange": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekchange"
           }
         },
         "required": [
           "competency",
+          "weekChange",
+          "trend",
           "days"
         ],
         "title": "CompetencyOverall",
