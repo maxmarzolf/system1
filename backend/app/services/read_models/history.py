@@ -1,18 +1,18 @@
-"""One day's submissions and every scored signal over time (Journey)."""
+"""One day's submissions, and competency per algorithm per day (Journey)."""
 
 from __future__ import annotations
 
 import json
 from collections import Counter
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from app.contracts.coerce import coerce_json_object
-from app.contracts.evaluation import Evaluation
 from app.core import taxonomy
 from app.core.static_playlists import static_playlist_activity_rows
 from app.repositories.multiple_choice_repository import stored_choices
-from app.repositories.attempts_repository import fetch_history_day_rows, fetch_skill_map_overview_algorithm_rows, fetch_skill_map_overview_attempt_rows
+from app.repositories.attempts_repository import fetch_competency_terrain, fetch_history_day_rows, fetch_skill_map_overview_algorithm_rows
+from app.services import app_settings_service
 from app.services.read_models.common import coerce_utc_datetime, resolve_timezone, submission_modality
 
 
@@ -74,51 +74,56 @@ async def get_history_day(day: date, timezone_name: str | None = None) -> dict[s
     return {"date": day.isoformat(), "submissions": submissions}
 
 
-async def get_signal_history(timezone_name: str | None = None) -> dict[str, Any]:
-    """Every scored signal from every submission the daily work grid counts, all time, oldest first.
+def _algorithm_tags(known: dict[str, str]) -> dict[str, str]:
+    """Each tag that names a known algorithm (its own slug, or an alias of it) → that slug."""
+    tags = {slug: slug for slug in known}
+    for alias, slug in {**taxonomy.CATALOG_SLUG_ALIASES, **taxonomy.ALGORITHM_TAG_ALIASES}.items():
+        if slug in known:
+            tags[alias] = slug
+    return tags
 
-    Signals are the evaluation's rubric dimensions and modifiers (recall and Jev MCQ alike);
-    entries that were not applicable or unavailable are left out.
+
+async def get_competency_terrain(timezone_name: str | None = None) -> dict[str, Any]:
+    """Competency per algorithm per day for the Journey terrain.
+
+    All of the maths is the aggregate query (``fetch_competency_terrain``): the average of every
+    scored signal per algorithm per day, carried forward with a per-day decay. This only names the
+    algorithms and shapes the rows.
     """
     tz = resolve_timezone(timezone_name)
-    algorithm_names = {
-        str(row["algorithm_slug"]): str(row["algorithm_name"]) for row in await fetch_skill_map_overview_algorithm_rows()
-    }
-    algorithm_names.update({str(item["slug"]): str(item["algorithm"]) for item in static_playlist_activity_rows()})
-    rows = sorted(
-        await fetch_skill_map_overview_attempt_rows(),
-        key=lambda row: coerce_utc_datetime(row["created_at"]) or datetime.min.replace(tzinfo=timezone.utc),
+    known = {str(row["algorithm_slug"]): str(row["algorithm_name"]) for row in await fetch_skill_map_overview_algorithm_rows()}
+    known.update({str(item["slug"]): str(item["algorithm"]) for item in static_playlist_activity_rows()})
+    decay = (await app_settings_service.grading()).competencyDecayPerDay
+    rows = await fetch_competency_terrain(
+        timezone_name=str(tz),
+        tag_slugs=_algorithm_tags(known),
+        decay_per_day=decay,
+        today=datetime.now(tz).date(),
     )
-    labels: dict[str, str] = {}
-    counts: Counter[str] = Counter()
-    points: list[dict[str, Any]] = []
-    for index, row in enumerate(rows):
-        created_at = coerce_utc_datetime(row["created_at"])
-        slugs = taxonomy.matched_algorithm_slugs([str(tag) for tag in (row["category_tags"] or [])], set(algorithm_names))
-        if created_at is None or not slugs:
-            continue  # The grid does not count it either.
-        evaluation = Evaluation.from_stored(coerce_json_object(row["signals"]).get("evaluation"))
-        if evaluation is None:
-            continue
-        for key, entry in evaluation.scored_entries():
-            score = entry.score
-            labels.setdefault(key, entry.label or key)
-            counts[key] += 1
-            points.append({
-                "submission": index,
-                "createdAt": created_at.isoformat(),
-                "date": created_at.astimezone(tz).date().isoformat(),
-                "signal": str(key),
-                "score": round(min(max(score, 0.0), 100.0), 1),
-                "title": str(row.get("card_title") or ""),
-                "modality": submission_modality(row),
-                "algorithm": algorithm_names[slugs[0]],
-            })
+    order = {slug: index for index, slug in enumerate(known)}
+    practised = sorted({row["algorithm"] for row in rows}, key=lambda slug: order.get(slug, len(order)))
+    latest = {row["algorithm"]: row["competency"] for row in rows}  # rows run oldest first per algorithm
+    answers = Counter[str]()
+    for row in rows:
+        answers[row["algorithm"]] += row["answers"]
     return {
-        # Most-used signals first, so the busiest columns sit together.
-        "signals": [
-            {"key": key, "label": labels[key], "count": counts[key]}
-            for key in sorted(counts, key=lambda key: (-counts[key], labels[key].lower()))
+        "decayPerDay": decay,
+        "algorithms": [
+            {"slug": slug, "name": known.get(slug, slug), "answers": answers[slug], "competency": latest[slug]}
+            for slug in practised
         ],
-        "points": points,
+        "days": sorted({row["day"].isoformat() for row in rows}),
+        "cells": [
+            {
+                "algorithm": row["algorithm"],
+                "date": row["day"].isoformat(),
+                "competency": row["competency"],
+                "observed": row["observed"],
+                "answers": row["answers"],
+                "signals": row["signals"],
+                "average": row["average"],
+                "lastPractised": row["last_practised"].isoformat(),
+            }
+            for row in rows
+        ],
     }

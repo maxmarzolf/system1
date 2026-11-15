@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, cast
 
 from app.contracts.catalog_ids import problem_slug_candidates
 from app.repositories.base import acquire_connection
 from app.repositories.types import (
     AlgorithmSkillRow,
+    CompetencyTerrainRow,
     SubmissionInsertResult,
     SkillMapOverviewAlgorithmRow,
     SkillMapOverviewAttemptRow,
@@ -204,6 +205,92 @@ async def fetch_skill_map_overview_attempt_rows() -> list[SkillMapOverviewAttemp
             """
         )
     return [cast(SkillMapOverviewAttemptRow, dict(row)) for row in rows]
+
+
+_COMPETENCY_TERRAIN_SQL = f"""
+WITH tag_algorithm AS (
+    SELECT tag, slug FROM unnest($2::text[], $3::text[]) AS m(tag, slug)
+),
+-- Each counted submission belongs to the algorithm of its first tag that names one.
+attributed AS (
+    SELECT DISTINCT ON (a.id)
+        a.id,
+        m.slug AS algorithm,
+        (a.created_at AT TIME ZONE $1)::date AS day,
+        a.signals->'evaluation' AS evaluation
+    FROM submission a
+    CROSS JOIN LATERAL unnest(a.category_tags) WITH ORDINALITY AS t(tag, position)
+    JOIN tag_algorithm m ON m.tag = lower(t.tag)
+    WHERE {_DAILY_WORK_SUBMISSION_FILTER}
+    ORDER BY a.id, t.position
+),
+-- Every scored rubric entry (dimensions and modifiers), clamped to 0-100.
+entries AS (
+    SELECT x.id, x.algorithm, x.day, LEAST(GREATEST((e.value->>'score')::float, 0), 100) AS score
+    FROM attributed x
+    CROSS JOIN LATERAL (
+        SELECT value FROM jsonb_each(
+            CASE WHEN jsonb_typeof(x.evaluation->'dimensions') = 'object' THEN x.evaluation->'dimensions' ELSE '{{}}'::jsonb END)
+        UNION ALL
+        SELECT value FROM jsonb_each(
+            CASE WHEN jsonb_typeof(x.evaluation->'modifiers') = 'object' THEN x.evaluation->'modifiers' ELSE '{{}}'::jsonb END)
+    ) e
+    WHERE e.value->>'status' IN ('pass', 'partial', 'fail') AND jsonb_typeof(e.value->'score') = 'number'
+),
+observed AS (
+    SELECT algorithm, day, AVG(score) AS average, COUNT(DISTINCT id)::int AS answers, COUNT(*)::int AS signals
+    FROM entries
+    GROUP BY algorithm, day
+),
+-- Every day from an algorithm's first practice to today.
+grid AS (
+    SELECT f.algorithm, d::date AS day
+    FROM (SELECT algorithm, MIN(day) AS first_day FROM observed GROUP BY algorithm) f
+    CROSS JOIN LATERAL generate_series(f.first_day, GREATEST($5::date, f.first_day), INTERVAL '1 day') AS d
+),
+filled AS (
+    SELECT g.algorithm, g.day, o.average, COALESCE(o.answers, 0) AS answers, COALESCE(o.signals, 0) AS signals,
+           COUNT(o.average) OVER (PARTITION BY g.algorithm ORDER BY g.day) AS practice_run
+    FROM grid g
+    LEFT JOIN observed o USING (algorithm, day)
+),
+-- A day without practice carries the last practised day's average, decayed per day since.
+carried AS (
+    SELECT *,
+           FIRST_VALUE(average) OVER (PARTITION BY algorithm, practice_run ORDER BY day) AS last_average,
+           MIN(day) OVER (PARTITION BY algorithm, practice_run) AS last_practised
+    FROM filled
+)
+SELECT
+    algorithm,
+    day,
+    average IS NOT NULL AS observed,
+    answers,
+    signals,
+    ROUND(average::numeric, 1)::float AS average,
+    ROUND((last_average * POWER(1 - $4::float, day - last_practised))::numeric, 1)::float AS competency,
+    last_practised
+FROM carried
+ORDER BY algorithm, day
+"""
+
+
+async def fetch_competency_terrain(
+    *, timezone_name: str, tag_slugs: dict[str, str], decay_per_day: float, today: date
+) -> list[CompetencyTerrainRow]:
+    """Competency per algorithm per calendar day, computed in one aggregate query.
+
+    Competency is the average of every scored signal from the algorithm's counted answers that
+    day; a day without practice carries the last practised value, decayed by ``decay_per_day``
+    (compounded) for each day since. Rows run from each algorithm's first practice to ``today``.
+    ``tag_slugs`` maps lower-case tags to the algorithm slug they count toward.
+    """
+    tags = list(tag_slugs)
+    async with acquire_connection() as conn:
+        rows = await conn.fetch(
+            _COMPETENCY_TERRAIN_SQL, timezone_name, tags, [tag_slugs[tag] for tag in tags], decay_per_day, today
+        )
+    return [cast(CompetencyTerrainRow, dict(row)) for row in rows]
 
 
 async def fetch_history_day_rows(day_start: datetime, day_end: datetime) -> list[dict[str, Any]]:

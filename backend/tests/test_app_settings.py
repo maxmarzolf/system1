@@ -40,7 +40,7 @@ async def test_never_saved_sections_use_their_defaults(stored) -> None:
     everything = await service.all_settings()
     assert {key: section["version"] for key, section in everything.items()} == {"grading": 0, "generation": 0, "practice": 0}
     assert everything["grading"]["value"] == {
-        "feedbackModalities": ["total-recall", "microdrill", "ladder"], "nearMissThreshold": 75.0, "lowConfidenceThreshold": 0.6,
+        "feedbackModalities": ["total-recall", "microdrill", "ladder"], "nearMissThreshold": 75.0, "lowConfidenceThreshold": 0.6, "competencyDecayPerDay": 0.02,
     }
     assert everything["practice"]["value"] == {"mcqQuestionCount": 5, "mcqFlowMode": "random", "playlistOrder": "mastery"}
     assert everything["generation"]["value"]["mcqModels"]["claude"] == app_config.coach_mcq_anthropic_model
@@ -62,7 +62,7 @@ async def test_a_stored_value_that_no_longer_validates_falls_back_to_defaults(st
 
 async def test_updates_are_validated_ordered_and_versioned(stored) -> None:
     saved = await service.update_section("grading", {"feedbackModalities": ["ladder", "mcq"], "nearMissThreshold": 60}, 0)
-    assert saved == {"value": {"feedbackModalities": ["mcq", "ladder"], "nearMissThreshold": 60.0, "lowConfidenceThreshold": 0.6}, "version": 1}
+    assert saved == {"value": {"feedbackModalities": ["mcq", "ladder"], "nearMissThreshold": 60.0, "lowConfidenceThreshold": 0.6, "competencyDecayPerDay": 0.02}, "version": 1}
 
     with pytest.raises(service.SettingsConflictError):
         await service.update_section("grading", {"nearMissThreshold": 50}, 0)
@@ -133,3 +133,11 @@ def test_settings_round_trip_through_postgres() -> None:
     first, second, stored = asyncio.run(_db_round_trip())
     assert (first, second) == (1, 2)
     assert stored == {"value": {"a": 2}, "version": 2}
+
+
+async def test_competency_decay_is_bounded(stored) -> None:
+    with pytest.raises(service.SettingsValidationError) as error:
+        await service.update_section("grading", {"competencyDecayPerDay": 0.9}, 0)
+    assert "competencyDecayPerDay" in error.value.errors
+    saved = await service.update_section("grading", {"competencyDecayPerDay": 0.05}, 0)
+    assert saved["value"]["competencyDecayPerDay"] == 0.05

@@ -787,6 +787,129 @@
         "title": "CoachSessionPlanResponse",
         "type": "object"
       },
+      "CompetencyAlgorithm": {
+        "additionalProperties": true,
+        "properties": {
+          "answers": {
+            "title": "Answers",
+            "type": "integer"
+          },
+          "competency": {
+            "title": "Competency",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "answers",
+          "competency"
+        ],
+        "title": "CompetencyAlgorithm",
+        "type": "object"
+      },
+      "CompetencyCell": {
+        "additionalProperties": true,
+        "properties": {
+          "algorithm": {
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "answers": {
+            "title": "Answers",
+            "type": "integer"
+          },
+          "average": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average"
+          },
+          "competency": {
+            "title": "Competency",
+            "type": "number"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "lastPractised": {
+            "title": "Lastpractised",
+            "type": "string"
+          },
+          "observed": {
+            "title": "Observed",
+            "type": "boolean"
+          },
+          "signals": {
+            "title": "Signals",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "algorithm",
+          "date",
+          "competency",
+          "observed",
+          "answers",
+          "signals",
+          "average",
+          "lastPractised"
+        ],
+        "title": "CompetencyCell",
+        "type": "object"
+      },
+      "CompetencyTerrainResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "algorithms": {
+            "items": {
+              "$ref": "#/components/schemas/CompetencyAlgorithm"
+            },
+            "title": "Algorithms",
+            "type": "array"
+          },
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/CompetencyCell"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "decayPerDay": {
+            "title": "Decayperday",
+            "type": "number"
+          }
+        },
+        "required": [
+          "decayPerDay",
+          "algorithms",
+          "days",
+          "cells"
+        ],
+        "title": "CompetencyTerrainResponse",
+        "type": "object"
+      },
       "CorrectnessDirective": {
         "additionalProperties": true,
         "properties": {
@@ -2349,104 +2472,6 @@
           "version"
         ],
         "title": "SignalDirectiveUpdate",
-        "type": "object"
-      },
-      "SignalHistoryPoint": {
-        "additionalProperties": true,
-        "properties": {
-          "algorithm": {
-            "title": "Algorithm",
-            "type": "string"
-          },
-          "createdAt": {
-            "title": "Createdat",
-            "type": "string"
-          },
-          "date": {
-            "title": "Date",
-            "type": "string"
-          },
-          "modality": {
-            "title": "Modality",
-            "type": "string"
-          },
-          "score": {
-            "title": "Score",
-            "type": "number"
-          },
-          "signal": {
-            "title": "Signal",
-            "type": "string"
-          },
-          "submission": {
-            "title": "Submission",
-            "type": "integer"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "submission",
-          "createdAt",
-          "date",
-          "signal",
-          "score",
-          "title",
-          "modality",
-          "algorithm"
-        ],
-        "title": "SignalHistoryPoint",
-        "type": "object"
-      },
-      "SignalHistoryResponse": {
-        "additionalProperties": true,
-        "properties": {
-          "points": {
-            "items": {
-              "$ref": "#/components/schemas/SignalHistoryPoint"
-            },
-            "title": "Points",
-            "type": "array"
-          },
-          "signals": {
-            "items": {
-              "$ref": "#/components/schemas/SignalHistorySignal"
-            },
-            "title": "Signals",
-            "type": "array"
-          }
-        },
-        "required": [
-          "signals",
-          "points"
-        ],
-        "title": "SignalHistoryResponse",
-        "type": "object"
-      },
-      "SignalHistorySignal": {
-        "additionalProperties": true,
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "key": {
-            "title": "Key",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          }
-        },
-        "required": [
-          "key",
-          "label",
-          "count"
-        ],
-        "title": "SignalHistorySignal",
         "type": "object"
       },
       "SignalPreview": {
@@ -5126,6 +5151,53 @@
         ]
       }
     },
+    "/api/history/competency": {
+      "get": {
+        "description": "Competency per algorithm per day (average of every scored signal, decayed on days without practice).",
+        "operationId": "get_competency_terrain_api_history_competency_get",
+        "parameters": [
+          {
+            "description": "IANA timezone whose calendar days the terrain uses.",
+            "in": "query",
+            "name": "tz",
+            "required": false,
+            "schema": {
+              "default": "UTC",
+              "description": "IANA timezone whose calendar days the terrain uses.",
+              "maxLength": 64,
+              "title": "Tz",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompetencyTerrainResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Competency Terrain",
+        "tags": [
+          "attempts"
+        ]
+      }
+    },
     "/api/history/day": {
       "get": {
         "description": "Every submission counted in the daily work grid on ``date`` in ``tz``, with its stored evaluation.",
@@ -5178,53 +5250,6 @@
           }
         },
         "summary": "Get History Day",
-        "tags": [
-          "attempts"
-        ]
-      }
-    },
-    "/api/history/signals": {
-      "get": {
-        "description": "Every scored signal from every counted submission, all time, for the signal hologram.",
-        "operationId": "get_signal_history_api_history_signals_get",
-        "parameters": [
-          {
-            "description": "IANA timezone for each point's calendar date.",
-            "in": "query",
-            "name": "tz",
-            "required": false,
-            "schema": {
-              "default": "UTC",
-              "description": "IANA timezone for each point's calendar date.",
-              "maxLength": 64,
-              "title": "Tz",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SignalHistoryResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Signal History",
         "tags": [
           "attempts"
         ]

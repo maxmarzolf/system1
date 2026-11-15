@@ -211,7 +211,8 @@ preferences.
 - **Settings** (`app_setting` table, versioned, so a stale save is rejected rather than
   overwriting):
   - **Grading**: which modalities get written feedback, the near-miss threshold (default 75), the
-    low-confidence threshold (default 0.6).
+    low-confidence threshold (default 0.6), and how fast Journey's competency fades on days without
+    practice (default 0.02, i.e. 2% a day).
   - **Generation**: the code style for generated recall cards (type hints, comments, variable
     names) and the MCQ model per provider. The MCQ model defaults to the `COACH_MCQ_*`
     environment variables, and this setting overrides them.

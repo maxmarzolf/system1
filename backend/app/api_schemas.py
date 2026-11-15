@@ -69,26 +69,32 @@ class HistoryDayResponse(ApiModel):
     submissions: list[HistorySubmission]
 
 
-class SignalHistorySignal(ApiModel):
-    key: str
-    label: str
-    count: int
+class CompetencyAlgorithm(ApiModel):
+    slug: str
+    name: str
+    answers: int
+    # Today's competency (decayed since the last practice).
+    competency: float
 
 
-class SignalHistoryPoint(ApiModel):
-    submission: int
-    createdAt: str
-    date: str
-    signal: str
-    score: float
-    title: str
-    modality: str
+class CompetencyCell(ApiModel):
     algorithm: str
+    date: str
+    competency: float
+    # Practised that day; otherwise the competency is the last practised day's, decayed.
+    observed: bool
+    answers: int
+    signals: int
+    # That day's average across every scored signal; null on days without practice.
+    average: float | None
+    lastPractised: str
 
 
-class SignalHistoryResponse(ApiModel):
-    signals: list[SignalHistorySignal]
-    points: list[SignalHistoryPoint]
+class CompetencyTerrainResponse(ApiModel):
+    decayPerDay: float
+    algorithms: list[CompetencyAlgorithm]
+    days: list[str]
+    cells: list[CompetencyCell]
 
 
 # ─── Catalog ───

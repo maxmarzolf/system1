@@ -8,7 +8,7 @@ Routes are defined in `src/app/routes.tsx`; every page shares `TopNav` (the acti
 
 | Route | Component | What it does |
 |---|---|---|
-| `/` | `features/journey/JourneyPage.tsx` | Journey, the home page: the score terrain, the daily work grid and the day detail. Each submission in the day detail shows its signals and **Model calls** (`ModelCallDetails`): the LLM calls that generated or graded it and its Jev calls, with full requests and responses. Enter opens `/practice` |
+| `/` | `features/journey/JourneyPage.tsx` | Journey, the home page: the competency terrain (algorithms across, days deep, height = competency as computed by the backend, fading on days without practice), the daily work grid and the day detail. Each submission in the day detail shows its signals and **Model calls** (`ModelCallDetails`): the LLM calls that generated or graded it and its Jev calls, with full requests and responses. Enter opens `/practice` |
 | `/practice` | `features/practice/PracticePage.tsx` | The practice screen: MCQ, Recall and Ghost question types, Inline notes, AI completion, and flows. The card is flat (no frame, header or Previous/Next buttons; its title shows as "TOPIC: …" under the Question or Prompt label) and has no toolbar: Cmd/Ctrl + double arrows selects Total Recall (↑), Microdrill (←), Ghost (→), or MCQ (↓), and the navbar shows the current type (or the flow's stage) |
 | `/dashboard` | `features/dashboard/DashboardPage.tsx` | A readiness card per algorithm and playlist; each starts focused practice in Total Recall |
 | `/tune` | `features/tune/TunePage.tsx` | Personal preferences (code editor, AI completion, hotkeys), stored in the browser and saved as you change them. Links to Admin → Settings for everything server-side |
@@ -46,7 +46,7 @@ src/
   features/
     practice/     /practice    the practice screen
     dashboard/    /dashboard   readiness cards
-    journey/      /            the score terrain, daily work grid and day detail
+    journey/      /            the competency terrain, daily work grid and day detail
     admin/        /admin       signals and settings for every modality
     tune/         /tune        personal preferences
     evolve/       /evolve      OpenEvolve MCQ-prompt runs (talks to the evolve service on :3002)
@@ -62,7 +62,7 @@ Inside a feature:
 | `hooks/` | One hook per concern (practice: `useDecks`, `usePracticeSession`, `usePracticeHotkeys`, `usePracticePanels`, `usePracticeFocus`) |
 | `lib/` (or `lib.ts`) | Pure logic, unit-tested without rendering (practice: `focus`, `targets`, `cardMeta`, `primaryAction`, `inlineNotes`, `lineReview`, `types`) |
 | `api.ts` | The feature's requests (practice: decks and MCQ generation; admin: the signal and settings client) |
-| Sub-areas | Practice also has `modalities/` (below), `submission/` (below), `flow/` (FlowBuilder, the flow engine `practiceFlow.ts`, `flowReducer`, `usePracticeFlow`) and `editor/` (`RecallCodeEditor`, the CodeMirror editor). Journey has `terrain/` (the three.js Signal Score Terrain) |
+| Sub-areas | Practice also has `modalities/` (below), `submission/` (below), `flow/` (FlowBuilder, the flow engine `practiceFlow.ts`, `flowReducer`, `usePracticeFlow`) and `editor/` (`RecallCodeEditor`, the CodeMirror editor). Journey has `terrain/` (the three.js competency terrain; `terrainLayout.ts` only places the server's cells, it computes nothing) |
 
 ### Practice modalities
 

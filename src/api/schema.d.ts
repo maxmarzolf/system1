@@ -484,6 +484,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/history/competency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Competency Terrain
+         * @description Competency per algorithm per day (average of every scored signal, decayed on days without practice).
+         */
+        get: operations["get_competency_terrain_api_history_competency_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/history/day": {
         parameters: {
             query?: never;
@@ -496,26 +516,6 @@ export interface paths {
          * @description Every submission counted in the daily work grid on ``date`` in ``tz``, with its stored evaluation.
          */
         get: operations["get_history_day_api_history_day_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/history/signals": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Signal History
-         * @description Every scored signal from every counted submission, all time, for the signal hologram.
-         */
-        get: operations["get_signal_history_api_history_signals_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -946,6 +946,53 @@ export interface components {
             note: string;
             /** Warmup */
             warmup: string;
+        };
+        /** CompetencyAlgorithm */
+        CompetencyAlgorithm: {
+            /** Answers */
+            answers: number;
+            /** Competency */
+            competency: number;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** CompetencyCell */
+        CompetencyCell: {
+            /** Algorithm */
+            algorithm: string;
+            /** Answers */
+            answers: number;
+            /** Average */
+            average: number | null;
+            /** Competency */
+            competency: number;
+            /** Date */
+            date: string;
+            /** Lastpractised */
+            lastPractised: string;
+            /** Observed */
+            observed: boolean;
+            /** Signals */
+            signals: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** CompetencyTerrainResponse */
+        CompetencyTerrainResponse: {
+            /** Algorithms */
+            algorithms: components["schemas"]["CompetencyAlgorithm"][];
+            /** Cells */
+            cells: components["schemas"]["CompetencyCell"][];
+            /** Days */
+            days: string[];
+            /** Decayperday */
+            decayPerDay: number;
+        } & {
+            [key: string]: unknown;
         };
         /** CorrectnessDirective */
         CorrectnessDirective: {
@@ -1830,47 +1877,6 @@ export interface components {
             instructions?: string;
             /** Version */
             version: number;
-        };
-        /** SignalHistoryPoint */
-        SignalHistoryPoint: {
-            /** Algorithm */
-            algorithm: string;
-            /** Createdat */
-            createdAt: string;
-            /** Date */
-            date: string;
-            /** Modality */
-            modality: string;
-            /** Score */
-            score: number;
-            /** Signal */
-            signal: string;
-            /** Submission */
-            submission: number;
-            /** Title */
-            title: string;
-        } & {
-            [key: string]: unknown;
-        };
-        /** SignalHistoryResponse */
-        SignalHistoryResponse: {
-            /** Points */
-            points: components["schemas"]["SignalHistoryPoint"][];
-            /** Signals */
-            signals: components["schemas"]["SignalHistorySignal"][];
-        } & {
-            [key: string]: unknown;
-        };
-        /** SignalHistorySignal */
-        SignalHistorySignal: {
-            /** Count */
-            count: number;
-            /** Key */
-            key: string;
-            /** Label */
-            label: string;
-        } & {
-            [key: string]: unknown;
         };
         /** SignalPreview */
         SignalPreview: {
@@ -3621,6 +3627,38 @@ export interface operations {
             };
         };
     };
+    get_competency_terrain_api_history_competency_get: {
+        parameters: {
+            query?: {
+                /** @description IANA timezone whose calendar days the terrain uses. */
+                tz?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompetencyTerrainResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_history_day_api_history_day_get: {
         parameters: {
             query: {
@@ -3641,38 +3679,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HistoryDayResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_signal_history_api_history_signals_get: {
-        parameters: {
-            query?: {
-                /** @description IANA timezone for each point's calendar date. */
-                tz?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SignalHistoryResponse"];
                 };
             };
             /** @description Validation Error */

@@ -16,7 +16,7 @@ flowchart LR
   subgraph API["FastAPI (backend/app)"]
     Coach["/api/coach/*<br/>drill generation, session plan"]
     Attempts["POST /api/attempts"]
-    Reads["GET /api/skill-map-overview<br/>/api/history/day · /api/history/signals"]
+    Reads["GET /api/skill-map-overview<br/>/api/history/day · /api/history/competency"]
     Catalog["/api/catalog/*"]
     AdminAPI["/api/admin/signals/{modality}*<br/>/api/admin/settings"]
     Pipeline{{"Grading pipeline<br/>(same for every modality)"}}
@@ -141,15 +141,19 @@ Key points:
 flowchart LR
   DB[("submission")] --> O["read_models.overview<br/>build_skill_map_overview"]
   DB --> HD["get_history_day(date, tz)"]
-  DB --> SH["get_signal_history(tz)"]
+  DB --> SH["get_competency_terrain(tz)<br/>one aggregate query"]
   O -->|"/api/skill-map-overview?historyDays&tz"| Dash["Dashboard<br/>readiness per algorithm"]
   O -->|"historyDays = all"| Grid["Journey: daily work grid"]
-  SH -->|"/api/history/signals?tz"| Terrain["Journey: Signal Score Terrain (three.js)"]
+  SH -->|"/api/history/competency?tz"| Terrain["Journey: Competency terrain (three.js)"]
   HD -->|"/api/history/day?date&tz"| Day["Journey: day detail<br/>each submission's full evaluation"]
 ```
 
 - The browser sends its IANA time zone (`tz`), so "today" and day boundaries match what you see.
-- The terrain plots signals (x) over time (y), with height showing how far each signal fell short. It is built from the stored rubric dimensions and modifiers, not by asking Jev again.
+- The terrain plots competency per algorithm (x) per day (y); height is competency, so peaks are strong. One aggregate query (`attempts_repository.fetch_competency_terrain`) computes all of it from the stored evaluations, not by asking Jev again:
+  - each counted submission belongs to the algorithm named by its first matching tag (the daily grid's rule; the tag → algorithm table, aliases included, is passed in as a parameter);
+  - a day's competency is the average of every scored rubric entry (dimensions and modifiers, including correctness and speed) from that algorithm's answers, in the viewer's time zone;
+  - each day after that without practice carries the last practised day's value, decayed by the *competency decay* setting (default 2%, compounded): `last × (1 − decay)^days since`;
+  - rows run from each algorithm's first practice to today. The browser only draws them.
 - The day detail renders the stored evaluation as is (`SubmissionSignalDetails.tsx`), including the Jev trace.
 
 ## 4. Configure: signals and settings in /admin

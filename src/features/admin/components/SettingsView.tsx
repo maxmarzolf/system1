@@ -49,6 +49,9 @@ export function SettingsView() {
             <NumberControl label="Low-confidence flag below" min={0} max={1} step={0.05} value={value.lowConfidenceThreshold}
               onChange={(lowConfidenceThreshold) => set({ ...value, lowConfidenceThreshold })}
               description="Jev's correctness confidence under this adds the low_correctness_confidence flag." />
+            <NumberControl label="Journey competency decay per day" min={0} max={0.5} step={0.01} value={value.competencyDecayPerDay}
+              onChange={(competencyDecayPerDay) => set({ ...value, competencyDecayPerDay })}
+              description="On days an algorithm isn't practised, the Journey terrain lowers its last competency by this fraction (0.02 = 2% a day, compounded)." />
           </>
         )}
       </SectionForm>

@@ -6,7 +6,7 @@ from app.models import AttemptCreate, SkillMapNode, SkillMapOverviewResponse
 from app.services import submission_service
 from app.services.read_models import history, overview
 from app.services.evaluation.context import SubmissionContextError
-from app.api_schemas import AttemptSubmitResponse, HistoryDayResponse, SignalHistoryResponse
+from app.api_schemas import AttemptSubmitResponse, CompetencyTerrainResponse, HistoryDayResponse
 
 router = APIRouter(prefix="/api", tags=["attempts"])
 
@@ -41,9 +41,9 @@ async def get_history_day(
     return await history.get_history_day(day, timezone_name=tz)
 
 
-@router.get("/history/signals", response_model=SignalHistoryResponse)
-async def get_signal_history(
-    tz: str = Query(default="UTC", max_length=64, description="IANA timezone for each point's calendar date."),
+@router.get("/history/competency", response_model=CompetencyTerrainResponse)
+async def get_competency_terrain(
+    tz: str = Query(default="UTC", max_length=64, description="IANA timezone whose calendar days the terrain uses."),
 ):
-    """Every scored signal from every counted submission, all time, for the signal hologram."""
-    return await history.get_signal_history(timezone_name=tz)
+    """Competency per algorithm per day (average of every scored signal, decayed on days without practice)."""
+    return await history.get_competency_terrain(timezone_name=tz)

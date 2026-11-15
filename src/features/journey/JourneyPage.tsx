@@ -10,7 +10,7 @@ import HistoryDayDetail from './HistoryDayDetail'
 import TopNav from '@/app/TopNav'
 
 // three.js is large; load the score terrain only when this page renders it.
-const SignalHologram = lazy(() => import('./terrain/SignalHologram'))
+const CompetencyTerrain = lazy(() => import('./terrain/CompetencyTerrain'))
 
 type SkillMapOverview = {
   algorithms: DailyWorkAlgorithm[]
@@ -140,12 +140,12 @@ export default function JourneyPage() {
       <TopNav pinned solid={navSolid} />
       <Suspense
         fallback={(
-          <section className="signal-hologram" aria-label="Signal score terrain">
-            <p className="dashboard-mode-meta signal-hologram-loading">Mapping signal scores…</p>
+          <section className="signal-hologram" aria-label="Competency terrain">
+            <p className="dashboard-mode-meta signal-hologram-loading">Mapping competency…</p>
           </section>
         )}
       >
-        <SignalHologram />
+        <CompetencyTerrain />
       </Suspense>
       <DailyWorkHistory
         activity={skillMapOverview?.ghostRepActivity}

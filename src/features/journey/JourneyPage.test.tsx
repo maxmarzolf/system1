@@ -91,7 +91,7 @@ describe('JourneyPage', () => {
   const routes = (overrides: Record<string, unknown> = {}) =>
     mockFetch([
       { match: '/api/coach/provider-default', body: { provider: 'openai' } },
-      { match: '/api/history/signals', body: { signals: [], points: [] } },
+      { match: '/api/history/competency', body: { decayPerDay: 0.02, algorithms: [], days: [], cells: [] } },
       { match: '/api/history/day', respond: (url) => ({ date: new URL(url, 'http://x').searchParams.get('date'), submissions: [] }) },
       { match: '/api/skill-map-overview', body: overview, ...overrides },
     ])

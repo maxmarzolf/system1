@@ -3,7 +3,8 @@
 Three sections, each one versioned JSON document (``app_setting``):
 
 - ``grading``: which modalities get written feedback, the near-miss threshold that bands a wrong
-  answer as "close", and the confidence below which Jev's correctness is flagged.
+  answer as "close", the confidence below which Jev's correctness is flagged, and how fast
+  Journey competency decays on days without practice.
 - ``generation``: the specimen style generated recall cards are written in, and the model each
   provider uses for MCQ generation.
 - ``practice``: what the practice screen asks for: MCQ set size and order, playlist order.
@@ -28,6 +29,8 @@ class GradingSettingsModel(BaseModel):
     feedbackModalities: list[str] = Field(default_factory=lambda: ["total-recall", "microdrill", "ladder"])
     nearMissThreshold: float = Field(default=75.0, ge=0, le=100)
     lowConfidenceThreshold: float = Field(default=0.6, ge=0, le=1)
+    # Journey: how much an algorithm's competency fades per day without practice (compounded).
+    competencyDecayPerDay: float = Field(default=0.02, ge=0, le=0.5)
 
     @field_validator("feedbackModalities")
     @classmethod

@@ -3,37 +3,22 @@ import { createPortal } from 'react-dom'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { errorMessage } from '@/api/client'
-import { useSignalHistory } from '@/api/queries'
+import { useCompetencyTerrain } from '@/api/queries'
 import { formatCalendarDate } from '@/shared/lib/dailyWork'
-import { LANDSCAPE_ROWS, shortfallOf, signalShortfallRows, timeFraction, timeRange } from './signalTerrain'
+import { dayTicks, nearestCell, terrainGrid, type CompetencyCell, type CompetencyTerrainData } from './terrainLayout'
 import { useTheme } from '@/app/theme'
 
-type SignalPoint = {
-  submission: number
-  createdAt: string
-  date: string
-  signal: string
-  score: number
-  title: string
-  modality: string
-  algorithm: string
-}
+type Tooltip = { x: number; y: number; cell: CompetencyCell; algorithm: string }
 
-type SignalHistory = {
-  signals: { key: string; label: string; count: number }[]
-  points: SignalPoint[]
-}
-
-type Tooltip = { x: number; y: number; point: SignalPoint; label: string }
-
-// World units: X spreads signals, the floor's depth is time, height is score.
-const SIGNAL_SPACING = 1.15
+// World units: X spreads algorithms, the floor's depth is days, height is competency.
+const ALGORITHM_SPACING = 1.6
 const TIME_DEPTH = 9
 const SCORE_HEIGHT = 4.5
 const TIME_TICKS = 5
 const POINT_SIZE = 0.32
 // Landscape resolution and smoothing.
-const LANDSCAPE_SUBDIVISIONS = 6 // samples between neighbouring signals
+const LANDSCAPE_SUBDIVISIONS = 6 // mesh samples between neighbouring algorithms (geometry only)
+const WIRE_ROWS = 48 // at most this many day rows get a wire, however long the history
 // Reveal: the terrain rises from flat while the camera eases in; dots and labels follow.
 const REVEAL_MS = 1600
 const REVEAL_MS_REDUCED = 400 // reduced motion: a plain fade
@@ -111,12 +96,12 @@ function disposeScene(scene: THREE.Scene) {
 }
 
 /**
- * Build the hologram for ``history`` inside ``container`` and start rendering.
+ * Build the terrain for ``terrain`` inside ``container`` and start rendering.
  * Colors come from the theme's CSS variables at call time. Returns a cleanup.
  */
 function mountHologram(
   container: HTMLDivElement,
-  history: SignalHistory,
+  terrain: CompetencyTerrainData,
   light: boolean,
   setTooltip: (tooltip: Tooltip | null) => void,
 ): () => void {
@@ -130,9 +115,9 @@ function mountHologram(
   const accent = cssColor('--hc-accent', '#6fc3df')
   const partial = cssColor('--hc-warning', '#cca700')
   const failing = cssColor('--hc-error', '#f48771')
-  // Valleys (low shortfall) glow in the accent color, rising through warning to error at the peaks.
-  const shortfallColor = (shortfall: number) => {
-    const t = Math.min(Math.max(shortfall / 100, 0), 1)
+  // Peaks (high competency) glow in the accent color, falling through warning to error in the valleys.
+  const competencyColor = (competency: number) => {
+    const t = 1 - Math.min(Math.max(competency / 100, 0), 1)
     return t < 0.5 ? accent.clone().lerp(partial, t / 0.5) : partial.clone().lerp(failing, (t - 0.5) / 0.5)
   }
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -144,42 +129,45 @@ function mountHologram(
 
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200)
-  const signals = history.signals
-  const signalIndex = new Map(signals.map((signal, index) => [signal.key, index]))
-  const signalLabels = new Map(signals.map((signal) => [signal.key, signal.label]))
-  const width = Math.max(signals.length - 1, 1) * SIGNAL_SPACING
-  const range = timeRange(history.points)
-  const { tMin, tMax } = range
-  const xOf = (key: string) => (signalIndex.get(key) ?? 0) * SIGNAL_SPACING - width / 2
-  // Newest answers sit at the front, nearest the viewer.
-  const zOf = (time: number) => (timeFraction(time, range) - 0.5) * TIME_DEPTH
-  const yOf = (shortfall: number) => (shortfall / 100) * SCORE_HEIGHT
+  const algorithms = terrain.algorithms
+  const grid = terrainGrid(terrain)
+  const dayCount = terrain.days.length
+  const width = Math.max(algorithms.length - 1, 1) * ALGORITHM_SPACING
+  const xOf = (algorithmIndex: number) => (algorithms.length > 1 ? algorithmIndex * ALGORITHM_SPACING - width / 2 : 0)
+  // The newest day sits at the front, nearest the viewer.
+  const zOf = (dayIndex: number) => (dayCount > 1 ? dayIndex / (dayCount - 1) - 0.5 : 0.5) * TIME_DEPTH
+  const yOf = (competency: number) => (competency / 100) * SCORE_HEIGHT
+  // Before an algorithm's first practice the surface rests on the floor.
+  const heightAt = (algorithmIndex: number, dayIndex: number) => grid.cells[algorithmIndex]?.[dayIndex]?.competency ?? 0
 
   const hologram = new THREE.Group()
   scene.add(hologram)
 
-  // The landscape: one surface over signals (x) and time (depth), height = smoothed shortfall.
-  const shortfallRows = signalShortfallRows(history, range)
-  const columnCount = Math.max(signals.length - 1, 1) * LANDSCAPE_SUBDIVISIONS + 1
-  const columnShortfall = (column: number, row: number) => {
-    const at = signals.length > 1 ? column / LANDSCAPE_SUBDIVISIONS : 0
-    const left = Math.min(Math.floor(at), signals.length - 1)
-    const right = Math.min(left + 1, signals.length - 1)
-    const blend = (1 - Math.cos((at - left) * Math.PI)) / 2 // cosine ease between neighbouring signals
-    return shortfallRows[left][row] * (1 - blend) + shortfallRows[right][row] * blend
+  // The landscape: one vertex row per day, and a column per algorithm with mesh samples between.
+  // Heights are the server's competency values; between two algorithms the mesh only eases from
+  // one column's value to the next so the surface reads as one piece.
+  const rowCount = Math.max(dayCount, 2)
+  const columnCount = Math.max(algorithms.length - 1, 1) * LANDSCAPE_SUBDIVISIONS + 1
+  const dayOfRow = (row: number) => Math.min(row, dayCount - 1)
+  const columnHeight = (column: number, row: number) => {
+    const at = algorithms.length > 1 ? column / LANDSCAPE_SUBDIVISIONS : 0
+    const left = Math.min(Math.floor(at), algorithms.length - 1)
+    const right = Math.min(left + 1, algorithms.length - 1)
+    const blend = (1 - Math.cos((at - left) * Math.PI)) / 2
+    return heightAt(left, dayOfRow(row)) * (1 - blend) + heightAt(right, dayOfRow(row)) * blend
   }
   const vertexAt = (column: number, row: number) => {
-    const shortfall = columnShortfall(column, row)
+    const competency = columnHeight(column, row)
     return {
       x: (column / (columnCount - 1)) * width - width / 2,
-      y: yOf(shortfall),
-      z: (row / (LANDSCAPE_ROWS - 1) - 0.5) * TIME_DEPTH,
-      color: shortfallColor(shortfall),
+      y: yOf(competency),
+      z: (row / (rowCount - 1) - 0.5) * TIME_DEPTH,
+      color: competencyColor(competency),
     }
   }
   const surfacePositions: number[] = []
   const surfaceColors: number[] = []
-  for (let row = 0; row < LANDSCAPE_ROWS; row += 1) {
+  for (let row = 0; row < rowCount; row += 1) {
     for (let column = 0; column < columnCount; column += 1) {
       const vertex = vertexAt(column, row)
       surfacePositions.push(vertex.x, vertex.y, vertex.z)
@@ -187,7 +175,7 @@ function mountHologram(
     }
   }
   const surfaceIndex: number[] = []
-  for (let row = 0; row + 1 < LANDSCAPE_ROWS; row += 1) {
+  for (let row = 0; row + 1 < rowCount; row += 1) {
     for (let column = 0; column + 1 < columnCount; column += 1) {
       const a = row * columnCount + column
       const c = a + columnCount
@@ -207,9 +195,10 @@ function mountHologram(
     blending,
     depthWrite: false,
   })
-  hologram.add(new THREE.Mesh(surfaceGeometry, surfaceMaterial))
+  const surface = new THREE.Mesh(surfaceGeometry, surfaceMaterial)
+  hologram.add(surface)
 
-  // Wireframe over the surface: every other time row, and each signal plus the half-steps between.
+  // Wireframe over the surface: up to WIRE_ROWS day rows, and each algorithm plus the half-steps between.
   const wirePositions: number[] = []
   const wireColors: number[] = []
   const addWire = (from: ReturnType<typeof vertexAt>, to: ReturnType<typeof vertexAt>) => {
@@ -217,11 +206,12 @@ function mountHologram(
     wireColors.push(from.color.r, from.color.g, from.color.b, to.color.r, to.color.g, to.color.b)
   }
   const halfStep = Math.max(LANDSCAPE_SUBDIVISIONS / 2, 1)
-  for (let row = 0; row < LANDSCAPE_ROWS; row += 2) {
+  const rowStep = Math.max(Math.ceil(rowCount / WIRE_ROWS), 1)
+  for (let row = 0; row < rowCount; row += rowStep) {
     for (let column = 0; column + 1 < columnCount; column += 1) addWire(vertexAt(column, row), vertexAt(column + 1, row))
   }
   for (let column = 0; column < columnCount; column += halfStep) {
-    for (let row = 0; row + 1 < LANDSCAPE_ROWS; row += 1) addWire(vertexAt(column, row), vertexAt(column, row + 1))
+    for (let row = 0; row + 1 < rowCount; row += 1) addWire(vertexAt(column, row), vertexAt(column, row + 1))
   }
   const wireGeometry = new THREE.BufferGeometry()
   wireGeometry.setAttribute('position', new THREE.Float32BufferAttribute(wirePositions, 3))
@@ -230,13 +220,12 @@ function mountHologram(
   const wireMaterial = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, blending, depthWrite: false })
   hologram.add(new THREE.LineSegments(wireGeometry, wireMaterial))
 
-  // Each actual answer, as a marker at its own shortfall.
+  // A dot on each day an algorithm was practised, at that day's competency.
   const positions: number[] = []
   const colors: number[] = []
-  for (const point of history.points) {
-    const shortfall = shortfallOf(point.score)
-    const color = shortfallColor(shortfall)
-    positions.push(xOf(point.signal), yOf(shortfall), zOf(Date.parse(point.createdAt)))
+  for (const { cell, algorithmIndex, dayIndex } of grid.observed) {
+    const color = competencyColor(cell.competency)
+    positions.push(xOf(algorithmIndex), yOf(cell.competency), zOf(dayIndex))
     colors.push(color.r, color.g, color.b)
   }
   const pointGeometry = new THREE.BufferGeometry()
@@ -256,20 +245,17 @@ function mountHologram(
   const pointCloud = new THREE.Points(pointGeometry, pointMaterial)
   hologram.add(pointCloud)
 
-  // Labels: signals along the front, dates down the side. They sit outside the rising group
-  // so they never squash during the reveal.
+  // Labels: algorithms (with today's competency) along the front, days down the side. They sit
+  // outside the rising group so they never squash during the reveal.
   const labels: THREE.Sprite[] = []
-  for (const signal of signals) {
-    const label = textSprite(compact(signal.label), accent, 0.22)
-    label.position.set(xOf(signal.key), -0.05, TIME_DEPTH / 2 + 0.55)
+  algorithms.forEach((algorithm, index) => {
+    const label = textSprite(`${compact(algorithm.name)} ${Math.round(algorithm.competency)}`, accent, 0.22)
+    label.position.set(xOf(index), -0.05, TIME_DEPTH / 2 + 0.55)
     labels.push(label)
-  }
-  for (let tick = 0; tick < TIME_TICKS; tick += 1) {
-    const fraction = tick / (TIME_TICKS - 1)
-    const date = new Date(tMin + fraction * (tMax - tMin))
-    const localDate = `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}`
-    const label = textSprite(formatCalendarDate(localDate), accent, 0.2)
-    label.position.set(-width / 2 - 1.25, 0, (fraction - 0.5) * TIME_DEPTH)
+  })
+  for (const dayIndex of dayTicks(dayCount, TIME_TICKS)) {
+    const label = textSprite(formatCalendarDate(terrain.days[dayIndex]), accent, 0.2)
+    label.position.set(-width / 2 - 1.25, 0, zOf(dayIndex))
     labels.push(label)
   }
   for (const label of labels) {
@@ -334,7 +320,14 @@ function mountHologram(
   const resizeObserver = new ResizeObserver(resize)
   resizeObserver.observe(container)
 
-  // Hover: find the nearest point under the pointer.
+  // Hover: a dot shows its practised day; anywhere else on the surface shows the nearest day's cell.
+  const algorithmName = (index: number) => algorithms[index]?.name ?? ''
+  const show = (event: PointerEvent, cell: CompetencyCell | null | undefined) => {
+    if (!cell) return false
+    controls.autoRotate = false // hold still while details are showing
+    setTooltip({ x: event.clientX, y: event.clientY, cell, algorithm: algorithmName(algorithms.findIndex((item) => item.slug === cell.algorithm)) })
+    return true
+  }
   const raycaster = new THREE.Raycaster()
   raycaster.params.Points = { threshold: 0.18 }
   const pointer = new THREE.Vector2()
@@ -343,21 +336,16 @@ function mountHologram(
     pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1)
     raycaster.setFromCamera(pointer, camera)
     const hit = raycaster.intersectObject(pointCloud)[0]
-    if (hit?.index === undefined) {
-      setTooltip(null)
-      // Resume spinning once off a dot, unless the user has taken over the camera.
-      controls.autoRotate = resumeRotation()
-      return
+    if (hit?.index !== undefined && show(event, grid.observed[hit.index]?.cell)) return
+    const ground = raycaster.intersectObject(surface)[0]
+    if (ground) {
+      const column = algorithms.length > 1 ? (ground.point.x + width / 2) / ALGORITHM_SPACING : 0
+      const row = dayCount > 1 ? (ground.point.z / TIME_DEPTH + 0.5) * (dayCount - 1) : 0
+      if (show(event, nearestCell(grid, column, row))) return
     }
-    // Hold still while a dot's details are showing.
-    controls.autoRotate = false
-    const point = history.points[hit.index]
-    setTooltip({
-      x: event.clientX,
-      y: event.clientY,
-      point,
-      label: signalLabels.get(point.signal) ?? point.signal,
-    })
+    setTooltip(null)
+    // Resume spinning once off the terrain, unless the user has taken over the camera.
+    controls.autoRotate = resumeRotation()
   }
   const onPointerLeave = () => {
     setTooltip(null)
@@ -424,7 +412,7 @@ function mountHologram(
   }
 }
 
-/** Hover card for a dot: placed beside the pointer, flipped and clamped to stay inside the window. */
+/** Hover card for a day: placed beside the pointer, flipped and clamped to stay inside the window. */
 function DotTooltip({ tooltip }: { tooltip: Tooltip }) {
   const ref = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
@@ -445,38 +433,41 @@ function DotTooltip({ tooltip }: { tooltip: Tooltip }) {
   }, [tooltip])
   return (
     <div ref={ref} className="signal-hologram-tooltip" role="status">
-      <strong>{tooltip.label}</strong>
-      <span>score {tooltip.point.score.toFixed(1)} / 100</span>
-      <span>{formatCalendarDate(tooltip.point.date)}</span>
-      <span>{tooltip.point.algorithm}</span>
-      {tooltip.point.title ? <span className="signal-hologram-tooltip-title">{tooltip.point.title}</span> : null}
+      <strong>{tooltip.algorithm}</strong>
+      <span>competency {tooltip.cell.competency.toFixed(1)} / 100</span>
+      <span>{formatCalendarDate(tooltip.cell.date)}</span>
+      {tooltip.cell.observed ? (
+        <span>{tooltip.cell.answers} answer{tooltip.cell.answers === 1 ? '' : 's'} · {tooltip.cell.signals} signals averaged</span>
+      ) : (
+        <span className="signal-hologram-tooltip-title">Not practised: decayed from {formatCalendarDate(tooltip.cell.lastPractised)}</span>
+      )}
     </div>
   )
 }
 
-export default function SignalHologram() {
+export default function CompetencyTerrain() {
   const { theme } = useTheme()
   const containerRef = useRef<HTMLDivElement>(null)
   const sectionRef = useRef<HTMLElement>(null)
-  const signalHistory = useSignalHistory<SignalHistory>()
-  const history = signalHistory.error ? null : signalHistory.data ?? null
-  const error = signalHistory.error ? errorMessage(signalHistory.error, 'Signal history unavailable') : ''
+  const query = useCompetencyTerrain()
+  const terrain = query.error ? null : query.data ?? null
+  const error = query.error ? errorMessage(query.error, 'Competency terrain unavailable') : ''
   const [tooltip, setTooltip] = useState<Tooltip | null>(null)
   const [webgl] = useState(webglAvailable)
 
   useEffect(() => {
     const container = containerRef.current
-    if (!container || !history?.points.length || !webgl) return
+    if (!container || !terrain?.cells.length || !webgl) return
     // Wait a frame: the theme's CSS variables update in an effect that runs after this one.
     let unmount: (() => void) | undefined
     const frame = requestAnimationFrame(() => {
-      unmount = mountHologram(container, history, theme === 'light-high-contrast', setTooltip)
+      unmount = mountHologram(container, terrain, theme === 'light-high-contrast', setTooltip)
     })
     return () => {
       cancelAnimationFrame(frame)
       unmount?.()
     }
-  }, [history, theme, webgl])
+  }, [terrain, theme, webgl])
 
   // Stretch the stage to the whole browser window: from the window's top and left edges,
   // as wide and as tall as the window.
@@ -513,33 +504,34 @@ export default function SignalHologram() {
       section.style.marginBottom = ''
       document.documentElement.style.removeProperty('--journey-snap-padding')
     }
-  }, [history, webgl])
+  }, [terrain, webgl])
 
-  const points = history?.points ?? []
-  const first = points[0]?.date
-  const last = points.at(-1)?.date
-  const summary = history
-    ? `${points.length} scores across ${history.signals.length} signals${first && last ? `, ${formatCalendarDate(first)} – ${formatCalendarDate(last)}` : ''}`
+  const cellCount = terrain?.cells.length ?? 0
+  const first = terrain?.days[0]
+  const last = terrain?.days.at(-1)
+  const decayPercent = terrain ? `${+(terrain.decayPerDay * 100).toFixed(1)}%` : ''
+  const summary = terrain
+    ? `${terrain.algorithms.map((algorithm) => `${algorithm.name} ${Math.round(algorithm.competency)}`).join(', ')}${first && last ? `; ${formatCalendarDate(first)} – ${formatCalendarDate(last)}` : ''}`
     : ''
 
   return (
-    <section ref={sectionRef} className="signal-hologram" aria-label="Signal score terrain">
+    <section ref={sectionRef} className="signal-hologram" aria-label="Competency terrain">
       {error ? <p className="coach-error" role="alert">{error}</p> : null}
-      {!history && !error ? <p className="dashboard-mode-meta signal-hologram-loading">Mapping signal scores…</p> : null}
-      {history && !points.length ? <p className="dashboard-mode-meta">No scored signals yet. Answer a few questions to shape the terrain.</p> : null}
-      {points.length && !webgl ? (
+      {!terrain && !error ? <p className="dashboard-mode-meta signal-hologram-loading">Mapping competency…</p> : null}
+      {terrain && !cellCount ? <p className="dashboard-mode-meta">No graded answers yet. Answer a few questions to shape the terrain.</p> : null}
+      {cellCount && !webgl ? (
         <p className="dashboard-mode-meta">The 3D view needs WebGL, which this browser has turned off.</p>
       ) : null}
-      {points.length && webgl ? (
+      {cellCount && webgl ? (
         <div
           ref={containerRef}
           className="signal-hologram-stage"
           role="img"
-          aria-label={`3D terrain of signal scores over time; height is 100 minus the score, so peaks are weak spots: ${summary}. Drag to rotate; pinch or hold Ctrl or Command and scroll to zoom.`}
+          aria-label={`3D terrain of competency per algorithm per day; peaks are strong, and days without practice decay ${decayPercent} per day. Today: ${summary}. Drag to rotate; pinch or hold Ctrl or Command and scroll to zoom.`}
         >
           {/* Portaled to <body> so it draws above the pinned nav. */}
           {tooltip ? createPortal(<DotTooltip tooltip={tooltip} />, document.body) : null}
-          <p className="signal-hologram-hint" aria-hidden="true">Drag to rotate · pinch or ⌘/Ctrl + scroll to zoom · hover a dot</p>
+          <p className="signal-hologram-hint" aria-hidden="true">Peaks are strong · unpractised days fade {decayPercent}/day · drag to rotate · ⌘/Ctrl + scroll to zoom · hover for details</p>
         </div>
       ) : null}
     </section>

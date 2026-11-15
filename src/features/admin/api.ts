@@ -191,6 +191,7 @@ export type GradingSettings = {
   feedbackModalities: Modality[]
   nearMissThreshold: number
   lowConfidenceThreshold: number
+  competencyDecayPerDay: number
 }
 
 export type GenerationSettings = {

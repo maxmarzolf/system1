@@ -116,7 +116,7 @@ Every `core/llm` call logs its provider, model, latency and tokens at INFO. Insi
 
 - `GET /api/skill-map-overview?historyDays=&tz=` → `read_models/overview.get_skill_map_overview`: readiness per algorithm and the daily activity grid.
 - `GET /api/history/day?date=&tz=` → `read_models/history.get_history_day`: every submission on one local day, with its stored evaluation.
-- `GET /api/history/signals?tz=` → `read_models/history.get_signal_history`: every scored rubric entry over time, for the terrain.
+- `GET /api/history/competency?tz=` → `read_models/history.get_competency_terrain`: competency per algorithm per day, computed by one aggregate query (`attempts_repository.fetch_competency_terrain`; see [data-flow.md](data-flow.md#3-review-dashboard-and-journey)).
 
 Days are computed in the viewer's time zone (`resolve_timezone`, falling back to UTC).
 

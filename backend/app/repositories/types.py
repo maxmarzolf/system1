@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, TypedDict
 
 
@@ -98,3 +98,14 @@ class SkillMapOverviewAttemptRow(TypedDict):
     modality: str | None
     live_coach_used: bool
     signals: dict[str, Any] | str | None
+
+
+class CompetencyTerrainRow(TypedDict):
+    algorithm: str
+    day: date
+    observed: bool
+    answers: int
+    signals: int
+    average: float | None
+    competency: float
+    last_practised: date

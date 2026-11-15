@@ -470,50 +470,75 @@ def test_unknown_timezones_fall_back_to_utc() -> None:
     assert str(read_common.resolve_timezone("Europe/Paris")) == "Europe/Paris"
 
 
-def test_signal_history_lists_scored_signals_from_counted_submissions(monkeypatch) -> None:
-    def _row(created_at: datetime, tags: list[str], dimensions: dict, modifiers: dict | None = None) -> dict[str, object]:
-        return {
-            "created_at": created_at,
-            "category_tags": tags,
-            "question_type": "skill-map-mcq:card:random",
-            "modality": "mcq",
-            "card_title": "Window question",
-            "signals": {"evaluation": {"dimensions": dimensions, "modifiers": modifiers or {}}},
-        }
+def test_competency_terrain_names_algorithms_and_shapes_query_rows(monkeypatch) -> None:
+    from datetime import date
 
-    late_evening = datetime(2026, 1, 15, 3, 30, tzinfo=timezone.utc)  # Jan 14 in New York
-    rows = [
-        _row(late_evening, ["skill-map", "sliding-window"], {
-            "correctness": {"label": "Correct choice", "status": "pass", "score": 100.0},
-            "nearMiss": {"label": "Near miss", "status": "not_applicable", "score": 0.0},
-        }, {"completionTime": {"label": "Speed and fluency", "status": "partial", "score": 140}}),
-        _row(late_evening - timedelta(days=1), ["skill-map", "sliding-window"], {
-            "correctness": {"label": "Correct choice", "status": "fail", "score": 0.0},
-        }),
-        _row(late_evening, ["skill-map", "no-such-algorithm"], {
-            "correctness": {"label": "Correct choice", "status": "pass", "score": 100.0},
-        }),
-    ]
+    from app.services import app_settings_service
 
-    async def _attempt_rows():
-        return rows
+    captured: dict[str, object] = {}
+
+    async def _terrain(**kwargs):
+        captured.update(kwargs)
+        return [
+            {"algorithm": "heap", "day": date(2026, 1, 1), "observed": True, "answers": 2, "signals": 8,
+             "average": 70.0, "competency": 70.0, "last_practised": date(2026, 1, 1)},
+            {"algorithm": "heap", "day": date(2026, 1, 2), "observed": False, "answers": 0, "signals": 0,
+             "average": None, "competency": 68.6, "last_practised": date(2026, 1, 1)},
+            {"algorithm": "sliding-window", "day": date(2026, 1, 2), "observed": True, "answers": 1, "signals": 4,
+             "average": 90.0, "competency": 90.0, "last_practised": date(2026, 1, 2)},
+        ]
 
     async def _algorithm_rows():
-        return [{"algorithm_slug": "sliding-window", "algorithm_name": "Sliding Window"}]
+        return [
+            {"algorithm_slug": "sliding-window", "algorithm_name": "Sliding Window"},
+            {"algorithm_slug": "heap", "algorithm_name": "Heap"},
+        ]
 
-    monkeypatch.setattr(history, "fetch_skill_map_overview_attempt_rows", _attempt_rows)
+    async def _grading():
+        return app_settings_service.GradingSettingsModel(competencyDecayPerDay=0.05)
+
+    monkeypatch.setattr(history, "fetch_competency_terrain", _terrain)
     monkeypatch.setattr(history, "fetch_skill_map_overview_algorithm_rows", _algorithm_rows)
+    monkeypatch.setattr(history.app_settings_service, "grading", _grading)
 
-    signal_history = asyncio.run(history.get_signal_history("America/New_York"))
+    terrain = asyncio.run(history.get_competency_terrain("America/New_York"))
 
-    assert signal_history["signals"] == [
-        {"key": "correctness", "label": "Correct choice", "count": 2},
-        {"key": "completionTime", "label": "Speed and fluency", "count": 1},
+    assert captured["timezone_name"] == "America/New_York"
+    assert captured["decay_per_day"] == 0.05
+    tags = captured["tag_slugs"]
+    assert tags["heap"] == "heap" and tags["heap-priority-queue"] == "heap" and tags["sliding-window"] == "sliding-window"
+    assert "dp" not in tags  # an alias whose algorithm isn't known is left out
+    assert terrain["decayPerDay"] == 0.05
+    # Catalog order, today's (latest) competency, answers summed.
+    assert terrain["algorithms"] == [
+        {"slug": "sliding-window", "name": "Sliding Window", "answers": 1, "competency": 90.0},
+        {"slug": "heap", "name": "Heap", "answers": 2, "competency": 68.6},
     ]
-    assert [(point["signal"], point["score"], point["date"]) for point in signal_history["points"]] == [
-        ("correctness", 0.0, "2026-01-13"),
-        ("correctness", 100.0, "2026-01-14"),
-        ("completionTime", 100.0, "2026-01-14"),
-    ]
-    assert signal_history["points"][0]["algorithm"] == "Sliding Window"
-    assert signal_history["points"][0]["title"] == "Window question"
+    assert terrain["days"] == ["2026-01-01", "2026-01-02"]
+    assert terrain["cells"][1] == {
+        "algorithm": "heap", "date": "2026-01-02", "competency": 68.6, "observed": False,
+        "answers": 0, "signals": 0, "average": None, "lastPractised": "2026-01-01",
+    }
+
+
+def test_competency_terrain_falls_back_to_utc_for_unknown_timezones(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def _terrain(**kwargs):
+        captured.update(kwargs)
+        return []
+
+    async def _no_algorithms():
+        return []
+
+    monkeypatch.setattr(history, "fetch_competency_terrain", _terrain)
+    monkeypatch.setattr(history, "fetch_skill_map_overview_algorithm_rows", _no_algorithms)
+
+    async def _grading():
+        return history.app_settings_service.GradingSettingsModel()
+
+    monkeypatch.setattr(history.app_settings_service, "grading", _grading)
+    terrain = asyncio.run(history.get_competency_terrain("Not/AZone"))
+    assert terrain["decayPerDay"] == 0.02
+    assert captured["timezone_name"] == "UTC"
+    assert terrain["algorithms"] == [] and terrain["cells"] == []

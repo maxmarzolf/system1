@@ -12,7 +12,7 @@ export const queryKeys = {
   skillMapOverview: (historyDays: number | null, tz: string | null) => ['skill-map-overview', historyDays, tz] as const,
   catalogPlaylists: ['catalog', 'playlists'] as const,
   historyDay: (date: string, tz: string) => ['history', 'day', date, tz] as const,
-  signalHistory: (tz: string) => ['history', 'signals', tz] as const,
+  competencyTerrain: (tz: string) => ['history', 'competency', tz] as const,
   practiceSettings: ['catalog', 'practice-settings'] as const,
 }
 
@@ -97,14 +97,15 @@ export function useHistoryDay<T>(date: string | null) {
   )
 }
 
-export function useSignalHistory<T>() {
+/** Competency per algorithm per day, computed by the backend (Journey's terrain). */
+export function useCompetencyTerrain() {
   const tz = viewerTimeZone()
   return useQuery(
     {
-      queryKey: queryKeys.signalHistory(tz),
+      queryKey: queryKeys.competencyTerrain(tz),
       queryFn: async ({ signal }) => {
-        const result = await api.GET('/api/history/signals', { params: { query: { tz } }, signal })
-        return unwrap(result, `Signal history unavailable (${result.response.status})`) as unknown as T
+        const result = await api.GET('/api/history/competency', { params: { query: { tz } }, signal })
+        return unwrap(result, `Competency terrain unavailable (${result.response.status})`)
       },
     },
     queryClient,

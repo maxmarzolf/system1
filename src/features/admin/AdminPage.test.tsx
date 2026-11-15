@@ -75,7 +75,7 @@ const SAMPLES = [
 ]
 
 const SETTINGS = {
-  grading: { value: { feedbackModalities: ['total-recall'], nearMissThreshold: 75, lowConfidenceThreshold: 0.6 }, version: 0 },
+  grading: { value: { feedbackModalities: ['total-recall'], nearMissThreshold: 75, lowConfidenceThreshold: 0.6, competencyDecayPerDay: 0.02 }, version: 0 },
   generation: {
     value: { specimen: { typeHints: 'omit', comments: 'omit', variableNames: 'readable' }, mcqModels: { claude: 'claude-haiku-4-5', openai: '', gemma: '' } },
     version: 2,
@@ -496,11 +496,12 @@ describe('AdminPage: code modalities and settings', () => {
     await userEvent.click(within(grading).getByRole('checkbox', { name: 'Total Recall' }))
     fireEvent.change(within(grading).getByDisplayValue('75'), { target: { value: '60' } })
     fireEvent.change(within(grading).getByDisplayValue('0.6'), { target: { value: '0.75' } })
+    fireEvent.change(within(grading).getByDisplayValue('0.02'), { target: { value: '0.05' } })
     await userEvent.click(within(grading).getByRole('button', { name: 'Save grading' }))
     await within(grading).findByText('Saved. Applies from the next request.')
     expect(sent.at(-1)).toMatchObject({
       method: 'PUT', url: expect.stringContaining('/api/admin/settings/grading'),
-      body: { value: { feedbackModalities: ['ladder'], nearMissThreshold: 60, lowConfidenceThreshold: 0.75 }, version: 0 },
+      body: { value: { feedbackModalities: ['ladder'], nearMissThreshold: 60, lowConfidenceThreshold: 0.75, competencyDecayPerDay: 0.05 }, version: 0 },
     })
 
     const generation = screen.getByText('How questions are written').closest('section') as HTMLElement

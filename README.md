@@ -4,7 +4,7 @@ System 1 is a practice app for coding-interview algorithms. You recall code from
 
 - **Practice** (`/practice`): recall a card's code from memory, or answer multiple-choice questions (MCQs). Cmd/Ctrl + double arrows selects Total Recall (↑), Microdrill (←), Ghost (→), or MCQ (↓); the navbar shows which is on. From any other page, Cmd/Ctrl + Enter opens Total Recall with the code editor focused. Optional supports: Ghost Reps (type over the target), Inline notes, AI completion, a Sliding Window Ladder, and adaptive or custom **flows** that mix all four modalities.
 - **Dashboard** (`/dashboard`): readiness per algorithm and playlist; start focused practice from any card.
-- **Journey** (`/`, the home page): a 3D *Signal Score Terrain* of every graded signal over time, a daily work grid, and the full stored evaluation of each submission on any day.
+- **Journey** (`/`, the home page): a 3D *competency terrain* (each algorithm's average signal score per day, fading 2% a day without practice), a daily work grid, and the full stored evaluation of each submission on any day.
 - **Tune** (`/tune`): personal preferences: code editor, AI completion, hotkeys.
 - **Evolve** (`/evolve`): run and review the AlphaEvolve MCQ prompt experiment. See [the experiment guide](examples/openevolve_mcq_prompt/README.md).
 - **Admin** (`/admin`): configure grading and generation. For each modality, edit the correctness question and the signals Jev uses, and try a draft against a stored item; under Settings, edit grading thresholds, written feedback, code style for generated cards, MCQ models and practice defaults.
@@ -98,7 +98,7 @@ Docs ([index](docs/README.md)):
 | `backend/app/services/read_models/` | Readiness, daily activity, day detail and signal history |
 | `src/api/` | The typed API client: `client.ts` (openapi-fetch typed from the generated `schema.d.ts`, one `ApiError` for every error shape) and `queries.ts` (TanStack Query hooks for shared reads) |
 | `src/app/` | The shell: routes, TopNav, theme and the global styles (`app/styles/`, imported in cascade order) |
-| `src/features/` | One folder per page: `practice/` (the practice screen: `modalities/`, `submission/`, flow and editor), `dashboard/`, `journey/` (incl. the score terrain), `admin/`, `tune/`, `evolve/` |
+| `src/features/` | One folder per page: `practice/` (the practice screen: `modalities/`, `submission/`, flow and editor), `dashboard/`, `journey/` (incl. the competency terrain), `admin/`, `tune/`, `evolve/` |
 | `src/shared/` | Components, helpers, settings and catalogs used by more than one page |
 
 ## API
@@ -108,7 +108,7 @@ Docs ([index](docs/README.md)):
 | GET | `/api/health` | Health check |
 | POST | `/api/attempts` | Submit an answer; returns the evaluation |
 | GET | `/api/skill-map`, `/api/skill-map-overview?historyDays=&tz=` | Taxonomy; readiness and daily activity |
-| GET | `/api/history/day?date=&tz=`, `/api/history/signals?tz=` | One day's submissions; every scored signal over time |
+| GET | `/api/history/day?date=&tz=`, `/api/history/competency?tz=` | One day's submissions; competency per algorithm per day |
 | GET | `/api/catalog/playlists`, `/api/catalog/signal-specs` | Playlists; recall signal specs |
 | GET | `/api/coach/problem-drills[/{algorithm}]`, `/api/coach/playlist-drills/{slug}` | Catalog drills |
 | POST | `/api/coach/skill-map-drills[-stream]`, `/api/coach/multiple-choice-drills`, `/api/coach/micro-drill` | Generated drills |

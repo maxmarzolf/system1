@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import * as THREE from 'three'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import SignalHologram from './SignalHologram'
+import CompetencyTerrain from './CompetencyTerrain'
 import { ThemeProvider, useTheme } from '@/app/theme'
 import { mockFetch } from '@/test/fetch'
 
@@ -41,15 +41,19 @@ const context2d = {
   measureText: (text: string) => ({ width: text.length * 10 }),
 }
 
+// What the pointer hits: dots (Points) and the surface (Mesh) separately.
 let intersections: { index?: number }[] = []
+let surfaceHits: { point: { x: number; z: number } }[] = []
 let visibilityCallback: ((entries: { isIntersecting: boolean }[]) => void) | null = null
 
 beforeEach(() => {
   renderers.length = 0
   intersections = []
+  surfaceHits = []
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(((type: string) =>
     type === '2d' ? context2d : {}) as never)
-  vi.spyOn(THREE.Raycaster.prototype, 'intersectObject').mockImplementation(() => intersections as never)
+  vi.spyOn(THREE.Raycaster.prototype, 'intersectObject').mockImplementation(((object: THREE.Object3D) =>
+    (object.type === 'Points' ? intersections : surfaceHits)) as never)
   vi.stubGlobal('IntersectionObserver', class {
     constructor(callback: typeof visibilityCallback) {
       visibilityCallback = callback
@@ -68,15 +72,23 @@ afterEach(() => {
   document.documentElement.classList.remove('journey-snap')
 })
 
-const history = {
-  signals: [
-    { key: 'conceptRecognition', label: 'Concept recognition across many words', count: 2 },
-    { key: 'completionTime', label: 'Speed', count: 1 },
+const cell = (algorithm: string, date: string, competency: number, observed: boolean, lastPractised = date) => ({
+  algorithm, date, competency, observed, lastPractised,
+  answers: observed ? 2 : 0, signals: observed ? 9 : 0, average: observed ? competency : null,
+})
+
+const terrain = {
+  decayPerDay: 0.02,
+  algorithms: [
+    { slug: 'heap', name: 'Heap', answers: 2, competency: 76.8 },
+    { slug: 'sliding-window', name: 'Sliding Window with a very long name', answers: 2, competency: 90 },
   ],
-  points: [
-    { submission: 1, createdAt: '2026-03-01T10:00:00Z', date: '2026-03-01', signal: 'conceptRecognition', score: 40, title: 'Heap', modality: 'mcq', algorithm: 'Heap' },
-    { submission: 2, createdAt: '2026-03-03T10:00:00Z', date: '2026-03-03', signal: 'conceptRecognition', score: 90, title: '', modality: 'mcq', algorithm: 'Heap' },
-    { submission: 2, createdAt: '2026-03-03T10:00:00Z', date: '2026-03-03', signal: 'completionTime', score: 75, title: '', modality: 'mcq', algorithm: 'Heap' },
+  days: ['2026-03-01', '2026-03-02', '2026-03-03'],
+  cells: [
+    cell('heap', '2026-03-01', 80, true),
+    cell('heap', '2026-03-02', 78.4, false, '2026-03-01'),
+    cell('heap', '2026-03-03', 76.8, false, '2026-03-01'),
+    cell('sliding-window', '2026-03-03', 90, true),
   ],
 }
 
@@ -95,21 +107,23 @@ const renderTerrain = () =>
   render(
     <ThemeProvider>
       <MemoryRouter>
-        <SignalHologram />
+        <CompetencyTerrain />
         <ThemeFlip />
       </MemoryRouter>
     </ThemeProvider>,
   )
 
-describe('SignalHologram', () => {
+describe('CompetencyTerrain', () => {
   it('summarizes the history and builds the scene', async () => {
-    mockFetch([{ match: '/api/history/signals', body: history }])
+    mockFetch([{ match: '/api/history/competency', body: terrain }])
     const { unmount } = renderTerrain()
-    expect(screen.getByText('Mapping signal scores…')).toBeInTheDocument()
-    await screen.findByRole('img', { name: /3 scores across 2 signals/ })
-    expect(screen.queryByRole('link')).toBeNull()
-    expect(screen.queryByText('Signal Score Terrain')).toBeNull()
+    expect(screen.getByText('Mapping competency…')).toBeInTheDocument()
+    const stage = await screen.findByRole('img', { name: /peaks are strong, and days without practice decay 2% per day/ })
+    expect(stage).toHaveAccessibleName(expect.stringContaining('Today: Heap 77, Sliding Window with a very long name 90; Mar'))
+    expect(screen.getByText(/unpractised days fade 2%\/day/)).toBeInTheDocument()
     runFrames()
+    // Algorithm labels carry today's competency.
+    expect(context2d.fillText).toHaveBeenCalledWith('Heap 77', expect.any(Number), expect.any(Number))
     expect(renderers).toHaveLength(1)
     expect(renderers[0].rendered).toBe(1) // drawn once on mount
     runFrames()
@@ -121,36 +135,46 @@ describe('SignalHologram', () => {
     expect(renderers[0].disposed).toBe(true)
   })
 
-  it('shows a tooltip for the dot under the pointer and pauses on it', async () => {
-    mockFetch([{ match: '/api/history/signals', body: history }])
+  it('shows a practised day for a dot, and the nearest decayed day elsewhere on the surface', async () => {
+    mockFetch([{ match: '/api/history/competency', body: terrain }])
     renderTerrain()
-    await screen.findByRole('img', { name: /3 scores across 2 signals/ })
+    await screen.findByRole('img', { name: /Today:/ })
     runFrames()
     const canvas = renderers[0].domElement
     vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 800, height: 600 } as DOMRect)
 
-    intersections = [{ index: 0 }]
+    intersections = [{ index: 1 }] // the second dot: sliding window, Mar 3
     fireEvent.pointerMove(canvas, { clientX: 790, clientY: 5 })
-    const tooltip = await screen.findByRole('status')
-    expect(tooltip).toHaveTextContent('Concept recognition across many words')
-    expect(tooltip).toHaveTextContent('score 40.0 / 100')
-    expect(tooltip).toHaveTextContent('Heap')
+    const dot = await screen.findByRole('status')
+    expect(dot).toHaveTextContent('Sliding Window with a very long name')
+    expect(dot).toHaveTextContent('competency 90.0 / 100')
+    expect(dot).toHaveTextContent('2 answers · 9 signals averaged')
 
+    // Off the dots, over heap's column (x = -width/2) at the middle day (z = 0).
     intersections = []
+    surfaceHits = [{ point: { x: -0.8, z: 0 } }]
+    fireEvent.pointerMove(canvas, { clientX: 10, clientY: 300 })
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('competency 78.4 / 100'))
+    expect(screen.getByRole('status')).toHaveTextContent('Heap')
+    expect(screen.getByRole('status')).toHaveTextContent('Not practised: decayed from')
+
+    // Over a day before sliding window was first practised: nothing to show.
+    surfaceHits = [{ point: { x: 0.8, z: -4.5 } }]
     fireEvent.pointerMove(canvas, { clientX: 10, clientY: 10 })
     await waitFor(() => expect(screen.queryByRole('status')).toBeNull())
 
-    intersections = [{ index: 2 }]
+    surfaceHits = []
+    intersections = [{ index: 0 }]
     fireEvent.pointerMove(canvas, { clientX: 10, clientY: 300 })
-    expect(await screen.findByRole('status')).toHaveTextContent('Speed')
+    expect(await screen.findByRole('status')).toHaveTextContent('competency 80.0 / 100')
     fireEvent.pointerLeave(canvas)
     await waitFor(() => expect(screen.queryByRole('status')).toBeNull())
   })
 
   it('zooms only with Ctrl or Command held', async () => {
-    mockFetch([{ match: '/api/history/signals', body: history }])
+    mockFetch([{ match: '/api/history/competency', body: terrain }])
     renderTerrain()
-    await screen.findByRole('img', { name: /3 scores/ })
+    await screen.findByRole('img', { name: /Today:/ })
     runFrames()
     const canvas = renderers[0].domElement
     const plain = new WheelEvent('wheel', { deltaY: 100, cancelable: true })
@@ -162,9 +186,9 @@ describe('SignalHologram', () => {
   })
 
   it('rebuilds with the new theme colors', async () => {
-    mockFetch([{ match: '/api/history/signals', body: history }])
+    mockFetch([{ match: '/api/history/competency', body: terrain }])
     renderTerrain()
-    await screen.findByRole('img', { name: /3 scores/ })
+    await screen.findByRole('img', { name: /Today:/ })
     runFrames()
     await userEvent.click(screen.getByRole('button', { name: 'light' }))
     runFrames()
@@ -172,34 +196,34 @@ describe('SignalHologram', () => {
     expect(renderers[0].disposed).toBe(true)
   })
 
-  it('handles empty history, errors, missing WebGL and a single point in time', async () => {
-    mockFetch([{ match: '/api/history/signals', body: { signals: [], points: [] } }])
+  it('handles an empty terrain, errors, missing WebGL and a single algorithm on a single day', async () => {
+    mockFetch([{ match: '/api/history/competency', body: { decayPerDay: 0.02, algorithms: [], days: [], cells: [] } }])
     const empty = renderTerrain()
-    await screen.findByText(/No scored signals yet/)
+    await screen.findByText(/No graded answers yet/)
     empty.unmount()
 
-    mockFetch([{ match: '/api/history/signals', status: 503 }])
+    mockFetch([{ match: '/api/history/competency', status: 503 }])
     const failed = renderTerrain()
-    expect(await screen.findByRole('alert')).toHaveTextContent('Signal history unavailable (503)')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Competency terrain unavailable (503)')
     failed.unmount()
 
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject('offline')))
     const offline = renderTerrain()
-    expect(await screen.findByRole('alert')).toHaveTextContent('Signal history unavailable')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Competency terrain unavailable')
     offline.unmount()
 
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
-    mockFetch([{ match: '/api/history/signals', body: history }])
+    mockFetch([{ match: '/api/history/competency', body: terrain }])
     const noWebgl = renderTerrain()
     await screen.findByText(/needs WebGL/)
     noWebgl.unmount()
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(((type: string) =>
       type === '2d' ? context2d : {}) as never)
 
-    const single = { signals: [history.signals[0]], points: [history.points[0]] }
-    mockFetch([{ match: '/api/history/signals', body: single }])
+    const single = { decayPerDay: 0.02, algorithms: [terrain.algorithms[0]], days: ['2026-03-01'], cells: [terrain.cells[0]] }
+    mockFetch([{ match: '/api/history/competency', body: single }])
     renderTerrain()
-    await screen.findByRole('img', { name: /1 scores across 1 signals/ })
+    await screen.findByRole('img', { name: /Today: Heap 77; Mar/ })
     runFrames()
     expect(renderers.length).toBeGreaterThan(0)
   })
@@ -208,9 +232,9 @@ describe('SignalHologram', () => {
     vi.mocked(THREE.WebGLRenderer).mockImplementationOnce(() => {
       throw new Error('context lost')
     })
-    mockFetch([{ match: '/api/history/signals', body: history }])
+    mockFetch([{ match: '/api/history/competency', body: terrain }])
     renderTerrain()
-    await screen.findByRole('img', { name: /3 scores/ })
+    await screen.findByRole('img', { name: /Today:/ })
     runFrames()
     expect(renderers).toHaveLength(0)
   })
