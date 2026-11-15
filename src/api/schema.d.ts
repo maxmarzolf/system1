@@ -2586,7 +2586,7 @@ export interface components {
          * SubmissionModality
          * @enum {string}
          */
-        SubmissionModality: "total-recall" | "ghost-rep" | "mcq" | "microdrill";
+        SubmissionModality: "total-recall" | "ghost-rep" | "mcq" | "microdrill" | "ladder";
         /** SubmissionSignals */
         SubmissionSignals: {
             /**

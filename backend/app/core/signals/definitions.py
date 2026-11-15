@@ -46,6 +46,7 @@ def directive_from_definition(directive: Mapping[str, Any]) -> CorrectnessDirect
         instructions=str(directive["instructions"]),
         criteria={str(label): str(text) for label, text in dict(directive["criteria"]).items()},
         weight=float(directive["correctness_weight"]),
+        source="deterministic" if directive.get("correctness_source") == "deterministic" else "jev",
     )
 
 

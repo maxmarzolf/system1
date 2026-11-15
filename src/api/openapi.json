@@ -3740,7 +3740,8 @@
           "total-recall",
           "ghost-rep",
           "mcq",
-          "microdrill"
+          "microdrill",
+          "ladder"
         ],
         "title": "SubmissionModality",
         "type": "string"

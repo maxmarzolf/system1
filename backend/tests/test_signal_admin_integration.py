@@ -159,7 +159,8 @@ def test_listing_shows_seeded_signals_directive_and_jev_payloads(admin) -> None:
     assert 0 < concept["effectiveShare"] < 1
     assert _signal(body, "completionTime")["jevQuestion"] is None
     assert any(algorithm["slug"] == "heap" for algorithm in body["algorithms"])
-    assert body["implementations"][0]["name"] == "completionTime"
+    implementations = {implementation["name"] for implementation in body["implementations"]}
+    assert {"completionTime", "codeCompletionTime", "syntaxValid", "structuralMatch", "blankAccuracy"} <= implementations
 
 
 @pytest.mark.integration

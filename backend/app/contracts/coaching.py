@@ -25,6 +25,7 @@ class SubmissionModality(str, Enum):
     ghost_rep = "ghost-rep"
     mcq = "mcq"
     microdrill = "microdrill"
+    ladder = "ladder"
 
 
 class CoachAttemptFeedbackRequest(BaseModel):

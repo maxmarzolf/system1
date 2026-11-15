@@ -21,6 +21,7 @@ def default_evaluators() -> dict[SubmissionModality, SubmissionEvaluator]:
         SubmissionModality.ghost_rep: GhostRepEvaluator(),
         SubmissionModality.total_recall: assessor,
         SubmissionModality.microdrill: assessor,
+        SubmissionModality.ladder: assessor,
     }
 
 

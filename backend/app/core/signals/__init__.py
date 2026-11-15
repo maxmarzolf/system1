@@ -10,7 +10,7 @@ from app.core.signals.spec import (
     ModalitySignalSpec,
     SpecEntry,
 )
-from app.core.signals import mcq  # noqa: E402,F401  (registers deterministic implementations)
+from app.core.signals import deterministic  # noqa: E402,F401  (registers deterministic implementations)
 
 __all__ = [
     "CORRECTNESS_LABELS",

@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from app.core.jev import JevQuestion, choice
 from app.core.signals.base import SignalPlugin
@@ -23,13 +23,21 @@ CORRECTNESS_QUESTION_ID = "correctness"
 CORRECTNESS_LABELS = ("1", "0")
 
 
+CorrectnessSource = Literal["jev", "deterministic"]
+
+
 @dataclass(frozen=True)
 class CorrectnessDirective:
-    """The "did they answer correctly" question. Labels are fixed: "1" = correct."""
+    """The "did they answer correctly" question. Labels are fixed: "1" = correct.
+
+    ``source`` says who decides: ``jev`` asks this question; ``deterministic`` lets the
+    modality's own check decide (a ghost rep's exact match), and the question is not sent.
+    """
 
     instructions: str
     criteria: dict[str, str]
     weight: float
+    source: CorrectnessSource = "jev"
 
     def question(self) -> JevQuestion:
         return choice(self.instructions, {label: self.criteria.get(label, "") for label in CORRECTNESS_LABELS})
@@ -41,6 +49,7 @@ class CorrectnessDirective:
             "instructions": self.instructions,
             "criteria": {label: self.criteria.get(label, "") for label in CORRECTNESS_LABELS},
             "weight": self.weight,
+            "source": self.source,
         }
 
 

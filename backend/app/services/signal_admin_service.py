@@ -144,10 +144,10 @@ async def create_signal(draft: SignalDefinitionDraft, modality: str = MCQ_MODALI
     return _to_api(created)
 
 
-async def update_signal(key: str, draft: SignalDefinitionDraft, version: int) -> dict[str, Any]:
+async def update_signal(key: str, draft: SignalDefinitionDraft, version: int, modality: str = MCQ_MODALITY) -> dict[str, Any]:
     definition = await _validated({**_from_draft(draft), "key": key})
     try:
-        updated = await signal_definition_repository.update_definition(key, definition, version)
+        updated = await signal_definition_repository.update_definition(modality, key, definition, version)
     except SignalVersionConflict as error:
         raise SignalConflictError(str(error)) from error
     if updated is None:
@@ -155,10 +155,10 @@ async def update_signal(key: str, draft: SignalDefinitionDraft, version: int) ->
     return _to_api(updated)
 
 
-async def set_signal_status(key: str, archived: bool, version: int) -> dict[str, Any]:
+async def set_signal_status(key: str, archived: bool, version: int, modality: str = MCQ_MODALITY) -> dict[str, Any]:
     try:
         updated = await signal_definition_repository.set_definition_status(
-            key, "archived" if archived else "active", version
+            modality, key, "archived" if archived else "active", version
         )
     except SignalVersionConflict as error:
         raise SignalConflictError(str(error)) from error
@@ -184,7 +184,10 @@ async def update_directive(body: SignalDirectiveUpdate, modality: str = MCQ_MODA
     return _to_api(updated)
 
 
-async def signal_revisions(subject: str) -> list[dict[str, Any]]:
+async def signal_revisions(subject: str, modality: str = MCQ_MODALITY) -> list[dict[str, Any]]:
+    """History for ``directive:<modality>``, ``<modality>:<key>``, or a bare key of ``modality``."""
+    if ":" not in subject:
+        subject = signal_definition_repository.revision_subject(modality, subject)
     return await signal_definition_repository.fetch_revisions(subject)
 
 

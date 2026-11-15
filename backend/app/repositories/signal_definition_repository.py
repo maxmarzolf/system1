@@ -18,8 +18,16 @@ JSON_COLUMN_TYPES = {"criteria": "json", "score_map": "jsonb"}
 JSON_COLUMNS = tuple(JSON_COLUMN_TYPES)
 
 
+DIRECTIVE_COLUMNS = "modality, instructions, criteria, correctness_weight, correctness_source, version, updated_at"
+
+
 class SignalVersionConflict(RuntimeError):
     pass
+
+
+def revision_subject(modality: str, key: str) -> str:
+    """The revision-history subject for a signal; directives use ``directive:<modality>``."""
+    return f"{modality}:{key}"
 
 
 def _decode(value: Any) -> Any:
@@ -88,7 +96,7 @@ async def fetch_active_definitions(modality: str, algorithm_slug: str) -> list[d
 
 
 async def insert_definition(definition: dict[str, Any], modality: str) -> dict[str, Any] | None:
-    """Insert a new definition; returns None when the key already exists."""
+    """Insert a new definition; returns None when the modality already has that key."""
     columns = ", ".join(WRITABLE_COLUMNS)
     placeholders = ", ".join(
         f"${index}::{JSON_COLUMN_TYPES[column]}" if column in JSON_COLUMNS else f"${index}"
@@ -99,7 +107,7 @@ async def insert_definition(definition: dict[str, Any], modality: str) -> dict[s
             f"""
             INSERT INTO signal_definition (key, modality, {columns})
             VALUES ($1, $2, {placeholders})
-            ON CONFLICT (key) DO NOTHING
+            ON CONFLICT (modality, key) DO NOTHING
             RETURNING {DEFINITION_COLUMNS}
             """,
             definition["key"],
@@ -109,18 +117,20 @@ async def insert_definition(definition: dict[str, Any], modality: str) -> dict[s
         if row is None:
             return None
         created = _definition(row)
-        await _insert_revision(conn, created["key"], "create", None, created)
+        await _insert_revision(conn, revision_subject(modality, created["key"]), "create", None, created)
     return created
 
 
-async def update_definition(key: str, definition: dict[str, Any], expected_version: int) -> dict[str, Any] | None:
+async def update_definition(modality: str, key: str, definition: dict[str, Any], expected_version: int) -> dict[str, Any] | None:
     """Update a definition if its version still matches; None when the key is unknown."""
     assignments = ", ".join(
         f"{column} = ${index}::{JSON_COLUMN_TYPES[column]}" if column in JSON_COLUMNS else f"{column} = ${index}"
-        for index, column in enumerate(WRITABLE_COLUMNS, start=3)
+        for index, column in enumerate(WRITABLE_COLUMNS, start=4)
     )
     async with acquire_connection() as conn, conn.transaction():
-        before = await conn.fetchrow(f"SELECT {DEFINITION_COLUMNS} FROM signal_definition WHERE key = $1 FOR UPDATE", key)
+        before = await conn.fetchrow(
+            f"SELECT {DEFINITION_COLUMNS} FROM signal_definition WHERE modality = $1 AND key = $2 FOR UPDATE", modality, key
+        )
         if before is None:
             return None
         if before["version"] != expected_version:
@@ -129,22 +139,25 @@ async def update_definition(key: str, definition: dict[str, Any], expected_versi
             f"""
             UPDATE signal_definition
             SET {assignments}, version = version + 1, updated_at = NOW()
-            WHERE key = $1 AND version = $2
+            WHERE modality = $1 AND key = $2 AND version = $3
             RETURNING {DEFINITION_COLUMNS}
             """,
+            modality,
             key,
             expected_version,
             *_params(definition),
         )
         updated = _definition(row)
-        await _insert_revision(conn, key, "update", _definition(before), updated)
+        await _insert_revision(conn, revision_subject(modality, key), "update", _definition(before), updated)
     return updated
 
 
-async def set_definition_status(key: str, status: str, expected_version: int) -> dict[str, Any] | None:
+async def set_definition_status(modality: str, key: str, status: str, expected_version: int) -> dict[str, Any] | None:
     action = "archive" if status == "archived" else "restore"
     async with acquire_connection() as conn, conn.transaction():
-        before = await conn.fetchrow(f"SELECT {DEFINITION_COLUMNS} FROM signal_definition WHERE key = $1 FOR UPDATE", key)
+        before = await conn.fetchrow(
+            f"SELECT {DEFINITION_COLUMNS} FROM signal_definition WHERE modality = $1 AND key = $2 FOR UPDATE", modality, key
+        )
         if before is None:
             return None
         if before["version"] != expected_version:
@@ -152,26 +165,26 @@ async def set_definition_status(key: str, status: str, expected_version: int) ->
         row = await conn.fetchrow(
             f"""
             UPDATE signal_definition
-            SET status = $2::varchar,
-                archived_at = CASE WHEN $2::varchar = 'archived' THEN NOW() ELSE NULL END,
+            SET status = $3::varchar,
+                archived_at = CASE WHEN $3::varchar = 'archived' THEN NOW() ELSE NULL END,
                 version = version + 1,
                 updated_at = NOW()
-            WHERE key = $1
+            WHERE modality = $1 AND key = $2
             RETURNING {DEFINITION_COLUMNS}
             """,
+            modality,
             key,
             status,
         )
         updated = _definition(row)
-        await _insert_revision(conn, key, action, _definition(before), updated)
+        await _insert_revision(conn, revision_subject(modality, key), action, _definition(before), updated)
     return updated
 
 
 async def fetch_directive(modality: str) -> dict[str, Any] | None:
     async with acquire_connection() as conn:
         row = await conn.fetchrow(
-            "SELECT modality, instructions, criteria, correctness_weight, version, updated_at "
-            "FROM signal_evaluation_directive WHERE modality = $1",
+            f"SELECT {DIRECTIVE_COLUMNS} FROM signal_evaluation_directive WHERE modality = $1",
             modality,
         )
     return _directive(row) if row else None
@@ -180,8 +193,7 @@ async def fetch_directive(modality: str) -> dict[str, Any] | None:
 async def update_directive(modality: str, directive: dict[str, Any], expected_version: int) -> dict[str, Any] | None:
     async with acquire_connection() as conn, conn.transaction():
         before = await conn.fetchrow(
-            "SELECT modality, instructions, criteria, correctness_weight, version, updated_at "
-            "FROM signal_evaluation_directive WHERE modality = $1 FOR UPDATE",
+            f"SELECT {DIRECTIVE_COLUMNS} FROM signal_evaluation_directive WHERE modality = $1 FOR UPDATE",
             modality,
         )
         if before is None:
@@ -189,24 +201,25 @@ async def update_directive(modality: str, directive: dict[str, Any], expected_ve
         if before["version"] != expected_version:
             raise SignalVersionConflict(f"The {modality} correctness question changed since it was loaded.")
         row = await conn.fetchrow(
-            """
+            f"""
             UPDATE signal_evaluation_directive
-            SET instructions = $2, criteria = $3::jsonb, correctness_weight = $4,
+            SET instructions = $2, criteria = $3::jsonb, correctness_weight = $4, correctness_source = $5,
                 version = version + 1, updated_at = NOW()
             WHERE modality = $1
-            RETURNING modality, instructions, criteria, correctness_weight, version, updated_at
+            RETURNING {DIRECTIVE_COLUMNS}
             """,
             modality,
             directive["instructions"],
             json.dumps(directive["criteria"]),
             directive["correctness_weight"],
+            directive.get("correctness_source") or before["correctness_source"],
         )
         updated = _directive(row)
         await _insert_revision(conn, f"directive:{modality}", "update", _directive(before), updated)
     return updated
 
 
-async def seed_defaults(directive: dict[str, Any], definitions: list[dict[str, Any]]) -> int:
+async def seed_defaults(directive: dict[str, Any], definitions: list[dict[str, Any]] | tuple[dict[str, Any], ...]) -> int:
     """Insert missing defaults only; existing rows (and admin edits) are never touched.
 
     Returns how many rows were inserted.
@@ -220,8 +233,8 @@ async def seed_defaults(directive: dict[str, Any], definitions: list[dict[str, A
     async with acquire_connection() as conn, conn.transaction():
         row = await conn.fetchrow(
             """
-            INSERT INTO signal_evaluation_directive (modality, instructions, criteria, correctness_weight)
-            VALUES ($1, $2, $3::jsonb, $4)
+            INSERT INTO signal_evaluation_directive (modality, instructions, criteria, correctness_weight, correctness_source)
+            VALUES ($1, $2, $3::jsonb, $4, $5)
             ON CONFLICT (modality) DO NOTHING
             RETURNING modality
             """,
@@ -229,6 +242,7 @@ async def seed_defaults(directive: dict[str, Any], definitions: list[dict[str, A
             directive["instructions"],
             json.dumps(directive["criteria"]),
             directive["correctness_weight"],
+            directive.get("correctness_source", "jev"),
         )
         if row is not None:
             inserted += 1
@@ -238,7 +252,7 @@ async def seed_defaults(directive: dict[str, Any], definitions: list[dict[str, A
                 f"""
                 INSERT INTO signal_definition (key, modality, {columns})
                 VALUES ($1, $2, {placeholders})
-                ON CONFLICT (key) DO NOTHING
+                ON CONFLICT (modality, key) DO NOTHING
                 RETURNING key
                 """,
                 definition["key"],
@@ -247,7 +261,7 @@ async def seed_defaults(directive: dict[str, Any], definitions: list[dict[str, A
             )
             if row is not None:
                 inserted += 1
-                await _insert_revision(conn, definition["key"], "seed", None, definition)
+                await _insert_revision(conn, revision_subject(definition["modality"], definition["key"]), "seed", None, definition)
     return inserted
 
 
