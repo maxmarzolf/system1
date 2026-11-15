@@ -522,11 +522,6 @@ span.history-day-title {
   line-height: 1.45;
 }
 
-.competency-layout {
-  display: grid;
-  gap: 1.3rem;
-}
-
 .competency-standing {
   display: grid;
   gap: 0.3rem;
@@ -536,6 +531,7 @@ span.history-day-title {
 }
 
 .competency-row {
+  cursor: pointer;
   display: grid;
   grid-template-columns: minmax(10rem, 14rem) minmax(6rem, 1fr) minmax(14rem, 18rem) 7.5rem auto;
   grid-template-areas: "head bar meta spark practise";
@@ -627,81 +623,6 @@ button.competency-practise {
   font-size: 0.72rem;
 }
 
-.competency-heatmap {
-  --competency-row-height: 1.15rem;
-  min-width: 0;
-}
-
-.competency-heatmap-ticks {
-  position: relative;
-  height: 1.1rem;
-  margin-left: 9.5rem;
-  color: var(--hc-fg-dim);
-  font-size: 0.64rem;
-}
-
-.competency-heatmap-ticks span {
-  position: absolute;
-  transform: translateX(-50%);
-  white-space: nowrap;
-}
-
-.competency-heatmap-ticks span:first-child { transform: none; }
-.competency-heatmap-ticks span:last-child:not(:first-child) { transform: translateX(-100%); }
-
-.competency-heatmap-body {
-  display: grid;
-  grid-template-columns: 9.5rem minmax(0, 1fr);
-}
-
-.competency-heatmap-labels {
-  margin: 0;
-  padding: 0 0.5rem 0 0;
-  list-style: none;
-}
-
-.competency-heatmap-labels li {
-  height: var(--competency-row-height);
-  overflow: hidden;
-  color: var(--hc-fg-dim);
-  font-size: 0.68rem;
-  line-height: var(--competency-row-height);
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.competency-heatmap-grid {
-  display: block;
-  width: 100%;
-  height: calc(var(--competency-rows) * var(--competency-row-height));
-}
-
-.competency-heatmap-cell {
-  opacity: 0.55;
-}
-
-.competency-heatmap-practised {
-  opacity: 1;
-  stroke: var(--hc-fg);
-  stroke-width: 1;
-  cursor: pointer;
-}
-
-.competency-heatmap-practised:hover,
-.competency-heatmap-practised:focus-visible {
-  stroke: var(--hc-accent);
-  stroke-width: 2;
-  outline: none;
-}
-
-.competency-heatmap-status {
-  min-height: 1.2rem;
-  margin: 0.6rem 0 0;
-  color: var(--hc-fg-dim);
-  font-size: 0.72rem;
-}
-
 @media (max-width: 900px) {
   .competency-row {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -712,7 +633,174 @@ button.competency-practise {
       "spark practise";
   }
 
-  .competency-heatmap-ticks { margin-left: 6rem; }
-  .competency-heatmap-ticks span:nth-child(even):not(:last-child) { display: none; }
-  .competency-heatmap-body { grid-template-columns: 6rem minmax(0, 1fr); }
+  .competency-detail-ticks span:nth-child(even):not(:last-child) { display: none; }
+  .competency-detail-signals { grid-template-columns: minmax(0, 1fr); }
+}
+
+.competency-row:focus-visible {
+  outline: 2px solid var(--hc-accent);
+  outline-offset: 2px;
+}
+
+.competency-row-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.competency-flag {
+  display: inline-grid;
+  place-items: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--hc-warning) 22%, transparent);
+  color: var(--hc-warning);
+  font-size: 0.72rem;
+  font-weight: 800;
+  cursor: help;
+}
+
+.competency-row-unpractised {
+  cursor: default;
+}
+
+.competency-never {
+  grid-area: bar;
+  align-self: center;
+  justify-self: center;
+  color: var(--hc-fg-dim);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: help;
+}
+
+.competency-detail {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--workbench-edge);
+  cursor: default;
+}
+
+.competency-detail-graph {
+  display: block;
+  width: 100%;
+  height: 6rem;
+}
+
+.competency-detail-graph polyline {
+  fill: none;
+  stroke: var(--hc-accent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.competency-detail-dot {
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+
+.competency-detail-gridline {
+  stroke: color-mix(in srgb, var(--hc-fg) 10%, transparent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.competency-detail-strip {
+  display: block;
+  width: 100%;
+  height: 0.9rem;
+}
+
+.competency-strip-cell { opacity: 0.55; }
+
+.competency-strip-practised {
+  opacity: 1;
+  stroke: var(--hc-fg);
+  stroke-width: 1;
+  cursor: pointer;
+}
+
+.competency-strip-practised:hover,
+.competency-strip-practised:focus-visible {
+  stroke: var(--hc-accent);
+  stroke-width: 2;
+  outline: none;
+}
+
+.competency-detail-ticks {
+  position: relative;
+  height: 1rem;
+  color: var(--hc-fg-dim);
+  font-size: 0.64rem;
+}
+
+.competency-detail-ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.competency-detail-ticks span:first-child { transform: none; }
+.competency-detail-ticks span:last-child:not(:first-child) { transform: translateX(-100%); }
+
+.competency-detail-status {
+  min-height: 1.1rem;
+  margin: 0;
+  color: var(--hc-fg-dim);
+  font-size: 0.7rem;
+}
+
+.competency-detail-signals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 0.4rem;
+}
+
+.competency-signals {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--workbench-edge);
+  border-radius: var(--workbench-radius-sm);
+}
+
+.competency-signals h4 {
+  margin: 0 0 0.45rem;
+  color: var(--hc-fg-dim);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.competency-signals ol {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.competency-signals li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 0.76rem;
+}
+
+.competency-signals em {
+  color: var(--hc-fg-dim);
+  font-size: 0.66rem;
+  font-style: normal;
+}
+
+.competency-signals p {
+  margin: 0;
+  color: var(--hc-fg-dim);
+  font-size: 0.72rem;
 }

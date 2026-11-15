@@ -92,7 +92,7 @@ describe('JourneyPage', () => {
   const routes = (overrides: Record<string, unknown> = {}) =>
     mockFetch([
       { match: '/api/coach/provider-default', body: { provider: 'openai' } },
-      { match: '/api/history/competency', body: { decayPerDay: 0.02, algorithms: [], days: [], cells: [] } },
+      { match: '/api/history/competency', body: { decayPerDay: 0.02, freeFallDays: 10, algorithms: [], unpractised: [], days: [], cells: [] } },
       { match: '/api/history/day', respond: (url) => ({ date: new URL(url, 'http://x').searchParams.get('date'), submissions: [] }) },
       { match: '/api/skill-map-overview', body: overview, ...overrides },
     ])
@@ -119,7 +119,7 @@ describe('JourneyPage', () => {
     await waitFor(() => expect(fetch.calls.some((call) => call.url.includes('historyDays=7'))).toBe(true))
   })
 
-  it('opens a practised day from the competency heatmap, filtered to its algorithm', async () => {
+  it('opens a practised day from an expanded competency row, filtered to its algorithm', async () => {
     const fetch = mockFetch([
       { match: '/api/coach/provider-default', body: { provider: 'openai' } },
       { match: '/api/history/competency', body: competencyTerrain() },
@@ -128,6 +128,7 @@ describe('JourneyPage', () => {
     ])
     renderJourney()
     await screen.findByText('No submissions recorded on this day.')
+    await userEvent.click(await screen.findByRole('listitem', { name: 'Heap: show details' }))
     const heapDay = await screen.findByRole('button', { name: /^Heap · Mar 1 · competency 80.0/ })
     await userEvent.click(heapDay)
     await waitFor(() => expect(fetch.calls.some((call) => call.url.includes('/api/history/day') && call.url.includes('date=2026-03-01'))).toBe(true))

@@ -112,3 +112,14 @@ class CompetencyTerrainRow(TypedDict):
     last_average: float
     days_since: int
     standing: str
+    free_fall: bool
+
+
+class CompetencySignalRow(TypedDict):
+    algorithm: str
+    key: str
+    label: str
+    average: float
+    answers: int
+    side: str  # strongest | weakest
+    position: int

@@ -7,6 +7,8 @@ import type { components } from '@/api/schema'
 export type CompetencyTerrainData = components['schemas']['CompetencyTerrainResponse']
 export type CompetencyAlgorithm = components['schemas']['CompetencyAlgorithm']
 export type CompetencyCell = components['schemas']['CompetencyCell']
+export type CompetencySignal = components['schemas']['CompetencySignal']
+export type UnpractisedAlgorithm = components['schemas']['UnpractisedAlgorithm']
 export type Standing = 'strong' | 'learn' | 'review'
 
 export const STANDING_LABELS: Record<Standing, string> = { learn: 'Learn', review: 'Review', strong: 'Strong' }
@@ -41,5 +43,5 @@ export const pluralize = (count: number, one: string, many = `${one}s`) => `${co
 export const daysAgo = (days: number) => (days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`)
 
 /** The deck to practise an algorithm or playlist with (the same URLs Dashboard uses). */
-export const practiceHref = (algorithm: Pick<CompetencyAlgorithm, 'slug' | 'kind'>) =>
+export const practiceHref = (algorithm: Pick<UnpractisedAlgorithm, 'slug' | 'kind'>) =>
   `/practice?${new URLSearchParams(algorithm.kind === 'playlist' ? { playlist: algorithm.slug } : { focusPattern: algorithm.slug })}`

@@ -482,26 +482,36 @@ def test_competency_terrain_names_algorithms_and_shapes_query_rows(monkeypatch) 
         return [
             {"algorithm": "heap", "day": date(2026, 1, 1), "observed": True, "answers": 2, "signals": 8,
              "average": 70.0, "competency": 70.0, "last_practised": date(2026, 1, 1),
-             "last_average": 70.0, "days_since": 0, "standing": "strong"},
+             "last_average": 70.0, "days_since": 0, "standing": "strong", "free_fall": False},
             {"algorithm": "heap", "day": date(2026, 1, 2), "observed": False, "answers": 0, "signals": 0,
              "average": None, "competency": 68.6, "last_practised": date(2026, 1, 1),
-             "last_average": 70.0, "days_since": 1, "standing": "review"},
+             "last_average": 70.0, "days_since": 1, "standing": "review", "free_fall": True},
             {"algorithm": "skeletons", "day": date(2026, 1, 2), "observed": True, "answers": 1, "signals": 4,
              "average": 40.0, "competency": 40.0, "last_practised": date(2026, 1, 2),
-             "last_average": 40.0, "days_since": 0, "standing": "learn"},
+             "last_average": 40.0, "days_since": 0, "standing": "learn", "free_fall": False},
             {"algorithm": "sliding-window", "day": date(2026, 1, 2), "observed": True, "answers": 1, "signals": 4,
              "average": 90.0, "competency": 90.0, "last_practised": date(2026, 1, 2),
-             "last_average": 90.0, "days_since": 0, "standing": "strong"},
+             "last_average": 90.0, "days_since": 0, "standing": "strong", "free_fall": False},
         ]
 
     async def _algorithm_rows():
         return [
             {"algorithm_slug": "sliding-window", "algorithm_name": "Sliding Window"},
+            {"algorithm_slug": "trees", "algorithm_name": "Trees"},
             {"algorithm_slug": "heap", "algorithm_name": "Heap"},
         ]
 
     async def _grading():
-        return app_settings_service.GradingSettingsModel(competencyDecayPerDay=0.05)
+        return app_settings_service.GradingSettingsModel(competencyDecayPerDay=0.05, competencyFreeFallDays=7)
+
+    async def _signals(**kwargs):
+        captured["signals"] = kwargs
+        return [
+            {"algorithm": "heap", "key": "correctness", "label": "Correct", "average": 90.0, "answers": 2, "side": "strongest", "position": 1},
+            {"algorithm": "heap", "key": "speed", "label": "Speed", "average": 30.0, "answers": 1, "side": "weakest", "position": 1},
+        ]
+
+    monkeypatch.setattr(history, "fetch_competency_signals", _signals)
 
     monkeypatch.setattr(history, "fetch_competency_terrain", _terrain)
     monkeypatch.setattr(history, "fetch_skill_map_overview_algorithm_rows", _algorithm_rows)
@@ -512,16 +522,26 @@ def test_competency_terrain_names_algorithms_and_shapes_query_rows(monkeypatch) 
     assert captured["timezone_name"] == "America/New_York"
     assert captured["decay_per_day"] == 0.05
     assert captured["strong_at"] == history.STRONG_COMPETENCY
+    assert captured["free_fall_days"] == 7
     tags = captured["tag_slugs"]
     assert tags["heap"] == "heap" and tags["heap-priority-queue"] == "heap" and tags["sliding-window"] == "sliding-window"
     assert "dp" not in tags  # an alias whose algorithm isn't known is left out
+    assert captured["signals"]["per_side"] == history.SIGNALS_PER_SIDE and captured["signals"]["tag_slugs"] == tags
     assert terrain["decayPerDay"] == 0.05
     # Catalog order, today's (latest) competency, answers summed.
     sliding, heap, skeletons = terrain["algorithms"]
     assert sliding == {
         "slug": "sliding-window", "name": "Sliding Window", "kind": "algorithm", "answers": 1, "competency": 90.0,
         "lastPractised": "2026-01-02", "lastAverage": 90.0, "daysSince": 0, "standing": "strong",
+        "freeFall": False, "strongestSignals": [], "weakestSignals": [],
     }
+    assert heap["freeFall"] is True
+    assert heap["strongestSignals"] == [{"key": "correctness", "label": "Correct", "average": 90.0, "answers": 2}]
+    assert heap["weakestSignals"] == [{"key": "speed", "label": "Speed", "average": 30.0, "answers": 1}]
+    assert terrain["freeFallDays"] == 7
+    # Known but never practised, in catalog order (a static playlist with no answers included).
+    assert terrain["unpractised"][0] == {"slug": "trees", "name": "Trees", "kind": "algorithm"}
+    assert {"slug": "google", "name": "Google", "kind": "playlist"} in terrain["unpractised"]
     assert (heap["competency"], heap["daysSince"], heap["lastPractised"], heap["standing"]) == (68.6, 1, "2026-01-01", "review")
     assert (skeletons["kind"], skeletons["name"], skeletons["standing"]) == ("playlist", "Skeletons", "learn")
     assert terrain["days"] == ["2026-01-01", "2026-01-02"]
@@ -543,6 +563,11 @@ def test_competency_terrain_falls_back_to_utc_for_unknown_timezones(monkeypatch)
 
     monkeypatch.setattr(history, "fetch_competency_terrain", _terrain)
     monkeypatch.setattr(history, "fetch_skill_map_overview_algorithm_rows", _no_algorithms)
+
+    async def _no_signals(**_kwargs):
+        return []
+
+    monkeypatch.setattr(history, "fetch_competency_signals", _no_signals)
 
     async def _grading():
         return history.app_settings_service.GradingSettingsModel()

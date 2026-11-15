@@ -192,6 +192,7 @@ export type GradingSettings = {
   nearMissThreshold: number
   lowConfidenceThreshold: number
   competencyDecayPerDay: number
+  competencyFreeFallDays: number
 }
 
 export type GenerationSettings = {

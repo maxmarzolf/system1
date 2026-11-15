@@ -47,7 +47,7 @@ describe('CompetencySection', () => {
     expect(screen.getByText('Loading competency…')).toBeInTheDocument()
     const list = await screen.findByRole('list', { name: 'Competency today, weakest first' })
     const rows = within(list).getAllByRole('listitem')
-    expect(rows.map((row) => row.querySelector('strong')?.textContent)).toEqual(['Heap', 'Sliding Window with a very long name'])
+    expect(rows.map((row) => row.querySelector('strong')?.textContent)).toEqual(['!Heap', 'Sliding Window with a very long name', 'Trees'])
     expect(within(rows[0]).getByText('Review')).toHaveAttribute('title', expect.stringContaining('has faded'))
     expect(within(rows[0]).getByRole('meter', { name: 'Heap competency' })).toHaveAttribute('aria-valuenow', '76.8')
     expect(rows[0]).toHaveTextContent(/last 80 on Mar 1 · 2 days ago · 2 answers/)
@@ -59,42 +59,84 @@ describe('CompetencySection', () => {
     expect(await screen.findByTestId('practice')).toHaveTextContent('?focusPattern=heap')
   })
 
-  it('maps history to a heatmap whose practised days open their answers', async () => {
+  it('flags free fall and never-practised algorithms', async () => {
+    mockFetch([{ match: '/api/history/competency', body: competencyTerrain() }])
+    renderSection()
+    const list = await screen.findByRole('list', { name: 'Competency today, weakest first' })
+    const rows = within(list).getAllByRole('listitem')
+    expect(within(rows[0]).getByLabelText('Decaying for more than 10 days.')).toHaveTextContent('!')
+    expect(within(rows[0]).getByLabelText('Decaying for more than 10 days.')).toHaveAttribute('title', 'Decaying for more than 10 days.')
+    expect(within(rows[1]).queryByText('!')).toBeNull()
+    // Never practised comes last: a dash, no value, still a way in.
+    expect(rows[2]).toHaveTextContent('Trees')
+    expect(within(rows[2]).getByTitle('Never practiced.')).toHaveTextContent('-')
+    expect(within(rows[2]).queryByRole('meter')).toBeNull()
+    await userEvent.click(rows[2]) // not expandable
+    expect(rows[2]).not.toHaveAttribute('aria-expanded')
+    await userEvent.click(within(rows[2]).getByRole('button', { name: 'Practise Trees' }))
+    expect(await screen.findByTestId('practice')).toHaveTextContent('?focusPattern=trees')
+  })
+
+  it('expands a row into its history graph, a heat strip whose practised days open answers, and its signals', async () => {
     mockFetch([{ match: '/api/history/competency', body: competencyTerrain() }])
     const onSelect = renderSection()
-    const grid = await screen.findByRole('group', { name: /Competency per algorithm per day/ })
-    expect(grid.querySelectorAll('rect')).toHaveLength(4)
-    const practised = within(grid).getAllByRole('button')
-    expect(practised).toHaveLength(2)
-    expect(practised[0]).toHaveAccessibleName('Heap · Mar 1 · competency 80.0 · 2 answers, 9 signals averaged')
+    const list = await screen.findByRole('list', { name: 'Competency today, weakest first' })
+    const heap = within(list).getAllByRole('listitem')[0]
+    expect(heap).toHaveAttribute('aria-expanded', 'false')
+    expect(within(heap).queryByText('Strongest signals')).toBeNull()
 
-    const status = screen.getByRole('status')
-    expect(status).toHaveTextContent('Hover a day for its values')
-    const decayed = grid.querySelectorAll('rect')[2]
-    fireEvent.mouseEnter(decayed)
+    await userEvent.click(heap)
+    expect(heap).toHaveAttribute('aria-expanded', 'true')
+    expect(within(heap).getByRole('img', { name: 'Heap: competency from Mar 1 to Mar 3' }).querySelectorAll('.competency-detail-dot')).toHaveLength(1)
+    const strongest = within(heap).getByText('Strongest signals').parentElement as HTMLElement
+    expect(strongest).toHaveTextContent(/Concept recognition\s*96\s*1 answer/)
+    expect(within(heap).getByText('Weakest signals').parentElement).toHaveTextContent(/Correct choice\s*40\s*2 answers/)
+
+    const strip = within(heap).getByRole('group', { name: 'Heap by day; practised days open their answers' })
+    expect(strip.querySelectorAll('rect')).toHaveLength(3)
+    const status = within(heap).getByRole('status')
+    fireEvent.mouseEnter(strip.querySelectorAll('rect')[2])
     expect(status).toHaveTextContent('Heap · Mar 3 · competency 76.8 · not practised: decayed from Mar 1')
-    fireEvent.mouseLeave(grid)
+    fireEvent.mouseLeave(strip)
     expect(status).toHaveTextContent('Hover a day for its values')
 
-    await userEvent.click(practised[1])
-    expect(onSelect).toHaveBeenCalledWith('2026-03-03', 'sliding-window')
-    fireEvent.focus(practised[0])
+    const practised = within(strip).getByRole('button', { name: 'Heap · Mar 1 · competency 80.0 · 2 answers, 9 signals averaged' })
+    await userEvent.click(practised)
+    expect(onSelect).toHaveBeenCalledWith('2026-03-01', 'heap')
+    expect(heap).toHaveAttribute('aria-expanded', 'true') // clicks inside the detail don't collapse it
+    fireEvent.focus(practised)
     expect(status).toHaveTextContent('Heap · Mar 1')
-    fireEvent.keyDown(practised[0], { key: 'Enter' })
-    fireEvent.keyDown(practised[0], { key: ' ' })
-    fireEvent.keyDown(practised[0], { key: 'x' })
+    fireEvent.keyDown(practised, { key: 'Enter' })
+    fireEvent.keyDown(practised, { key: ' ' })
+    fireEvent.keyDown(practised, { key: 'x' })
     expect(onSelect).toHaveBeenCalledTimes(3)
-    expect(onSelect).toHaveBeenLastCalledWith('2026-03-01', 'heap')
+
+    // The sliding window row has no signals yet.
+    const sliding = within(list).getByRole('listitem', { name: 'Sliding Window with a very long name: show details' })
+    sliding.focus()
+    fireEvent.keyDown(sliding, { key: 'Enter' })
+    expect(sliding).toHaveAttribute('aria-expanded', 'true')
+    expect(within(sliding).getAllByText('Not enough signals yet.')).toHaveLength(2)
+    fireEvent.keyDown(sliding, { key: ' ' })
+    expect(sliding).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.keyDown(sliding, { key: 'a' })
+    expect(sliding).toHaveAttribute('aria-expanded', 'false')
+
+    // Clicking the summary again collapses; Practise never toggles.
+    await userEvent.click(within(heap).getByRole('meter'))
+    expect(heap).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('handles an empty history, a single day, and errors', async () => {
-    mockFetch([{ match: '/api/history/competency', body: { decayPerDay: 0.02, algorithms: [], days: [], cells: [] } }])
+    mockFetch([{ match: '/api/history/competency', body: { decayPerDay: 0.02, freeFallDays: 10, algorithms: [], unpractised: [], days: [], cells: [] } }])
     const { unmount } = render(<MemoryRouter><CompetencySection onSelect={vi.fn()} /></MemoryRouter>)
     await screen.findByText('No graded answers yet.')
     unmount()
 
     const single = {
       decayPerDay: 0.02,
+      freeFallDays: 10,
+      unpractised: [],
       algorithms: [competencyAlgorithm({ slug: 'heap', name: 'Heap', competency: 50, kind: 'playlist', answers: 1, daysSince: 1 })],
       days: ['2026-03-01'],
       cells: [competencyCell('heap', '2026-03-01', 50, true)],

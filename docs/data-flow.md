@@ -154,7 +154,10 @@ flowchart LR
   - a day's competency is the average of every scored rubric entry (dimensions and modifiers, including correctness and speed) from that algorithm's answers, in the viewer's time zone;
   - each day after that without practice carries the last practised day's value, decayed by the *competency decay* setting (default 2%, compounded): `last × (1 − decay)^days since`;
   - each row also carries the last practised day's average, the days since, and a **standing**: `strong` (competency ≥ 70), `learn` (the last practised average was already below 70: never got good) or `review` (it was above 70 and has decayed);
-  - rows run from each algorithm's first practice to today. The browser only draws them: the terrain, the ranked list and the heatmap all read this one response.
+  - `free_fall` is true after more than *free-fall days* (Admin setting, default 10) without practice;
+  - rows run from each algorithm's first practice to today.
+- A second aggregate query (`fetch_competency_signals`, sharing the same CTEs) averages each signal per algorithm over all time and returns the 3 strongest and 3 weakest; with fewer than 6 signals they are split between the two sides, never repeated.
+- The response also lists known algorithms and playlists with no answers (`unpractised`). The browser only draws all of it: the terrain and the ranked list with its expanded rows read this one response.
 - The day detail renders the stored evaluation as is (`SubmissionSignalDetails.tsx`), including the Jev trace.
 
 ## 4. Configure: signals and settings in /admin

@@ -52,6 +52,9 @@ export function SettingsView() {
             <NumberControl label="Journey competency decay per day" min={0} max={0.5} step={0.01} value={value.competencyDecayPerDay}
               onChange={(competencyDecayPerDay) => set({ ...value, competencyDecayPerDay })}
               description="On days an algorithm isn't practised, the Journey terrain lowers its last competency by this fraction (0.02 = 2% a day, compounded)." />
+            <NumberControl label="Journey free fall after (days)" min={1} max={365} value={value.competencyFreeFallDays}
+              onChange={(competencyFreeFallDays) => set({ ...value, competencyFreeFallDays })}
+              description="An algorithm decaying for more than this many days gets a '!' on Journey's competency list." />
           </>
         )}
       </SectionForm>

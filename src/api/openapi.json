@@ -802,6 +802,10 @@
             "title": "Dayssince",
             "type": "integer"
           },
+          "freeFall": {
+            "title": "Freefall",
+            "type": "boolean"
+          },
           "kind": {
             "title": "Kind",
             "type": "string"
@@ -825,6 +829,20 @@
           "standing": {
             "title": "Standing",
             "type": "string"
+          },
+          "strongestSignals": {
+            "items": {
+              "$ref": "#/components/schemas/CompetencySignal"
+            },
+            "title": "Strongestsignals",
+            "type": "array"
+          },
+          "weakestSignals": {
+            "items": {
+              "$ref": "#/components/schemas/CompetencySignal"
+            },
+            "title": "Weakestsignals",
+            "type": "array"
           }
         },
         "required": [
@@ -836,7 +854,10 @@
           "lastPractised",
           "lastAverage",
           "daysSince",
-          "standing"
+          "standing",
+          "freeFall",
+          "strongestSignals",
+          "weakestSignals"
         ],
         "title": "CompetencyAlgorithm",
         "type": "object"
@@ -902,6 +923,35 @@
         "title": "CompetencyCell",
         "type": "object"
       },
+      "CompetencySignal": {
+        "additionalProperties": true,
+        "properties": {
+          "answers": {
+            "title": "Answers",
+            "type": "integer"
+          },
+          "average": {
+            "title": "Average",
+            "type": "number"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "average",
+          "answers"
+        ],
+        "title": "CompetencySignal",
+        "type": "object"
+      },
       "CompetencyTerrainResponse": {
         "additionalProperties": true,
         "properties": {
@@ -929,11 +979,24 @@
           "decayPerDay": {
             "title": "Decayperday",
             "type": "number"
+          },
+          "freeFallDays": {
+            "title": "Freefalldays",
+            "type": "integer"
+          },
+          "unpractised": {
+            "items": {
+              "$ref": "#/components/schemas/UnpractisedAlgorithm"
+            },
+            "title": "Unpractised",
+            "type": "array"
           }
         },
         "required": [
           "decayPerDay",
+          "freeFallDays",
           "algorithms",
+          "unpractised",
           "days",
           "cells"
         ],
@@ -3886,6 +3949,30 @@
         ],
         "title": "TemplateMode",
         "type": "string"
+      },
+      "UnpractisedAlgorithm": {
+        "additionalProperties": true,
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "kind"
+        ],
+        "title": "UnpractisedAlgorithm",
+        "type": "object"
       },
       "ValidationError": {
         "properties": {

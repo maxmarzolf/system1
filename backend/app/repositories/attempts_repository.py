@@ -7,6 +7,7 @@ from app.contracts.catalog_ids import problem_slug_candidates
 from app.repositories.base import acquire_connection
 from app.repositories.types import (
     AlgorithmSkillRow,
+    CompetencySignalRow,
     CompetencyTerrainRow,
     SubmissionInsertResult,
     SkillMapOverviewAlgorithmRow,
@@ -207,8 +208,10 @@ async def fetch_skill_map_overview_attempt_rows() -> list[SkillMapOverviewAttemp
     return [cast(SkillMapOverviewAttemptRow, dict(row)) for row in rows]
 
 
-_COMPETENCY_TERRAIN_SQL = f"""
-WITH tag_algorithm AS (
+# Shared by the competency queries: every scored rubric entry of every counted submission, with
+# the algorithm it counts toward ($1 time zone, $2/$3 the tag → algorithm table).
+_COMPETENCY_ENTRIES_CTES = f"""
+tag_algorithm AS (
     SELECT tag, slug FROM unnest($2::text[], $3::text[]) AS m(tag, slug)
 ),
 -- Each counted submission belongs to the algorithm of its first tag that names one.
@@ -226,17 +229,22 @@ attributed AS (
 ),
 -- Every scored rubric entry (dimensions and modifiers), clamped to 0-100.
 entries AS (
-    SELECT x.id, x.algorithm, x.day, LEAST(GREATEST((e.value->>'score')::float, 0), 100) AS score
+    SELECT x.id, x.algorithm, x.day, e.key, COALESCE(NULLIF(e.value->>'label', ''), e.key) AS label,
+           LEAST(GREATEST((e.value->>'score')::float, 0), 100) AS score
     FROM attributed x
     CROSS JOIN LATERAL (
-        SELECT value FROM jsonb_each(
+        SELECT key, value FROM jsonb_each(
             CASE WHEN jsonb_typeof(x.evaluation->'dimensions') = 'object' THEN x.evaluation->'dimensions' ELSE '{{}}'::jsonb END)
         UNION ALL
-        SELECT value FROM jsonb_each(
+        SELECT key, value FROM jsonb_each(
             CASE WHEN jsonb_typeof(x.evaluation->'modifiers') = 'object' THEN x.evaluation->'modifiers' ELSE '{{}}'::jsonb END)
     ) e
     WHERE e.value->>'status' IN ('pass', 'partial', 'fail') AND jsonb_typeof(e.value->'score') = 'number'
-),
+)
+"""
+
+_COMPETENCY_TERRAIN_SQL = f"""
+WITH {_COMPETENCY_ENTRIES_CTES},
 observed AS (
     SELECT algorithm, day, AVG(score) AS average, COUNT(DISTINCT id)::int AS answers, COUNT(*)::int AS signals
     FROM entries
@@ -276,21 +284,29 @@ FROM carried
 """
 
 # Strong when competency is at the threshold; otherwise "learn" if the last practised day was
-# already below it (never got good), else "review" (was good, has decayed).
+# already below it (never got good), else "review" (was good, has decayed). In free fall when it
+# has been decaying for more than $7 days.
 _COMPETENCY_TERRAIN_STANDING_SQL = f"""
 SELECT *,
     CASE
         WHEN competency >= $6::float THEN 'strong'
         WHEN last_average < $6::float THEN 'learn'
         ELSE 'review'
-    END AS standing
+    END AS standing,
+    days_since > $7::int AS free_fall
 FROM ({_COMPETENCY_TERRAIN_SQL}) terrain
 ORDER BY algorithm, day
 """
 
 
 async def fetch_competency_terrain(
-    *, timezone_name: str, tag_slugs: dict[str, str], decay_per_day: float, today: date, strong_at: float = 70.0
+    *,
+    timezone_name: str,
+    tag_slugs: dict[str, str],
+    decay_per_day: float,
+    today: date,
+    strong_at: float = 70.0,
+    free_fall_days: int = 10,
 ) -> list[CompetencyTerrainRow]:
     """Competency per algorithm per calendar day, computed in one aggregate query.
 
@@ -299,15 +315,57 @@ async def fetch_competency_terrain(
     (compounded) for each day since. Rows run from each algorithm's first practice to ``today``.
     ``tag_slugs`` maps lower-case tags to the algorithm slug they count toward. Each row's
     ``standing`` is ``strong`` (competency ≥ ``strong_at``), ``learn`` (the last practised average
-    was already below it) or ``review`` (it was above, and has decayed).
+    was already below it) or ``review`` (it was above, and has decayed); ``free_fall`` is true after
+    more than ``free_fall_days`` days without practice.
     """
     tags = list(tag_slugs)
     async with acquire_connection() as conn:
         rows = await conn.fetch(
             _COMPETENCY_TERRAIN_STANDING_SQL,
-            timezone_name, tags, [tag_slugs[tag] for tag in tags], decay_per_day, today, strong_at,
+            timezone_name, tags, [tag_slugs[tag] for tag in tags], decay_per_day, today, strong_at, free_fall_days,
         )
     return [cast(CompetencyTerrainRow, dict(row)) for row in rows]
+
+
+# Each signal's all-time average per algorithm, and the $4 strongest and $4 weakest. A signal is
+# never on both sides: with fewer than 2 × $4 signals they are split, the strongest side taking
+# the odd one.
+_COMPETENCY_SIGNALS_SQL = f"""
+WITH {_COMPETENCY_ENTRIES_CTES},
+per_signal AS (
+    SELECT algorithm, key, MAX(label) AS label, AVG(score) AS average, COUNT(DISTINCT id)::int AS answers
+    FROM entries
+    GROUP BY algorithm, key
+),
+ranked AS (
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY algorithm ORDER BY average DESC, key) AS from_top,
+           ROW_NUMBER() OVER (PARTITION BY algorithm ORDER BY average ASC, key DESC) AS from_bottom,
+           LEAST($4::int, CEIL(COUNT(*) OVER (PARTITION BY algorithm) / 2.0)::int) AS strongest_count
+    FROM per_signal
+)
+SELECT
+    algorithm,
+    key,
+    label,
+    ROUND(average::numeric, 1)::float AS average,
+    answers,
+    CASE WHEN from_top <= strongest_count THEN 'strongest' ELSE 'weakest' END AS side,
+    CASE WHEN from_top <= strongest_count THEN from_top ELSE from_bottom END AS position
+FROM ranked
+WHERE from_top <= strongest_count OR from_bottom <= $4
+ORDER BY algorithm, side, position
+"""
+
+
+async def fetch_competency_signals(
+    *, timezone_name: str, tag_slugs: dict[str, str], per_side: int = 3
+) -> list[CompetencySignalRow]:
+    """Per algorithm, the ``per_side`` signals with the highest and the lowest all-time average."""
+    tags = list(tag_slugs)
+    async with acquire_connection() as conn:
+        rows = await conn.fetch(_COMPETENCY_SIGNALS_SQL, timezone_name, tags, [tag_slugs[tag] for tag in tags], per_side)
+    return [cast(CompetencySignalRow, dict(row)) for row in rows]
 
 
 async def fetch_history_day_rows(day_start: datetime, day_end: datetime) -> list[dict[str, Any]]:

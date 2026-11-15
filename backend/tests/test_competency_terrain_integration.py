@@ -55,7 +55,7 @@ async def _insert(conn: asyncpg.Connection) -> None:
         )
 
 
-async def _run(strong_at: float = 70.0) -> list[dict]:
+async def _run(strong_at: float = 70.0) -> tuple[list[dict], list[dict]]:
     from app.database import connect, disconnect
 
     conn = await asyncpg.connect(settings.database_url)
@@ -63,13 +63,17 @@ async def _run(strong_at: float = 70.0) -> list[dict]:
         await _insert(conn)
         await connect()
         try:
-            return await attempts_repository.fetch_competency_terrain(
+            tags = {TAG: "zz-algo", ALIAS: "zz-algo"}
+            terrain = await attempts_repository.fetch_competency_terrain(
                 timezone_name="America/New_York",
-                tag_slugs={TAG: "zz-algo", ALIAS: "zz-algo"},
+                tag_slugs=tags,
                 decay_per_day=0.02,
                 today=date(2026, 1, 6),
                 strong_at=strong_at,
+                free_fall_days=1,
             )
+            signals = await attempts_repository.fetch_competency_signals(timezone_name="America/New_York", tag_slugs=tags, per_side=2)
+            return terrain, signals
         finally:
             await disconnect()
     finally:
@@ -79,7 +83,7 @@ async def _run(strong_at: float = 70.0) -> list[dict]:
 
 @pytest.mark.integration
 def test_competency_is_the_daily_signal_average_decayed_on_days_without_practice() -> None:
-    rows = asyncio.run(_run())
+    rows, signals = asyncio.run(_run())
     by_day = {row["day"].isoformat(): row for row in rows}
 
     assert {row["algorithm"] for row in rows} == {"zz-algo"}
@@ -106,11 +110,21 @@ def test_competency_is_the_daily_signal_average_decayed_on_days_without_practice
     third = by_day["2026-01-03"]  # 72.5 decayed twice is 69.6: below 70, but it was strong
     assert third["days_since"] == 2 and third["last_average"] == 72.5 and third["standing"] == "review"
     assert by_day["2026-01-06"]["standing"] == "strong"
+    # Free fall after more than 1 day without practice (the threshold passed in).
+    assert [by_day[day]["free_fall"] for day in ("2026-01-01", "2026-01-02", "2026-01-03")] == [False, False, True]
+
+    # All-time signal averages: correctness 100, 50, 100 → 83.3; speed 80; structure 60. With
+    # 3 signals and 2 per side they split 2 strongest / 1 weakest, never repeating one.
+    assert [(row["side"], row["key"], row["average"], row["answers"]) for row in signals] == [
+        ("strongest", "correctness", 83.3, 3),
+        ("strongest", "speed", 80.0, 1),
+        ("weakest", "structure", 60.0, 1),
+    ]
 
 
 @pytest.mark.integration
 def test_an_algorithm_never_at_the_strong_line_is_to_learn() -> None:
-    rows = asyncio.run(_run(strong_at=80.0))
+    rows, _signals = asyncio.run(_run(strong_at=80.0))
     by_day = {row["day"].isoformat(): row for row in rows}
     assert by_day["2026-01-01"]["standing"] == "learn"  # 72.5 < 80 on the day it was practised
     assert by_day["2026-01-04"]["standing"] == "strong"

@@ -1,6 +1,5 @@
 import { errorMessage } from '@/api/client'
 import { useCompetencyTerrain } from '@/api/queries'
-import CompetencyHeatmap from './CompetencyHeatmap'
 import CompetencyStanding from './CompetencyStanding'
 import { rankedAlgorithms } from './competencyDisplay'
 
@@ -17,19 +16,14 @@ export default function CompetencySection({ onSelect }: { onSelect: (date: strin
         <p className="dashboard-activity-eyebrow">Competency</p>
         {terrain ? (
           <p className="competency-section-note">
-            Average signal score per algorithm per day; days without practice fade {decay}. Learn: never strong. Review: was strong, has faded.
+            Average signal score per algorithm; days without practice fade {decay}. Learn: never strong. Review: was strong, has faded. Select an algorithm for its history and signals.
           </p>
         ) : null}
       </div>
       {query.error ? <p className="coach-error" role="alert">{errorMessage(query.error, 'Competency unavailable')}</p> : null}
       {!terrain && !query.error ? <p className="dashboard-mode-meta">Loading competency…</p> : null}
       {terrain && !ranked.length ? <p className="dashboard-mode-meta">No graded answers yet.</p> : null}
-      {terrain && ranked.length ? (
-        <div className="competency-layout">
-          <CompetencyStanding terrain={terrain} ranked={ranked} />
-          <CompetencyHeatmap terrain={terrain} ranked={ranked} onSelect={onSelect} />
-        </div>
-      ) : null}
+      {terrain && (ranked.length || terrain.unpractised.length) ? <CompetencyStanding terrain={terrain} ranked={ranked} onSelect={onSelect} /> : null}
     </section>
   )
 }

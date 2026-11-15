@@ -13,14 +13,24 @@ export const competencyCell = (
 })
 
 export const competencyAlgorithm = (fields: Partial<Algorithm> & Pick<Algorithm, 'slug' | 'name' | 'competency'>): Algorithm => ({
-  kind: 'algorithm', answers: 1, lastPractised: '2026-03-01', lastAverage: fields.competency, daysSince: 0, standing: 'learn', ...fields,
+  kind: 'algorithm', answers: 1, lastPractised: '2026-03-01', lastAverage: fields.competency, daysSince: 0, standing: 'learn',
+  freeFall: false, strongestSignals: [], weakestSignals: [], ...fields,
 })
 
-/** Heap: practised Mar 1 at 80, decaying to 76.8 (review). Sliding window: practised Mar 3 at 90 (strong). */
-export const competencyTerrain = () => ({
+/**
+ * Heap: practised Mar 1 at 80, decaying to 76.8 (review), in free fall, with signals on both sides.
+ * Sliding window: practised Mar 3 at 90 (strong). Trees: never practised.
+ */
+export const competencyTerrain = (): components['schemas']['CompetencyTerrainResponse'] => ({
   decayPerDay: 0.02,
+  freeFallDays: 10,
+  unpractised: [{ slug: 'trees', name: 'Trees', kind: 'algorithm' }],
   algorithms: [
-    competencyAlgorithm({ slug: 'heap', name: 'Heap', answers: 2, competency: 76.8, lastAverage: 80, daysSince: 2, standing: 'review' }),
+    competencyAlgorithm({
+      slug: 'heap', name: 'Heap', answers: 2, competency: 76.8, lastAverage: 80, daysSince: 2, standing: 'review', freeFall: true,
+      strongestSignals: [{ key: 'conceptRecognition', label: 'Concept recognition', average: 96, answers: 1 }],
+      weakestSignals: [{ key: 'correctness', label: 'Correct choice', average: 40, answers: 2 }],
+    }),
     competencyAlgorithm({ slug: 'sliding-window', name: 'Sliding Window with a very long name', answers: 2, competency: 90, lastPractised: '2026-03-03', standing: 'strong' }),
   ],
   days: ['2026-03-01', '2026-03-02', '2026-03-03'],

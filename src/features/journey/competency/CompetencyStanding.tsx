@@ -1,8 +1,10 @@
+import { type MouseEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import CompetencyDetail from './CompetencyDetail'
 import { formatCalendarDate } from '@/shared/lib/dailyWork'
 import {
   STANDING_HINTS, STANDING_LABELS, cellsFor, competencyFill, daysAgo, pluralize, practiceHref, standingOf,
-  type CompetencyAlgorithm, type CompetencyTerrainData,
+  type CompetencyAlgorithm, type CompetencyTerrainData, type UnpractisedAlgorithm,
 } from './competencyDisplay'
 
 const TREND_DAYS = 90
@@ -25,13 +27,43 @@ function Sparkline({ terrain, slug, name }: { terrain: CompetencyTerrainData; sl
   )
 }
 
-function StandingRow({ terrain, algorithm }: { terrain: CompetencyTerrainData; algorithm: CompetencyAlgorithm }) {
+function PractiseButton({ algorithm }: { algorithm: UnpractisedAlgorithm }) {
   const navigate = useNavigate()
-  const standing = standingOf(algorithm.standing)
+  const open = (event: MouseEvent) => {
+    event.stopPropagation() // not an expand/collapse click
+    navigate(practiceHref(algorithm))
+  }
   return (
-    <li className="competency-row">
+    <button type="button" className="secondary competency-practise" onClick={open} aria-label={`Practise ${algorithm.name}`}>
+      Practise
+    </button>
+  )
+}
+
+function StandingRow({ terrain, algorithm, onSelect }: {
+  terrain: CompetencyTerrainData
+  algorithm: CompetencyAlgorithm
+  onSelect: (date: string, slug: string) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const standing = standingOf(algorithm.standing)
+  const freeFall = `Decaying for more than ${pluralize(terrain.freeFallDays, 'day')}.`
+  const toggle = () => setExpanded((open) => !open)
+  // Expands on click; deliberately no visual expand indicator.
+  return (
+    <li className="competency-row" tabIndex={0} aria-expanded={expanded} aria-label={`${algorithm.name}: show details`}
+      onClick={toggle}
+      onKeyDown={(event) => {
+        if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault()
+          toggle()
+        }
+      }}>
       <div className="competency-row-head">
-        <strong>{algorithm.name}</strong>
+        <strong className="competency-row-name">
+          {algorithm.freeFall ? <span className="competency-flag" title={freeFall} aria-label={freeFall}>!</span> : null}
+          {algorithm.name}
+        </strong>
         <span className={`competency-chip competency-chip-${standing}`} title={STANDING_HINTS[standing]}>{STANDING_LABELS[standing]}</span>
       </div>
       <div className="competency-row-bar" role="meter" aria-label={`${algorithm.name} competency`}
@@ -43,19 +75,36 @@ function StandingRow({ terrain, algorithm }: { terrain: CompetencyTerrainData; a
         last {Math.round(algorithm.lastAverage)} on {formatCalendarDate(algorithm.lastPractised)} · {daysAgo(algorithm.daysSince)} · {pluralize(algorithm.answers, 'answer')}
       </p>
       <Sparkline terrain={terrain} slug={algorithm.slug} name={algorithm.name} />
-      <button type="button" className="secondary competency-practise" onClick={() => navigate(practiceHref(algorithm))}
-        aria-label={`Practise ${algorithm.name}`}>
-        Practise
-      </button>
+      <PractiseButton algorithm={algorithm} />
+      {expanded ? <CompetencyDetail terrain={terrain} algorithm={algorithm} onSelect={onSelect} /> : null}
     </li>
   )
 }
 
-/** Where you stand today, weakest first: competency, why it is low, the trend, and a way in. */
-export default function CompetencyStanding({ terrain, ranked }: { terrain: CompetencyTerrainData; ranked: CompetencyAlgorithm[] }) {
+/** An algorithm with no graded answers: a centred dash instead of a value. */
+function UnpractisedRow({ algorithm }: { algorithm: UnpractisedAlgorithm }) {
+  return (
+    <li className="competency-row competency-row-unpractised">
+      <div className="competency-row-head"><strong className="competency-row-name">{algorithm.name}</strong></div>
+      <span className="competency-never" title="Never practiced." aria-label="Never practiced.">-</span>
+      <PractiseButton algorithm={algorithm} />
+    </li>
+  )
+}
+
+/**
+ * Where you stand today, weakest first: competency, why it is low, the trend, and a way in.
+ * Clicking a row expands its history and signals. Never-practised algorithms come last.
+ */
+export default function CompetencyStanding({ terrain, ranked, onSelect }: {
+  terrain: CompetencyTerrainData
+  ranked: CompetencyAlgorithm[]
+  onSelect: (date: string, slug: string) => void
+}) {
   return (
     <ol className="competency-standing" aria-label="Competency today, weakest first">
-      {ranked.map((algorithm) => <StandingRow key={algorithm.slug} terrain={terrain} algorithm={algorithm} />)}
+      {ranked.map((algorithm) => <StandingRow key={algorithm.slug} terrain={terrain} algorithm={algorithm} onSelect={onSelect} />)}
+      {terrain.unpractised.map((algorithm) => <UnpractisedRow key={algorithm.slug} algorithm={algorithm} />)}
     </ol>
   )
 }

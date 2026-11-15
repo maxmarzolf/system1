@@ -955,6 +955,8 @@ export interface components {
             competency: number;
             /** Dayssince */
             daysSince: number;
+            /** Freefall */
+            freeFall: boolean;
             /** Kind */
             kind: string;
             /** Lastaverage */
@@ -967,6 +969,10 @@ export interface components {
             slug: string;
             /** Standing */
             standing: string;
+            /** Strongestsignals */
+            strongestSignals: components["schemas"]["CompetencySignal"][];
+            /** Weakestsignals */
+            weakestSignals: components["schemas"]["CompetencySignal"][];
         } & {
             [key: string]: unknown;
         };
@@ -993,6 +999,19 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** CompetencySignal */
+        CompetencySignal: {
+            /** Answers */
+            answers: number;
+            /** Average */
+            average: number;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** CompetencyTerrainResponse */
         CompetencyTerrainResponse: {
             /** Algorithms */
@@ -1003,6 +1022,10 @@ export interface components {
             days: string[];
             /** Decayperday */
             decayPerDay: number;
+            /** Freefalldays */
+            freeFallDays: number;
+            /** Unpractised */
+            unpractised: components["schemas"]["UnpractisedAlgorithm"][];
         } & {
             [key: string]: unknown;
         };
@@ -2718,6 +2741,17 @@ export interface components {
          * @enum {string}
          */
         TemplateMode: "algorithm";
+        /** UnpractisedAlgorithm */
+        UnpractisedAlgorithm: {
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */

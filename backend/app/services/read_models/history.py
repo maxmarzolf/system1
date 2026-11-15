@@ -11,7 +11,7 @@ from app.contracts.coerce import coerce_json_object
 from app.core import taxonomy
 from app.core.static_playlists import static_playlist_activity_rows
 from app.repositories.multiple_choice_repository import stored_choices
-from app.repositories.attempts_repository import fetch_competency_terrain, fetch_history_day_rows, fetch_skill_map_overview_algorithm_rows
+from app.repositories.attempts_repository import fetch_competency_signals, fetch_competency_terrain, fetch_history_day_rows, fetch_skill_map_overview_algorithm_rows
 from app.services import app_settings_service
 from app.services.read_models.common import coerce_utc_datetime, resolve_timezone, submission_modality
 
@@ -76,6 +76,8 @@ async def get_history_day(day: date, timezone_name: str | None = None) -> dict[s
 
 # Competency at or above this is "strong" (the learn/review/strong label comes from the query).
 STRONG_COMPETENCY = 70.0
+# How many strongest and weakest signals each algorithm lists.
+SIGNALS_PER_SIDE = 3
 
 
 def _algorithm_tags(known: dict[str, str]) -> dict[str, str]:
@@ -98,36 +100,52 @@ async def get_competency_terrain(timezone_name: str | None = None) -> dict[str, 
     known = {str(row["algorithm_slug"]): str(row["algorithm_name"]) for row in await fetch_skill_map_overview_algorithm_rows()}
     playlists = {str(item["slug"]): str(item["algorithm"]) for item in static_playlist_activity_rows()}
     known.update(playlists)
-    decay = (await app_settings_service.grading()).competencyDecayPerDay
+    grading = await app_settings_service.grading()
+    tag_slugs = _algorithm_tags(known)
     rows = await fetch_competency_terrain(
         timezone_name=str(tz),
-        tag_slugs=_algorithm_tags(known),
-        decay_per_day=decay,
+        tag_slugs=tag_slugs,
+        decay_per_day=grading.competencyDecayPerDay,
         today=datetime.now(tz).date(),
         strong_at=STRONG_COMPETENCY,
+        free_fall_days=grading.competencyFreeFallDays,
     )
+    signals: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for signal in await fetch_competency_signals(timezone_name=str(tz), tag_slugs=tag_slugs, per_side=SIGNALS_PER_SIDE):
+        signals.setdefault((signal["algorithm"], signal["side"]), []).append(
+            {"key": signal["key"], "label": signal["label"], "average": signal["average"], "answers": signal["answers"]}
+        )
     order = {slug: index for index, slug in enumerate(known)}
     practised = sorted({row["algorithm"] for row in rows}, key=lambda slug: order.get(slug, len(order)))
     latest = {row["algorithm"]: row for row in rows}  # rows run oldest first per algorithm
     answers = Counter[str]()
     for row in rows:
         answers[row["algorithm"]] += row["answers"]
+
+    def kind(slug: str) -> str:
+        return "playlist" if slug in playlists else "algorithm"
+
     return {
-        "decayPerDay": decay,
+        "decayPerDay": grading.competencyDecayPerDay,
+        "freeFallDays": grading.competencyFreeFallDays,
         "algorithms": [
             {
                 "slug": slug,
                 "name": known.get(slug, slug),
-                "kind": "playlist" if slug in playlists else "algorithm",
+                "kind": kind(slug),
                 "answers": answers[slug],
                 "competency": latest[slug]["competency"],
                 "lastPractised": latest[slug]["last_practised"].isoformat(),
                 "lastAverage": latest[slug]["last_average"],
                 "daysSince": latest[slug]["days_since"],
                 "standing": latest[slug]["standing"],
+                "freeFall": latest[slug]["free_fall"],
+                "strongestSignals": signals.get((slug, "strongest"), []),
+                "weakestSignals": signals.get((slug, "weakest"), []),
             }
             for slug in practised
         ],
+        "unpractised": [{"slug": slug, "name": name, "kind": kind(slug)} for slug, name in known.items() if slug not in latest],
         "days": sorted({row["day"].isoformat() for row in rows}),
         "cells": [
             {

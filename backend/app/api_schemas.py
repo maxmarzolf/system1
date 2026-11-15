@@ -69,6 +69,19 @@ class HistoryDayResponse(ApiModel):
     submissions: list[HistorySubmission]
 
 
+class CompetencySignal(ApiModel):
+    key: str
+    label: str
+    average: float
+    answers: int
+
+
+class UnpractisedAlgorithm(ApiModel):
+    slug: str
+    name: str
+    kind: str
+
+
 class CompetencyAlgorithm(ApiModel):
     slug: str
     name: str
@@ -83,6 +96,11 @@ class CompetencyAlgorithm(ApiModel):
     daysSince: int
     # strong | learn (was never strong) | review (was strong, has decayed)
     standing: str
+    # Decaying for more than freeFallDays days.
+    freeFall: bool
+    # The signals with the highest and lowest all-time average for this algorithm (up to 3 each).
+    strongestSignals: list[CompetencySignal]
+    weakestSignals: list[CompetencySignal]
 
 
 class CompetencyCell(ApiModel):
@@ -101,7 +119,10 @@ class CompetencyCell(ApiModel):
 
 class CompetencyTerrainResponse(ApiModel):
     decayPerDay: float
+    freeFallDays: int
     algorithms: list[CompetencyAlgorithm]
+    # Known algorithms and playlists with no graded answers yet, in catalog order.
+    unpractised: list[UnpractisedAlgorithm]
     days: list[str]
     cells: list[CompetencyCell]
 

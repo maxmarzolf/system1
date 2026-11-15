@@ -4,7 +4,7 @@ Three sections, each one versioned JSON document (``app_setting``):
 
 - ``grading``: which modalities get written feedback, the near-miss threshold that bands a wrong
   answer as "close", the confidence below which Jev's correctness is flagged, and how fast
-  Journey competency decays on days without practice.
+  Journey competency decays on days without practice (and after how many days it is flagged).
 - ``generation``: the specimen style generated recall cards are written in, and the model each
   provider uses for MCQ generation.
 - ``practice``: what the practice screen asks for: MCQ set size and order, playlist order.
@@ -31,6 +31,8 @@ class GradingSettingsModel(BaseModel):
     lowConfidenceThreshold: float = Field(default=0.6, ge=0, le=1)
     # Journey: how much an algorithm's competency fades per day without practice (compounded).
     competencyDecayPerDay: float = Field(default=0.02, ge=0, le=0.5)
+    # Journey: an algorithm decaying for more than this many days is flagged as in free fall.
+    competencyFreeFallDays: int = Field(default=10, ge=1, le=365)
 
     @field_validator("feedbackModalities")
     @classmethod
