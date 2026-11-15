@@ -10,7 +10,7 @@ from app.models import (
     SignalTryRequest,
 )
 from app.services import admin_service, signal_admin_service
-from app.services.submission_context_service import SubmissionContextError
+from app.services.evaluation.context import SubmissionContextError
 from app.api_schemas import (
     AdminSignal,
     CorrectnessDirective,

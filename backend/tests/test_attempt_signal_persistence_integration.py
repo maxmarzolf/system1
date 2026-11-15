@@ -12,8 +12,7 @@ from app.config import settings
 from app.core.jev import JevResponse
 from app.main import create_app
 from app.models import SubmissionModality
-from app.services.evaluators import EVALUATORS
-from app.services.evaluators.jev_mcq import JevMcqEvaluator
+from app.services.evaluation import pipeline
 
 
 class _FakeJevGateway:
@@ -39,8 +38,7 @@ class _FakeJevGateway:
 @pytest.fixture
 def fake_jev(monkeypatch):
     def install(correct_label: str) -> None:
-        evaluator = JevMcqEvaluator(lambda: _FakeJevGateway(correct_label))
-        monkeypatch.setitem(EVALUATORS, SubmissionModality.mcq, evaluator)
+        monkeypatch.setattr(pipeline, 'jev_gateway_factory', lambda: _FakeJevGateway(correct_label))
 
     return install
 

@@ -6,8 +6,11 @@ import { createInteractionId } from '../lib/lineReview'
 import { MicroDrillBlankEditor, MicroDrillInstructions } from './MicroDrillEditor'
 import type { FlowMicroDrill, FlowMicroDrillPrimaryActionState, SubmissionSaveResponse } from '../lib/types'
 
-export default function FlowMicroDrillCard({ title, prompt, target, focus, rep, context, provider, theme, syntaxTheme, actionKey, onSave, primaryActionRef, onPrimaryActionStateChange }: {
-  title: string; prompt: string; target: string; focus: string; rep: number; provider: string
+export default function FlowMicroDrillCard({ title, prompt, target, tags, focus, rep, context, provider, theme, syntaxTheme, actionKey, onSave, primaryActionRef, onPrimaryActionStateChange }: {
+  title: string; prompt: string; target: string
+  /** The card's tags; the stored drill is filed under their algorithm. */
+  tags: string[]
+  focus: string; rep: number; provider: string
   context: FlowGenerationContext
   theme: AppTheme; syntaxTheme: Record<string, CSSProperties>
   actionKey: string
@@ -34,7 +37,7 @@ export default function FlowMicroDrillCard({ title, prompt, target, focus, rep, 
         const payload = unwrap(
           await api.POST('/api/coach/micro-drill', {
             signal: controller.signal,
-            body: { cardTitle: title, prompt, target, focus, rep, ...generationContext, llmProvider: provider },
+            body: { cardTitle: title, prompt, target, focus, rep, tags, ...generationContext, llmProvider: provider },
           }),
           'Microdrill generation failed. Try again.',
         )
@@ -47,7 +50,7 @@ export default function FlowMicroDrillCard({ title, prompt, target, focus, rep, 
       }
     })()
     return () => controller.abort()
-  }, [title, prompt, target, focus, rep, generationContext, provider, retry])
+  }, [title, prompt, target, tags, focus, rep, generationContext, provider, retry])
 
   const submit = async () => {
     if (!drill || !answer.complete || savingRef.current || result) return

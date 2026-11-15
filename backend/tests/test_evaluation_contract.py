@@ -11,7 +11,6 @@ from app.contracts.evaluation import (
     build_evaluation,
     compact_evaluation,
     evaluation_feedback,
-    outcome_evaluation,
 )
 
 
@@ -51,7 +50,7 @@ def test_built_evaluations_round_trip_through_storage() -> None:
     assert stored["primaryFailure"]["evidence"] == ["a", "b"]
     assert stored["feedback"] == {"diagnosis": "d"}
     assert stored["recommendedAction"] == "Fix bounds."
-    assert stored["provenance"] == {"llmUsed": True, "provider": "openai", "source": "assessor-narrator"}
+    assert stored["provenance"] == {"llmUsed": True, "provider": "openai", "source": "jev"}
     assert set(stored["modifiers"]) == {"syntax"}
     assert stored["modifiers"]["syntax"]["label"] == "Syntax"
     assert "correctness" not in stored  # Jev-only fields are left out when unset
@@ -65,13 +64,6 @@ def test_recall_references_omit_mcq_fields_and_provider_is_hidden_without_llm() 
     assert stored["signalSpec"] == {"algorithm": "binary-search", "version": 2}
     assert stored["provenance"]["provider"] == ""
     assert stored["verdict"] == "needs-work"
-
-
-def test_outcome_evaluations_score_all_or_nothing() -> None:
-    sound = outcome_evaluation(True, RECALL, llm_used=True, provider="claude", source="semantic-evaluator")
-    assert sound.sound and sound.score["overall"] == 100.0 and sound.score["fluency"] == 0.0
-    assert sound.provenance.provider == "claude"
-    assert outcome_evaluation(False, RECALL).score["overall"] == 0.0
 
 
 def test_readers_tolerate_missing_and_malformed_evaluations() -> None:

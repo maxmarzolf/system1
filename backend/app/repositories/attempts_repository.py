@@ -36,6 +36,8 @@ async def insert_submission_attempt_row(
     modality: str,
     created_at: datetime,
     multiple_choice_problem_id: str | None = None,
+    problem_slug: str | None = None,
+    exercise_id: str | None = None,
 ) -> SubmissionInsertResult | None:
     """Insert a submission. MCQ rows reference the stored problem the evaluator graded against."""
     del card_id, card_title, mode, question
@@ -44,8 +46,7 @@ async def insert_submission_attempt_row(
     normalized_user_answer = str(user_answer or "")
 
     async with acquire_connection() as conn, conn.transaction():
-        problem_slug = None
-        if generated_card_id and modality != "mcq":
+        if problem_slug is None and generated_card_id and modality != "mcq":
             candidates = problem_slug_candidates([generated_card_id])
             problem_slug = await conn.fetchval(
                 """
@@ -62,8 +63,8 @@ async def insert_submission_attempt_row(
                 (session_id, multiple_choice_problem_id, answer, question_type, category_tags,
                  correct_answer, successful, signals, interaction_id,
                  generated_card_id, problem_slug, generated_card, template_mode, support_layer,
-                 live_coach_used, modality, created_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+                 live_coach_used, modality, created_at, exercise_id)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
             RETURNING id
             """,
             session_id or "0000",
@@ -83,6 +84,7 @@ async def insert_submission_attempt_row(
             live_coach_used,
             modality,
             created_at,
+            exercise_id,
         )
         if not row:
             return None

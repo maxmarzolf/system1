@@ -110,10 +110,13 @@ export type AttemptPayload = {
   interactionId: string
   templateMode: TemplateMode
   supportLayer: SupportLayer
-  modality: SubmissionModality
+  // Ladder rungs are practised outside a flow, so they are not a flow modality.
+  modality: SubmissionModality | 'ladder'
   signals?: AttemptRequestSignals
   liveCoachUsed: boolean
   outsideFlow?: boolean
+  /** The stored microdrill or ladder rung this answers; the server grades against it. */
+  exerciseId?: string
 }
 
 export type CoachAttemptFeedback = {
@@ -281,7 +284,7 @@ export type LlmProviderSelection = 'auto' | LlmProvider
  * with the same key share one request (a deck can be requested by several effects at once).
  */
 
-export type FlowMicroDrill = { prompt: string; template: string; solution: string; language: string }
+export type FlowMicroDrill = { id: string; prompt: string; template: string; solution: string; language: string }
 
 export type FlowMicroDrillPrimaryActionState = {
   interactionKey: string

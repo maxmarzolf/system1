@@ -1,15 +1,20 @@
+"""The one write path: grade through the pipeline, store the trusted record, keep the traces."""
+
 from __future__ import annotations
 
 import pytest
 
-from app.core.signal_catalog import BINARY_SEARCH_SIGNAL_SPEC, DEFAULT_SIGNAL_SPEC
 from app.contracts.evaluation import Evaluation, build_evaluation
+from app.contracts.submission import EvaluationOutcome, SubmissionRecord
+from app.core.llm import record_llm_exchange
+from app.core.signals.defaults import default_spec
 from app.models import AttemptCreate
-from app.services import feedback_service, signal_spec_service, submission_service
-from app.services import submission_store
+from app.services import submission_service, submission_store
+from app.services.evaluation import pipeline
 
 
 def test_canonical_evaluation_removes_embedded_rubric_and_feedback_metadata() -> None:
+    spec = default_spec("total-recall")
     rubric = {
         "verdict": "needs-work",
         "score": {"overall": 62, "conceptual": 70},
@@ -19,111 +24,66 @@ def test_canonical_evaluation_removes_embedded_rubric_and_feedback_metadata() ->
         "recommendedAction": "Repair the bounds check.",
     }
     feedback = {
-        "diagnosis": "The bounds check is malformed.",
+        "fullFeedback": "Needs work: the bounds check is malformed.",
         "submissionRubric": rubric,
         "llmUsed": True,
         "llmProvider": "openai",
         "signals": {"legacy": True},
     }
 
-    evaluation = build_evaluation(
-        rubric,
-        DEFAULT_SIGNAL_SPEC,
-        feedback,
-        provider="openai",
-        llm_used=True,
-    ).to_stored()
+    evaluation = build_evaluation(rubric, spec, feedback, provider="openai", llm_used=True).to_stored()
 
     assert evaluation["verdict"] == "needs-work"
-    assert evaluation["signalSpec"] == {"algorithm": "default", "version": 1}
+    assert evaluation["signalSpec"] == spec.reference()
+    assert evaluation["signalSpec"]["modality"] == "total-recall" and evaluation["signalSpec"]["hash"]
     assert evaluation["score"]["overall"] == 62.0
-    assert evaluation["feedback"] == {"diagnosis": "The bounds check is malformed."}
-    assert evaluation["provenance"] == {
-        "llmUsed": True,
-        "provider": "openai",
-        "source": "assessor-narrator",
-    }
-    assert "submissionRubric" not in evaluation["feedback"]
+    assert evaluation["feedback"] == {"fullFeedback": "Needs work: the bounds check is malformed."}
+    assert evaluation["provenance"] == {"llmUsed": True, "provider": "openai", "source": "jev"}
+
+
+BODY = AttemptCreate.model_validate({
+    "cardId": "bfs-1", "mode": "main-recall", "question": "Write grid BFS.", "correctAnswer": "client copy",
+    "userAnswer": "attempt", "elapsedMs": 1000, "categoryTags": ["binary-search"],
+})
 
 
 @pytest.mark.asyncio
-async def test_final_recall_uses_one_evaluation_flow_and_persists_its_result(monkeypatch) -> None:
-    canonical = Evaluation.model_validate({
-        "version": 1,
-        "verdict": "sound",
-        "score": {"overall": 91.0},
-        "feedback": {"affirmation": "The queue discipline is correct."},
-        "provenance": {"llmUsed": True, "provider": "openai", "source": "assessor-narrator"},
-    })
-    captured: dict[str, object] = {}
+async def test_create_submission_stores_the_pipelines_record_and_grading_traces(monkeypatch) -> None:
+    record = SubmissionRecord(user_answer="attempt", correct_answer="server copy", problem_slug="bfs-1")
+    evaluation = Evaluation.model_validate({"verdict": "close", "provenance": {"source": "jev"}})
+    stored: dict[str, object] = {}
 
-    async def _evaluate(body, spec):
-        captured["evaluation_request"] = body
-        captured["spec"] = spec
-        return canonical
+    async def evaluate(body):
+        assert body is BODY
+        # Stand-in for the feedback writer, whose LLM call records itself.
+        record_llm_exchange({"provider": "claude", "systemPrompt": "write feedback", "ok": True})
+        return EvaluationOutcome(successful=False, evaluation=evaluation, record=record,
+                                 feedback_unavailable={"code": "jev_timeout", "message": "slow", "provider": "jev"})
 
-    async def _resolve(card_ids, skill_tags):
-        captured["resolved"] = (card_ids, skill_tags)
-        return BINARY_SEARCH_SIGNAL_SPEC
-
-    async def _persist(body, *, successful, evaluation, record=None):
-        assert record is None
-        captured["persist_body"] = body
-        captured["successful"] = successful
-        captured["evaluation"] = evaluation
+    async def persist(body, *, successful, evaluation, record=None):
+        stored.update(successful=successful, evaluation=evaluation, record=record)
         return {"saved": True, "attemptId": 44}
 
-    monkeypatch.setattr(feedback_service, "coach_submission_evaluation", _evaluate)
-    monkeypatch.setattr(submission_store, "create_attempt", _persist)
-    monkeypatch.setattr(signal_spec_service, "resolve_signal_spec", _resolve)
+    monkeypatch.setattr(pipeline, "evaluate", evaluate)
+    monkeypatch.setattr(submission_store, "create_attempt", persist)
+    result = await submission_service.create_submission(BODY)
 
-    body = AttemptCreate.model_validate({
-        "cardId": "bfs-1",
-        "mode": "main-recall",
-        "question": "Write grid BFS.",
-        "correctAnswer": "target",
-        "userAnswer": "attempt",
-        "elapsedMs": 450262,
-        "categoryTags": ["binary-search"],
-    })
-    result = await submission_service.create_submission(body)
-
-    assert captured["resolved"] == ([None, "bfs-1"], ["binary-search"])
-    assert captured["spec"] is BINARY_SEARCH_SIGNAL_SPEC
-    assert captured["evaluation_request"].exact is False
-    assert captured["successful"] is True
-    assert captured["evaluation"] is canonical
-    assert result["evaluation"] == canonical.to_stored()
-    assert result["successful"] is True
-    assert result["feedbackUnavailable"] is None
+    assert stored["record"] is record and stored["successful"] is False
+    assert result["saved"] is True and result["attemptId"] == 44
+    assert result["evaluation"]["verdict"] == "close"
+    assert [exchange["systemPrompt"] for exchange in result["evaluation"]["llmTrace"]] == ["write feedback"]
+    assert result["feedbackUnavailable"]["code"] == "jev_timeout"
 
 
 @pytest.mark.asyncio
-async def test_llm_calls_made_while_grading_are_stored_on_the_evaluation(monkeypatch) -> None:
-    from app.core.llm import record_llm_exchange
+async def test_no_llm_trace_when_grading_made_no_llm_call(monkeypatch) -> None:
+    async def evaluate(_body):
+        return EvaluationOutcome(successful=True, evaluation=Evaluation.model_validate({"verdict": "sound"}))
 
-    async def _evaluate(_body, _spec):
-        # Stand-in for the assessor and narrator, whose LLM calls record themselves.
-        record_llm_exchange({"provider": "claude", "systemPrompt": "assess", "payload": {"userAnswer": "attempt"}, "ok": True})
-        record_llm_exchange({"provider": "claude", "systemPrompt": "narrate", "payload": {}, "ok": True})
-        return Evaluation.model_validate({"verdict": "sound", "provenance": {"source": "assessor-narrator"}})
+    async def persist(_body, **_kwargs):
+        return {"saved": True, "attemptId": 1}
 
-    async def _persist(_body, *, successful, evaluation, record=None):
-        return {"saved": True, "attemptId": 45}
-
-    async def _resolve(_card_ids, _skill_tags):
-        return BINARY_SEARCH_SIGNAL_SPEC
-
-    monkeypatch.setattr(feedback_service, "coach_submission_evaluation", _evaluate)
-    monkeypatch.setattr(submission_store, "create_attempt", _persist)
-    monkeypatch.setattr(signal_spec_service, "resolve_signal_spec", _resolve)
-
-    body = AttemptCreate.model_validate({
-        "cardId": "bfs-1", "mode": "main-recall", "question": "Write grid BFS.",
-        "correctAnswer": "target", "userAnswer": "attempt", "elapsedMs": 1000, "categoryTags": ["binary-search"],
-    })
-    result = await submission_service.create_submission(body)
-
-    trace = result["evaluation"]["llmTrace"]
-    assert [exchange["systemPrompt"] for exchange in trace] == ["assess", "narrate"]
-    assert [exchange["attempt"] for exchange in trace] == [1, 2]
+    monkeypatch.setattr(pipeline, "evaluate", evaluate)
+    monkeypatch.setattr(submission_store, "create_attempt", persist)
+    result = await submission_service.create_submission(BODY)
+    assert "llmTrace" not in result["evaluation"]

@@ -4,8 +4,21 @@ from app.models import SlidingWindowLadderRequest
 from app.services import sliding_window_ladder_service as service
 
 
+@pytest.fixture(autouse=True)
+def stored(monkeypatch):
+    """Generated exercises are stored; capture what would be written."""
+    items: list[dict] = []
+
+    async def insert_exercise(**fields):
+        items.append(fields)
+        return {"id": f"{fields['modality']}-1", **fields}
+
+    monkeypatch.setattr(service.exercise_repository, "insert_exercise", insert_exercise)
+    return items
+
+
 @pytest.mark.asyncio
-async def test_fixed_ladder_rewrites_each_question_with_card_and_recent_attempts(monkeypatch):
+async def test_fixed_ladder_rewrites_each_question_with_card_and_recent_attempts(monkeypatch, stored):
     captured = {}
     monkeypatch.setattr(service, "resolve_available_llm_provider", lambda _: "openai")
     monkeypatch.setattr(service, "llm_provider_available", lambda _: True)
@@ -41,6 +54,10 @@ async def test_fixed_ladder_rewrites_each_question_with_card_and_recent_attempts
     assert captured["payload"]["recentAttempts"][0]["weakness"] == "New character raised KeyError"
     assert "fresh concrete scenario" in captured["prompt"]
     assert "complete correct implementation" in captured["prompt"]
+    assert result.id == "ladder-1"
+    assert stored[0]["modality"] == "ladder" and stored[0]["reference"] == result.solution
+    assert stored[0]["metadata"]["starterCode"] == result.starterCode and stored[0]["metadata"]["rungIndex"] == 0
+    assert stored[0]["algorithm_slug"] == "sliding-window"
 
 
 @pytest.mark.asyncio

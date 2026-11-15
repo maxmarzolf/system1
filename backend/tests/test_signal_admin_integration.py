@@ -14,8 +14,7 @@ from app.main import create_app
 from app.models import SubmissionModality
 from app.services import signal_registry_service
 from app.services import jev_gateway
-from app.services.evaluators import EVALUATORS
-from app.services.evaluators.jev_mcq import JevMcqEvaluator
+from app.services.evaluation import pipeline
 
 
 
@@ -105,7 +104,7 @@ def admin(monkeypatch):
         pytest.skip(f"Postgres not available for integration test: {exc}")
     gateway = CapturingGateway()
     monkeypatch.setattr(jev_gateway, "default_jev_gateway", lambda: gateway)
-    monkeypatch.setitem(EVALUATORS, SubmissionModality.mcq, JevMcqEvaluator(lambda: gateway))
+    monkeypatch.setattr(pipeline, 'jev_gateway_factory', lambda: gateway)
     problem_id = f"mcq-itest-admin-{uuid4().hex[:12]}"
     with TestClient(create_app()) as client:
         asyncio.run(_seed_problem(problem_id))

@@ -1,8 +1,7 @@
-"""Server-side submission context: the facts an evaluator may trust.
+"""MCQ context: the stored ``multiple_choice_problem`` row is the source of truth.
 
-For MCQ the question, choices and answer key come from the stored
-``multiple_choice_problem`` row; the client only says which row and which
-choice it picked.
+The client only says which row and which choice it picked; the question, choices and answer
+key come from the database. The answer key is the deterministic verdict.
 """
 
 from __future__ import annotations
@@ -10,15 +9,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from app.contracts.submission import SubmissionRecord
 from app.models import AttemptCreate
 from app.repositories.multiple_choice_repository import StoredChoice, fetch_multiple_choice_problem
+from app.services import signal_registry_service
+from app.services.evaluation.context import SubmissionContext, SubmissionContextError
 
-
-class SubmissionContextError(ValueError):
-    def __init__(self, code: str, message: str):
-        super().__init__(message)
-        self.code = code
-        self.message = message
+MCQ_MODALITY = "mcq"
 
 
 @dataclass(frozen=True)
@@ -43,14 +40,6 @@ class McqContext:
     @property
     def answer_key_correct(self) -> bool:
         return self.submitted_answer["id"] == self.correct_answer["id"]
-
-
-async def build_mcq_context(body: AttemptCreate) -> McqContext:
-    return await mcq_context_for(
-        (body.multipleChoiceProblemId or body.generatedCardId or "").strip(),
-        (body.selectedChoiceId or "").strip(),
-        elapsed_ms=body.elapsedMs,
-    )
 
 
 async def mcq_context_for(problem_id: str, selected_id: str, *, elapsed_ms: int = 0) -> McqContext:
@@ -79,3 +68,32 @@ async def mcq_context_for(problem_id: str, selected_id: str, *, elapsed_ms: int 
         elapsed_ms=elapsed_ms,
         algorithm_slug=problem.get("algorithmSlug"),
     )
+
+
+def _choice_text(answer: StoredChoice) -> str:
+    return f"{answer['id']}. {answer['text']}"
+
+
+class McqContextBuilder:
+    modality = MCQ_MODALITY
+
+    async def build(self, body: AttemptCreate) -> SubmissionContext:
+        context = await mcq_context_for(
+            (body.multipleChoiceProblemId or body.generatedCardId or "").strip(),
+            (body.selectedChoiceId or "").strip(),
+            elapsed_ms=body.elapsedMs,
+        )
+        return SubmissionContext(
+            modality=MCQ_MODALITY,
+            # The stored problem's algorithm decides which scoped signals apply; older rows fall back to the tags.
+            algorithm_slug=context.algorithm_slug or signal_registry_service.algorithm_for_tags(body.categoryTags),
+            state=context.jev_state(),
+            elapsed_ms=body.elapsedMs,
+            record=SubmissionRecord(
+                user_answer=_choice_text(context.submitted_answer),
+                correct_answer=_choice_text(context.correct_answer),
+                multiple_choice_problem_id=context.problem_id,
+            ),
+            deterministic_correct=context.answer_key_correct,
+            deterministic_is_key=True,
+        )

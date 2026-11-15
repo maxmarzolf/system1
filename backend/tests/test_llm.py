@@ -245,15 +245,6 @@ def test_call_llm_json_returns_none_on_failure(keys, calls, monkeypatch) -> None
     assert llm.call_llm_json("sys", {}, "unknown-provider") is None
 
 
-def test_submission_wrapper_returns_the_error_tuple(keys, calls) -> None:
-    calls.script.append(openai_reply('{"verdict": "sound"}'))
-    assert llm.call_llm_json_for_submission("sys", {}, "openai") == ({"verdict": "sound"}, "", "", False)
-    calls.script.append(TimeoutError("slow"))
-    data, code, _message, retryable = llm.call_llm_json_for_submission("sys", {}, "gemma")
-    assert (data, code, retryable) == (None, "provider_timeout", True)
-    assert calls.requests[-1]["timeout"] == 60
-
-
 def test_streaming_yields_deltas(keys, calls) -> None:
     lines = [": keep-alive", ""]
     lines += [f"data: {json.dumps({'choices': [{'delta': {'content': delta}}]})}" for delta in ("ab", "", "cd")]

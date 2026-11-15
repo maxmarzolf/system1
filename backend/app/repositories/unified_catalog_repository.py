@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from app.contracts.catalog_ids import problem_slug_candidates
 from app.repositories.base import acquire_connection
 
 
@@ -162,3 +163,27 @@ async def seed_static_playlist(
                 """,
                 order_rows,
             )
+
+
+async def fetch_problem_for_cards(card_ids: list[str | None]) -> dict[str, Any] | None:
+    """The stored problem a recall card was served from: the first card id that names one."""
+    candidates = problem_slug_candidates(card_ids)
+    if not candidates:
+        return None
+    async with acquire_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT slug, algorithm_slug, title, description, code, missing, generation_context
+            FROM problem
+            WHERE slug = ANY($1::text[])
+            ORDER BY array_position($1::text[], slug::text)
+            LIMIT 1
+            """,
+            candidates,
+        )
+    if row is None:
+        return None
+    record = dict(row)
+    context = record.get("generation_context")
+    record["generation_context"] = json.loads(context) if isinstance(context, str) else (context or {})
+    return record

@@ -91,3 +91,28 @@ def test_filled_blanks_reads_each_blank() -> None:
     assert code_checks.filled_blanks(TEMPLATE, "\n\n" + submitted + "\n") == ["sum(nums[:k])", "nums[i] - nums[i - k]"]
     assert code_checks.filled_blanks(TEMPLATE, TEMPLATE.replace("___", "x", 1).replace("return total", "return 0")) is None
     assert code_checks.filled_blanks("no blanks here", "no blanks here") == []
+
+
+@pytest.mark.parametrize(
+    ("submitted", "reasons"),
+    [
+        (REFERENCE, ()),
+        (RENAMED, ()),
+        (NO_RETURN, ("no_return",)),
+        ("", ("empty",)),
+        ("def first_occurrence(nums, target):\n    pass", ("empty",)),
+        ("def first_occurrence(:", ("syntax",)),
+    ],
+)
+def test_hard_failures(submitted, reasons) -> None:
+    assert code_checks.hard_failures(REFERENCE, submitted) == reasons
+    assert all(reason in code_checks.OVERRIDE_REASONS for reason in reasons)
+
+
+def test_typed_exactly_is_for_ghost_reps() -> None:
+    assert code_checks.typed_exactly(REFERENCE, REFERENCE + "\n\n")
+    assert code_checks.typed_exactly(REFERENCE, RENAMED)  # same program, other names
+    assert code_checks.typed_exactly("        else:\n            right = mid - 1", "else:\n    right = mid - 1")
+    assert not code_checks.typed_exactly("        else:\n            right = mid - 1", "else:\nright = mid - 1")
+    assert not code_checks.typed_exactly(REFERENCE, REFERENCE.replace("<=", "<"))
+    assert not code_checks.typed_exactly("", "")

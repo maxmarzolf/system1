@@ -19,6 +19,7 @@ import builtins
 import difflib
 import keyword
 import re
+import textwrap
 
 PYTHON_BUILTIN_NAMES = frozenset(dir(builtins))
 PYTHON_KEYWORDS = frozenset(keyword.kwlist)
@@ -163,3 +164,34 @@ def filled_blanks(template: str, submitted: str) -> list[str] | None:
     pattern = "([^\\n]*?)".join(re.escape(part) for part in parts)
     match = re.fullmatch(r"\s*" + pattern + r"\s*", submitted, flags=re.DOTALL)
     return [value.strip() for value in match.groups()] if match else None
+
+
+# Why a code answer is incorrect whatever Jev says, checked in this order.
+OVERRIDE_REASONS = {
+    "empty": "The answer is empty.",
+    "syntax": "The answer is not valid Python.",
+    "no_return": "The reference returns a value, but the answer never does.",
+}
+
+
+def hard_failures(reference: str | None, submitted: str | None) -> tuple[str, ...]:
+    """The override reasons that apply (keys of :data:`OVERRIDE_REASONS`); empty when none do.
+    An empty answer is only reported as ``empty``."""
+    if is_blank(submitted):
+        return ("empty",)
+    if not parses(submitted):
+        return ("syntax",)
+    return ("no_return",) if missing_return(reference, submitted) else ()
+
+
+def _normalized_lines(code: str | None) -> list[str]:
+    """Lines without blank lines or trailing spaces, dedented as a block (indentation inside kept)."""
+    text = textwrap.dedent("\n".join(line for line in (code or "").replace("\t", "    ").splitlines() if line.strip()))
+    return [line.rstrip() for line in text.splitlines()]
+
+
+def typed_exactly(target: str | None, submitted: str | None) -> bool:
+    """A ghost rep's check: the target's text (blank lines and trailing spaces ignored), or the
+    same program up to names and formatting. Works for line subsets that don't parse alone."""
+    expected = _normalized_lines(target)
+    return bool(expected) and (expected == _normalized_lines(submitted) or structural_match(target, submitted))

@@ -641,6 +641,8 @@ export interface components {
              * @default 0
              */
             elapsedMs?: number;
+            /** Exerciseid */
+            exerciseId?: string | null;
             /** Flowrunid */
             flowRunId?: string | null;
             /** Generatedcard */
@@ -939,9 +941,9 @@ export interface components {
          * Evaluation
          * @description A stored evaluation. Dimension and modifier keys are the referenced spec's signal keys.
          *
-         *     Jev MCQ evaluations also carry ``correctness``, ``signalResults``,
-         *     ``signalSpecSnapshot`` and ``jevTrace``. Any evaluation that called an LLM while grading
-         *     carries ``llmTrace``: each exchange's prompt, payload, reply, usage and timing.
+         *     Pipeline evaluations (every modality) also carry ``correctness`` (who decided and how),
+         *     ``signalResults``, ``signalSpecSnapshot`` and, when Jev was called, ``jevTrace``. Any
+         *     evaluation that called an LLM while grading (the feedback writer) carries ``llmTrace``.
          */
         Evaluation: {
             /** Correctness */
@@ -1059,6 +1061,8 @@ export interface components {
              * @default 1
              */
             rep?: number;
+            /** Tags */
+            tags?: string[];
             /** Target */
             target: string;
             /**
@@ -1069,6 +1073,11 @@ export interface components {
         };
         /** FlowMicroDrillResponse */
         FlowMicroDrillResponse: {
+            /**
+             * Id
+             * @default
+             */
+            id?: string;
             /** Language */
             language: string;
             /** Prompt */
@@ -2546,6 +2555,11 @@ export interface components {
         };
         /** SlidingWindowLadderResponse */
         SlidingWindowLadderResponse: {
+            /**
+             * Id
+             * @default
+             */
+            id?: string;
             /**
              * Language
              * @default python

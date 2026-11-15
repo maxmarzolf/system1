@@ -12,6 +12,7 @@ vi.mock('../editor/RecallCodeEditor', () => ({
 }))
 
 const question = (rung = 0): LadderQuestion => ({
+  id: `ladder-${rung}`,
   rungTitle: `Rung ${rung}`,
   question: `Write rung ${rung}`,
   starterCode: 'def f():\n    pass',

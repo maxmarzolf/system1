@@ -231,6 +231,7 @@ export function recallAttemptBody(payload: AttemptPayload, { card, prompt, quest
       modality: { ...(payload.signals?.modality ?? {}), kind: payload.modality },
     },
     liveCoachUsed: payload.liveCoachUsed,
+    exerciseId: payload.exerciseId,
     submissionTuning: { ...submissionTuning, microDrillEnabled: false },
     llmProvider,
   }

@@ -226,7 +226,8 @@ function PracticePage() {
       card, prompt: practicePrompt, questionType: cardMeta.questionType, skillTags: cardMeta.skillTags,
       flowSignals, submissionTuning, llmProvider: requestLlmProvider,
     }))
-    if (flowSignals) {
+    // Ladder rungs are practised outside a flow, so only flow modalities are recorded.
+    if (flowSignals && payload.modality !== 'ladder') {
       flowState.recordSubmission({
         response: saved,
         flowSignals,
@@ -457,7 +458,7 @@ function PracticePage() {
     selectQuestionType(next)
   })
 
-  const saveMicroDrill = (payload: Pick<AttemptPayload, 'correctAnswer' | 'userAnswer' | 'question' | 'elapsedMs' | 'interactionId' | 'signals' | 'outsideFlow'>) =>
+  const saveMicroDrill = (payload: Pick<AttemptPayload, 'correctAnswer' | 'userAnswer' | 'question' | 'elapsedMs' | 'interactionId' | 'signals' | 'outsideFlow' | 'exerciseId'> & { modality?: 'microdrill' | 'ladder' }) =>
     submitAttemptToServer({
       mode: 'main-recall', microdrill: true, templateMode: currentTemplateMode, supportLayer: 'none', liveCoachUsed: false, modality: 'microdrill', ...payload,
     })
@@ -476,13 +477,13 @@ function PracticePage() {
       onSave={(question, answer, elapsedMs, interactionId, rungIndex, rep) => saveMicroDrill({
         correctAnswer: question.solution, userAnswer: answer, question: question.question, elapsedMs, interactionId,
         signals: { modality: { ladder: true, technique: ladderTechnique, rungIndex, rep, language: 'python' } },
-        outsideFlow: true,
+        outsideFlow: true, modality: 'ladder', exerciseId: question.id,
       })}
     />
   ) : practiceFlow?.stage === 'microdrill' ? (
     <FlowMicroDrillCard
       key={flowMicroDrillActionKey}
-      title={card.title} prompt={practicePrompt} target={practiceTarget}
+      title={card.title} prompt={practicePrompt} target={practiceTarget} tags={card.tags}
       focus={practiceFlow.focus.focusSummary} rep={practiceFlow.step + 1}
       context={flowState.generationContext}
       provider={requestLlmProvider} theme={theme} syntaxTheme={syntaxTheme}
@@ -491,6 +492,7 @@ function PracticePage() {
       onPrimaryActionStateChange={flowState.setMicroDrillAction}
       onSave={(drill, answer, elapsedMs, interactionId) => saveMicroDrill({
         correctAnswer: drill.solution, userAnswer: answer, question: drill.prompt, elapsedMs, interactionId,
+        exerciseId: drill.id,
         signals: {
           modality: {
             blankCount: drill.template.match(/_{3,}/g)?.length ?? 0,

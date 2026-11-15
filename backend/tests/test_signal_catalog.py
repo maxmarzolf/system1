@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.assessor import assessor_system_prompt
 from app.core.signal_catalog import (
     BINARY_SEARCH_SIGNAL_SPEC,
     DEFAULT_SIGNAL_SPEC,
@@ -53,22 +52,3 @@ def test_spec_from_json_rejects_malformed_payloads() -> None:
     assert spec_from_json({}) is None
     assert spec_from_json({"signals": []}) is None
     assert spec_from_json({"algorithm": "x", "version": 1, "signals": [{"key": "a"}]}) is None
-
-
-def test_default_prompt_keeps_the_generic_signals() -> None:
-    prompt = assessor_system_prompt(DEFAULT_SIGNAL_SPEC)
-    for key in ("structure", "correctness", "completeness", "patternFidelity", "completionTime"):
-        assert f"{key}: {{score: 0-100, note: str}}" in prompt
-    assert "syntax: {valid: bool, error: str|null}" in prompt
-
-
-def test_prompts_only_ask_for_their_own_group_signals() -> None:
-    window_prompt = assessor_system_prompt(SLIDING_WINDOW_SIGNAL_SPEC)
-    search_prompt = assessor_system_prompt(BINARY_SEARCH_SIGNAL_SPEC)
-
-    assert "windowRepair" in window_prompt
-    assert "hasShrinkStep: bool" in window_prompt
-    assert "boundUpdate" in search_prompt
-    assert "windowRepair" not in search_prompt
-    assert "hasShrinkStep" not in search_prompt
-    assert "blockerKey: 'searchBounds'" in search_prompt

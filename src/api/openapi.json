@@ -332,6 +332,18 @@
             "title": "Elapsedms",
             "type": "integer"
           },
+          "exerciseId": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exerciseid"
+          },
           "flowRunId": {
             "anyOf": [
               {
@@ -891,7 +903,7 @@
       },
       "Evaluation": {
         "additionalProperties": true,
-        "description": "A stored evaluation. Dimension and modifier keys are the referenced spec's signal keys.\n\nJev MCQ evaluations also carry ``correctness``, ``signalResults``,\n``signalSpecSnapshot`` and ``jevTrace``. Any evaluation that called an LLM while grading\ncarries ``llmTrace``: each exchange's prompt, payload, reply, usage and timing.",
+        "description": "A stored evaluation. Dimension and modifier keys are the referenced spec's signal keys.\n\nPipeline evaluations (every modality) also carry ``correctness`` (who decided and how),\n``signalResults``, ``signalSpecSnapshot`` and, when Jev was called, ``jevTrace``. Any\nevaluation that called an LLM while grading (the feedback writer) carries ``llmTrace``.",
         "properties": {
           "correctness": {
             "anyOf": [
@@ -1100,6 +1112,13 @@
             "title": "Rep",
             "type": "integer"
           },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
           "target": {
             "minLength": 1,
             "title": "Target",
@@ -1121,6 +1140,11 @@
       },
       "FlowMicroDrillResponse": {
         "properties": {
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
           "language": {
             "title": "Language",
             "type": "string"
@@ -3664,6 +3688,11 @@
       },
       "SlidingWindowLadderResponse": {
         "properties": {
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
           "language": {
             "default": "python",
             "title": "Language",

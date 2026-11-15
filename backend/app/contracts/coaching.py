@@ -1,4 +1,4 @@
-"""Request shapes that core engines (generator, assessor, narrator) work on.
+"""Request shapes that core engines (generators, signals) work on.
 
 They are also API request bodies, so ``app.models`` re-exports them; defining them
 here lets core and domain use them without depending on the API layer.
@@ -26,34 +26,6 @@ class SubmissionModality(str, Enum):
     mcq = "mcq"
     microdrill = "microdrill"
     ladder = "ladder"
-
-
-class CoachAttemptFeedbackRequest(BaseModel):
-    cardId: str = Field(min_length=1)
-    cardTitle: str = ""
-    prompt: str = ""
-    expectedAnswer: str = ""
-    userAnswer: str = ""
-    elapsedMs: int = Field(default=0, ge=0)
-    exact: bool = False
-    interactionId: str | None = None
-    questionType: str = ""
-    skillTags: list[str] = []
-    mode: GameMode = GameMode.main_recall
-    templateMode: TemplateMode = TemplateMode.algorithm
-    submissionTuning: dict[str, Any] = {}
-    llmProvider: str = "openai"
-
-
-class CoachAttemptEvaluationRequest(BaseModel):
-    cardTitle: str = ""
-    prompt: str = ""
-    expectedAnswer: str = ""
-    userAnswer: str = ""
-    skillTags: list[str] = []
-    templateMode: TemplateMode = TemplateMode.algorithm
-    submissionTuning: dict[str, Any] = {}
-    llmProvider: str = "openai"
 
 
 class SkillMapNode(BaseModel):

@@ -24,7 +24,7 @@ from app.models import SignalDefinitionDraft, SignalDirectiveUpdate
 from app.repositories import multiple_choice_repository, signal_definition_repository
 from app.repositories.signal_definition_repository import SignalVersionConflict
 from app.services import jev_gateway
-from app.services.submission_context_service import mcq_context_for
+from app.services.evaluation.contexts.mcq import mcq_context_for
 
 # Stored (snake_case) field -> API (camelCase) field.
 API_FIELDS = {

@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.models import AttemptCreate, SkillMapNode, SkillMapOverviewResponse
 from app.services import submission_service
 from app.services.read_models import history, overview
-from app.services.submission_context_service import SubmissionContextError
+from app.services.evaluation.context import SubmissionContextError
 from app.api_schemas import AttemptSubmitResponse, HistoryDayResponse, SignalHistoryResponse
 
 router = APIRouter(prefix="/api", tags=["attempts"])

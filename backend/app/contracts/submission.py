@@ -15,6 +15,9 @@ class SubmissionRecord:
     user_answer: str
     correct_answer: str
     multiple_choice_problem_id: str | None = None
+    # The stored problem (recall, ghost) or generated exercise (microdrill, ladder) it answered.
+    problem_slug: str | None = None
+    exercise_id: str | None = None
 
 
 @dataclass(frozen=True)

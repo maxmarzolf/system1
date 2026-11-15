@@ -13,6 +13,8 @@ type LadderAttempt = {
 }
 
 export type LadderQuestion = {
+  /** The stored rung; submitted as exerciseId so the answer is graded against it. */
+  id: string
   rungTitle: string
   question: string
   starterCode: string

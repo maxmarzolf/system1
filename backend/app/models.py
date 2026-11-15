@@ -6,8 +6,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from app.contracts.coaching import (  # noqa: F401  (re-exported API schemas)
-    CoachAttemptEvaluationRequest,
-    CoachAttemptFeedbackRequest,
     FlowAttemptContext,
     GameMode,
     MultipleChoiceCard,
@@ -73,6 +71,8 @@ class AttemptCreate(BaseModel):
     generatedCard: dict[str, Any] | None = None
     multipleChoiceProblemId: str | None = Field(default=None, max_length=80)
     selectedChoiceId: str | None = Field(default=None, max_length=8)
+    # The stored microdrill or ladder rung this answers (from its generation response).
+    exerciseId: str | None = Field(default=None, max_length=80)
     templateMode: TemplateMode = TemplateMode.algorithm
     supportLayer: SupportLayer = SupportLayer.none
     modality: SubmissionModality | None = None
@@ -338,10 +338,14 @@ class FlowMicroDrillRequest(BaseModel):
     proficiency: int = Field(default=0, ge=0, le=100)
     weaknessSummary: str = ""
     recentAttempts: list[FlowAttemptContext] = Field(default_factory=list, max_length=8)
+    # The card's tags; the stored drill is filed under their algorithm.
+    tags: list[str] = Field(default_factory=list)
     llmProvider: str = "openai"
 
 
 class FlowMicroDrillResponse(BaseModel):
+    # The stored generated exercise; submit it as exerciseId so the answer is graded against it.
+    id: str = ""
     prompt: str
     language: str
     template: str
@@ -368,6 +372,8 @@ class SlidingWindowLadderRequest(BaseModel):
 
 
 class SlidingWindowLadderResponse(BaseModel):
+    # The stored generated exercise; submit it as exerciseId so the answer is graded against it.
+    id: str = ""
     rungTitle: str
     question: str
     starterCode: str

@@ -8,7 +8,7 @@ from app.core.jev import JevUnavailableError
 from app.models import SignalDefinitionDraft, SignalDirectiveUpdate
 from app.repositories.signal_definition_repository import SignalVersionConflict
 from app.services import signal_admin_service as service
-from app.services.submission_context_service import McqContext
+from app.services.evaluation.contexts.mcq import McqContext
 
 CHOICE_A = {"id": "A", "text": "Use a heap"}
 CHOICE_B = {"id": "B", "text": "Sort"}
