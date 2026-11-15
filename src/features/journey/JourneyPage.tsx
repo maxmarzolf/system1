@@ -7,6 +7,7 @@ import DailyWorkHistory, {
 } from './DailyWorkHistory'
 import { DAILY_WORK_RANGES, type DailyWorkRange, viewerTimeZone } from '@/shared/lib/dailyWork'
 import HistoryDayDetail from './HistoryDayDetail'
+import CompetencySection from './competency/CompetencySection'
 import TopNav from '@/app/TopNav'
 
 // three.js is large; load the score terrain only when this page renders it.
@@ -36,6 +37,12 @@ export default function JourneyPage() {
   // Clicking the date or algorithm that is already selected clears just that filter.
   const selectDate = (date: string) => setSelectedDate(current => (current === date ? null : date))
   const selectAlgorithm = (slug: string) => setSelectedAlgorithm(current => (current === slug ? '' : slug))
+  // A practised day in the competency heatmap: show that day's answers for that algorithm.
+  const openDay = (date: string, slug: string) => {
+    setSelectedDate(date)
+    setSelectedAlgorithm(slug)
+    requestAnimationFrame(() => document.querySelector('.history-day')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }))
+  }
 
   // Sections snap into view instead of free-scrolling (styles keyed off this class).
   useEffect(() => {
@@ -147,6 +154,7 @@ export default function JourneyPage() {
       >
         <CompetencyTerrain />
       </Suspense>
+      <CompetencySection onSelect={openDay} />
       <DailyWorkHistory
         activity={skillMapOverview?.ghostRepActivity}
         algorithmOrder={skillMapOverview?.algorithms ?? []}

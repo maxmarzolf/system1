@@ -953,10 +953,20 @@ export interface components {
             answers: number;
             /** Competency */
             competency: number;
+            /** Dayssince */
+            daysSince: number;
+            /** Kind */
+            kind: string;
+            /** Lastaverage */
+            lastAverage: number;
+            /** Lastpractised */
+            lastPractised: string;
             /** Name */
             name: string;
             /** Slug */
             slug: string;
+            /** Standing */
+            standing: string;
         } & {
             [key: string]: unknown;
         };
@@ -978,6 +988,8 @@ export interface components {
             observed: boolean;
             /** Signals */
             signals: number;
+            /** Standing */
+            standing: string;
         } & {
             [key: string]: unknown;
         };

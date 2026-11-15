@@ -109,3 +109,6 @@ class CompetencyTerrainRow(TypedDict):
     average: float | None
     competency: float
     last_practised: date
+    last_average: float
+    days_since: int
+    standing: str

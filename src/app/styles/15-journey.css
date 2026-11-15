@@ -512,3 +512,207 @@ span.history-day-title {
   display: block;
 }
 
+
+/* Competency: where you stand today (ranked list) beside the history (heatmap). */
+.competency-section-note {
+  margin: 0;
+  max-width: 46rem;
+  color: var(--hc-fg-dim);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.competency-layout {
+  display: grid;
+  gap: 1.3rem;
+}
+
+.competency-standing {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.competency-row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 14rem) minmax(6rem, 1fr) minmax(14rem, 18rem) 7.5rem auto;
+  grid-template-areas: "head bar meta spark practise";
+  align-items: center;
+  gap: 0.35rem 0.9rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--workbench-edge);
+  border-radius: var(--workbench-radius-sm);
+  background: color-mix(in srgb, var(--hc-bg) 40%, transparent);
+}
+
+.competency-row-head {
+  grid-area: head;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.84rem;
+}
+
+.competency-chip {
+  padding: 0.08rem 0.45rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.competency-chip-strong { color: var(--hc-success); }
+.competency-chip-review { color: var(--hc-warning); }
+.competency-chip-learn { color: var(--hc-error); }
+
+.competency-row-bar {
+  grid-area: bar;
+  position: relative;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--hc-fg) 8%, transparent);
+}
+
+.competency-row-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.competency-row-bar em {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translate(calc(100% + 0.4rem), -50%);
+  color: var(--hc-fg);
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.competency-row-bar {
+  margin-right: 2rem;
+}
+
+.competency-row-meta {
+  grid-area: meta;
+  margin: 0;
+  color: var(--hc-fg-dim);
+  font-size: 0.7rem;
+}
+
+.competency-spark {
+  grid-area: spark;
+  width: 100%;
+  height: 1.6rem;
+  overflow: visible;
+}
+
+.competency-spark polyline {
+  fill: none;
+  stroke: color-mix(in srgb, var(--hc-accent) 70%, transparent);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+button.competency-practise {
+  grid-area: practise;
+  min-height: 1.7rem;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.72rem;
+}
+
+.competency-heatmap {
+  --competency-row-height: 1.15rem;
+  min-width: 0;
+}
+
+.competency-heatmap-ticks {
+  position: relative;
+  height: 1.1rem;
+  margin-left: 9.5rem;
+  color: var(--hc-fg-dim);
+  font-size: 0.64rem;
+}
+
+.competency-heatmap-ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.competency-heatmap-ticks span:first-child { transform: none; }
+.competency-heatmap-ticks span:last-child:not(:first-child) { transform: translateX(-100%); }
+
+.competency-heatmap-body {
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr);
+}
+
+.competency-heatmap-labels {
+  margin: 0;
+  padding: 0 0.5rem 0 0;
+  list-style: none;
+}
+
+.competency-heatmap-labels li {
+  height: var(--competency-row-height);
+  overflow: hidden;
+  color: var(--hc-fg-dim);
+  font-size: 0.68rem;
+  line-height: var(--competency-row-height);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.competency-heatmap-grid {
+  display: block;
+  width: 100%;
+  height: calc(var(--competency-rows) * var(--competency-row-height));
+}
+
+.competency-heatmap-cell {
+  opacity: 0.55;
+}
+
+.competency-heatmap-practised {
+  opacity: 1;
+  stroke: var(--hc-fg);
+  stroke-width: 1;
+  cursor: pointer;
+}
+
+.competency-heatmap-practised:hover,
+.competency-heatmap-practised:focus-visible {
+  stroke: var(--hc-accent);
+  stroke-width: 2;
+  outline: none;
+}
+
+.competency-heatmap-status {
+  min-height: 1.2rem;
+  margin: 0.6rem 0 0;
+  color: var(--hc-fg-dim);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 900px) {
+  .competency-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "head head"
+      "bar bar"
+      "meta meta"
+      "spark practise";
+  }
+
+  .competency-heatmap-ticks { margin-left: 6rem; }
+  .competency-heatmap-ticks span:nth-child(even):not(:last-child) { display: none; }
+  .competency-heatmap-body { grid-template-columns: 6rem minmax(0, 1fr); }
+}

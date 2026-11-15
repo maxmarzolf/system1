@@ -72,9 +72,17 @@ class HistoryDayResponse(ApiModel):
 class CompetencyAlgorithm(ApiModel):
     slug: str
     name: str
+    # 'algorithm' (practise with focusPattern) or 'playlist' (practise with playlist).
+    kind: str
     answers: int
     # Today's competency (decayed since the last practice).
     competency: float
+    lastPractised: str
+    # The last practised day's average, before any decay.
+    lastAverage: float
+    daysSince: int
+    # strong | learn (was never strong) | review (was strong, has decayed)
+    standing: str
 
 
 class CompetencyCell(ApiModel):
@@ -88,6 +96,7 @@ class CompetencyCell(ApiModel):
     # That day's average across every scored signal; null on days without practice.
     average: float | None
     lastPractised: str
+    standing: str
 
 
 class CompetencyTerrainResponse(ApiModel):

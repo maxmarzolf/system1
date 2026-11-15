@@ -74,6 +74,10 @@ async def get_history_day(day: date, timezone_name: str | None = None) -> dict[s
     return {"date": day.isoformat(), "submissions": submissions}
 
 
+# Competency at or above this is "strong" (the learn/review/strong label comes from the query).
+STRONG_COMPETENCY = 70.0
+
+
 def _algorithm_tags(known: dict[str, str]) -> dict[str, str]:
     """Each tag that names a known algorithm (its own slug, or an alias of it) → that slug."""
     tags = {slug: slug for slug in known}
@@ -92,24 +96,36 @@ async def get_competency_terrain(timezone_name: str | None = None) -> dict[str, 
     """
     tz = resolve_timezone(timezone_name)
     known = {str(row["algorithm_slug"]): str(row["algorithm_name"]) for row in await fetch_skill_map_overview_algorithm_rows()}
-    known.update({str(item["slug"]): str(item["algorithm"]) for item in static_playlist_activity_rows()})
+    playlists = {str(item["slug"]): str(item["algorithm"]) for item in static_playlist_activity_rows()}
+    known.update(playlists)
     decay = (await app_settings_service.grading()).competencyDecayPerDay
     rows = await fetch_competency_terrain(
         timezone_name=str(tz),
         tag_slugs=_algorithm_tags(known),
         decay_per_day=decay,
         today=datetime.now(tz).date(),
+        strong_at=STRONG_COMPETENCY,
     )
     order = {slug: index for index, slug in enumerate(known)}
     practised = sorted({row["algorithm"] for row in rows}, key=lambda slug: order.get(slug, len(order)))
-    latest = {row["algorithm"]: row["competency"] for row in rows}  # rows run oldest first per algorithm
+    latest = {row["algorithm"]: row for row in rows}  # rows run oldest first per algorithm
     answers = Counter[str]()
     for row in rows:
         answers[row["algorithm"]] += row["answers"]
     return {
         "decayPerDay": decay,
         "algorithms": [
-            {"slug": slug, "name": known.get(slug, slug), "answers": answers[slug], "competency": latest[slug]}
+            {
+                "slug": slug,
+                "name": known.get(slug, slug),
+                "kind": "playlist" if slug in playlists else "algorithm",
+                "answers": answers[slug],
+                "competency": latest[slug]["competency"],
+                "lastPractised": latest[slug]["last_practised"].isoformat(),
+                "lastAverage": latest[slug]["last_average"],
+                "daysSince": latest[slug]["days_since"],
+                "standing": latest[slug]["standing"],
+            }
             for slug in practised
         ],
         "days": sorted({row["day"].isoformat() for row in rows}),
@@ -123,6 +139,7 @@ async def get_competency_terrain(timezone_name: str | None = None) -> dict[str, 
                 "signals": row["signals"],
                 "average": row["average"],
                 "lastPractised": row["last_practised"].isoformat(),
+                "standing": row["standing"],
             }
             for row in rows
         ],

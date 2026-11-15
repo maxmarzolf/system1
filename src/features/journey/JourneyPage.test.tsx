@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ThemeProvider } from '@/app/theme'
 import JourneyPage from './JourneyPage'
+import { competencyTerrain } from '@/test/competency'
 import { mockFetch } from '@/test/fetch'
 
 // A WebGL renderer that draws nothing: the scene, camera, controls and raycasting are real three.js.
@@ -116,6 +117,24 @@ describe('JourneyPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Week' }))
     await waitFor(() => expect(fetch.calls.some((call) => call.url.includes('historyDays=7'))).toBe(true))
+  })
+
+  it('opens a practised day from the competency heatmap, filtered to its algorithm', async () => {
+    const fetch = mockFetch([
+      { match: '/api/coach/provider-default', body: { provider: 'openai' } },
+      { match: '/api/history/competency', body: competencyTerrain() },
+      { match: '/api/history/day', respond: (url) => ({ date: new URL(url, 'http://x').searchParams.get('date'), submissions: [] }) },
+      { match: '/api/skill-map-overview', body: overview },
+    ])
+    renderJourney()
+    await screen.findByText('No submissions recorded on this day.')
+    const heapDay = await screen.findByRole('button', { name: /^Heap · Mar 1 · competency 80.0/ })
+    await userEvent.click(heapDay)
+    await waitFor(() => expect(fetch.calls.some((call) => call.url.includes('/api/history/day') && call.url.includes('date=2026-03-01'))).toBe(true))
+    expect(screen.getByRole('button', { name: 'Heap' })).toHaveAttribute('aria-pressed', 'true')
+    // The scroll to the day detail waits a frame.
+    const frame = vi.mocked(requestAnimationFrame).mock.calls.at(-1)?.[0]
+    expect(() => act(() => frame?.(0))).not.toThrow()
   })
 
   it('starts practice on Enter, but not when Enter presses a focused control', async () => {

@@ -55,7 +55,7 @@ async def _insert(conn: asyncpg.Connection) -> None:
         )
 
 
-async def _run() -> list[dict]:
+async def _run(strong_at: float = 70.0) -> list[dict]:
     from app.database import connect, disconnect
 
     conn = await asyncpg.connect(settings.database_url)
@@ -68,6 +68,7 @@ async def _run() -> list[dict]:
                 tag_slugs={TAG: "zz-algo", ALIAS: "zz-algo"},
                 decay_per_day=0.02,
                 today=date(2026, 1, 6),
+                strong_at=strong_at,
             )
         finally:
             await disconnect()
@@ -98,3 +99,19 @@ def test_competency_is_the_daily_signal_average_decayed_on_days_without_practice
     assert by_day["2026-01-04"]["observed"] is True and by_day["2026-01-04"]["competency"] == 100.0
     assert by_day["2026-01-06"]["competency"] == pytest.approx(100 * 0.98**2, abs=0.051)
     assert by_day["2026-01-06"]["last_practised"] == date(2026, 1, 4)
+
+
+    # Recency and the label come from the same query (strong at 70 by default).
+    assert first["days_since"] == 0 and first["last_average"] == 72.5 and first["standing"] == "strong"
+    third = by_day["2026-01-03"]  # 72.5 decayed twice is 69.6: below 70, but it was strong
+    assert third["days_since"] == 2 and third["last_average"] == 72.5 and third["standing"] == "review"
+    assert by_day["2026-01-06"]["standing"] == "strong"
+
+
+@pytest.mark.integration
+def test_an_algorithm_never_at_the_strong_line_is_to_learn() -> None:
+    rows = asyncio.run(_run(strong_at=80.0))
+    by_day = {row["day"].isoformat(): row for row in rows}
+    assert by_day["2026-01-01"]["standing"] == "learn"  # 72.5 < 80 on the day it was practised
+    assert by_day["2026-01-04"]["standing"] == "strong"
+    assert by_day["2026-01-06"]["standing"] == "strong"  # 96.0 is still above 80

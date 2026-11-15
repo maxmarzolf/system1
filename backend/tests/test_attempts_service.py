@@ -481,11 +481,17 @@ def test_competency_terrain_names_algorithms_and_shapes_query_rows(monkeypatch) 
         captured.update(kwargs)
         return [
             {"algorithm": "heap", "day": date(2026, 1, 1), "observed": True, "answers": 2, "signals": 8,
-             "average": 70.0, "competency": 70.0, "last_practised": date(2026, 1, 1)},
+             "average": 70.0, "competency": 70.0, "last_practised": date(2026, 1, 1),
+             "last_average": 70.0, "days_since": 0, "standing": "strong"},
             {"algorithm": "heap", "day": date(2026, 1, 2), "observed": False, "answers": 0, "signals": 0,
-             "average": None, "competency": 68.6, "last_practised": date(2026, 1, 1)},
+             "average": None, "competency": 68.6, "last_practised": date(2026, 1, 1),
+             "last_average": 70.0, "days_since": 1, "standing": "review"},
+            {"algorithm": "skeletons", "day": date(2026, 1, 2), "observed": True, "answers": 1, "signals": 4,
+             "average": 40.0, "competency": 40.0, "last_practised": date(2026, 1, 2),
+             "last_average": 40.0, "days_since": 0, "standing": "learn"},
             {"algorithm": "sliding-window", "day": date(2026, 1, 2), "observed": True, "answers": 1, "signals": 4,
-             "average": 90.0, "competency": 90.0, "last_practised": date(2026, 1, 2)},
+             "average": 90.0, "competency": 90.0, "last_practised": date(2026, 1, 2),
+             "last_average": 90.0, "days_since": 0, "standing": "strong"},
         ]
 
     async def _algorithm_rows():
@@ -505,19 +511,23 @@ def test_competency_terrain_names_algorithms_and_shapes_query_rows(monkeypatch) 
 
     assert captured["timezone_name"] == "America/New_York"
     assert captured["decay_per_day"] == 0.05
+    assert captured["strong_at"] == history.STRONG_COMPETENCY
     tags = captured["tag_slugs"]
     assert tags["heap"] == "heap" and tags["heap-priority-queue"] == "heap" and tags["sliding-window"] == "sliding-window"
     assert "dp" not in tags  # an alias whose algorithm isn't known is left out
     assert terrain["decayPerDay"] == 0.05
     # Catalog order, today's (latest) competency, answers summed.
-    assert terrain["algorithms"] == [
-        {"slug": "sliding-window", "name": "Sliding Window", "answers": 1, "competency": 90.0},
-        {"slug": "heap", "name": "Heap", "answers": 2, "competency": 68.6},
-    ]
+    sliding, heap, skeletons = terrain["algorithms"]
+    assert sliding == {
+        "slug": "sliding-window", "name": "Sliding Window", "kind": "algorithm", "answers": 1, "competency": 90.0,
+        "lastPractised": "2026-01-02", "lastAverage": 90.0, "daysSince": 0, "standing": "strong",
+    }
+    assert (heap["competency"], heap["daysSince"], heap["lastPractised"], heap["standing"]) == (68.6, 1, "2026-01-01", "review")
+    assert (skeletons["kind"], skeletons["name"], skeletons["standing"]) == ("playlist", "Skeletons", "learn")
     assert terrain["days"] == ["2026-01-01", "2026-01-02"]
     assert terrain["cells"][1] == {
         "algorithm": "heap", "date": "2026-01-02", "competency": 68.6, "observed": False,
-        "answers": 0, "signals": 0, "average": None, "lastPractised": "2026-01-01",
+        "answers": 0, "signals": 0, "average": None, "lastPractised": "2026-01-01", "standing": "review",
     }
 
 

@@ -86,3 +86,5 @@ History before this change mixes evaluations from the old LLM assessor with Jev'
 ## 6. Journey terrain shows competency per algorithm
 
 The terrain's X axis was every signal key (Solution Structure, nearMiss, windowState…), and its height was shortfall, so peaks were weak spots. That mixed unrelated measures and didn't point at anything to practise. It now shows **competency per algorithm per day**: the average of every scored signal from that algorithm's answers that day, and peaks are strong. On days without practice, the last value fades by an Admin setting (default 2% a day, compounded). One aggregate query computes it (`GET /api/history/competency`); the browser's Gaussian smoothing (`signalTerrain.ts`) was removed, and `GET /api/history/signals` with it.
+
+The Competency section beside it was added to make the data readable for decisions: a list ranked weakest first, labelled Learn (never strong) / Review (was strong, has faded) / Strong, with a trend line and a Practise button, and a 2D heatmap of algorithms by day whose practised days open the day detail. The learn/review/strong label comes from the same query.

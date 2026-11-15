@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CompetencyTerrain from './CompetencyTerrain'
 import { ThemeProvider, useTheme } from '@/app/theme'
+import { competencyTerrain } from '@/test/competency'
 import { mockFetch } from '@/test/fetch'
 
 // A WebGL renderer that draws nothing: the scene, camera, controls and raycasting are real three.js.
@@ -72,25 +73,7 @@ afterEach(() => {
   document.documentElement.classList.remove('journey-snap')
 })
 
-const cell = (algorithm: string, date: string, competency: number, observed: boolean, lastPractised = date) => ({
-  algorithm, date, competency, observed, lastPractised,
-  answers: observed ? 2 : 0, signals: observed ? 9 : 0, average: observed ? competency : null,
-})
-
-const terrain = {
-  decayPerDay: 0.02,
-  algorithms: [
-    { slug: 'heap', name: 'Heap', answers: 2, competency: 76.8 },
-    { slug: 'sliding-window', name: 'Sliding Window with a very long name', answers: 2, competency: 90 },
-  ],
-  days: ['2026-03-01', '2026-03-02', '2026-03-03'],
-  cells: [
-    cell('heap', '2026-03-01', 80, true),
-    cell('heap', '2026-03-02', 78.4, false, '2026-03-01'),
-    cell('heap', '2026-03-03', 76.8, false, '2026-03-01'),
-    cell('sliding-window', '2026-03-03', 90, true),
-  ],
-}
+const terrain = competencyTerrain()
 
 const runFrames = () => {
   const frames = (requestAnimationFrame as unknown as ReturnType<typeof vi.fn>).mock.calls.map(([callback]) => callback)

@@ -269,26 +269,43 @@ SELECT
     signals,
     ROUND(average::numeric, 1)::float AS average,
     ROUND((last_average * POWER(1 - $4::float, day - last_practised))::numeric, 1)::float AS competency,
-    last_practised
+    last_practised,
+    ROUND(last_average::numeric, 1)::float AS last_average,
+    (day - last_practised)::int AS days_since
 FROM carried
+"""
+
+# Strong when competency is at the threshold; otherwise "learn" if the last practised day was
+# already below it (never got good), else "review" (was good, has decayed).
+_COMPETENCY_TERRAIN_STANDING_SQL = f"""
+SELECT *,
+    CASE
+        WHEN competency >= $6::float THEN 'strong'
+        WHEN last_average < $6::float THEN 'learn'
+        ELSE 'review'
+    END AS standing
+FROM ({_COMPETENCY_TERRAIN_SQL}) terrain
 ORDER BY algorithm, day
 """
 
 
 async def fetch_competency_terrain(
-    *, timezone_name: str, tag_slugs: dict[str, str], decay_per_day: float, today: date
+    *, timezone_name: str, tag_slugs: dict[str, str], decay_per_day: float, today: date, strong_at: float = 70.0
 ) -> list[CompetencyTerrainRow]:
     """Competency per algorithm per calendar day, computed in one aggregate query.
 
     Competency is the average of every scored signal from the algorithm's counted answers that
     day; a day without practice carries the last practised value, decayed by ``decay_per_day``
     (compounded) for each day since. Rows run from each algorithm's first practice to ``today``.
-    ``tag_slugs`` maps lower-case tags to the algorithm slug they count toward.
+    ``tag_slugs`` maps lower-case tags to the algorithm slug they count toward. Each row's
+    ``standing`` is ``strong`` (competency ≥ ``strong_at``), ``learn`` (the last practised average
+    was already below it) or ``review`` (it was above, and has decayed).
     """
     tags = list(tag_slugs)
     async with acquire_connection() as conn:
         rows = await conn.fetch(
-            _COMPETENCY_TERRAIN_SQL, timezone_name, tags, [tag_slugs[tag] for tag in tags], decay_per_day, today
+            _COMPETENCY_TERRAIN_STANDING_SQL,
+            timezone_name, tags, [tag_slugs[tag] for tag in tags], decay_per_day, today, strong_at,
         )
     return [cast(CompetencyTerrainRow, dict(row)) for row in rows]
 

@@ -798,6 +798,22 @@
             "title": "Competency",
             "type": "number"
           },
+          "daysSince": {
+            "title": "Dayssince",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "lastAverage": {
+            "title": "Lastaverage",
+            "type": "number"
+          },
+          "lastPractised": {
+            "title": "Lastpractised",
+            "type": "string"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -805,13 +821,22 @@
           "slug": {
             "title": "Slug",
             "type": "string"
+          },
+          "standing": {
+            "title": "Standing",
+            "type": "string"
           }
         },
         "required": [
           "slug",
           "name",
+          "kind",
           "answers",
-          "competency"
+          "competency",
+          "lastPractised",
+          "lastAverage",
+          "daysSince",
+          "standing"
         ],
         "title": "CompetencyAlgorithm",
         "type": "object"
@@ -857,6 +882,10 @@
           "signals": {
             "title": "Signals",
             "type": "integer"
+          },
+          "standing": {
+            "title": "Standing",
+            "type": "string"
           }
         },
         "required": [
@@ -867,7 +896,8 @@
           "answers",
           "signals",
           "average",
-          "lastPractised"
+          "lastPractised",
+          "standing"
         ],
         "title": "CompetencyCell",
         "type": "object"
