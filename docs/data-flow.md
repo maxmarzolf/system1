@@ -156,7 +156,8 @@ flowchart LR
   - each row also carries the last practised day's average, the days since, and a **standing**: `strong` (competency ≥ 70), `learn` (the last practised average was already below 70: never got good) or `review` (it was above 70 and has decayed);
   - `free_fall` is true after more than *free-fall days* (Admin setting, default 10) without practice;
   - rows run from each algorithm's first practice to today.
-- A second aggregate query (`fetch_competency_signals`, sharing the same CTEs) averages each signal per algorithm over all time and returns the 3 strongest and 3 weakest; with fewer than 6 signals they are split between the two sides, never repeated.
+- `fetch_competency_overall` averages every practised algorithm's competency per day (the terrain query, grouped by day) for the Overall row.
+- Another aggregate query (`fetch_competency_signals`, sharing the same CTEs) averages each signal per algorithm over all time and returns the 3 strongest and 3 weakest; with fewer than 6 signals they are split between the two sides, never repeated.
 - The response also lists known algorithms and playlists with no answers (`unpractised`). The browser only draws all of it: the terrain and the ranked list with its expanded rows read this one response.
 - The day detail renders the stored evaluation as is (`SubmissionSignalDetails.tsx`), including the Jev trace.
 

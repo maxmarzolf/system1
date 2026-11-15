@@ -123,3 +123,9 @@ class CompetencySignalRow(TypedDict):
     answers: int
     side: str  # strongest | weakest
     position: int
+
+
+class CompetencyOverallRow(TypedDict):
+    day: date
+    competency: float
+    algorithms: int

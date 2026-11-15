@@ -24,6 +24,10 @@ export const competencyAlgorithm = (fields: Partial<Algorithm> & Pick<Algorithm,
 export const competencyTerrain = (): components['schemas']['CompetencyTerrainResponse'] => ({
   decayPerDay: 0.02,
   freeFallDays: 10,
+  overall: {
+    competency: 83.4,
+    days: [{ date: '2026-03-01', competency: 80 }, { date: '2026-03-02', competency: 78.4 }, { date: '2026-03-03', competency: 83.4 }],
+  },
   unpractised: [{ slug: 'trees', name: 'Trees', kind: 'algorithm' }],
   algorithms: [
     competencyAlgorithm({

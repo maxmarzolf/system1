@@ -7,6 +7,7 @@ from app.contracts.catalog_ids import problem_slug_candidates
 from app.repositories.base import acquire_connection
 from app.repositories.types import (
     AlgorithmSkillRow,
+    CompetencyOverallRow,
     CompetencySignalRow,
     CompetencyTerrainRow,
     SubmissionInsertResult,
@@ -325,6 +326,29 @@ async def fetch_competency_terrain(
             timezone_name, tags, [tag_slugs[tag] for tag in tags], decay_per_day, today, strong_at, free_fall_days,
         )
     return [cast(CompetencyTerrainRow, dict(row)) for row in rows]
+
+
+# Overall competency per day: the average of every practised algorithm's competency that day
+# (each the average of its signals, decayed on days without practice). Same parameters as the
+# terrain query.
+_COMPETENCY_OVERALL_SQL = f"""
+SELECT day, ROUND(AVG(competency)::numeric, 1)::float AS competency, COUNT(*)::int AS algorithms
+FROM ({_COMPETENCY_TERRAIN_SQL}) terrain
+GROUP BY day
+ORDER BY day
+"""
+
+
+async def fetch_competency_overall(
+    *, timezone_name: str, tag_slugs: dict[str, str], decay_per_day: float, today: date
+) -> list[CompetencyOverallRow]:
+    """Overall competency per calendar day, across every practised algorithm (one aggregate query)."""
+    tags = list(tag_slugs)
+    async with acquire_connection() as conn:
+        rows = await conn.fetch(
+            _COMPETENCY_OVERALL_SQL, timezone_name, tags, [tag_slugs[tag] for tag in tags], decay_per_day, today
+        )
+    return [cast(CompetencyOverallRow, dict(row)) for row in rows]
 
 
 # Each signal's all-time average per algorithm, and the $4 strongest and $4 weakest. A signal is

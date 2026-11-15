@@ -11,7 +11,7 @@ from app.contracts.coerce import coerce_json_object
 from app.core import taxonomy
 from app.core.static_playlists import static_playlist_activity_rows
 from app.repositories.multiple_choice_repository import stored_choices
-from app.repositories.attempts_repository import fetch_competency_signals, fetch_competency_terrain, fetch_history_day_rows, fetch_skill_map_overview_algorithm_rows
+from app.repositories.attempts_repository import fetch_competency_overall, fetch_competency_signals, fetch_competency_terrain, fetch_history_day_rows, fetch_skill_map_overview_algorithm_rows
 from app.services import app_settings_service
 from app.services.read_models.common import coerce_utc_datetime, resolve_timezone, submission_modality
 
@@ -110,6 +110,12 @@ async def get_competency_terrain(timezone_name: str | None = None) -> dict[str, 
         strong_at=STRONG_COMPETENCY,
         free_fall_days=grading.competencyFreeFallDays,
     )
+    overall = await fetch_competency_overall(
+        timezone_name=str(tz),
+        tag_slugs=tag_slugs,
+        decay_per_day=grading.competencyDecayPerDay,
+        today=datetime.now(tz).date(),
+    )
     signals: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for signal in await fetch_competency_signals(timezone_name=str(tz), tag_slugs=tag_slugs, per_side=SIGNALS_PER_SIDE):
         signals.setdefault((signal["algorithm"], signal["side"]), []).append(
@@ -128,6 +134,10 @@ async def get_competency_terrain(timezone_name: str | None = None) -> dict[str, 
     return {
         "decayPerDay": grading.competencyDecayPerDay,
         "freeFallDays": grading.competencyFreeFallDays,
+        "overall": {
+            "competency": overall[-1]["competency"] if overall else None,
+            "days": [{"date": row["day"].isoformat(), "competency": row["competency"]} for row in overall],
+        },
         "algorithms": [
             {
                 "slug": slug,

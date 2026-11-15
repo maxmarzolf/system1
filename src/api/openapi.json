@@ -923,6 +923,54 @@
         "title": "CompetencyCell",
         "type": "object"
       },
+      "CompetencyOverall": {
+        "additionalProperties": true,
+        "properties": {
+          "competency": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Competency"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/CompetencyOverallDay"
+            },
+            "title": "Days",
+            "type": "array"
+          }
+        },
+        "required": [
+          "competency",
+          "days"
+        ],
+        "title": "CompetencyOverall",
+        "type": "object"
+      },
+      "CompetencyOverallDay": {
+        "additionalProperties": true,
+        "properties": {
+          "competency": {
+            "title": "Competency",
+            "type": "number"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "competency"
+        ],
+        "title": "CompetencyOverallDay",
+        "type": "object"
+      },
       "CompetencySignal": {
         "additionalProperties": true,
         "properties": {
@@ -984,6 +1032,9 @@
             "title": "Freefalldays",
             "type": "integer"
           },
+          "overall": {
+            "$ref": "#/components/schemas/CompetencyOverall"
+          },
           "unpractised": {
             "items": {
               "$ref": "#/components/schemas/UnpractisedAlgorithm"
@@ -995,6 +1046,7 @@
         "required": [
           "decayPerDay",
           "freeFallDays",
+          "overall",
           "algorithms",
           "unpractised",
           "days",

@@ -64,9 +64,9 @@ def test_health(client) -> None:
 
 def test_read_routes(client, monkeypatch) -> None:
     monkeypatch.setattr(overview, "get_skill_map", returns([{"algorithm": "Heap", "skills": []}]))
-    monkeypatch.setattr(history, "get_competency_terrain", returns({"decayPerDay": 0.02, "freeFallDays": 10, "algorithms": [], "unpractised": [], "days": [], "cells": []}))
+    monkeypatch.setattr(history, "get_competency_terrain", returns({"decayPerDay": 0.02, "freeFallDays": 10, "overall": {"competency": None, "days": []}, "algorithms": [], "unpractised": [], "days": [], "cells": []}))
     assert client.get("/api/skill-map").json()[0]["algorithm"] == "Heap"
-    assert client.get("/api/history/competency?tz=UTC").json() == {"decayPerDay": 0.02, "freeFallDays": 10, "algorithms": [], "unpractised": [], "days": [], "cells": []}
+    assert client.get("/api/history/competency?tz=UTC").json() == {"decayPerDay": 0.02, "freeFallDays": 10, "overall": {"competency": None, "days": []}, "algorithms": [], "unpractised": [], "days": [], "cells": []}
 
 
 def test_coach_routes_reach_their_services(client, monkeypatch) -> None:

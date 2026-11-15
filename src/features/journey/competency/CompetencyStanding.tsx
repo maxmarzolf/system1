@@ -7,7 +7,7 @@ import {
   type CompetencyAlgorithm, type CompetencyTerrainData, type UnpractisedAlgorithm,
 } from './competencyDisplay'
 
-const TREND_DAYS = 90
+const TREND_DAYS = 30 // the collapsed preview; the expanded row shows the whole history
 const SPARK_WIDTH = 120
 const SPARK_HEIGHT = 28
 
@@ -61,10 +61,10 @@ function StandingRow({ terrain, algorithm, onSelect }: {
       }}>
       <div className="competency-row-head">
         <strong className="competency-row-name">
-          {algorithm.freeFall ? <span className="competency-flag" title={freeFall} aria-label={freeFall}>!</span> : null}
+          {algorithm.freeFall ? <span className="competency-flag competency-tip" data-tip={freeFall} aria-label={freeFall}>!</span> : null}
           {algorithm.name}
         </strong>
-        <span className={`competency-chip competency-chip-${standing}`} title={STANDING_HINTS[standing]}>{STANDING_LABELS[standing]}</span>
+        <span className={`competency-chip competency-chip-${standing} competency-tip`} data-tip={STANDING_HINTS[standing]}>{STANDING_LABELS[standing]}</span>
       </div>
       <div className="competency-row-bar" role="meter" aria-label={`${algorithm.name} competency`}
         aria-valuemin={0} aria-valuemax={100} aria-valuenow={algorithm.competency}>
@@ -85,10 +85,41 @@ function StandingRow({ terrain, algorithm, onSelect }: {
 function UnpractisedRow({ algorithm }: { algorithm: UnpractisedAlgorithm }) {
   return (
     <li className="competency-row competency-row-unpractised">
-      <div className="competency-row-head"><strong className="competency-row-name">{algorithm.name}</strong></div>
-      <span className="competency-never" title="Never practiced." aria-label="Never practiced.">-</span>
+      <div className="competency-row-head">
+        <strong className="competency-row-name">{algorithm.name}</strong>
+        <span className="competency-chip competency-chip-new competency-tip" data-tip="Never practiced.">Not started</span>
+      </div>
+      <span className="competency-never competency-tip" data-tip="Never practiced." aria-label="Never practiced.">-</span>
       <PractiseButton algorithm={algorithm} />
     </li>
+  )
+}
+
+const OVERALL_WIDTH = 600
+const OVERALL_HEIGHT = 40
+
+/**
+ * The average across every practised algorithm: a label, a bar the size of the rows' bars, and
+ * its history as a graph across the rest of the width. Sits on the card, without a row outline.
+ */
+function OverallRow({ terrain }: { terrain: CompetencyTerrainData }) {
+  const { competency, days } = terrain.overall
+  if (competency === null || competency === undefined) return null
+  const span = Math.max(days.length - 1, 1)
+  const xOf = (index: number) => (days.length > 1 ? (index / span) * OVERALL_WIDTH : OVERALL_WIDTH)
+  const yOf = (value: number) => OVERALL_HEIGHT - 3 - (value / 100) * (OVERALL_HEIGHT - 6)
+  return (
+    <div className="competency-row competency-overall">
+      <div className="competency-row-head"><strong className="competency-row-name">Overall</strong></div>
+      <div className="competency-row-bar" role="meter" aria-label="Overall competency" aria-valuemin={0} aria-valuemax={100} aria-valuenow={competency}>
+        <span style={{ width: `${Math.min(Math.max(competency, 0), 100)}%`, background: competencyFill(competency) }} />
+        <em>{Math.round(competency)}</em>
+      </div>
+      <svg className="competency-overall-graph" viewBox={`0 0 ${OVERALL_WIDTH} ${OVERALL_HEIGHT}`} preserveAspectRatio="none" role="img"
+        aria-label={`Overall competency from ${formatCalendarDate(days[0].date)} to ${formatCalendarDate(days[days.length - 1].date)}`}>
+        <polyline points={days.map((day, index) => `${xOf(index)},${yOf(day.competency)}`).join(' ')} />
+      </svg>
+    </div>
   )
 }
 
@@ -102,9 +133,12 @@ export default function CompetencyStanding({ terrain, ranked, onSelect }: {
   onSelect: (date: string, slug: string) => void
 }) {
   return (
+    <>
+    <OverallRow terrain={terrain} />
     <ol className="competency-standing" aria-label="Competency today, weakest first">
       {ranked.map((algorithm) => <StandingRow key={algorithm.slug} terrain={terrain} algorithm={algorithm} onSelect={onSelect} />)}
       {terrain.unpractised.map((algorithm) => <UnpractisedRow key={algorithm.slug} algorithm={algorithm} />)}
     </ol>
+    </>
   )
 }

@@ -999,6 +999,24 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** CompetencyOverall */
+        CompetencyOverall: {
+            /** Competency */
+            competency: number | null;
+            /** Days */
+            days: components["schemas"]["CompetencyOverallDay"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** CompetencyOverallDay */
+        CompetencyOverallDay: {
+            /** Competency */
+            competency: number;
+            /** Date */
+            date: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** CompetencySignal */
         CompetencySignal: {
             /** Answers */
@@ -1024,6 +1042,7 @@ export interface components {
             decayPerDay: number;
             /** Freefalldays */
             freeFallDays: number;
+            overall: components["schemas"]["CompetencyOverall"];
             /** Unpractised */
             unpractised: components["schemas"]["UnpractisedAlgorithm"][];
         } & {

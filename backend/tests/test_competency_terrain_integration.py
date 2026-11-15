@@ -18,6 +18,7 @@ from app.repositories import attempts_repository
 
 TAG = "zz-competency-test"
 ALIAS = "zz-competency-alias"
+OTHER = "zz-competency-other"
 INTERACTION = "competency-terrain-test"
 
 
@@ -41,6 +42,9 @@ SUBMISSIONS = [
     # 03:30 UTC on Jan 5 is 22:30 on Jan 4 in New York: a new practice day at 100 (clamped from 140).
     (datetime(2026, 1, 5, 3, 30, tzinfo=timezone.utc), ["skill-map", TAG], "skill-map-mcq",
      _evaluation({"correctness": _entry("pass", 140)})),
+    # A second algorithm, practised on Jan 5 only (local), at 40.
+    (datetime(2026, 1, 5, 15, tzinfo=timezone.utc), ["skill-map", OTHER], "skill-map-mcq",
+     _evaluation({"correctness": _entry("fail", 40)})),
     # Not daily work (no skill-map marker): excluded.
     (datetime(2026, 1, 2, 15, tzinfo=timezone.utc), [TAG], "standalone", _evaluation({"correctness": _entry("fail", 0)})),
 ]
@@ -55,7 +59,7 @@ async def _insert(conn: asyncpg.Connection) -> None:
         )
 
 
-async def _run(strong_at: float = 70.0) -> tuple[list[dict], list[dict]]:
+async def _run(strong_at: float = 70.0) -> tuple[list[dict], list[dict], list[dict]]:
     from app.database import connect, disconnect
 
     conn = await asyncpg.connect(settings.database_url)
@@ -73,7 +77,10 @@ async def _run(strong_at: float = 70.0) -> tuple[list[dict], list[dict]]:
                 free_fall_days=1,
             )
             signals = await attempts_repository.fetch_competency_signals(timezone_name="America/New_York", tag_slugs=tags, per_side=2)
-            return terrain, signals
+            overall = await attempts_repository.fetch_competency_overall(
+                timezone_name="America/New_York", tag_slugs={**tags, OTHER: "zz-other"}, decay_per_day=0.02, today=date(2026, 1, 6),
+            )
+            return terrain, signals, overall
         finally:
             await disconnect()
     finally:
@@ -83,7 +90,7 @@ async def _run(strong_at: float = 70.0) -> tuple[list[dict], list[dict]]:
 
 @pytest.mark.integration
 def test_competency_is_the_daily_signal_average_decayed_on_days_without_practice() -> None:
-    rows, signals = asyncio.run(_run())
+    rows, signals, overall = asyncio.run(_run())
     by_day = {row["day"].isoformat(): row for row in rows}
 
     assert {row["algorithm"] for row in rows} == {"zz-algo"}
@@ -121,10 +128,17 @@ def test_competency_is_the_daily_signal_average_decayed_on_days_without_practice
         ("weakest", "structure", 60.0, 1),
     ]
 
+    # Overall: the mean of every practised algorithm's competency that day. Only zz-algo until
+    # Jan 5, when zz-other starts at 40.
+    overall_by_day = {row["day"].isoformat(): row for row in overall}
+    assert overall_by_day["2026-01-01"]["competency"] == 72.5 and overall_by_day["2026-01-01"]["algorithms"] == 1
+    assert overall_by_day["2026-01-05"]["algorithms"] == 2
+    assert overall_by_day["2026-01-05"]["competency"] == pytest.approx((by_day["2026-01-05"]["competency"] + 40) / 2, abs=0.051)
+
 
 @pytest.mark.integration
 def test_an_algorithm_never_at_the_strong_line_is_to_learn() -> None:
-    rows, _signals = asyncio.run(_run(strong_at=80.0))
+    rows, _signals, _overall = asyncio.run(_run(strong_at=80.0))
     by_day = {row["day"].isoformat(): row for row in rows}
     assert by_day["2026-01-01"]["standing"] == "learn"  # 72.5 < 80 on the day it was practised
     assert by_day["2026-01-04"]["standing"] == "strong"

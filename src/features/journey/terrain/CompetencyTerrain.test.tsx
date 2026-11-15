@@ -180,7 +180,7 @@ describe('CompetencyTerrain', () => {
   })
 
   it('handles an empty terrain, errors, missing WebGL and a single algorithm on a single day', async () => {
-    mockFetch([{ match: '/api/history/competency', body: { decayPerDay: 0.02, algorithms: [], days: [], cells: [] } }])
+    mockFetch([{ match: '/api/history/competency', body: { ...competencyTerrain(), algorithms: [], unpractised: [], days: [], cells: [] } }])
     const empty = renderTerrain()
     await screen.findByText(/No graded answers yet/)
     empty.unmount()
@@ -203,7 +203,7 @@ describe('CompetencyTerrain', () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(((type: string) =>
       type === '2d' ? context2d : {}) as never)
 
-    const single = { decayPerDay: 0.02, algorithms: [terrain.algorithms[0]], days: ['2026-03-01'], cells: [terrain.cells[0]] }
+    const single = { ...terrain, algorithms: [terrain.algorithms[0]], days: ['2026-03-01'], cells: [terrain.cells[0]] }
     mockFetch([{ match: '/api/history/competency', body: single }])
     renderTerrain()
     await screen.findByRole('img', { name: /Today: Heap 77; Mar/ })

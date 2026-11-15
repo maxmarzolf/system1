@@ -513,6 +513,12 @@ def test_competency_terrain_names_algorithms_and_shapes_query_rows(monkeypatch) 
 
     monkeypatch.setattr(history, "fetch_competency_signals", _signals)
 
+    async def _overall(**kwargs):
+        captured["overall"] = kwargs
+        return [{"day": date(2026, 1, 1), "competency": 70.0, "algorithms": 1}, {"day": date(2026, 1, 2), "competency": 66.2, "algorithms": 3}]
+
+    monkeypatch.setattr(history, "fetch_competency_overall", _overall)
+
     monkeypatch.setattr(history, "fetch_competency_terrain", _terrain)
     monkeypatch.setattr(history, "fetch_skill_map_overview_algorithm_rows", _algorithm_rows)
     monkeypatch.setattr(history.app_settings_service, "grading", _grading)
@@ -539,6 +545,11 @@ def test_competency_terrain_names_algorithms_and_shapes_query_rows(monkeypatch) 
     assert heap["strongestSignals"] == [{"key": "correctness", "label": "Correct", "average": 90.0, "answers": 2}]
     assert heap["weakestSignals"] == [{"key": "speed", "label": "Speed", "average": 30.0, "answers": 1}]
     assert terrain["freeFallDays"] == 7
+    assert captured["overall"]["decay_per_day"] == 0.05 and captured["overall"]["tag_slugs"] == tags
+    assert terrain["overall"] == {
+        "competency": 66.2,
+        "days": [{"date": "2026-01-01", "competency": 70.0}, {"date": "2026-01-02", "competency": 66.2}],
+    }
     # Known but never practised, in catalog order (a static playlist with no answers included).
     assert terrain["unpractised"][0] == {"slug": "trees", "name": "Trees", "kind": "algorithm"}
     assert {"slug": "google", "name": "Google", "kind": "playlist"} in terrain["unpractised"]
@@ -568,6 +579,7 @@ def test_competency_terrain_falls_back_to_utc_for_unknown_timezones(monkeypatch)
         return []
 
     monkeypatch.setattr(history, "fetch_competency_signals", _no_signals)
+    monkeypatch.setattr(history, "fetch_competency_overall", _no_signals)
 
     async def _grading():
         return history.app_settings_service.GradingSettingsModel()
@@ -575,5 +587,6 @@ def test_competency_terrain_falls_back_to_utc_for_unknown_timezones(monkeypatch)
     monkeypatch.setattr(history.app_settings_service, "grading", _grading)
     terrain = asyncio.run(history.get_competency_terrain("Not/AZone"))
     assert terrain["decayPerDay"] == 0.02
+    assert terrain["overall"] == {"competency": None, "days": []}
     assert captured["timezone_name"] == "UTC"
     assert terrain["algorithms"] == [] and terrain["cells"] == []

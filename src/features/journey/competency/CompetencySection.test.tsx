@@ -48,7 +48,7 @@ describe('CompetencySection', () => {
     const list = await screen.findByRole('list', { name: 'Competency today, weakest first' })
     const rows = within(list).getAllByRole('listitem')
     expect(rows.map((row) => row.querySelector('strong')?.textContent)).toEqual(['!Heap', 'Sliding Window with a very long name', 'Trees'])
-    expect(within(rows[0]).getByText('Review')).toHaveAttribute('title', expect.stringContaining('has faded'))
+    expect(within(rows[0]).getByText('Review')).toHaveAttribute('data-tip', expect.stringContaining('has faded'))
     expect(within(rows[0]).getByRole('meter', { name: 'Heap competency' })).toHaveAttribute('aria-valuenow', '76.8')
     expect(rows[0]).toHaveTextContent(/last 80 on Mar 1 · 2 days ago · 2 answers/)
     expect(within(rows[0]).getByRole('img', { name: 'Heap: the last 3 days of competency' }).querySelectorAll('circle')).toHaveLength(1)
@@ -59,17 +59,47 @@ describe('CompetencySection', () => {
     expect(await screen.findByTestId('practice')).toHaveTextContent('?focusPattern=heap')
   })
 
+  it('puts an overall row above the list, outside it, with its whole history', async () => {
+    mockFetch([{ match: '/api/history/competency', body: competencyTerrain() }])
+    renderSection()
+    const overall = await screen.findByRole('meter', { name: 'Overall competency' })
+    expect(overall).toHaveAttribute('aria-valuenow', '83.4')
+    expect(overall).toHaveTextContent('83')
+    const row = overall.closest('.competency-overall') as HTMLElement
+    expect(row).toHaveTextContent('Overall')
+    expect(row.closest('ol')).toBeNull()
+    const graph = within(row).getByRole('img', { name: 'Overall competency from Mar 1 to Mar 3' })
+    expect(graph.querySelector('polyline')?.getAttribute('points')?.split(' ')).toHaveLength(3)
+  })
+
+  it('shows only the last 30 days in the collapsed preview', async () => {
+    const terrain = competencyTerrain()
+    const days = Array.from({ length: 40 }, (_, index) => `2026-02-${String(index + 1).padStart(2, '0')}`)
+    terrain.cells = [...days.map((date) => competencyCell('sliding-window', date, 50, false)), ...terrain.cells]
+    mockFetch([{ match: '/api/history/competency', body: terrain }])
+    renderSection()
+    expect(await screen.findByRole('img', { name: 'Sliding Window with a very long name: the last 30 days of competency' })).toBeInTheDocument()
+  })
+
+  it('has no overall row before any answer', async () => {
+    mockFetch([{ match: '/api/history/competency', body: { ...competencyTerrain(), overall: { competency: null, days: [] } } }])
+    renderSection()
+    await screen.findByRole('list', { name: 'Competency today, weakest first' })
+    expect(screen.queryByRole('meter', { name: 'Overall competency' })).toBeNull()
+  })
+
   it('flags free fall and never-practised algorithms', async () => {
     mockFetch([{ match: '/api/history/competency', body: competencyTerrain() }])
     renderSection()
     const list = await screen.findByRole('list', { name: 'Competency today, weakest first' })
     const rows = within(list).getAllByRole('listitem')
     expect(within(rows[0]).getByLabelText('Decaying for more than 10 days.')).toHaveTextContent('!')
-    expect(within(rows[0]).getByLabelText('Decaying for more than 10 days.')).toHaveAttribute('title', 'Decaying for more than 10 days.')
+    expect(within(rows[0]).getByLabelText('Decaying for more than 10 days.')).toHaveAttribute('data-tip', 'Decaying for more than 10 days.')
     expect(within(rows[1]).queryByText('!')).toBeNull()
     // Never practised comes last: a dash, no value, still a way in.
     expect(rows[2]).toHaveTextContent('Trees')
-    expect(within(rows[2]).getByTitle('Never practiced.')).toHaveTextContent('-')
+    expect(within(rows[2]).getByLabelText('Never practiced.')).toHaveTextContent('-')
+    expect(within(rows[2]).getByText('Not started')).toHaveAttribute('data-tip', 'Never practiced.')
     expect(within(rows[2]).queryByRole('meter')).toBeNull()
     await userEvent.click(rows[2]) // not expandable
     expect(rows[2]).not.toHaveAttribute('aria-expanded')
@@ -128,7 +158,7 @@ describe('CompetencySection', () => {
   })
 
   it('handles an empty history, a single day, and errors', async () => {
-    mockFetch([{ match: '/api/history/competency', body: { decayPerDay: 0.02, freeFallDays: 10, algorithms: [], unpractised: [], days: [], cells: [] } }])
+    mockFetch([{ match: '/api/history/competency', body: { decayPerDay: 0.02, freeFallDays: 10, overall: { competency: null, days: [] }, algorithms: [], unpractised: [], days: [], cells: [] } }])
     const { unmount } = render(<MemoryRouter><CompetencySection onSelect={vi.fn()} /></MemoryRouter>)
     await screen.findByText('No graded answers yet.')
     unmount()
@@ -136,6 +166,7 @@ describe('CompetencySection', () => {
     const single = {
       decayPerDay: 0.02,
       freeFallDays: 10,
+      overall: { competency: 50, days: [{ date: '2026-03-01', competency: 50 }] },
       unpractised: [],
       algorithms: [competencyAlgorithm({ slug: 'heap', name: 'Heap', competency: 50, kind: 'playlist', answers: 1, daysSince: 1 })],
       days: ['2026-03-01'],

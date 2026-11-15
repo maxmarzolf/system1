@@ -76,6 +76,17 @@ class CompetencySignal(ApiModel):
     answers: int
 
 
+class CompetencyOverallDay(ApiModel):
+    date: str
+    competency: float
+
+
+class CompetencyOverall(ApiModel):
+    # Today's overall competency; null before any graded answer.
+    competency: float | None
+    days: list[CompetencyOverallDay]
+
+
 class UnpractisedAlgorithm(ApiModel):
     slug: str
     name: str
@@ -120,6 +131,8 @@ class CompetencyCell(ApiModel):
 class CompetencyTerrainResponse(ApiModel):
     decayPerDay: float
     freeFallDays: int
+    # The average of every practised algorithm's competency, per day.
+    overall: CompetencyOverall
     algorithms: list[CompetencyAlgorithm]
     # Known algorithms and playlists with no graded answers yet, in catalog order.
     unpractised: list[UnpractisedAlgorithm]
