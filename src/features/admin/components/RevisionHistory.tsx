@@ -1,16 +1,18 @@
 import { useState } from 'react'
+import type { Modality } from '@/shared/modality'
 import { fetchSignalRevisions } from '../api'
 import type { SignalRevision } from '../api'
 import { JsonPreview } from './fields'
 import { errorMessage } from '../lib'
 
-export function RevisionHistory({ subject }: { subject: string }) {
+/** Every recorded change to one signal, or to the correctness question (``subject="directive"``). */
+export function RevisionHistory({ modality, subject }: { modality: Modality; subject: string }) {
   const [revisions, setRevisions] = useState<SignalRevision[] | null>(null)
   const [error, setError] = useState('')
   return (
     <details className="signal-trace-raw" onToggle={(event) => {
       if (!(event.currentTarget as HTMLDetailsElement).open) return
-      fetchSignalRevisions(subject).then(setRevisions).catch((reason: unknown) => setError(errorMessage(reason)))
+      fetchSignalRevisions(modality, subject).then(setRevisions).catch((reason: unknown) => setError(errorMessage(reason)))
     }}>
       <summary>History</summary>
       {error ? <p className="admin-field-error">{error}</p> : null}

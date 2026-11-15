@@ -77,6 +77,7 @@ export function NumberControl({
   max,
   onChange,
   description,
+  step = 1,
 }: {
   label: string
   value: number
@@ -84,6 +85,8 @@ export function NumberControl({
   max: number
   onChange: (value: number) => void
   description?: string
+  /** 1 (default) for whole numbers; smaller for fractions such as 0.05. */
+  step?: number
 }) {
   return (
     <label className="tune-control">
@@ -92,10 +95,10 @@ export function NumberControl({
         type="number"
         min={min}
         max={max}
-        step="1"
+        step={step}
         value={value}
         onChange={(event) => {
-          const nextValue = Number.parseInt(event.currentTarget.value, 10)
+          const nextValue = step < 1 ? Number.parseFloat(event.currentTarget.value) : Number.parseInt(event.currentTarget.value, 10)
           onChange(Number.isNaN(nextValue) ? min : nextValue)
         }}
       />

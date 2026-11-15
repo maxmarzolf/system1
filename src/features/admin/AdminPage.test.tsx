@@ -9,7 +9,6 @@ import {
   draftFromSignal,
   emptySignalDraft,
   fetchSignalAdminCatalog,
-  jevQuestionFor,
   setSignalArchived,
   type AdminSignal,
   type SignalAdminCatalog,
@@ -43,6 +42,7 @@ const catalog = (): SignalAdminCatalog => ({
     instructions: 'Was the answer correct?',
     criteria: { '1': 'correct', '0': 'incorrect' },
     correctnessWeight: 0.6,
+    correctnessSource: 'jev',
     version: 1,
     updatedAt: '2026-01-01T00:00:00Z',
     labels: ['1', '0'],
@@ -67,26 +67,21 @@ const catalog = (): SignalAdminCatalog => ({
   implementations: [{ name: 'completionTime', label: 'Completion time', description: 'Faster is better.' }],
 })
 
-const specCatalog = {
-  default: { algorithm: 'default', version: 1, structuralElements: ['loop'], signals: [] },
-  algorithms: [
-    { slug: 'heap', name: 'Heap', usesDefault: true, seeded: false, spec: { algorithm: 'default', version: 1, structuralElements: [], signals: [] } },
-    {
-      slug: 'binary-search',
-      name: 'Binary Search',
-      usesDefault: false,
-      seeded: true,
-      spec: {
-        algorithm: 'binary-search',
-        version: 2,
-        structuralElements: ['bounds'],
-        signals: [{ key: 'midpoint', label: 'Midpoint', kind: 'score', role: 'dimension', weight: 0.2, guidance: 'g', variationStrategy: 'v', axis: null }],
-      },
-    },
-  ],
-}
-
 type Sent = { url: string; method: string; body: Record<string, unknown> }
+
+const SAMPLES = [
+  { id: 'p1', title: 'Which heap?', prompt: 'Which heap?', reference: 'Min', choices: [{ id: 'A', text: 'Min' }, { id: 'B', text: 'Max' }], correctChoiceId: 'A' },
+  { id: 'p2', title: 'Second', prompt: 'Second', reference: 'Only', choices: [{ id: 'C', text: 'Only' }], correctChoiceId: 'C' },
+]
+
+const SETTINGS = {
+  grading: { value: { feedbackModalities: ['total-recall'], nearMissThreshold: 75, lowConfidenceThreshold: 0.6 }, version: 0 },
+  generation: {
+    value: { specimen: { typeHints: 'omit', comments: 'omit', variableNames: 'readable' }, mcqModels: { claude: 'claude-haiku-4-5', openai: '', gemma: '' } },
+    version: 2,
+  },
+  practice: { value: { mcqQuestionCount: 5, mcqFlowMode: 'random', playlistOrder: 'mastery' }, version: 0 },
+}
 
 function routes(overrides: { catalogStatus?: number; write?: { status: number; body: unknown } } = {}) {
   const sent: Sent[] = []
@@ -97,19 +92,25 @@ function routes(overrides: { catalogStatus?: number; write?: { status: number; b
   const status = overrides.write?.status ?? 200
   const fetch = mockFetch([
     { match: '/api/coach/provider-default', body: { provider: 'openai' } },
-    { match: '/api/catalog/signal-specs', body: specCatalog },
-    { match: '/api/admin/signals/samples', body: [
-      { id: 'p1', question: 'Which heap?', choices: [{ id: 'A', text: 'Min' }, { id: 'B', text: 'Max' }], correctChoiceId: 'A' },
-      { id: 'p2', question: 'Second', choices: [{ id: 'C', text: 'Only' }], correctChoiceId: 'C' },
-    ] },
-    { match: '/api/admin/signals/revisions/', body: [{ id: 1, subject: 'x', action: 'update', before: {}, after: {}, createdAt: '2026-01-01T00:00:00Z' }] },
-    { method: 'POST', match: '/api/admin/signals/try', respond: () => ({
+    { match: '/samples', body: SAMPLES },
+    { match: '/revisions/', body: [{ id: 1, subject: 'x', action: 'update', before: {}, after: {}, createdAt: '2026-01-01T00:00:00Z' }] },
+    { method: 'POST', match: '/preview', respond: (_url, init) => {
+      const draft = JSON.parse(String(init?.body)).draft
+      return { question: draft.source === 'jev' ? { type: draft.primitive, instructions: draft.instructions, server: true } : null }
+    } },
+    { method: 'POST', match: '/try', respond: () => ({
       state: {}, answeredCorrectly: false, applies: true, question: { type: 'noul' }, answer: { noul: 0.7 },
       result: { status: 'scored', raw: 0.7, score: 70, confidence: 0.9, note: '' }, model: 'jev-test',
     }) },
-    { match: /\/api\/admin\/signals$/, status: overrides.catalogStatus ?? 200, body: catalog() },
-    { method: 'POST', match: '/api/admin/signals', status, respond: record },
-    { method: 'PUT', match: '/api/admin/signals', status, respond: record },
+    { match: '/api/admin/settings', method: 'GET', body: SETTINGS },
+    { method: 'PUT', match: '/api/admin/settings/', status, respond: (url, init) => {
+      record(url, init)
+      return overrides.write?.body ?? { value: JSON.parse(String(init?.body)).value, version: 1 }
+    } },
+    { match: /\/api\/admin\/signals\/total-recall$/, body: { ...catalog(), modality: 'total-recall', signals: [signal({ modality: 'total-recall', key: 'structure', label: 'Solution structure' })] } },
+    { match: /\/api\/admin\/signals\/mcq$/, status: overrides.catalogStatus ?? 200, body: catalog() },
+    { method: 'POST', match: '/api/admin/signals/', status, respond: record },
+    { method: 'PUT', match: '/api/admin/signals/', status, respond: record },
   ])
   return { fetch, sent }
 }
@@ -151,36 +152,36 @@ describe('AdminPage: browsing', () => {
     routes()
     renderAdmin()
     await screen.findByText('Correctness question')
-    const rail = screen.getByRole('navigation', { name: 'Question types and scopes' })
+    const rail = screen.getByRole('navigation', { name: 'Modalities, scopes and settings' })
     await userEvent.click(within(rail).getAllByRole('button', { name: /Heap/ })[0])
-    expect(screen.getByTestId('location')).toHaveTextContent('?type=mcq&scope=heap')
+    expect(screen.getByTestId('location')).toHaveTextContent('?modality=mcq&scope=heap')
     expect(screen.queryByText('Correctness question')).toBeNull()
-    expect(screen.getByText(/in addition to the 4 general signals/)).toBeInTheDocument()
+    expect(screen.getByText(/in addition to the 4 general signals when the item's algorithm is Heap/)).toBeInTheDocument()
 
     await userEvent.click(within(rail).getByRole('button', { name: 'Graphs' }))
     expect(screen.getByText('No Graphs signals yet.')).toBeInTheDocument()
 
     await userEvent.click(within(rail).getByRole('button', { name: /General/ }))
-    expect(screen.getByText('Asked for every MCQ, in one Jev call with the correctness question.')).toBeInTheDocument()
+    expect(screen.getByText(/Used for every MCQ answer/)).toBeInTheDocument()
     expect(screen.getByText('Correctness question')).toBeInTheDocument()
 
     await userEvent.click(within(rail).getByRole('button', { name: 'MCQ' }))
     expect(screen.getByTestId('location')).toHaveTextContent('')
   })
 
-  it('shows the read-only recall specs', async () => {
-    routes()
-    renderAdmin('/admin?type=recall')
-    await screen.findByText('All recall signals')
-    expect(screen.getByText('Used by 1 of 2 algorithms. These have their own:')).toBeInTheDocument()
-    const rail = screen.getByRole('navigation', { name: 'Question types and scopes' })
-    await userEvent.click(within(rail).getAllByRole('button', { name: /Heap/ })[1])
-    expect(screen.getByText('Heap has no spec of its own, so it uses the default spec.')).toBeInTheDocument()
-    expect(screen.getByText('Not seeded in the database yet.')).toBeInTheDocument()
-    await userEvent.click(within(rail).getByRole('button', { name: /Binary Search/ }))
-    expect(screen.getByText('Binary Search signals')).toBeInTheDocument()
-    await userEvent.click(within(rail).getByRole('button', { name: 'Recall' }))
-    expect(screen.getByText('All recall signals')).toBeInTheDocument()
+  it('edits every modality the same way', async () => {
+    const { fetch } = routes()
+    renderAdmin()
+    await screen.findByText('Correctness question')
+    const rail = screen.getByRole('navigation', { name: 'Modalities, scopes and settings' })
+    for (const label of ['MCQ', 'Total Recall', 'Ghost', 'Microdrill', 'Ladder', 'Settings']) {
+      expect(within(rail).getByRole('button', { name: label })).toBeInTheDocument()
+    }
+    await userEvent.click(within(rail).getByRole('button', { name: 'Total Recall' }))
+    expect(await screen.findByText('Solution structure', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'All Total Recall signals' })).toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent('?modality=total-recall&scope=all')
+    expect(fetch.calls.some((call) => call.url.endsWith('/api/admin/signals/total-recall'))).toBe(true)
   })
 
   it('reports a catalog that will not load', async () => {
@@ -206,9 +207,9 @@ describe('AdminPage: editing', () => {
 
     await userEvent.type(within(concept).getByDisplayValue('Did they recognize the concept?'), ' Really?')
     await userEvent.click(within(concept).getByRole('button', { name: 'Save' }))
-    await within(concept).findByText('Saved. Applies to the next MCQ evaluation.')
+    await within(concept).findByText('Saved. Applies to the next evaluation.')
     const put = sent.find((item) => item.method === 'PUT')!
-    expect(put.url).toContain('/api/admin/signals/conceptRecognition')
+    expect(put.url).toContain('/api/admin/signals/mcq/conceptRecognition')
     expect(put.body).toMatchObject({ version: 3, instructions: 'Did they recognize the concept? Really?' })
   })
 
@@ -233,7 +234,7 @@ describe('AdminPage: editing', () => {
     await userEvent.click(within(nearMiss).getByRole('button', { name: /Near miss/ }))
     await userEvent.click(within(nearMiss).getByRole('button', { name: 'Restore' }))
     await within(nearMiss).findByText('Restored. Runs again from the next evaluation.')
-    expect(sent.at(-1)?.url).toContain('/nearMiss/restore')
+    expect(sent.at(-1)?.url).toContain('/mcq/nearMiss/restore')
 
     const concept = card('Concept recognition')
     await userEvent.click(within(concept).getByRole('button', { name: /Concept recognition/ }))
@@ -272,7 +273,7 @@ describe('AdminPage: editing', () => {
     const outcome = (text: RegExp) => within(concept).getByText(text).closest('label')!.querySelector('input')!
     await userEvent.type(outcome(/Yes means/), 'They named it')
     await userEvent.type(outcome(/No means/), 'They did not')
-    expect(within(concept).getByText(/"true": "They named it"/)).toBeInTheDocument()
+    expect(await within(concept).findByText(/"server": true/)).toBeInTheDocument() // the server builds the preview
     await userEvent.selectOptions(within(concept).getByDisplayValue('Noul — yes probability'), 'score')
     expect(within(concept).getByLabelText('Level 0')).toBeInTheDocument()
     await userEvent.selectOptions(within(concept).getByDisplayValue('Score — ordered levels'), 'choice')
@@ -283,18 +284,18 @@ describe('AdminPage: editing', () => {
     await userEvent.selectOptions(within(concept).getByDisplayValue('Always'), 'correct')
     await userEvent.selectOptions(within(concept).getByDisplayValue('None'), 'fluency')
     fireEvent.change(within(concept).getByDisplayValue('0'), { target: { value: '20' } })
-    await userEvent.selectOptions(within(concept).getByDisplayValue('General — every MCQ'), 'heap')
+    await userEvent.selectOptions(within(concept).getByDisplayValue('General — every answer'), 'heap')
     await userEvent.type(within(concept).getByPlaceholderText('What this signal is for and how to read it.'), 'notes')
 
     const speed = card('Speed')
     await userEvent.click(within(speed).getByRole('button', { name: /Speed/ }))
-    expect(within(speed).getByText('Computed locally; nothing is sent to Jev.')).toBeInTheDocument()
+    expect(await within(speed).findByText('Computed locally; nothing is sent to Jev.')).toBeInTheDocument()
     expect(within(speed).getByText(/Logic lives in code/)).toBeInTheDocument()
   })
 
   it('creates a new signal in the current scope, including a computed one', async () => {
     const { sent } = routes()
-    renderAdmin('/admin?type=mcq&scope=heap')
+    renderAdmin('/admin?modality=mcq&scope=heap')
     await screen.findByText('Heap signals')
     const newCard = screen.getByText('+ New signal').closest('article') as HTMLElement
     await userEvent.click(within(newCard).getByRole('button', { name: /New signal/ }))
@@ -304,7 +305,7 @@ describe('AdminPage: editing', () => {
     await userEvent.selectOptions(within(newCard).getByDisplayValue('Computed in code'), 'jev')
     await userEvent.type(within(newCard).getAllByRole('textbox')[0], 'heapDepth')
     await userEvent.click(within(newCard).getByRole('button', { name: 'Create signal' }))
-    await screen.findByText('Created created. Applies to the next MCQ evaluation.')
+    await screen.findByText('Created created. Applies to the next evaluation.')
     expect(sent.at(-1)).toMatchObject({ method: 'POST', body: { key: 'heapDepth', scope: 'heap' } })
 
     await userEvent.click(within(newCard).getByRole('button', { name: /New signal/ }))
@@ -333,9 +334,15 @@ describe('AdminPage: editing', () => {
     await userEvent.type(screen.getByDisplayValue('incorrect'), '!')
     fireEvent.change(screen.getByDisplayValue('0.6'), { target: { value: 'abc' } })
     const section = instructions.closest('.admin-editor') as HTMLElement
+    expect(within(section).getByText('Sent to Jev')).toBeInTheDocument()
+    await userEvent.selectOptions(within(section).getByDisplayValue('Jev answers this question'), 'deterministic')
+    expect(within(section).queryByText('Sent to Jev')).toBeNull() // nothing is asked when the check decides
     await userEvent.click(within(section).getByRole('button', { name: 'Save' }))
-    await within(section).findByText('Saved. Applies to the next MCQ evaluation.')
-    expect(sent.at(-1)).toMatchObject({ method: 'PUT', body: { instructions: 'Was the answer correct? Strictly.', correctnessWeight: 0, version: 1 } })
+    await within(section).findByText('Saved. Applies to the next evaluation.')
+    expect(sent.at(-1)).toMatchObject({
+      method: 'PUT', body: { instructions: 'Was the answer correct? Strictly.', correctnessWeight: 0, correctnessSource: 'deterministic', version: 1 },
+    })
+    expect(sent.at(-1)?.url).toContain('/api/admin/signals/mcq/directive')
     await userEvent.type(instructions, 'x')
     await userEvent.click(within(section).getByRole('button', { name: 'Discard' }))
   })
@@ -368,12 +375,13 @@ describe('AdminPage: try it and history', () => {
     await userEvent.selectOptions(question, 'p2')
     expect(within(tryPanel).getByDisplayValue('C. Only (correct)')).toBeInTheDocument()
     await userEvent.selectOptions(question, 'p1')
-    await userEvent.selectOptions(within(tryPanel).getByDisplayValue('A. Min (correct)'), 'B')
+    expect(within(tryPanel).getByDisplayValue('B. Max')).toBeInTheDocument() // switching items preselects a wrong choice
     await userEvent.click(within(tryPanel).getByRole('button', { name: 'Run draft' }))
     await within(tryPanel).findByText('70.0')
     expect(within(tryPanel).getByText('jev-test')).toBeInTheDocument()
     const tried = fetch.calls.find((call) => call.url.includes('/try'))
-    expect(JSON.parse(String(tried?.init?.body))).toMatchObject({ problemId: 'p1', choiceId: 'B' })
+    expect(JSON.parse(String(tried?.init?.body))).toMatchObject({ sampleId: 'p1', answer: 'B' })
+    expect(tried?.url).toContain('/api/admin/signals/mcq/try')
 
     const history = within(concept).getByText('History').closest('details') as HTMLDetailsElement
     history.open = true
@@ -386,10 +394,10 @@ describe('AdminPage: try it and history', () => {
   it('explains empty samples and try failures', async () => {
     mockFetch([
       { match: '/api/coach/provider-default', body: { provider: 'openai' } },
-      { match: '/api/catalog/signal-specs', status: 500 },
-      { match: '/api/admin/signals/samples', body: [] },
-      { match: '/api/admin/signals/revisions/', body: [] },
-      { match: /\/api\/admin\/signals$/, body: catalog() },
+      { match: '/samples', body: [] },
+      { match: '/revisions/', body: [] },
+      { method: 'POST', match: '/preview', body: { question: null } },
+      { match: /\/api\/admin\/signals\/mcq$/, body: catalog() },
     ])
     renderAdmin()
     await screen.findByText('Correctness question')
@@ -398,7 +406,7 @@ describe('AdminPage: try it and history', () => {
     const tryPanel = within(concept).getByText('Try it against Jev').closest('details') as HTMLDetailsElement
     tryPanel.open = true
     fireEvent(tryPanel, new Event('toggle'))
-    expect(await within(tryPanel).findByText(/No stored MCQs yet/)).toBeInTheDocument()
+    expect(await within(tryPanel).findByText(/No stored MCQ items yet/)).toBeInTheDocument()
     const history = within(concept).getByText('History').closest('details') as HTMLDetailsElement
     history.open = true
     fireEvent(history, new Event('toggle'))
@@ -412,10 +420,10 @@ describe('AdminPage: try it and history', () => {
     ] as const) {
       mockFetch([
         { match: '/api/coach/provider-default', body: { provider: 'openai' } },
-        { match: '/api/catalog/signal-specs', body: specCatalog },
-        { match: '/api/admin/signals/samples', body: [{ id: 'p1', question: 'Q', choices: [{ id: 'A', text: 'a' }], correctChoiceId: 'A' }] },
-        { method: 'POST', match: '/api/admin/signals/try', status, body: { detail } },
-        { match: /\/api\/admin\/signals$/, body: catalog() },
+        { match: '/samples', body: [{ ...SAMPLES[0], choices: [{ id: 'A', text: 'a' }] }] },
+        { method: 'POST', match: '/preview', body: { question: null } },
+        { method: 'POST', match: '/try', status, body: { detail } },
+        { match: /\/api\/admin\/signals\/mcq$/, body: catalog() },
       ])
       const { unmount } = renderAdmin()
       await screen.findByText('Correctness question')
@@ -434,26 +442,15 @@ describe('AdminPage: try it and history', () => {
 describe('signalAdmin client', () => {
   it('turns error bodies into SignalAdminError', async () => {
     mockFetch([{ match: '/api/admin/signals', status: 404, body: { detail: 'Not here' } }])
-    await expect(fetchSignalAdminCatalog()).rejects.toMatchObject({ status: 404, code: 'error', message: 'Not here' })
+    await expect(fetchSignalAdminCatalog('mcq')).rejects.toMatchObject({ status: 404, code: 'error', message: 'Not here' })
 
     const text = new Response('<html>', { status: 500 })
     const fetch = mockFetch([])
     fetch.mockResolvedValueOnce(text)
-    await expect(createSignal(emptySignalDraft())).rejects.toBeInstanceOf(SignalAdminError)
+    await expect(createSignal('ladder', emptySignalDraft())).rejects.toBeInstanceOf(SignalAdminError)
 
     mockFetch([{ method: 'POST', match: '/archive', body: { key: 'k' } }])
-    await expect(setSignalArchived('k', true, 1)).resolves.toEqual({ key: 'k' })
-  })
-
-  it('builds the exact Jev question for each primitive', () => {
-    const base = emptySignalDraft()
-    expect(jevQuestionFor({ ...base, source: 'deterministic', primitive: null })).toBeNull()
-    expect(jevQuestionFor({ ...base, primitive: 'choice', criteria: null })).toEqual({ type: 'choice', instructions: '', criteria: {} })
-    expect(jevQuestionFor({ ...base, primitive: 'score', criteria: { a: 'b' } })).toEqual({ type: 'score', instructions: '', criteria: [] })
-    expect(jevQuestionFor({ ...base, primitive: 'noul', criteria: { true: 'yes', false: null } })).toEqual({
-      type: 'noul', instructions: '', criteria: { true: 'yes' },
-    })
-    expect(jevQuestionFor({ ...base, primitive: 'noul', criteria: ['x'] })).toEqual({ type: 'noul', instructions: '' })
+    await expect(setSignalArchived('ladder', 'k', true, 1)).resolves.toEqual({ key: 'k' })
   })
 
   it('copies an admin signal into a draft', () => {
@@ -469,5 +466,81 @@ describe('AdminPage: loading', () => {
     renderAdmin()
     expect(screen.getByText('Loading signals…')).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByText('Loading signals…')).toBeNull())
+  })
+})
+
+describe('AdminPage: code modalities and settings', () => {
+  it('tries a code answer, prefilled with the reference, and sends a ghost rep its target', async () => {
+    const { fetch } = routes()
+    renderAdmin('/admin?modality=total-recall&scope=all')
+    const structure = (await screen.findByText('Solution structure', { selector: 'strong' })).closest('article') as HTMLElement
+    await userEvent.click(within(structure).getByRole('button', { name: /Solution structure/ }))
+    const tryPanel = within(structure).getByText('Try it against Jev').closest('details') as HTMLDetailsElement
+    tryPanel.open = true
+    fireEvent(tryPanel, new Event('toggle'))
+    const answer = await within(tryPanel).findByDisplayValue('Min')  // the sample's reference, editable
+    await userEvent.clear(answer)
+    await userEvent.type(answer, 'def f():{enter}    return 2')
+    await userEvent.click(within(tryPanel).getByRole('button', { name: 'Run draft' }))
+    await within(tryPanel).findByText('70.0')
+    const tried = fetch.calls.find((call) => call.url.includes('/total-recall/try'))
+    expect(JSON.parse(String(tried?.init?.body))).toMatchObject({ sampleId: 'p1', answer: 'def f():\n    return 2', reference: '' })
+  })
+
+  it('edits server settings section by section', async () => {
+    const { sent } = routes()
+    renderAdmin('/admin?view=settings')
+    const grading = (await screen.findByText('How answers are graded')).closest('section') as HTMLElement
+    expect(within(grading).getByText('Defaults (never saved)')).toBeInTheDocument()
+    await userEvent.click(within(grading).getByRole('checkbox', { name: 'Ladder' }))
+    await userEvent.click(within(grading).getByRole('checkbox', { name: 'Total Recall' }))
+    fireEvent.change(within(grading).getByDisplayValue('75'), { target: { value: '60' } })
+    fireEvent.change(within(grading).getByDisplayValue('0.6'), { target: { value: '0.75' } })
+    await userEvent.click(within(grading).getByRole('button', { name: 'Save grading' }))
+    await within(grading).findByText('Saved. Applies from the next request.')
+    expect(sent.at(-1)).toMatchObject({
+      method: 'PUT', url: expect.stringContaining('/api/admin/settings/grading'),
+      body: { value: { feedbackModalities: ['ladder'], nearMissThreshold: 60, lowConfidenceThreshold: 0.75 }, version: 0 },
+    })
+
+    const generation = screen.getByText('How questions are written').closest('section') as HTMLElement
+    expect(within(generation).queryByText('Defaults (never saved)')).toBeNull()
+    await userEvent.selectOptions(within(generation).getByLabelText('Type hints in generated code'), 'include')
+    await userEvent.type(within(generation).getByLabelText('MCQ model (openai)'), 'gpt-fast')
+    await userEvent.click(within(generation).getByRole('button', { name: 'Discard' }))
+    expect(within(generation).getByLabelText('MCQ model (openai)')).toHaveValue('')
+
+    const practice = screen.getByText('What practice asks for').closest('section') as HTMLElement
+    await userEvent.selectOptions(within(practice).getByLabelText('MCQ order'), 'progressive')
+    await userEvent.click(within(practice).getByRole('button', { name: 'Save practice' }))
+    await within(practice).findByText('Saved. Applies from the next request.')
+    expect(sent.at(-1)?.body).toMatchObject({ value: { mcqFlowMode: 'progressive' } })
+  })
+
+  it('reports settings conflicts and load failures', async () => {
+    routes({ write: { status: 422, body: { detail: { code: 'invalid_settings', message: 'Settings are invalid.', errors: { nearMissThreshold: 'Too high.' } } } } })
+    const { unmount } = renderAdmin('/admin?view=settings')
+    const grading = (await screen.findByText('How answers are graded')).closest('section') as HTMLElement
+    fireEvent.change(within(grading).getByDisplayValue('75'), { target: { value: '150' } })
+    await userEvent.click(within(grading).getByRole('button', { name: 'Save grading' }))
+    expect(await within(grading).findByText('Too high.')).toBeInTheDocument()
+    unmount()
+
+    mockFetch([{ match: '/api/coach/provider-default', body: { provider: 'openai' } }, { match: '/api/admin/settings', status: 500 }])
+    renderAdmin('/admin?view=settings')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Request failed (500)')
+  })
+
+  it('asks for a valid draft before previewing it', async () => {
+    mockFetch([
+      { match: '/api/coach/provider-default', body: { provider: 'openai' } },
+      { method: 'POST', match: '/preview', status: 422, body: { detail: { code: 'invalid_signal', message: 'x', errors: {} } } },
+      { match: /\/api\/admin\/signals\/mcq$/, body: catalog() },
+    ])
+    renderAdmin()
+    await screen.findByText('Correctness question')
+    const concept = card('Concept recognition')
+    await userEvent.click(within(concept).getByRole('button', { name: /Concept recognition/ }))
+    expect(await within(concept).findByText('Fix the fields above to see the question.')).toBeInTheDocument()
   })
 })

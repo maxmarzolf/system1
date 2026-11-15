@@ -14,6 +14,7 @@ from typing import Any
 from app.core.signals.seed import STATE_IS_DATA, deterministic_definition, directive, jev_definition, near_miss
 
 TOTAL_RECALL_MODALITY = "total-recall"
+TOTAL_RECALL_STATE_FIELDS = ("prompt", "referenceSolution", "submittedAnswer")
 
 CODE_ERROR_PATTERNS = {
     "missing_step": "A required step is missing.",

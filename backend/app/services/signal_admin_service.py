@@ -1,8 +1,10 @@
-"""Signal administration for /admin: list, create, edit, archive, restore, try.
+"""Signal administration for /admin, the same for every modality: list, create, edit, archive,
+restore, preview and try.
 
-Every write is validated against Jev's rules,
-guarded by the row's version, and recorded in ``signal_definition_revision``.
-Changes apply to the next evaluation (see ``signal_registry_service``).
+Every write is validated against Jev's rules, guarded by the row's version, and recorded in
+``signal_definition_revision``. Changes apply to the next evaluation (see
+``signal_registry_service``). "Try" builds a submission through the same context builders the
+evaluation pipeline uses, so a draft is tested against exactly the state Jev will see.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ from typing import Any
 
 from app.core.jev import JevGateway, JevUnavailableError
 from app.core.signals import DETERMINISTIC_IMPLEMENTATIONS, SignalContext, applies, definition_to_plugin
-from app.core.signals.mcq import MCQ_MODALITY, MCQ_STATE_FIELDS
+from app.core.signals.defaults import MODALITIES, MODALITY_DEFAULTS
 from app.domain.signal_definition_rules import (
     GENERAL_SCOPE,
     normalize_definition,
@@ -20,11 +22,12 @@ from app.domain.signal_definition_rules import (
     validate_definition,
     validate_directive,
 )
-from app.models import SignalDefinitionDraft, SignalDirectiveUpdate
-from app.repositories import multiple_choice_repository, signal_definition_repository
+from app.models import AttemptCreate, SignalDefinitionDraft, SignalDirectiveUpdate
+from app.repositories import exercise_repository, multiple_choice_repository, signal_definition_repository, unified_catalog_repository
 from app.repositories.signal_definition_repository import SignalVersionConflict
 from app.services import jev_gateway
-from app.services.evaluation.contexts.mcq import mcq_context_for
+from app.services.evaluation.contexts.code import recall_reference
+from app.services.evaluation.pipeline import context_builder
 
 # Stored (snake_case) field -> API (camelCase) field.
 API_FIELDS = {
@@ -36,6 +39,7 @@ API_FIELDS = {
     "updated_at": "updatedAt",
     "archived_at": "archivedAt",
     "correctness_weight": "correctnessWeight",
+    "correctness_source": "correctnessSource",
 }
 STORED_FIELDS = {api: stored for stored, api in API_FIELDS.items()}
 TRY_KEY = "draftSignal"
@@ -59,6 +63,11 @@ class SignalTryError(RuntimeError):
     pass
 
 
+def _require_modality(modality: str) -> None:
+    if modality not in MODALITY_DEFAULTS:
+        raise SignalNotFoundError(f"Unknown modality {modality!r}. Known: {', '.join(MODALITIES)}.")
+
+
 def _to_api(record: dict[str, Any]) -> dict[str, Any]:
     return {API_FIELDS.get(field, field): value for field, value in record.items()}
 
@@ -67,16 +76,21 @@ def _from_draft(draft: SignalDefinitionDraft) -> dict[str, Any]:
     return {STORED_FIELDS.get(field, field): value for field, value in draft.model_dump().items()}
 
 
-def _empty_context() -> SignalContext:
-    return SignalContext(modality=MCQ_MODALITY, state={field: f"<{field}>" for field in MCQ_STATE_FIELDS})
+def _placeholder_context(modality: str) -> SignalContext:
+    fields = MODALITY_DEFAULTS[modality].state_fields
+    return SignalContext(modality=modality, state={field: f"<{field}>" for field in fields})
 
 
-def _signal_view(definition: dict[str, Any], weight_total: float) -> dict[str, Any]:
-    view = _to_api(definition)
+def _jev_question(definition: dict[str, Any], modality: str) -> dict[str, Any] | None:
     try:
-        view["jevQuestion"] = definition_to_plugin(definition).question(_empty_context())
+        return definition_to_plugin(definition).question(_placeholder_context(modality))
     except KeyError:
-        view["jevQuestion"] = None
+        return None
+
+
+def _signal_view(definition: dict[str, Any], weight_total: float, modality: str) -> dict[str, Any]:
+    view = _to_api(definition)
+    view["jevQuestion"] = _jev_question(definition, modality)
     weight = 0.0 if definition["role"] == "diagnostic" else float(definition["weight"])
     view["effectiveShare"] = round(weight / weight_total, 4) if weight_total > 0 and definition["status"] == "active" else 0.0
     return view
@@ -93,7 +107,8 @@ def _scope_total(directive: dict[str, Any], definitions: list[dict[str, Any]], s
     return total
 
 
-async def list_signals(modality: str = MCQ_MODALITY) -> dict[str, Any]:
+async def list_signals(modality: str) -> dict[str, Any]:
+    _require_modality(modality)
     directive = await signal_definition_repository.fetch_directive(modality)
     if directive is None:
         raise SignalNotFoundError(f"No correctness question is stored for {modality!r}.")
@@ -101,7 +116,7 @@ async def list_signals(modality: str = MCQ_MODALITY) -> dict[str, Any]:
     algorithms = await signal_definition_repository.fetch_algorithms()
     return {
         "modality": modality,
-        "stateFields": list(MCQ_STATE_FIELDS),
+        "stateFields": list(MODALITY_DEFAULTS[modality].state_fields),
         "directive": {
             **_to_api(directive),
             "labels": ["1", "0"],
@@ -110,7 +125,7 @@ async def list_signals(modality: str = MCQ_MODALITY) -> dict[str, Any]:
             ),
         },
         "signals": [
-            _signal_view(definition, _scope_total(directive, definitions, definition["scope"]))
+            _signal_view(definition, _scope_total(directive, definitions, definition["scope"]), modality)
             for definition in definitions
         ],
         "algorithms": algorithms,
@@ -134,28 +149,39 @@ async def _validated(draft: dict[str, Any]) -> dict[str, Any]:
     return definition
 
 
-async def create_signal(draft: SignalDefinitionDraft, modality: str = MCQ_MODALITY) -> dict[str, Any]:
+async def preview_signal(modality: str, draft: SignalDefinitionDraft) -> dict[str, Any]:
+    """The Jev question a draft would send (``None`` for deterministic signals). Not saved."""
+    _require_modality(modality)
+    raw = _from_draft(draft)
+    definition = await _validated({**raw, "key": raw["key"] or TRY_KEY})
+    return {"question": _jev_question(definition, modality)}
+
+
+async def create_signal(modality: str, draft: SignalDefinitionDraft) -> dict[str, Any]:
+    _require_modality(modality)
     definition = await _validated(_from_draft(draft))
     created = await signal_definition_repository.insert_definition(definition, modality)
     if created is None:
         raise SignalConflictError(
-            f"A signal with key {definition['key']!r} already exists. Keys are permanent, even when archived."
+            f"A {modality} signal with key {definition['key']!r} already exists. Keys are permanent, even when archived."
         )
     return _to_api(created)
 
 
-async def update_signal(key: str, draft: SignalDefinitionDraft, version: int, modality: str = MCQ_MODALITY) -> dict[str, Any]:
+async def update_signal(modality: str, key: str, draft: SignalDefinitionDraft, version: int) -> dict[str, Any]:
+    _require_modality(modality)
     definition = await _validated({**_from_draft(draft), "key": key})
     try:
         updated = await signal_definition_repository.update_definition(modality, key, definition, version)
     except SignalVersionConflict as error:
         raise SignalConflictError(str(error)) from error
     if updated is None:
-        raise SignalNotFoundError(f"Unknown signal {key!r}.")
+        raise SignalNotFoundError(f"Unknown {modality} signal {key!r}.")
     return _to_api(updated)
 
 
-async def set_signal_status(key: str, archived: bool, version: int, modality: str = MCQ_MODALITY) -> dict[str, Any]:
+async def set_signal_status(modality: str, key: str, archived: bool, version: int) -> dict[str, Any]:
+    _require_modality(modality)
     try:
         updated = await signal_definition_repository.set_definition_status(
             modality, key, "archived" if archived else "active", version
@@ -163,14 +189,18 @@ async def set_signal_status(key: str, archived: bool, version: int, modality: st
     except SignalVersionConflict as error:
         raise SignalConflictError(str(error)) from error
     if updated is None:
-        raise SignalNotFoundError(f"Unknown signal {key!r}.")
+        raise SignalNotFoundError(f"Unknown {modality} signal {key!r}.")
     return _to_api(updated)
 
 
-async def update_directive(body: SignalDirectiveUpdate, modality: str = MCQ_MODALITY) -> dict[str, Any]:
-    directive = normalize_directive(
-        {"instructions": body.instructions, "criteria": body.criteria, "correctness_weight": body.correctnessWeight}
-    )
+async def update_directive(modality: str, body: SignalDirectiveUpdate) -> dict[str, Any]:
+    _require_modality(modality)
+    directive = normalize_directive({
+        "instructions": body.instructions,
+        "criteria": body.criteria,
+        "correctness_weight": body.correctnessWeight,
+        "correctness_source": body.correctnessSource,
+    })
     errors = validate_directive(directive)
     if errors:
         raise SignalValidationError(errors)
@@ -184,43 +214,80 @@ async def update_directive(body: SignalDirectiveUpdate, modality: str = MCQ_MODA
     return _to_api(updated)
 
 
-async def signal_revisions(subject: str, modality: str = MCQ_MODALITY) -> list[dict[str, Any]]:
-    """History for ``directive:<modality>``, ``<modality>:<key>``, or a bare key of ``modality``."""
-    if ":" not in subject:
-        subject = signal_definition_repository.revision_subject(modality, subject)
-    return await signal_definition_repository.fetch_revisions(subject)
+async def signal_revisions(modality: str, subject: str) -> list[dict[str, Any]]:
+    """History for a signal key of ``modality``, or ``directive`` for its correctness question."""
+    _require_modality(modality)
+    full_subject = f"directive:{modality}" if subject == "directive" else signal_definition_repository.revision_subject(modality, subject)
+    return await signal_definition_repository.fetch_revisions(full_subject)
 
 
-async def mcq_samples() -> list[dict[str, Any]]:
-    return [dict(problem) for problem in await multiple_choice_repository.fetch_recent_multiple_choice_problems()]
+# ─── Samples and try ───
+
+
+async def samples(modality: str) -> list[dict[str, Any]]:
+    """Stored items a draft can be tried against: MCQs, catalog problems, or generated exercises."""
+    _require_modality(modality)
+    if modality == "mcq":
+        return [
+            {
+                "id": problem["id"],
+                "title": problem["question"][:120],
+                "prompt": problem["question"],
+                "reference": next((c["text"] for c in problem["choices"] if c["id"] == problem["correctChoiceId"]), ""),
+                "choices": problem["choices"],
+                "correctChoiceId": problem["correctChoiceId"],
+            }
+            for problem in await multiple_choice_repository.fetch_recent_multiple_choice_problems()
+        ]
+    if modality in {"microdrill", "ladder"}:
+        return [
+            {"id": item["id"], "title": item["prompt"][:120], "prompt": item["prompt"], "reference": item["reference"]}
+            for item in await exercise_repository.fetch_recent_exercises(modality)
+        ]
+    return [
+        {"id": problem["slug"], "title": problem["title"], "prompt": problem["description"], "reference": recall_reference(problem)}
+        for problem in await unified_catalog_repository.fetch_recall_samples()
+    ]
+
+
+def _try_submission(modality: str, sample_id: str, answer: str) -> AttemptCreate:
+    """A submission of ``answer`` to stored item ``sample_id``, shaped as the practice screen sends it."""
+    fields: dict[str, Any] = {"cardId": sample_id, "mode": "main-recall", "modality": modality, "userAnswer": answer}
+    if modality == "mcq":
+        fields.update(multipleChoiceProblemId=sample_id, selectedChoiceId=answer, userAnswer=None)
+    elif modality in {"microdrill", "ladder"}:
+        fields.update(exerciseId=sample_id)
+    return AttemptCreate.model_validate(fields)
 
 
 async def try_signal(
+    modality: str,
     draft: SignalDefinitionDraft,
-    problem_id: str,
-    choice_id: str,
+    sample_id: str,
+    answer: str,
+    reference: str = "",
     gateway_factory: Callable[[], JevGateway] | None = None,
 ) -> dict[str, Any]:
-    """Ask Jev one draft signal question about a stored MCQ answered with ``choice_id``.
+    """Ask Jev one draft signal question about ``answer`` to a stored item. Nothing is saved.
 
-    Nothing is saved. ``answeredCorrectly`` comes from the stored answer key.
+    ``answeredCorrectly`` is the modality's deterministic verdict (the answer key for MCQ, an
+    exact match for code), standing in for Jev's correctness, which is not asked here.
     """
+    _require_modality(modality)
     raw = _from_draft(draft)
     definition = await _validated({**raw, "key": raw["key"] or TRY_KEY})
-    context = await mcq_context_for(problem_id, choice_id)
-    successful = context.answer_key_correct
-    state: dict[str, Any] = context.jev_state()
+    submission = _try_submission(modality, sample_id, answer)
+    if modality == "ghost-rep":
+        submission = submission.model_copy(update={"correctAnswer": reference or None})
+    context = await context_builder(modality).build(submission)
+    successful = context.deterministic_correct and not context.overrides
+    state: dict[str, Any] = dict(context.state)
     if definition["needs_correctness"]:
         state["answeredCorrectly"] = 1 if successful else 0
-    signal_context = SignalContext(modality=MCQ_MODALITY, state=state, elapsed_ms=context.elapsed_ms)
+    signal_context = SignalContext(modality=modality, state=state, elapsed_ms=context.elapsed_ms)
     plugin = definition_to_plugin(definition)
     question = plugin.question(signal_context)
-    base = {
-        "state": state,
-        "answeredCorrectly": successful,
-        "applies": applies(plugin, successful),
-        "question": question,
-    }
+    base = {"state": state, "answeredCorrectly": successful, "applies": applies(plugin, successful), "question": question}
     if question is None:
         return {**base, "answer": None, "result": plugin.interpret(None, signal_context, successful).to_json()}
     try:
@@ -228,11 +295,11 @@ async def try_signal(
         response = await gateway.system_one(state, {definition["key"]: question})
     except JevUnavailableError as error:
         raise SignalTryError(f"Jev is unavailable ({error.code}): {error.message}") from error
-    answer = response.answers[definition["key"]]
+    jev_answer = response.answers[definition["key"]]
     return {
         **base,
-        "answer": answer,
-        "result": plugin.interpret(answer, signal_context, successful).to_json(),
+        "answer": jev_answer,
+        "result": plugin.interpret(jev_answer, signal_context, successful).to_json(),
         "model": response.model,
         "requestId": response.request_id,
         "usage": response.usage,

@@ -4,10 +4,8 @@ import { vs, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { loadFlowConfig, saveFlowConfig, type FlowStage } from './flow/practiceFlow'
 import RelatedLeetCodeDrawer from './components/RelatedLeetCodeDrawer'
 import { resolveRelatedLeetCodeSet } from '@/shared/data/related-leetcode'
-import { loadStoredSubmissionTuning, saveStoredSubmissionTuning } from '@/shared/settings/submissionTuning'
 import { loadStoredCodeEditorTuning, saveStoredCodeEditorTuning } from '@/shared/settings/codeEditorTuning'
-import { loadStoredMcqTuning } from '@/shared/settings/mcqTuning'
-import { loadStoredGooglePlaylistTuning } from '@/shared/settings/googlePlaylistTuning'
+import { DEFAULT_PRACTICE_SETTINGS, usePracticeSettings } from '@/api/queries'
 import { useConfiguredProviderLabel } from '@/shared/lib/llmProviderDefault'
 import TopNav from '@/app/TopNav'
 import { useTheme } from '@/app/theme'
@@ -60,20 +58,19 @@ function PracticePage() {
   const configuredProviderLabel = useConfiguredProviderLabel()
   // Always "Auto": an empty provider lets the server use its configured one.
   const requestLlmProvider = ''
-  const [submissionTuning] = useState(() => loadStoredSubmissionTuning())
   const [codeEditorTuning, setCodeEditorTuning] = useState(() => loadStoredCodeEditorTuning())
   const syntaxTheme = theme === 'light-high-contrast' ? vs : vscDarkPlus
-  const mcqTuning = useMemo(() => loadStoredMcqTuning(), [])
-  const googlePlaylistTuning = useMemo(() => loadStoredGooglePlaylistTuning(), [])
-  const multipleChoiceQuestionCount = mcqTuning.questionCount
+  // MCQ set size and order, and playlist order, are server settings (/admin).
+  const practiceSettings = usePracticeSettings().data ?? DEFAULT_PRACTICE_SETTINGS
+  const multipleChoiceQuestionCount = practiceSettings.mcqQuestionCount
   const flowStageContentRef = useRef<HTMLDivElement | null>(null)
   const { focusedCardPending, focusedCardNotFound, requestedQuestionType } = practiceFocus
-  const recallDeck = useRecallDeck(practiceFocus, googlePlaylistTuning.order, requestLlmProvider)
+  const recallDeck = useRecallDeck(practiceFocus, practiceSettings.playlistOrder, requestLlmProvider)
   const filteredDeck = recallDeck.deck
   const skillMapLoading = recallDeck.loading
   const mcqDeck = useMultipleChoiceDeck(
     practiceMode === 'multiple-choice' && mcqSourceSpecimen
-      ? multipleChoiceDeckRequest(mcqSourceSpecimen, { count: multipleChoiceQuestionCount, flowMode: mcqTuning.flowMode, llmProvider: requestLlmProvider })
+      ? multipleChoiceDeckRequest(mcqSourceSpecimen, { count: multipleChoiceQuestionCount, flowMode: practiceSettings.mcqFlowMode, llmProvider: requestLlmProvider })
       : null,
     mcqRequestId,
     requestedQuestionType,
@@ -90,10 +87,6 @@ function PracticePage() {
     recall.resetHistory()
     sessionMcq.resetAll(true)
   }
-
-  useEffect(() => {
-    saveStoredSubmissionTuning(submissionTuning)
-  }, [submissionTuning])
 
   useEffect(() => {
     saveStoredCodeEditorTuning(codeEditorTuning)
@@ -155,7 +148,7 @@ function PracticePage() {
     flow: practiceFlow,
     inlineEnabled,
     requestedQuestionType,
-    mcqFlowMode: mcqTuning.flowMode,
+    mcqFlowMode: practiceSettings.mcqFlowMode,
     hasDeck,
   })
   const activeDeck = currentPracticeMode === 'multiple-choice' ? (isFlowActive ? flowMcqDeck : mcqDeck) : recallDeck
@@ -224,7 +217,7 @@ function PracticePage() {
     const flowSignals = payload.outsideFlow ? null : flowState.signals() ?? null
     const saved = await postAttempt(recallAttemptBody(payload, {
       card, prompt: practicePrompt, questionType: cardMeta.questionType, skillTags: cardMeta.skillTags,
-      flowSignals, submissionTuning, llmProvider: requestLlmProvider,
+      flowSignals, llmProvider: requestLlmProvider,
     }))
     // Ladder rungs are practised outside a flow, so only flow modalities are recorded.
     if (flowSignals && payload.modality !== 'ladder') {
@@ -245,7 +238,7 @@ function PracticePage() {
     const flowSignals = flowState.signals() ?? null
     const saved = await postAttempt(multipleChoiceAttemptBody({
       card: mcqCard, choiceId, elapsedMs, interactionId, questionType: cardMeta.mcqQuestionType, skillTags: cardMeta.mcqSkillTags,
-      flowSignals, submissionTuning, llmProvider: requestLlmProvider,
+      flowSignals, llmProvider: requestLlmProvider,
     }))
     if (flowSignals) {
       flowState.recordSubmission({

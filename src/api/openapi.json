@@ -64,6 +64,27 @@
         "title": "AdminResetPracticeHistoryResponse",
         "type": "object"
       },
+      "AdminSettings": {
+        "additionalProperties": true,
+        "properties": {
+          "generation": {
+            "$ref": "#/components/schemas/SettingsSection"
+          },
+          "grading": {
+            "$ref": "#/components/schemas/SettingsSection"
+          },
+          "practice": {
+            "$ref": "#/components/schemas/SettingsSection"
+          }
+        },
+        "required": [
+          "grading",
+          "generation",
+          "practice"
+        ],
+        "title": "AdminSettings",
+        "type": "object"
+      },
       "AdminSignal": {
         "additionalProperties": true,
         "properties": {
@@ -238,39 +259,6 @@
           "version"
         ],
         "title": "AdminSignal",
-        "type": "object"
-      },
-      "AlgorithmSignalSpec": {
-        "additionalProperties": true,
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "seeded": {
-            "title": "Seeded",
-            "type": "boolean"
-          },
-          "slug": {
-            "title": "Slug",
-            "type": "string"
-          },
-          "spec": {
-            "$ref": "#/components/schemas/RecallSignalSpecJson"
-          },
-          "usesDefault": {
-            "title": "Usesdefault",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "slug",
-          "name",
-          "usesDefault",
-          "seeded",
-          "spec"
-        ],
-        "title": "AlgorithmSignalSpec",
         "type": "object"
       },
       "AttemptCreate": {
@@ -468,11 +456,6 @@
           "signals": {
             "additionalProperties": true,
             "title": "Signals",
-            "type": "object"
-          },
-          "submissionTuning": {
-            "additionalProperties": true,
-            "title": "Submissiontuning",
             "type": "object"
           },
           "supportLayer": {
@@ -807,6 +790,11 @@
       "CorrectnessDirective": {
         "additionalProperties": true,
         "properties": {
+          "correctnessSource": {
+            "default": "jev",
+            "title": "Correctnesssource",
+            "type": "string"
+          },
           "correctnessWeight": {
             "title": "Correctnessweight",
             "type": "number"
@@ -1434,43 +1422,6 @@
         "title": "McqChoice",
         "type": "object"
       },
-      "McqSample": {
-        "additionalProperties": true,
-        "properties": {
-          "choices": {
-            "items": {
-              "$ref": "#/components/schemas/McqChoice"
-            },
-            "title": "Choices",
-            "type": "array"
-          },
-          "correctChoiceId": {
-            "title": "Correctchoiceid",
-            "type": "string"
-          },
-          "explanation": {
-            "default": "",
-            "title": "Explanation",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "question": {
-            "title": "Question",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "question",
-          "choices",
-          "correctChoiceId"
-        ],
-        "title": "McqSample",
-        "type": "object"
-      },
       "MultipleChoiceCard": {
         "properties": {
           "algorithm": {
@@ -1918,6 +1869,30 @@
         "title": "PlaylistQuestion",
         "type": "object"
       },
+      "PracticeSettings": {
+        "additionalProperties": true,
+        "properties": {
+          "mcqFlowMode": {
+            "title": "Mcqflowmode",
+            "type": "string"
+          },
+          "mcqQuestionCount": {
+            "title": "Mcqquestioncount",
+            "type": "integer"
+          },
+          "playlistOrder": {
+            "title": "Playlistorder",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mcqQuestionCount",
+          "mcqFlowMode",
+          "playlistOrder"
+        ],
+        "title": "PracticeSettings",
+        "type": "object"
+      },
       "PrimaryFailure": {
         "additionalProperties": true,
         "properties": {
@@ -1968,96 +1943,6 @@
           }
         },
         "title": "Provenance",
-        "type": "object"
-      },
-      "RecallSignalJson": {
-        "additionalProperties": true,
-        "properties": {
-          "axis": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Axis"
-          },
-          "guidance": {
-            "title": "Guidance",
-            "type": "string"
-          },
-          "key": {
-            "title": "Key",
-            "type": "string"
-          },
-          "kind": {
-            "title": "Kind",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "role": {
-            "title": "Role",
-            "type": "string"
-          },
-          "variationStrategy": {
-            "title": "Variationstrategy",
-            "type": "string"
-          },
-          "weight": {
-            "title": "Weight",
-            "type": "number"
-          }
-        },
-        "required": [
-          "key",
-          "label",
-          "kind",
-          "role",
-          "weight",
-          "guidance",
-          "variationStrategy"
-        ],
-        "title": "RecallSignalJson",
-        "type": "object"
-      },
-      "RecallSignalSpecJson": {
-        "additionalProperties": true,
-        "properties": {
-          "algorithm": {
-            "title": "Algorithm",
-            "type": "string"
-          },
-          "signals": {
-            "items": {
-              "$ref": "#/components/schemas/RecallSignalJson"
-            },
-            "title": "Signals",
-            "type": "array"
-          },
-          "structuralElements": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Structuralelements",
-            "type": "array"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "algorithm",
-          "version",
-          "signals",
-          "structuralElements"
-        ],
-        "title": "RecallSignalSpecJson",
         "type": "object"
       },
       "RubricEntry": {
@@ -2125,6 +2010,46 @@
           "cardId"
         ],
         "title": "SessionWeakCard",
+        "type": "object"
+      },
+      "SettingsSection": {
+        "additionalProperties": true,
+        "properties": {
+          "value": {
+            "additionalProperties": true,
+            "title": "Value",
+            "type": "object"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value",
+          "version"
+        ],
+        "title": "SettingsSection",
+        "type": "object"
+      },
+      "SettingsUpdate": {
+        "properties": {
+          "value": {
+            "additionalProperties": true,
+            "title": "Value",
+            "type": "object"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value",
+          "version"
+        ],
+        "title": "SettingsUpdate",
         "type": "object"
       },
       "SignalAdminCatalog": {
@@ -2393,6 +2318,11 @@
       },
       "SignalDirectiveUpdate": {
         "properties": {
+          "correctnessSource": {
+            "default": "jev",
+            "title": "Correctnesssource",
+            "type": "string"
+          },
           "correctnessWeight": {
             "default": 0.6,
             "title": "Correctnessweight",
@@ -2519,6 +2449,37 @@
         "title": "SignalHistorySignal",
         "type": "object"
       },
+      "SignalPreview": {
+        "additionalProperties": true,
+        "properties": {
+          "question": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          }
+        },
+        "title": "SignalPreview",
+        "type": "object"
+      },
+      "SignalPreviewRequest": {
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/SignalDefinitionDraft"
+          }
+        },
+        "required": [
+          "draft"
+        ],
+        "title": "SignalPreviewRequest",
+        "type": "object"
+      },
       "SignalResultJson": {
         "additionalProperties": true,
         "properties": {
@@ -2631,25 +2592,53 @@
         "title": "SignalRevision",
         "type": "object"
       },
-      "SignalSpecCatalogResponse": {
+      "SignalSample": {
         "additionalProperties": true,
+        "description": "A stored item a signal draft can be tried against.",
         "properties": {
-          "algorithms": {
+          "choices": {
+            "default": [],
             "items": {
-              "$ref": "#/components/schemas/AlgorithmSignalSpec"
+              "$ref": "#/components/schemas/McqChoice"
             },
-            "title": "Algorithms",
+            "title": "Choices",
             "type": "array"
           },
-          "default": {
-            "$ref": "#/components/schemas/RecallSignalSpecJson"
+          "correctChoiceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correctchoiceid"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
-          "default",
-          "algorithms"
+          "id",
+          "title",
+          "prompt",
+          "reference"
         ],
-        "title": "SignalSpecCatalogResponse",
+        "title": "SignalSample",
         "type": "object"
       },
       "SignalStatusChange": {
@@ -2666,27 +2655,34 @@
         "type": "object"
       },
       "SignalTryRequest": {
+        "description": "Try a draft against one stored item (a sample) answered with ``answer``.\n\nMCQ: ``answer`` is a choice id. Code modalities: the code to grade. Ghost reps also take the\ntarget ``reference`` the rep is typed against.",
         "properties": {
-          "choiceId": {
-            "maxLength": 8,
+          "answer": {
+            "maxLength": 20000,
             "minLength": 1,
-            "title": "Choiceid",
+            "title": "Answer",
             "type": "string"
           },
           "draft": {
             "$ref": "#/components/schemas/SignalDefinitionDraft"
           },
-          "problemId": {
+          "reference": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Reference",
+            "type": "string"
+          },
+          "sampleId": {
             "maxLength": 80,
             "minLength": 1,
-            "title": "Problemid",
+            "title": "Sampleid",
             "type": "string"
           }
         },
         "required": [
           "draft",
-          "problemId",
-          "choiceId"
+          "sampleId",
+          "answer"
         ],
         "title": "SignalTryRequest",
         "type": "object"
@@ -3918,9 +3914,93 @@
         ]
       }
     },
-    "/api/admin/signals": {
+    "/api/admin/settings": {
       "get": {
-        "operationId": "list_signals_api_admin_signals_get",
+        "operationId": "get_settings_api_admin_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Settings",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/settings/{section}": {
+      "put": {
+        "operationId": "update_settings_api_admin_settings__section__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section",
+            "required": true,
+            "schema": {
+              "title": "Section",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsSection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Settings",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/signals/{modality}": {
+      "get": {
+        "operationId": "list_signals_api_admin_signals__modality__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3931,6 +4011,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "List Signals",
@@ -3939,7 +4029,18 @@
         ]
       },
       "post": {
-        "operationId": "create_signal_api_admin_signals_post",
+        "operationId": "create_signal_api_admin_signals__modality__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -3978,9 +4079,20 @@
         ]
       }
     },
-    "/api/admin/signals/directive/mcq": {
+    "/api/admin/signals/{modality}/directive": {
       "put": {
-        "operationId": "update_directive_api_admin_signals_directive_mcq_put",
+        "operationId": "update_directive_api_admin_signals__modality__directive_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4019,10 +4131,71 @@
         ]
       }
     },
-    "/api/admin/signals/revisions/{subject}": {
-      "get": {
-        "operationId": "signal_revisions_api_admin_signals_revisions__subject__get",
+    "/api/admin/signals/{modality}/preview": {
+      "post": {
+        "operationId": "preview_signal_api_admin_signals__modality__preview_post",
         "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignalPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Signal",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/signals/{modality}/revisions/{subject}": {
+      "get": {
+        "operationId": "signal_revisions_api_admin_signals__modality__revisions__subject__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          },
           {
             "in": "path",
             "name": "subject",
@@ -4041,7 +4214,7 @@
                   "items": {
                     "$ref": "#/components/schemas/SignalRevision"
                   },
-                  "title": "Response Signal Revisions Api Admin Signals Revisions  Subject  Get",
+                  "title": "Response Signal Revisions Api Admin Signals  Modality  Revisions  Subject  Get",
                   "type": "array"
                 }
               }
@@ -4065,23 +4238,44 @@
         ]
       }
     },
-    "/api/admin/signals/samples": {
+    "/api/admin/signals/{modality}/samples": {
       "get": {
-        "operationId": "signal_samples_api_admin_signals_samples_get",
+        "operationId": "signal_samples_api_admin_signals__modality__samples_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/McqSample"
+                    "$ref": "#/components/schemas/SignalSample"
                   },
-                  "title": "Response Signal Samples Api Admin Signals Samples Get",
+                  "title": "Response Signal Samples Api Admin Signals  Modality  Samples Get",
                   "type": "array"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Signal Samples",
@@ -4090,9 +4284,20 @@
         ]
       }
     },
-    "/api/admin/signals/try": {
+    "/api/admin/signals/{modality}/try": {
       "post": {
-        "operationId": "try_signal_api_admin_signals_try_post",
+        "operationId": "try_signal_api_admin_signals__modality__try_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4131,10 +4336,19 @@
         ]
       }
     },
-    "/api/admin/signals/{key}": {
+    "/api/admin/signals/{modality}/{key}": {
       "put": {
-        "operationId": "update_signal_api_admin_signals__key__put",
+        "operationId": "update_signal_api_admin_signals__modality___key__put",
         "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          },
           {
             "in": "path",
             "name": "key",
@@ -4183,10 +4397,19 @@
         ]
       }
     },
-    "/api/admin/signals/{key}/archive": {
+    "/api/admin/signals/{modality}/{key}/archive": {
       "post": {
-        "operationId": "archive_signal_api_admin_signals__key__archive_post",
+        "operationId": "archive_signal_api_admin_signals__modality___key__archive_post",
         "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          },
           {
             "in": "path",
             "name": "key",
@@ -4235,10 +4458,19 @@
         ]
       }
     },
-    "/api/admin/signals/{key}/restore": {
+    "/api/admin/signals/{modality}/{key}/restore": {
       "post": {
-        "operationId": "restore_signal_api_admin_signals__key__restore_post",
+        "operationId": "restore_signal_api_admin_signals__modality___key__restore_post",
         "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          },
           {
             "in": "path",
             "name": "key",
@@ -4349,22 +4581,23 @@
         ]
       }
     },
-    "/api/catalog/signal-specs": {
+    "/api/catalog/practice-settings": {
       "get": {
-        "operationId": "get_signal_specs_api_catalog_signal_specs_get",
+        "description": "What the practice screen asks for (MCQ set size and order, playlist order), set on /admin.",
+        "operationId": "get_practice_settings_api_catalog_practice_settings_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SignalSpecCatalogResponse"
+                  "$ref": "#/components/schemas/PracticeSettings"
                 }
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "Get Signal Specs",
+        "summary": "Get Practice Settings",
         "tags": [
           "catalog"
         ]

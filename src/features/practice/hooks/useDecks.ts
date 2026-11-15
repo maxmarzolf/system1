@@ -8,8 +8,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { queryClient } from '@/api/client'
-import type { GooglePlaylistOrder } from '@/shared/settings/googlePlaylistTuning'
-import { loadStoredSpecimenTuning } from '@/shared/settings/specimenTuning'
+import type { PlaylistOrder } from '@/api/queries'
 import type { PracticeFocus } from '../lib/focus'
 import {
   requestCoreAlgorithmDrills,
@@ -57,7 +56,7 @@ function useDeck<T>(
 }
 
 /** The recall deck for the URL focus. A generated skill-map deck streams in drill by drill. */
-export function useRecallDeck(focus: PracticeFocus, googlePlaylistOrder: GooglePlaylistOrder, llmProvider: string): Deck<Flashcard> {
+export function useRecallDeck(focus: PracticeFocus, googlePlaylistOrder: PlaylistOrder, llmProvider: string): Deck<Flashcard> {
   const { focusedTagSlug, focusedPatternSlug, requestedPlaylist, requestedQuestionType } = focus
   const queryKey = [
     'practice-deck', 'recall', requestedQuestionType, focusedPatternSlug, focusedTagSlug,
@@ -71,7 +70,6 @@ export function useRecallDeck(focus: PracticeFocus, googlePlaylistOrder: GoogleP
       skillMap: focus.requestedSkillMap,
       templateMode: focus.requestedTemplateMode,
       templateTargets: focus.requestedTemplateTargets,
-      specimenTuning: loadStoredSpecimenTuning(),
       llmProvider,
     }
     try {

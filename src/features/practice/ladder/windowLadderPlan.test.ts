@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { CODE_EDITOR_TUNING_STORAGE_KEY, defaultCodeEditorTuning, loadStoredCodeEditorTuning, saveStoredCodeEditorTuning } from '@/shared/settings/codeEditorTuning'
-import { GOOGLE_PLAYLIST_TUNING_STORAGE_KEY, defaultGooglePlaylistTuning, loadStoredGooglePlaylistTuning, saveStoredGooglePlaylistTuning } from '@/shared/settings/googlePlaylistTuning'
-import { MCQ_TUNING_STORAGE_KEY, defaultMcqTuning, loadStoredMcqTuning, saveStoredMcqTuning } from '@/shared/settings/mcqTuning'
-import { SPECIMEN_TUNING_STORAGE_KEY, defaultSpecimenTuning, loadStoredSpecimenTuning, saveStoredSpecimenTuning } from '@/shared/settings/specimenTuning'
-import { SUBMISSION_TUNING_STORAGE_KEY, defaultSubmissionTuning, loadStoredSubmissionTuning, saveStoredSubmissionTuning } from '@/shared/settings/submissionTuning'
 import { LADDER_RUNGS, slidingWindowTechnique } from './windowLadderPlan'
 
 describe('sliding window technique', () => {
@@ -41,42 +37,6 @@ type Stored<T> = {
 }
 
 const storedTunings: Stored<unknown>[] = [
-  {
-    name: 'specimen',
-    key: SPECIMEN_TUNING_STORAGE_KEY,
-    defaults: defaultSpecimenTuning,
-    load: loadStoredSpecimenTuning,
-    save: saveStoredSpecimenTuning as (value: unknown) => void,
-    valid: { typeHints: 'include', comments: 'brief', variableNames: 'concise' },
-    invalid: { typeHints: 1, comments: 'loud', variableNames: 'weird' },
-  },
-  {
-    name: 'mcq',
-    key: MCQ_TUNING_STORAGE_KEY,
-    defaults: defaultMcqTuning,
-    load: loadStoredMcqTuning,
-    save: saveStoredMcqTuning as (value: unknown) => void,
-    valid: { flowMode: 'progressive', questionCount: 12 },
-    invalid: { flowMode: 'chaos', questionCount: 'many' },
-  },
-  {
-    name: 'submission',
-    key: SUBMISSION_TUNING_STORAGE_KEY,
-    defaults: defaultSubmissionTuning,
-    load: loadStoredSubmissionTuning,
-    save: saveStoredSubmissionTuning as (value: unknown) => void,
-    valid: { ...defaultSubmissionTuning, gradingMode: 'strict', contractStrictness: 'balanced' },
-    invalid: { gradingMode: 'harsh', contractStrictness: 'iron' },
-  },
-  {
-    name: 'google playlist',
-    key: GOOGLE_PLAYLIST_TUNING_STORAGE_KEY,
-    defaults: defaultGooglePlaylistTuning,
-    load: loadStoredGooglePlaylistTuning,
-    save: saveStoredGooglePlaylistTuning as (value: unknown) => void,
-    valid: { order: 'difficulty' },
-    invalid: { order: 'alphabetical' },
-  },
   {
     name: 'code editor',
     key: CODE_EDITOR_TUNING_STORAGE_KEY,

@@ -12,6 +12,7 @@ from app.core.signals.seed import STATE_IS_DATA, deterministic_definition, direc
 from app.core.signals.total_recall import CODE_ERROR_PATTERNS
 
 LADDER_MODALITY = "ladder"
+LADDER_STATE_FIELDS = ("prompt", "starterCode", "referenceSolution", "submittedAnswer")
 
 DEFAULT_LADDER_DIRECTIVE: dict[str, Any] = directive(
     LADDER_MODALITY,

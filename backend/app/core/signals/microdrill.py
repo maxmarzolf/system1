@@ -13,6 +13,7 @@ from app.core.signals.seed import STATE_IS_DATA, deterministic_definition, direc
 from app.core.signals.total_recall import CODE_ERROR_PATTERNS
 
 MICRODRILL_MODALITY = "microdrill"
+MICRODRILL_STATE_FIELDS = ("prompt", "template", "expectedBlanks", "referenceSolution", "submittedAnswer")
 
 DEFAULT_MICRODRILL_DIRECTIVE: dict[str, Any] = directive(
     MICRODRILL_MODALITY,

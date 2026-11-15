@@ -21,7 +21,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/signals": {
+    "/api/admin/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_api_admin_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/settings/{section}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Settings */
+        put: operations["update_settings_api_admin_settings__section__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/signals/{modality}": {
         parameters: {
             query?: never;
             header?: never;
@@ -29,17 +63,17 @@ export interface paths {
             cookie?: never;
         };
         /** List Signals */
-        get: operations["list_signals_api_admin_signals_get"];
+        get: operations["list_signals_api_admin_signals__modality__get"];
         put?: never;
         /** Create Signal */
-        post: operations["create_signal_api_admin_signals_post"];
+        post: operations["create_signal_api_admin_signals__modality__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/admin/signals/directive/mcq": {
+    "/api/admin/signals/{modality}/directive": {
         parameters: {
             query?: never;
             header?: never;
@@ -48,7 +82,7 @@ export interface paths {
         };
         get?: never;
         /** Update Directive */
-        put: operations["update_directive_api_admin_signals_directive_mcq_put"];
+        put: operations["update_directive_api_admin_signals__modality__directive_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -56,7 +90,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/signals/revisions/{subject}": {
+    "/api/admin/signals/{modality}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Signal */
+        post: operations["preview_signal_api_admin_signals__modality__preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/signals/{modality}/revisions/{subject}": {
         parameters: {
             query?: never;
             header?: never;
@@ -64,7 +115,7 @@ export interface paths {
             cookie?: never;
         };
         /** Signal Revisions */
-        get: operations["signal_revisions_api_admin_signals_revisions__subject__get"];
+        get: operations["signal_revisions_api_admin_signals__modality__revisions__subject__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -73,7 +124,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/signals/samples": {
+    "/api/admin/signals/{modality}/samples": {
         parameters: {
             query?: never;
             header?: never;
@@ -81,7 +132,7 @@ export interface paths {
             cookie?: never;
         };
         /** Signal Samples */
-        get: operations["signal_samples_api_admin_signals_samples_get"];
+        get: operations["signal_samples_api_admin_signals__modality__samples_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -90,7 +141,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/signals/try": {
+    "/api/admin/signals/{modality}/try": {
         parameters: {
             query?: never;
             header?: never;
@@ -100,14 +151,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Try Signal */
-        post: operations["try_signal_api_admin_signals_try_post"];
+        post: operations["try_signal_api_admin_signals__modality__try_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/admin/signals/{key}": {
+    "/api/admin/signals/{modality}/{key}": {
         parameters: {
             query?: never;
             header?: never;
@@ -116,7 +167,7 @@ export interface paths {
         };
         get?: never;
         /** Update Signal */
-        put: operations["update_signal_api_admin_signals__key__put"];
+        put: operations["update_signal_api_admin_signals__modality___key__put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -124,7 +175,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/signals/{key}/archive": {
+    "/api/admin/signals/{modality}/{key}/archive": {
         parameters: {
             query?: never;
             header?: never;
@@ -134,14 +185,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Archive Signal */
-        post: operations["archive_signal_api_admin_signals__key__archive_post"];
+        post: operations["archive_signal_api_admin_signals__modality___key__archive_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/admin/signals/{key}/restore": {
+    "/api/admin/signals/{modality}/{key}/restore": {
         parameters: {
             query?: never;
             header?: never;
@@ -151,7 +202,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Restore Signal */
-        post: operations["restore_signal_api_admin_signals__key__restore_post"];
+        post: operations["restore_signal_api_admin_signals__modality___key__restore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -192,15 +243,18 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/catalog/signal-specs": {
+    "/api/catalog/practice-settings": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Signal Specs */
-        get: operations["get_signal_specs_api_catalog_signal_specs_get"];
+        /**
+         * Get Practice Settings
+         * @description What the practice screen asks for (MCQ set size and order, playlist order), set on /admin.
+         */
+        get: operations["get_practice_settings_api_catalog_practice_settings_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -544,6 +598,14 @@ export interface components {
              */
             clearedTables?: string[];
         };
+        /** AdminSettings */
+        AdminSettings: {
+            generation: components["schemas"]["SettingsSection"];
+            grading: components["schemas"]["SettingsSection"];
+            practice: components["schemas"]["SettingsSection"];
+        } & {
+            [key: string]: unknown;
+        };
         /** AdminSignal */
         AdminSignal: {
             /** Applieswhen */
@@ -607,20 +669,6 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** AlgorithmSignalSpec */
-        AlgorithmSignalSpec: {
-            /** Name */
-            name: string;
-            /** Seeded */
-            seeded: boolean;
-            /** Slug */
-            slug: string;
-            spec: components["schemas"]["RecallSignalSpecJson"];
-            /** Usesdefault */
-            usesDefault: boolean;
-        } & {
-            [key: string]: unknown;
-        };
         /** AttemptCreate */
         AttemptCreate: {
             /** Activityformat */
@@ -680,10 +728,6 @@ export interface components {
             sessionId?: string | null;
             /** Signals */
             signals?: {
-                [key: string]: unknown;
-            };
-            /** Submissiontuning */
-            submissionTuning?: {
                 [key: string]: unknown;
             };
             /** @default none */
@@ -905,6 +949,11 @@ export interface components {
         };
         /** CorrectnessDirective */
         CorrectnessDirective: {
+            /**
+             * Correctnesssource
+             * @default jev
+             */
+            correctnessSource?: string;
             /** Correctnessweight */
             correctnessWeight: number;
             /** Criteria */
@@ -1219,24 +1268,6 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** McqSample */
-        McqSample: {
-            /** Choices */
-            choices: components["schemas"]["McqChoice"][];
-            /** Correctchoiceid */
-            correctChoiceId: string;
-            /**
-             * Explanation
-             * @default
-             */
-            explanation?: string;
-            /** Id */
-            id: string;
-            /** Question */
-            question: string;
-        } & {
-            [key: string]: unknown;
-        };
         /** MultipleChoiceCard */
         MultipleChoiceCard: {
             /** Algorithm */
@@ -1492,6 +1523,17 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** PracticeSettings */
+        PracticeSettings: {
+            /** Mcqflowmode */
+            mcqFlowMode: string;
+            /** Mcqquestioncount */
+            mcqQuestionCount: number;
+            /** Playlistorder */
+            playlistOrder: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** PrimaryFailure */
         PrimaryFailure: {
             /** Evidence */
@@ -1534,40 +1576,6 @@ export interface components {
              * @default
              */
             source?: string;
-        } & {
-            [key: string]: unknown;
-        };
-        /** RecallSignalJson */
-        RecallSignalJson: {
-            /** Axis */
-            axis?: string | null;
-            /** Guidance */
-            guidance: string;
-            /** Key */
-            key: string;
-            /** Kind */
-            kind: string;
-            /** Label */
-            label: string;
-            /** Role */
-            role: string;
-            /** Variationstrategy */
-            variationStrategy: string;
-            /** Weight */
-            weight: number;
-        } & {
-            [key: string]: unknown;
-        };
-        /** RecallSignalSpecJson */
-        RecallSignalSpecJson: {
-            /** Algorithm */
-            algorithm: string;
-            /** Signals */
-            signals: components["schemas"]["RecallSignalJson"][];
-            /** Structuralelements */
-            structuralElements: string[];
-            /** Version */
-            version: number;
         } & {
             [key: string]: unknown;
         };
@@ -1617,6 +1625,26 @@ export interface components {
              * @default 0
              */
             elapsedMs?: number;
+        };
+        /** SettingsSection */
+        SettingsSection: {
+            /** Value */
+            value: {
+                [key: string]: unknown;
+            };
+            /** Version */
+            version: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SettingsUpdate */
+        SettingsUpdate: {
+            /** Value */
+            value: {
+                [key: string]: unknown;
+            };
+            /** Version */
+            version: number;
         };
         /** SignalAdminCatalog */
         SignalAdminCatalog: {
@@ -1782,6 +1810,11 @@ export interface components {
         /** SignalDirectiveUpdate */
         SignalDirectiveUpdate: {
             /**
+             * Correctnesssource
+             * @default jev
+             */
+            correctnessSource?: string;
+            /**
              * Correctnessweight
              * @default 0.6
              */
@@ -1839,6 +1872,19 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** SignalPreview */
+        SignalPreview: {
+            /** Question */
+            question?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SignalPreviewRequest */
+        SignalPreviewRequest: {
+            draft: components["schemas"]["SignalDefinitionDraft"];
+        };
         /** SignalResultJson */
         SignalResultJson: {
             /** Confidence */
@@ -1893,11 +1939,26 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** SignalSpecCatalogResponse */
-        SignalSpecCatalogResponse: {
-            /** Algorithms */
-            algorithms: components["schemas"]["AlgorithmSignalSpec"][];
-            default: components["schemas"]["RecallSignalSpecJson"];
+        /**
+         * SignalSample
+         * @description A stored item a signal draft can be tried against.
+         */
+        SignalSample: {
+            /**
+             * Choices
+             * @default []
+             */
+            choices?: components["schemas"]["McqChoice"][];
+            /** Correctchoiceid */
+            correctChoiceId?: string | null;
+            /** Id */
+            id: string;
+            /** Prompt */
+            prompt: string;
+            /** Reference */
+            reference: string;
+            /** Title */
+            title: string;
         } & {
             [key: string]: unknown;
         };
@@ -1906,13 +1967,24 @@ export interface components {
             /** Version */
             version: number;
         };
-        /** SignalTryRequest */
+        /**
+         * SignalTryRequest
+         * @description Try a draft against one stored item (a sample) answered with ``answer``.
+         *
+         *     MCQ: ``answer`` is a choice id. Code modalities: the code to grade. Ghost reps also take the
+         *     target ``reference`` the rep is typed against.
+         */
         SignalTryRequest: {
-            /** Choiceid */
-            choiceId: string;
+            /** Answer */
+            answer: string;
             draft: components["schemas"]["SignalDefinitionDraft"];
-            /** Problemid */
-            problemId: string;
+            /**
+             * Reference
+             * @default
+             */
+            reference?: string;
+            /** Sampleid */
+            sampleId: string;
         };
         /** SignalTryResult */
         SignalTryResult: {
@@ -2679,7 +2751,7 @@ export interface operations {
             };
         };
     };
-    list_signals_api_admin_signals_get: {
+    get_settings_api_admin_settings_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2694,16 +2766,84 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SignalAdminCatalog"];
+                    "application/json": components["schemas"]["AdminSettings"];
                 };
             };
         };
     };
-    create_signal_api_admin_signals_post: {
+    update_settings_api_admin_settings__section__put: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                section: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsSection"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_signals_api_admin_signals__modality__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                modality: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignalAdminCatalog"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_signal_api_admin_signals__modality__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                modality: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -2732,11 +2872,13 @@ export interface operations {
             };
         };
     };
-    update_directive_api_admin_signals_directive_mcq_put: {
+    update_directive_api_admin_signals__modality__directive_put: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                modality: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -2765,11 +2907,47 @@ export interface operations {
             };
         };
     };
-    signal_revisions_api_admin_signals_revisions__subject__get: {
+    preview_signal_api_admin_signals__modality__preview_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                modality: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignalPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignalPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    signal_revisions_api_admin_signals__modality__revisions__subject__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                modality: string;
                 subject: string;
             };
             cookie?: never;
@@ -2796,11 +2974,13 @@ export interface operations {
             };
         };
     };
-    signal_samples_api_admin_signals_samples_get: {
+    signal_samples_api_admin_signals__modality__samples_get: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                modality: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2811,16 +2991,27 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["McqSample"][];
+                    "application/json": components["schemas"]["SignalSample"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    try_signal_api_admin_signals_try_post: {
+    try_signal_api_admin_signals__modality__try_post: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                modality: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -2849,11 +3040,12 @@ export interface operations {
             };
         };
     };
-    update_signal_api_admin_signals__key__put: {
+    update_signal_api_admin_signals__modality___key__put: {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                modality: string;
                 key: string;
             };
             cookie?: never;
@@ -2884,11 +3076,12 @@ export interface operations {
             };
         };
     };
-    archive_signal_api_admin_signals__key__archive_post: {
+    archive_signal_api_admin_signals__modality___key__archive_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                modality: string;
                 key: string;
             };
             cookie?: never;
@@ -2919,11 +3112,12 @@ export interface operations {
             };
         };
     };
-    restore_signal_api_admin_signals__key__restore_post: {
+    restore_signal_api_admin_signals__modality___key__restore_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                modality: string;
                 key: string;
             };
             cookie?: never;
@@ -3007,7 +3201,7 @@ export interface operations {
             };
         };
     };
-    get_signal_specs_api_catalog_signal_specs_get: {
+    get_practice_settings_api_catalog_practice_settings_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -3022,7 +3216,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SignalSpecCatalogResponse"];
+                    "application/json": components["schemas"]["PracticeSettings"];
                 };
             };
         };

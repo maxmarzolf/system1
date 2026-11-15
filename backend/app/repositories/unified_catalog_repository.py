@@ -187,3 +187,25 @@ async def fetch_problem_for_cards(card_ids: list[str | None]) -> dict[str, Any] 
     context = record.get("generation_context")
     record["generation_context"] = json.loads(context) if isinstance(context, str) else (context or {})
     return record
+
+
+async def fetch_recall_samples(limit: int = 60) -> list[dict[str, Any]]:
+    """Core catalog problems, for trying a recall signal draft on /admin."""
+    async with acquire_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT slug, title, description, code, missing, generation_context
+            FROM problem
+            WHERE source_type IN ('core-catalog', 'core-meta')
+            ORDER BY algorithm_slug, display_order NULLS LAST, slug
+            LIMIT $1
+            """,
+            limit,
+        )
+    samples = []
+    for row in rows:
+        record = dict(row)
+        context = record.get("generation_context")
+        record["generation_context"] = json.loads(context) if isinstance(context, str) else (context or {})
+        samples.append(record)
+    return samples

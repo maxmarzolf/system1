@@ -1,12 +1,13 @@
-"""Grading settings the evaluation pipeline reads on every submission.
+"""Grading settings the evaluation pipeline reads on every submission (from /admin's settings).
 
-Defaults live here; /admin can override them (stored server-side), so a change applies to the
-next submission.
+A change saved on /admin applies to the next submission.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+
+from app.services import app_settings_service
 
 DEFAULT_FEEDBACK_MODALITIES = frozenset({"total-recall", "microdrill", "ladder"})
 
@@ -23,4 +24,9 @@ class GradingSettings:
 
 
 async def grading_settings() -> GradingSettings:
-    return GradingSettings()
+    grading = await app_settings_service.grading()
+    return GradingSettings(
+        feedback_modalities=frozenset(grading.feedbackModalities),
+        near_miss_threshold=grading.nearMissThreshold,
+        low_confidence_threshold=grading.lowConfidenceThreshold,
+    )

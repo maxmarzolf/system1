@@ -1,4 +1,4 @@
-import type { McqFlowMode } from '@/shared/settings/mcqTuning'
+import type { McqFlowMode } from '@/api/queries'
 import { MULTIPLE_CHOICE_DIFFICULTY } from './types'
 import { INLINE_LENS, RECALL_TARGET_MODE } from './targets'
 import type { Flashcard, MultipleChoiceCard, PracticeFlowState, PracticeMode } from './types'

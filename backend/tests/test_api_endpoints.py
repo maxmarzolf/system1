@@ -106,7 +106,7 @@ def test_reset_route_maps_permission_error(client, monkeypatch) -> None:
 )
 def test_signal_admin_errors_map_to_statuses(client, monkeypatch, error, status, code) -> None:
     monkeypatch.setattr(signal_admin_service, "list_signals", raises(error))
-    response = client.get("/api/admin/signals")
+    response = client.get("/api/admin/signals/total-recall")
     assert response.status_code == status
     assert response.json()["detail"]["code"] == code
 

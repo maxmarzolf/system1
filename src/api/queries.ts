@@ -13,6 +13,31 @@ export const queryKeys = {
   catalogPlaylists: ['catalog', 'playlists'] as const,
   historyDay: (date: string, tz: string) => ['history', 'day', date, tz] as const,
   signalHistory: (tz: string) => ['history', 'signals', tz] as const,
+  practiceSettings: ['catalog', 'practice-settings'] as const,
+}
+
+export type McqFlowMode = 'random' | 'progressive'
+export type PlaylistOrder = 'curated' | 'google-15' | 'solution-length' | 'family' | 'difficulty' | 'mastery'
+
+/** What the practice screen asks for, set on /admin (server-side). */
+export type PracticeSettings = {
+  mcqQuestionCount: number
+  mcqFlowMode: McqFlowMode
+  playlistOrder: PlaylistOrder
+}
+
+export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = { mcqQuestionCount: 5, mcqFlowMode: 'random', playlistOrder: 'mastery' }
+
+export function usePracticeSettings() {
+  return useQuery(
+    {
+      queryKey: queryKeys.practiceSettings,
+      queryFn: async ({ signal }) =>
+        unwrap(await api.GET('/api/catalog/practice-settings', { signal })) as unknown as PracticeSettings,
+      staleTime: 60_000,
+    },
+    queryClient,
+  )
 }
 
 /** Readiness and daily activity. `historyDays`/`tz` are omitted from the request when null. */

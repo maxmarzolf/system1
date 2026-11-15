@@ -1,7 +1,8 @@
 import type { FlowConfig, FlowGenerationContext, FlowStage, SubmissionModality } from '../flow/practiceFlow'
 import type { SkillMapNode } from '@/shared/data/skill-map'
-import type { SpecimenTuning } from '@/shared/settings/specimenTuning'
-import type { McqFlowMode, McqSourceMode } from '@/shared/settings/mcqTuning'
+import type { McqFlowMode } from '@/api/queries'
+
+export type McqSourceMode = 'algorithm' | 'skill-map' | 'card'
 
 export type Flashcard = {
   id: string
@@ -215,7 +216,6 @@ export type SkillMapDrillsRequest = {
   skillMap: SkillMapNode[]
   templateMode: TemplateMode
   templateTargets: Record<string, Partial<Record<TemplateMode | HelperLayer | CoreShapeLayer, string>>>
-  specimenTuning: SpecimenTuning
   llmProvider: string
 }
 

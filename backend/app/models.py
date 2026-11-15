@@ -79,7 +79,6 @@ class AttemptCreate(BaseModel):
     liveCoachUsed: bool = False
     activityFormat: Literal["recall", "multiple-choice", "code-completion"] | None = None
     signals: dict[str, Any] = Field(default_factory=dict)
-    submissionTuning: dict[str, Any] = Field(default_factory=dict)
     llmProvider: str = "openai"
 
     def resolved_modality(self) -> SubmissionModality:
@@ -417,10 +416,27 @@ class SignalDirectiveUpdate(BaseModel):
     instructions: str = ""
     criteria: dict[str, str] = Field(default_factory=dict)
     correctnessWeight: float = 0.6
+    # "jev" asks Jev the correctness question; "deterministic" lets the modality's own check decide.
+    correctnessSource: str = "jev"
     version: int
 
 
 class SignalTryRequest(BaseModel):
+    """Try a draft against one stored item (a sample) answered with ``answer``.
+
+    MCQ: ``answer`` is a choice id. Code modalities: the code to grade. Ghost reps also take the
+    target ``reference`` the rep is typed against."""
+
     draft: SignalDefinitionDraft
-    problemId: str = Field(min_length=1, max_length=80)
-    choiceId: str = Field(min_length=1, max_length=8)
+    sampleId: str = Field(min_length=1, max_length=80)
+    answer: str = Field(min_length=1, max_length=20_000)
+    reference: str = Field(default="", max_length=20_000)
+
+
+class SignalPreviewRequest(BaseModel):
+    draft: SignalDefinitionDraft
+
+
+class SettingsUpdate(BaseModel):
+    value: dict[str, Any]
+    version: int = Field(ge=0)

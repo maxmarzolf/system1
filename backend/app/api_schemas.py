@@ -113,37 +113,6 @@ class PlaylistCatalogResponse(ApiModel):
     playlists: list[PlaylistCatalogEntry]
 
 
-class RecallSignalJson(ApiModel):
-    key: str
-    label: str
-    kind: str
-    role: str
-    weight: float
-    guidance: str
-    variationStrategy: str
-    axis: str | None = None
-
-
-class RecallSignalSpecJson(ApiModel):
-    algorithm: str
-    version: int
-    signals: list[RecallSignalJson]
-    structuralElements: list[str]
-
-
-class AlgorithmSignalSpec(ApiModel):
-    slug: str
-    name: str
-    usesDefault: bool
-    seeded: bool
-    spec: RecallSignalSpecJson
-
-
-class SignalSpecCatalogResponse(ApiModel):
-    default: RecallSignalSpecJson
-    algorithms: list[AlgorithmSignalSpec]
-
-
 # ─── /admin signals ───
 
 
@@ -180,6 +149,8 @@ class CorrectnessDirective(ApiModel):
     instructions: str
     criteria: dict[str, str]
     correctnessWeight: float
+    # "jev" asks Jev; "deterministic" lets the modality's own check decide (ghost reps).
+    correctnessSource: str = "jev"
     version: int
     updatedAt: str | None = None
     # Only in the catalog listing.
@@ -221,12 +192,37 @@ class McqChoice(ApiModel):
     text: str
 
 
-class McqSample(ApiModel):
+class SignalSample(ApiModel):
+    """A stored item a signal draft can be tried against."""
+
     id: str
-    question: str
-    explanation: str = ""
-    choices: list[McqChoice]
-    correctChoiceId: str
+    title: str
+    prompt: str
+    reference: str
+    # MCQ only.
+    choices: list[McqChoice] = []
+    correctChoiceId: str | None = None
+
+
+class SignalPreview(ApiModel):
+    question: dict[str, Any] | None = None
+
+
+class SettingsSection(ApiModel):
+    value: dict[str, Any]
+    version: int
+
+
+class AdminSettings(ApiModel):
+    grading: SettingsSection
+    generation: SettingsSection
+    practice: SettingsSection
+
+
+class PracticeSettings(ApiModel):
+    mcqQuestionCount: int
+    mcqFlowMode: str
+    playlistOrder: str
 
 
 class SignalResultJson(ApiModel):

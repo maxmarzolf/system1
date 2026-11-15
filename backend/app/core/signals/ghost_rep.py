@@ -14,6 +14,7 @@ from typing import Any
 from app.core.signals.seed import STATE_IS_DATA, deterministic_definition, directive
 
 GHOST_REP_MODALITY = "ghost-rep"
+GHOST_REP_STATE_FIELDS = ("prompt", "referenceSolution", "submittedAnswer")
 
 DEFAULT_GHOST_REP_DIRECTIVE: dict[str, Any] = directive(
     GHOST_REP_MODALITY,

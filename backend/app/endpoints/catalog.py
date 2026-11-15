@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
-from app.services import catalog_service, signal_spec_service
-from app.api_schemas import PlaylistCatalogResponse, SignalSpecCatalogResponse
+from app.services import app_settings_service, catalog_service
+from app.api_schemas import PlaylistCatalogResponse, PracticeSettings
 
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 
@@ -11,6 +11,7 @@ async def get_playlist_catalog():
     return await catalog_service.get_playlist_catalog()
 
 
-@router.get("/signal-specs", response_model=SignalSpecCatalogResponse)
-async def get_signal_specs():
-    return await signal_spec_service.list_signal_specs()
+@router.get("/practice-settings", response_model=PracticeSettings)
+async def get_practice_settings():
+    """What the practice screen asks for (MCQ set size and order, playlist order), set on /admin."""
+    return (await app_settings_service.practice()).model_dump()

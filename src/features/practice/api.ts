@@ -5,9 +5,7 @@
 import { api, ApiError, unwrap } from '@/api/client'
 import type { components } from '@/api/schema'
 import type { SkillMapNode } from '@/shared/data/skill-map'
-import type { GooglePlaylistOrder } from '@/shared/settings/googlePlaylistTuning'
-import type { McqFlowMode } from '@/shared/settings/mcqTuning'
-import type { SubmissionTuning } from '@/shared/settings/submissionTuning'
+import type { McqFlowMode, PlaylistOrder } from '@/api/queries'
 import type { FlowGenerationContext } from './flow/practiceFlow'
 import { getPrimaryPatternTag, patternLabelFromSlug } from './lib/patterns'
 import { MULTIPLE_CHOICE_DIFFICULTY, type AttemptPayload, type Flashcard, type MultipleChoiceCard, type MultipleChoiceDrillsRequest, type MultipleChoiceDrillsResponse, type MultipleChoiceSpecimenContext, type PracticeFlowState, type SkillMapDrillsRequest, type SkillMapDrillsResponse, type SubmissionSaveResponse } from './lib/types'
@@ -32,7 +30,7 @@ export const requestCoreAlgorithmDrillsByTag = async (tagSlug: string, count = 1
     'Unable to load tagged core algorithms',
   ) as unknown as SkillMapDrillsResponse
 
-export const requestStaticPlaylistDrills = async (playlistSlug: string, order: GooglePlaylistOrder) =>
+export const requestStaticPlaylistDrills = async (playlistSlug: string, order: PlaylistOrder) =>
   unwrap(
     await api.GET('/api/coach/playlist-drills/{playlist_slug}', {
       params: { path: { playlist_slug: playlistSlug }, query: { order } },
@@ -195,12 +193,11 @@ export function flowMultipleChoiceRequest({
 type Context = {
   /** The flow context to attach, or null outside a flow. */
   flowSignals: Record<string, unknown> | null
-  submissionTuning: SubmissionTuning
   llmProvider: string
 }
 
 /** The `/api/attempts` body for a recall, ghost rep or microdrill attempt on ``card``. */
-export function recallAttemptBody(payload: AttemptPayload, { card, prompt, questionType, skillTags, flowSignals, submissionTuning, llmProvider }: Context & {
+export function recallAttemptBody(payload: AttemptPayload, { card, prompt, questionType, skillTags, flowSignals, llmProvider }: Context & {
   card: Flashcard
   prompt: string
   questionType: string
@@ -232,14 +229,13 @@ export function recallAttemptBody(payload: AttemptPayload, { card, prompt, quest
     },
     liveCoachUsed: payload.liveCoachUsed,
     exerciseId: payload.exerciseId,
-    submissionTuning: { ...submissionTuning, microDrillEnabled: false },
     llmProvider,
   }
 }
 
 /** The `/api/attempts` body for an answer to an MCQ card; the server grades the choice. */
 export function multipleChoiceAttemptBody(
-  { card, choiceId, elapsedMs, interactionId, questionType, skillTags, flowSignals, submissionTuning, llmProvider }: Context & {
+  { card, choiceId, elapsedMs, interactionId, questionType, skillTags, flowSignals, llmProvider }: Context & {
     card: MultipleChoiceCard
     choiceId: string
     elapsedMs: number
@@ -267,7 +263,6 @@ export function multipleChoiceAttemptBody(
     modality: 'mcq',
     signals: { ...(flowSignals ? { flow: flowSignals } : {}), modality: { kind: 'mcq', selectedChoiceId: choiceId } },
     liveCoachUsed: false,
-    submissionTuning,
     llmProvider,
   }
 }
