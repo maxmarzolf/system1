@@ -3,7 +3,7 @@
  * same data make one request. The hooks pass `queryClient` explicitly, so they also work in a
  * component rendered without a provider (tests, isolated widgets).
  */
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { viewerTimeZone } from '@/shared/lib/dailyWork'
 import { api, queryClient, unwrap } from './client'
 
@@ -94,6 +94,8 @@ export function useHistorySubmissions(date: string | null, algorithms: string[])
         return unwrap(result, `Unable to load submissions (${result.response.status})`)
       },
       enabled: Boolean(date) || algorithms.length > 0,
+      // Keep the last results on screen while the next selection loads, so the list never collapses.
+      placeholderData: keepPreviousData,
     },
     queryClient,
   )

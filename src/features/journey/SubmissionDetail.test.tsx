@@ -96,7 +96,11 @@ describe('SubmissionDetail', () => {
     await screen.findByText('1 submission · 0 correct · Heap only')
     expect(fetch.calls[0].url).toContain('algorithm=heap')
     rerender(<SubmissionDetail date="2026-03-03" algorithms={['dp', 'trie']} algorithmNames={{ trie: 'Trie' }} />)
+    // While the new selection loads, the previous results stay (dimmed) so the card keeps its size.
+    expect(document.querySelector('.submission-detail')).toHaveClass('submission-detail-updating')
+    expect(document.querySelectorAll('details.history-day-submission')).toHaveLength(1)
     expect(await screen.findByText('No dp, Trie submissions on this day.')).toBeInTheDocument()
+    expect(document.querySelector('.submission-detail')).not.toHaveClass('submission-detail-updating')
     expect(fetch.calls.at(-1)?.url).toMatch(/algorithm=dp&algorithm=trie/)
   })
 

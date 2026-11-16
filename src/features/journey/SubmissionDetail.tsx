@@ -159,15 +159,16 @@ export default function SubmissionDetail({
   const query = useHistorySubmissions(date, algorithms)
   const active = Boolean(date) || algorithms.length > 0
   const error = active && query.error ? errorMessage(query.error, 'Unable to load submissions') : ''
-  // Only show a response for the current selection (never the previous one while loading).
-  const data = error ? null : query.data ?? null
-  const loaded = data && data.date === date && data.algorithms.join() === [...new Set(algorithms)].join() ? data : null
+  // While the next selection loads, the previous results stay (dimmed) so the card keeps its size.
+  const loaded = active && !error ? query.data ?? null : null
+  const updating = Boolean(loaded) && query.isPlaceholderData
   const submissions = (loaded?.submissions ?? []) as HistorySubmission[]
   const correct = submissions.filter((submission) => submission.successful).length
   const heading = date ? formatLongCalendarDate(date) : algorithms.length ? nameList(algorithms, algorithmNames) : ''
 
   return (
-    <div className="submission-detail history-day" aria-label="Submission detail" aria-busy={Boolean(active && !loaded && !error)}>
+    <div className={`submission-detail history-day${updating ? ' submission-detail-updating' : ''}`} aria-label="Submission detail"
+      aria-busy={Boolean(active && (!loaded || updating) && !error)}>
       <div className="submission-detail-header">
         <p className="section-eyebrow">Submission Detail</p>
         {heading ? <h3 className="history-day-heading">{heading}</h3> : null}

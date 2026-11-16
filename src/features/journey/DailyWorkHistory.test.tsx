@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import DailyWorkHistory from './DailyWorkHistory'
@@ -53,9 +53,20 @@ describe('DailyWorkHistory', () => {
     expect(grid().querySelectorAll('.activity-grid-week')).toHaveLength(1)
     expect(grid().querySelectorAll('.activity-cell-active')).toHaveLength(3)
     const idle = screen.getByRole('img', { name: 'Mon Mar 2: no work' })
-    expect(idle).toHaveAttribute('data-tip', 'Mon Mar 2: no work')
     const busy = within(grid()).getByRole('button', { name: 'Tue Mar 3: 2 submissions (Heap, Dynamic Programming)' })
     expect(busy).toHaveClass('activity-cell-active')
+    // Hovering or focusing a day reads it out in the header (no tooltip to widen the grid).
+    const note = screen.getByText('3 days practised in the last year')
+    fireEvent.mouseEnter(idle)
+    expect(note).toHaveTextContent('Mon Mar 2: no work')
+    fireEvent.mouseLeave(idle)
+    expect(note).toHaveTextContent('3 days practised in the last year')
+    fireEvent.focus(busy)
+    expect(note).toHaveTextContent('Tue Mar 3: 2 submissions (Heap, Dynamic Programming)')
+    fireEvent.mouseLeave(idle) // another day leaving keeps the readout
+    expect(note).toHaveTextContent('Tue Mar 3')
+    fireEvent.blur(busy)
+    expect(note).toHaveTextContent('3 days practised')
     expect(within(grid()).getByRole('button', { name: /^Wed Mar 4/ })).toHaveClass('activity-cell-today')
     expect(screen.getByText('Mar')).toBeInTheDocument()
     // Without a day, the filter offers every algorithm practised in the window, in catalog order.
@@ -83,7 +94,8 @@ describe('DailyWorkHistory', () => {
     const highlighted = [...grid().querySelectorAll('.activity-cell-highlighted')].map((cell) => cell.getAttribute('aria-label'))
     expect(highlighted).toEqual([expect.stringMatching(/^Sun Mar 1/), expect.stringMatching(/^Tue Mar 3/)])
     expect(within(grid()).getByRole('button', { name: /^Wed Mar 4/ })).toHaveClass('activity-cell-dimmed')
-    // A selected algorithm stays offered even with no practice in the window.
+    // Clear, then the selected ones (even one with no practice in the window), then the rest.
+    expect(within(filter()).getAllByRole('button').map((chip) => chip.textContent)).toEqual(['Clear', 'Heap', 'Graphs', 'Dynamic Programming', 'Trie'])
     expect(within(filter()).getByRole('button', { name: 'Graphs' })).toHaveAttribute('aria-pressed', 'true')
     expect(within(filter()).getByRole('button', { name: 'Heap' })).toHaveClass('algorithm-filter-chip-selected')
     await userEvent.click(within(filter()).getByRole('button', { name: 'Clear' }))

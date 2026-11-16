@@ -344,6 +344,11 @@ html.journey-snap {
   }
 }
 
+/* Paused after a selection so a resized section doesn't re-snap the page (see JourneyPage). */
+html.journey-snap.journey-snap-paused {
+  scroll-snap-type: none;
+}
+
 .app-history > section {
   scroll-snap-align: start;
 }
@@ -499,18 +504,69 @@ button.competency-practise {
   font-size: 0.72rem;
 }
 
+/*
+ * Small screens. A row: the name upper-left, the last practised score above the 30-day graph on
+ * the right, the standing chip lower-left and Practise lower-right. The decayed competency bar and
+ * the recency are left out. Expanded: no preview graph, the detail full width, Practise last.
+ */
 @media (max-width: 900px) {
   .competency-row {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(7rem, 45%);
     grid-template-areas:
-      "head head"
-      "bar bar"
-      "meta meta"
-      "spark practise";
+      "head meta"
+      "head spark"
+      "chip practise";
+    align-items: center;
   }
 
-  .competency-detail-ticks span:nth-child(even):not(:last-child) { display: none; }
-  .competency-detail-signals { grid-template-columns: minmax(0, 1fr); }
+  .competency-row-head {
+    display: contents;
+  }
+
+  .competency-row-name {
+    grid-area: head;
+    align-self: start;
+    white-space: normal;
+  }
+
+  .competency-row .competency-chip {
+    grid-area: chip;
+    justify-self: start;
+  }
+
+  .competency-row:not(.competency-overall) .competency-row-bar,
+  .competency-row-recency {
+    display: none;
+  }
+
+  .competency-row-meta {
+    text-align: right;
+  }
+
+  .competency-row-unpractised .competency-never {
+    grid-area: spark;
+    justify-self: end;
+  }
+
+  .competency-row-expanded {
+    grid-template-areas:
+      "head meta"
+      "chip chip"
+      "detail detail"
+      ". practise";
+  }
+
+  .competency-row-expanded .competency-spark {
+    display: none;
+  }
+
+  .competency-row-expanded .competency-detail {
+    grid-area: detail;
+  }
+
+  /* Scoped to the row so they win over the base rules defined later in this file. */
+  .competency-row .competency-detail-ticks span:nth-child(even):not(:last-child) { display: none; }
+  .competency-row .competency-detail-signals { grid-template-columns: minmax(0, 1fr); }
 }
 
 .competency-row:focus-visible {
@@ -527,6 +583,7 @@ button.competency-practise {
 }
 
 .competency-flag {
+  flex: none;
   display: inline-grid;
   place-items: center;
   width: 1.05rem;
@@ -745,11 +802,16 @@ button.competency-practise {
   transform: translate(-50%, 0);
 }
 
+/* Small screens: Overall and its trend chip on the left (30%), the bar and graph stacked right. */
 @media (max-width: 900px) {
   .competency-row.competency-overall {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    grid-template-columns: minmax(0, 3fr) minmax(0, 7fr);
     grid-template-areas:
-      "head graph"
-      "bar bar";
+      "head bar"
+      "chip graph";
+  }
+
+  .competency-row.competency-overall .competency-chip {
+    align-self: start;
   }
 }

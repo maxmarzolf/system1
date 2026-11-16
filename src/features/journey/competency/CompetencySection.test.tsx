@@ -143,6 +143,9 @@ describe('CompetencySection', () => {
 
     await userEvent.click(heap)
     expect(heap).toHaveAttribute('aria-expanded', 'true')
+    expect(heap).toHaveClass('competency-row-expanded')
+    expect(document.documentElement).toHaveClass('journey-snap-paused') // the row grew; no re-snap
+    document.documentElement.classList.remove('journey-snap-paused')
     expect(within(heap).getByRole('img', { name: 'Heap: competency from Mar 1 to Mar 3' }).querySelectorAll('.competency-detail-dot')).toHaveLength(1)
     const strongest = within(heap).getByText('Strongest signals').parentElement as HTMLElement
     expect(strongest).toHaveTextContent(/Concept recognition\s*96\s*1 answer/)

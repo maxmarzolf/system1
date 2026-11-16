@@ -1,6 +1,7 @@
 import { type MouseEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import CompetencyDetail from './CompetencyDetail'
+import { pauseJourneySnap } from '../snapPause'
 import { formatCalendarDate } from '@/shared/lib/dailyWork'
 import {
   STANDING_HINTS, STANDING_LABELS, TREND_CHIP, TREND_LABELS, cellsFor, trendOf, competencyFill, daysAgo, pluralize, practiceHref, standingOf,
@@ -48,10 +49,13 @@ function StandingRow({ terrain, algorithm, onSelect }: {
   const [expanded, setExpanded] = useState(false)
   const standing = standingOf(algorithm.standing)
   const freeFall = `Decaying for more than ${pluralize(terrain.freeFallDays, 'day')}.`
-  const toggle = () => setExpanded((open) => !open)
+  const toggle = () => {
+    pauseJourneySnap() // the row changes height; don't let the page re-snap
+    setExpanded((open) => !open)
+  }
   // Expands on click; deliberately no visual expand indicator.
   return (
-    <li className="competency-row" tabIndex={0} aria-expanded={expanded} aria-label={`${algorithm.name}: show details`}
+    <li className={`competency-row${expanded ? ' competency-row-expanded' : ''}`} tabIndex={0} aria-expanded={expanded} aria-label={`${algorithm.name}: show details`}
       onClick={toggle}
       onKeyDown={(event) => {
         if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
@@ -72,7 +76,8 @@ function StandingRow({ terrain, algorithm, onSelect }: {
         <em>{Math.round(algorithm.competency)}</em>
       </div>
       <p className="competency-row-meta">
-        last {Math.round(algorithm.lastAverage)} on {formatCalendarDate(algorithm.lastPractised)} · {daysAgo(algorithm.daysSince)} · {pluralize(algorithm.answers, 'answer')}
+        <span className="competency-row-last">last {Math.round(algorithm.lastAverage)} on {formatCalendarDate(algorithm.lastPractised)}</span>
+        <span className="competency-row-recency"> · {daysAgo(algorithm.daysSince)} · {pluralize(algorithm.answers, 'answer')}</span>
       </p>
       <Sparkline terrain={terrain} slug={algorithm.slug} name={algorithm.name} />
       <PractiseButton algorithm={algorithm} />

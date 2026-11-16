@@ -7,6 +7,7 @@ import DailyWorkHistory, {
 } from './DailyWorkHistory'
 import { viewerTimeZone } from '@/shared/lib/dailyWork'
 import CompetencySection from './competency/CompetencySection'
+import { SNAP_PAUSED, pauseJourneySnap as pauseSnap, resumeSnapOnScrollInput } from './snapPause'
 import TopNav from '@/app/TopNav'
 
 // three.js is large; load the score terrain only when this page renders it.
@@ -37,6 +38,7 @@ export default function JourneyPage() {
   // Choosing a day starts fresh: all of that day's submissions. Clicking it again clears just the
   // day, so any chosen algorithms carry on across the year.
   const selectDate = (date: string) => {
+    pauseSnap()
     if (date === selectedDate) {
       setSelectedDate(null)
       return
@@ -44,10 +46,17 @@ export default function JourneyPage() {
     setSelectedDate(date)
     setSelectedAlgorithms([])
   }
-  const toggleAlgorithm = (slug: string) =>
+  const toggleAlgorithm = (slug: string) => {
+    pauseSnap()
     setSelectedAlgorithms(current => (current.includes(slug) ? current.filter(item => item !== slug) : [...current, slug]))
+  }
+  const clearAlgorithms = () => {
+    pauseSnap()
+    setSelectedAlgorithms([])
+  }
   // A practised day in an expanded competency row: that day's submissions for that algorithm.
   const openDay = (date: string, slug: string) => {
+    pauseSnap()
     setSelectedDate(date)
     setSelectedAlgorithms([slug])
     requestAnimationFrame(() => document.querySelector('.submission-detail')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }))
@@ -56,8 +65,11 @@ export default function JourneyPage() {
   // Sections snap into view instead of free-scrolling (styles keyed off this class).
   useEffect(() => {
     document.documentElement.classList.add('journey-snap')
-    return () => document.documentElement.classList.remove('journey-snap')
+    return () => document.documentElement.classList.remove('journey-snap', SNAP_PAUSED)
   }, [])
+
+  // A selection resizes the submission list, which would re-snap the page; see snapPause.
+  useEffect(resumeSnapOnScrollInput, [])
 
   // Wheel scrolling moves a whole section at a time from a snapped position: CSS mandatory snapping
   // alone sends a short trackpad scroll back to the nearest (current) section. A section taller than
@@ -171,7 +183,7 @@ export default function JourneyPage() {
         onSelectDate={selectDate}
         selectedAlgorithms={selectedAlgorithms}
         onToggleAlgorithm={toggleAlgorithm}
-        onClearAlgorithms={() => setSelectedAlgorithms([])}
+        onClearAlgorithms={clearAlgorithms}
         loading={loading}
       />
       {skillMapOverviewError && <p className="coach-error">{skillMapOverviewError}</p>}

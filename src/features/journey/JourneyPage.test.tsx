@@ -115,6 +115,10 @@ describe('JourneyPage', () => {
     const heap = screen.getByRole('button', { name: 'Heap' })
     await userEvent.click(heap)
     expect(heap).toHaveAttribute('aria-pressed', 'true')
+    // Filtering resizes the card, so snapping pauses until the next scroll input.
+    expect(document.documentElement).toHaveClass('journey-snap-paused')
+    fireEvent.wheel(window, { deltaY: 5 })
+    expect(document.documentElement).not.toHaveClass('journey-snap-paused')
     await waitFor(() => expect(submissionCalls().at(-1)).toMatch(/date=2026-03-02.*algorithm=heap|algorithm=heap.*date=2026-03-02/))
 
     // Clearing the day keeps the algorithm: its days light up and its whole year is listed.
