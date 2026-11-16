@@ -1,5 +1,7 @@
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
-import { DAILY_WORK_RANGES, type DailyWorkRange, formatCalendarDate, formatCalendarWeekday } from '@/shared/lib/dailyWork'
+import { useEffect, useMemo, useRef } from 'react'
+import { formatCalendarDate, formatCalendarWeekday } from '@/shared/lib/dailyWork'
+import SubmissionDetail from './SubmissionDetail'
+import { activityWeeks, dayWork, monthLabels } from './activityGrid'
 
 export type DailyWorkSegment = {
   slug: string
@@ -22,188 +24,144 @@ export type DailyWorkAlgorithm = {
   slug: string
 }
 
-type SwimLaneCell = {
-  date: string
-  count: number
-}
+const WEEKDAY_LABELS = ['', 'Mon', '', 'Wed', '', 'Fri', '']
 
-type SwimLaneRow = {
-  label: string
-  slug: string
-  cells: SwimLaneCell[]
-}
-
-const compactAlgorithmLabel = (algorithm: string) => {
-  if (algorithm.length <= 18) return algorithm
-  return algorithm.replace('Dynamic Programming', 'DP').replace('Priority Queue', 'PQ')
-}
-
+/**
+ * The year of practice as a contribution graph (a square per day: practised or not), an
+ * algorithm multi-select under it, and the submissions behind the selection.
+ *
+ * - A day shows its submissions, and the filter lists the algorithms practised that day;
+ *   choosing some narrows the day to them.
+ * - With no day, choosing algorithms highlights the days they were practised and lists all of
+ *   their submissions from the year.
+ */
 export default function DailyWorkHistory({
   activity,
   algorithmOrder,
-  range,
-  onRangeChange,
   selectedDate,
   onSelectDate,
-  selectedAlgorithm,
-  onSelectAlgorithm,
+  selectedAlgorithms,
+  onToggleAlgorithm,
+  onClearAlgorithms,
   loading = false,
 }: {
   activity?: DailyWorkActivity
   algorithmOrder: DailyWorkAlgorithm[]
-  range: DailyWorkRange
-  onRangeChange: (range: DailyWorkRange) => void
   selectedDate: string | null
+  /** A day was clicked (the selected one again clears it). */
   onSelectDate: (date: string) => void
-  /** Algorithm slug the day detail is filtered to; '' for all. Clicking the selected one again is reported too. */
-  selectedAlgorithm: string
-  onSelectAlgorithm: (slug: string) => void
+  selectedAlgorithms: string[]
+  onToggleAlgorithm: (slug: string) => void
+  onClearAlgorithms: () => void
   loading?: boolean
 }) {
-  const today = activity?.windowEnd
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [hoveredDate, setHoveredDate] = useState<string | null>(null)
-  const chartDates = useMemo(() => (activity?.days ?? []).map(day => day.date), [activity])
-  const dayTotals = useMemo(
-    () => new Map((activity?.days ?? []).map(day => [day.date, day.segments.reduce((total, segment) => total + segment.count, 0)])),
-    [activity],
-  )
-  const rows = useMemo<SwimLaneRow[]>(() => {
-    if (!activity) return []
-    const activityByDate = new Map(activity.days.map(day => [day.date, day]))
-    return algorithmOrder.map(algorithm => ({
-      label: algorithm.algorithm,
-      slug: algorithm.slug,
-      cells: chartDates.map(date => ({
-        date,
-        count: (activityByDate.get(date)?.segments ?? [])
-          .filter(segment => segment.slug === algorithm.slug)
-          .reduce((total, segment) => total + segment.count, 0),
-      })),
-    }))
-  }, [activity, algorithmOrder, chartDates])
+  const weeks = useMemo(() => activityWeeks(activity?.days ?? []), [activity])
+  const months = useMemo(() => monthLabels(weeks), [weeks])
+  const work = useMemo(() => new Map((activity?.days ?? []).map((day) => [day.date, dayWork(day)])), [activity])
+  const names = useMemo(() => new Map(algorithmOrder.map((algorithm) => [algorithm.slug, algorithm.algorithm])), [algorithmOrder])
 
-  // Long ranges scroll horizontally; start at the most recent days.
+  // The filter offers the selected day's algorithms, or every algorithm practised this year.
+  const offered = useMemo(() => {
+    const practised = new Set(
+      selectedDate ? work.get(selectedDate)?.slugs ?? [] : [...work.values()].flatMap((day) => day.slugs),
+    )
+    selectedAlgorithms.forEach((slug) => practised.add(slug))
+    return algorithmOrder.filter((algorithm) => practised.has(algorithm.slug))
+  }, [algorithmOrder, selectedAlgorithms, selectedDate, work])
+
+  // Highlight the selected algorithms' days only while no day is chosen.
+  const highlighting = !selectedDate && selectedAlgorithms.length > 0
+  const today = activity?.windowEnd
+
+  // On narrow screens the year scrolls sideways; start at the most recent weeks.
   useEffect(() => {
     const scroller = scrollRef.current
     if (scroller) scroller.scrollLeft = scroller.scrollWidth
-  }, [chartDates])
+  }, [weeks])
+
+  const describe = (date: string) => {
+    const day = work.get(date)
+    const when = `${formatCalendarWeekday(date)} ${formatCalendarDate(date)}`
+    if (!day?.total) return `${when}: no work`
+    const algorithms = day.slugs.map((slug) => names.get(slug) ?? slug).join(', ')
+    return `${when}: ${day.total} submission${day.total === 1 ? '' : 's'} (${algorithms})`
+  }
 
   return (
-    <section className="daily-work-history" aria-label="Daily work history" aria-busy={loading}>
+    <section className="daily-work-history work-history" aria-label="Daily work history" aria-busy={loading}>
       <div className="daily-work-history-header">
         <p className="section-eyebrow">Daily Work History</p>
-        <div className="daily-work-history-ranges" role="group" aria-label="History range">
-          {DAILY_WORK_RANGES.map(option => (
-            <button
-              key={option.value}
-              type="button"
-              className={`daily-work-history-range${option.value === range ? ' daily-work-history-range-active' : ''}`}
-              aria-pressed={option.value === range}
-              onClick={() => onRangeChange(option.value)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        {activity ? (
+          <p className="work-history-note">
+            {[...work.values()].filter((day) => day.total).length} days practised in the last year
+          </p>
+        ) : null}
       </div>
 
-      {!activity ? (
-        <p className="section-meta">Loading daily work history...</p>
-      ) : (
-        <div className="daily-work-history-swimlane" style={{ '--daily-work-history-days': chartDates.length } as CSSProperties}>
-          {/* Labels sit outside the scrolling area, so long ranges scroll under nothing. */}
-          <div className="daily-work-history-labels" role="group" aria-label="Algorithms: select one to filter the day's work">
-            {rows.map(row => {
-              const selected = row.slug === selectedAlgorithm
-              return (
-                <button
-                  key={row.slug}
-                  type="button"
-                  className={`daily-work-history-lane-label${selected ? ' daily-work-history-lane-label-selected' : ''}`}
-                  title={selected ? 'Show every algorithm' : `Show only ${row.label}`}
-                  aria-pressed={selected}
-                  onClick={() => onSelectAlgorithm(row.slug)}
-                >
-                  {compactAlgorithmLabel(row.label)}
-                </button>
-              )
-            })}
-          </div>
-
-          <div ref={scrollRef} className="daily-work-history-scroll">
-            <div className="daily-work-history-grid">
-              {rows.map(row => (
-                <div
-                  key={row.slug}
-                  className={`daily-work-history-lane-cells${row.slug === selectedAlgorithm ? ' daily-work-history-lane-cells-selected' : ''}`}
-                >
-                  {row.cells.map(cell => {
-                    const day = formatCalendarDate(cell.date)
-                    const selected = cell.date === selectedDate
-                    const className = [
-                      'daily-work-history-cell',
-                      cell.count ? 'daily-work-history-cell-active' : '',
-                      selected ? 'daily-work-history-cell-selected' : '',
-                      cell.date === hoveredDate ? 'daily-work-history-cell-column-hover' : '',
-                    ].filter(Boolean).join(' ')
-                    if (!cell.count) {
-                      const title = `${row.label} on ${day}: no work`
-                      return <span key={cell.date} className={className} title={title} role="img" aria-label={title} />
-                    }
-                    const title = `${row.label} on ${day}: ${cell.count} submission${cell.count === 1 ? '' : 's'}. Show the day's work.`
-                    return (
-                      <button
-                        key={cell.date}
-                        type="button"
-                        className={className}
-                        title={title}
-                        aria-label={title}
-                        aria-pressed={selected}
-                        onClick={() => onSelectDate(cell.date)}
-                      />
-                    )
-                  })}
-                </div>
-              ))}
-
-              <div className="daily-work-history-x-axis" role="group" aria-label="Days: select one to see its work">
-                {chartDates.map(date => {
-                  const total = dayTotals.get(date) ?? 0
-                  const selected = date === selectedDate
-                  const label = selected
-                    ? `${formatCalendarWeekday(date)} ${formatCalendarDate(date)} is selected: click to clear the day`
-                    : `${formatCalendarWeekday(date)} ${formatCalendarDate(date)}: ${
-                      total ? `${total} submission${total === 1 ? '' : 's'}` : 'no work'
-                    }`
-                  return (
-                    <button
-                      key={date}
-                      type="button"
-                      className={[
-                        'daily-work-history-x-day',
-                        total ? 'daily-work-history-x-day-active' : '',
-                        date === today ? 'daily-work-history-x-day-today' : '',
-                        selected ? 'daily-work-history-x-day-selected' : '',
-                      ].filter(Boolean).join(' ')}
-                      title={label}
-                      aria-label={label}
-                      aria-pressed={selected}
-                      onClick={() => onSelectDate(date)}
-                      onMouseEnter={() => setHoveredDate(date)}
-                      onMouseLeave={() => setHoveredDate(current => (current === date ? null : current))}
-                      onFocus={() => setHoveredDate(date)}
-                      onBlur={() => setHoveredDate(current => (current === date ? null : current))}
-                    >
-                      <strong>{formatCalendarWeekday(date)}</strong>
-                      <span>{formatCalendarDate(date)}</span>
-                    </button>
-                  )
-                })}
+      {!activity ? <p className="section-meta">Loading daily work history...</p> : (
+        <>
+          <div ref={scrollRef} className="activity-grid-scroll">
+            <div className="activity-grid" style={{ ['--activity-weeks' as string]: weeks.length }}>
+              <div className="activity-grid-months" aria-hidden="true">
+                {months.map((month) => (
+                  <span key={month.week} style={{ gridColumn: month.week + 1 }}>{month.label}</span>
+                ))}
+              </div>
+              <div className="activity-grid-weekdays" aria-hidden="true">
+                {WEEKDAY_LABELS.map((label, index) => <span key={index}>{label}</span>)}
+              </div>
+              <div className="activity-grid-weeks" role="group" aria-label="Days of the last year: select a practised day to see its submissions">
+                {weeks.map((week, column) => (
+                  <div key={column} className="activity-grid-week">
+                    {week.map((day, row) => {
+                      if (!day) return <span key={row} className="activity-cell activity-cell-empty" aria-hidden="true" />
+                      const total = work.get(day.date)?.total ?? 0
+                      const selected = day.date === selectedDate
+                      const highlighted = highlighting && total > 0
+                        && (work.get(day.date)?.slugs ?? []).some((slug) => selectedAlgorithms.includes(slug))
+                      const className = [
+                        'activity-cell',
+                        'quick-tip',
+                        total ? 'activity-cell-active' : '',
+                        highlighting && total ? (highlighted ? 'activity-cell-highlighted' : 'activity-cell-dimmed') : '',
+                        selected ? 'activity-cell-selected' : '',
+                        day.date === today ? 'activity-cell-today' : '',
+                      ].filter(Boolean).join(' ')
+                      const label = describe(day.date)
+                      if (!total) return <span key={day.date} className={className} data-tip={label} role="img" aria-label={label} />
+                      return (
+                        <button key={day.date} type="button" className={className} data-tip={label} aria-label={label}
+                          aria-pressed={selected} onClick={() => onSelectDate(day.date)} />
+                      )
+                    })}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
-        </div>
+
+          <div className="algorithm-filter" role="group"
+            aria-label={selectedDate ? `Algorithms practised on ${formatCalendarDate(selectedDate)}` : 'Algorithms: select to highlight their days'}>
+            {offered.map((algorithm) => {
+              const selected = selectedAlgorithms.includes(algorithm.slug)
+              return (
+                <button key={algorithm.slug} type="button" aria-pressed={selected}
+                  className={`algorithm-filter-chip${selected ? ' algorithm-filter-chip-selected' : ''}`}
+                  onClick={() => onToggleAlgorithm(algorithm.slug)}>
+                  {algorithm.algorithm}
+                </button>
+              )
+            })}
+            {!offered.length ? <span className="section-meta">No algorithms practised yet.</span> : null}
+            {selectedAlgorithms.length ? (
+              <button type="button" className="algorithm-filter-clear" onClick={onClearAlgorithms}>Clear</button>
+            ) : null}
+          </div>
+
+          <SubmissionDetail date={selectedDate} algorithms={selectedAlgorithms}
+            algorithmNames={Object.fromEntries(names)} />
+        </>
       )}
     </section>
   )

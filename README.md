@@ -94,7 +94,7 @@ Docs ([index](docs/README.md)):
 | `backend/app/services/signal_registry_service.py` | Loads a modality's active spec for an algorithm; seeds defaults (insert-if-missing) |
 | `backend/app/services/signal_admin_service.py`, `app_settings_service.py` | `/admin`: signals per modality (list, create, edit, archive, restore, try) and settings |
 | `backend/app/contracts/` | Shapes shared across layers, including the versioned `Evaluation` |
-| `backend/app/services/read_models/` | Journey: daily activity, day detail and competency |
+| `backend/app/services/read_models/` | Journey: daily activity, submissions and competency |
 | `src/api/` | The typed API client: `client.ts` (openapi-fetch typed from the generated `schema.d.ts`, one `ApiError` for every error shape) and `queries.ts` (TanStack Query hooks for shared reads) |
 | `src/app/` | The shell: routes, TopNav, theme and the global styles (`app/styles/`, imported in cascade order) |
 | `src/features/` | One folder per page: `practice/` (the practice screen: `modalities/`, `submission/`, flow and editor), `journey/` (incl. the competency terrain), `admin/`, `tune/`, `evolve/` |
@@ -107,7 +107,7 @@ Docs ([index](docs/README.md)):
 | GET | `/api/health` | Health check |
 | POST | `/api/attempts` | Submit an answer; returns the evaluation |
 | GET | `/api/skill-map`, `/api/skill-map-overview?historyDays=&tz=` | Taxonomy; the daily work grid's algorithms and activity |
-| GET | `/api/history/day?date=&tz=`, `/api/history/competency?tz=` | One day's submissions; competency per algorithm per day |
+| GET | `/api/history/submissions?date=&algorithm=&tz=`, `/api/history/competency?tz=` | Submissions for a day, algorithms over the last year, or both; competency per algorithm per day |
 | GET | `/api/catalog/playlists`, `/api/catalog/signal-specs` | Playlists; recall signal specs |
 | GET | `/api/coach/problem-drills[/{algorithm}]`, `/api/coach/playlist-drills/{slug}` | Catalog drills |
 | POST | `/api/coach/skill-map-drills[-stream]`, `/api/coach/multiple-choice-drills`, `/api/coach/micro-drill` | Generated drills |

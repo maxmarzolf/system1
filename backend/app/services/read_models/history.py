@@ -1,4 +1,4 @@
-"""One day's submissions, and competency per algorithm per day (Journey)."""
+"""Submissions by day and/or algorithm, and competency per algorithm per day (Journey)."""
 
 from __future__ import annotations
 
@@ -35,14 +35,35 @@ def _generation_trace(row: dict[str, Any]) -> list[dict[str, Any]]:
     return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
 
 
-async def get_history_day(day: date, timezone_name: str | None = None) -> dict[str, Any]:
-    """Every submission the daily work grid counted on calendar ``day`` in ``timezone_name``, oldest first."""
+# Without a day, algorithm filters search this many calendar days back (the activity grid's year).
+SUBMISSION_WINDOW_DAYS = 365
+
+
+def _midnight(day: date, tz) -> datetime:
+    return datetime(day.year, day.month, day.day, tzinfo=tz)
+
+
+async def get_history_submissions(
+    day: date | None = None,
+    algorithms: list[str] | None = None,
+    timezone_name: str | None = None,
+    window_days: int = SUBMISSION_WINDOW_DAYS,
+) -> dict[str, Any]:
+    """The daily work grid's submissions for a calendar ``day`` in ``timezone_name``, for a set of
+    ``algorithms`` over the last ``window_days`` days, or both (that day, those algorithms).
+
+    A day lists oldest first; algorithms across days list newest first. With neither, nothing.
+    """
     tz = resolve_timezone(timezone_name)
-    next_day = day + timedelta(days=1)
-    rows = await fetch_history_day_rows(
-        datetime(day.year, day.month, day.day, tzinfo=tz),
-        datetime(next_day.year, next_day.month, next_day.day, tzinfo=tz),
-    )
+    selected = [slug for slug in dict.fromkeys(algorithms or []) if slug]
+    if day is None and not selected:
+        return {"date": None, "algorithms": [], "submissions": []}
+    if day is not None:
+        start, end = _midnight(day, tz), _midnight(day + timedelta(days=1), tz)
+    else:
+        today = datetime.now(tz).date()
+        start, end = _midnight(today - timedelta(days=max(window_days - 1, 0)), tz), _midnight(today + timedelta(days=1), tz)
+    rows = await fetch_history_day_rows(start, end)
     algorithm_names = {
         str(row["algorithm_slug"]): str(row["algorithm_name"]) for row in await fetch_skill_map_overview_algorithm_rows()
     }
@@ -53,11 +74,14 @@ async def get_history_day(day: date, timezone_name: str | None = None) -> dict[s
         slugs = taxonomy.matched_algorithm_slugs(tags, set(algorithm_names))
         if not slugs:
             continue  # The grid does not count it either.
+        if selected and not set(slugs) & set(selected):
+            continue
         signals = coerce_json_object(row["signals"])
         created_at = coerce_utc_datetime(row["created_at"])
         submissions.append({
             "id": int(row["id"]),
             "createdAt": created_at.isoformat() if created_at else "",
+            "date": created_at.astimezone(tz).date().isoformat() if created_at else "",
             "modality": submission_modality(row),
             "title": str(row.get("title") or ""),
             "question": str(row.get("question") or ""),
@@ -71,7 +95,9 @@ async def get_history_day(day: date, timezone_name: str | None = None) -> dict[s
             "flow": coerce_json_object(signals.get("flow")),
             "generationTrace": _generation_trace(row),
         })
-    return {"date": day.isoformat(), "submissions": submissions}
+    if day is None:
+        submissions.reverse()  # rows come oldest first
+    return {"date": day.isoformat() if day else None, "algorithms": selected, "submissions": submissions}
 
 
 # Competency at or above this is "strong" (the learn/review/strong label comes from the query).

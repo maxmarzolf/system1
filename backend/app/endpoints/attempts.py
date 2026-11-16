@@ -6,7 +6,7 @@ from app.models import AttemptCreate, SkillMapNode, SkillMapOverviewResponse
 from app.services import submission_service
 from app.services.read_models import history, overview
 from app.services.evaluation.context import SubmissionContextError
-from app.api_schemas import AttemptSubmitResponse, CompetencyTerrainResponse, HistoryDayResponse
+from app.api_schemas import AttemptSubmitResponse, CompetencyTerrainResponse, HistorySubmissionsResponse
 
 router = APIRouter(prefix="/api", tags=["attempts"])
 
@@ -32,13 +32,15 @@ async def get_skill_map_overview(
     return await overview.get_skill_map_overview(history_days=historyDays or None, timezone_name=tz)
 
 
-@router.get("/history/day", response_model=HistoryDayResponse)
-async def get_history_day(
-    day: date = Query(alias="date"),
-    tz: str = Query(default="UTC", max_length=64, description="IANA timezone the calendar day is in."),
+@router.get("/history/submissions", response_model=HistorySubmissionsResponse)
+async def get_history_submissions(
+    day: date | None = Query(default=None, alias="date", description="A calendar day in tz; omit to search the last year."),
+    algorithm: list[str] = Query(default=[], max_length=50, description="Algorithm slugs to keep (any of them); repeatable."),
+    tz: str = Query(default="UTC", max_length=64, description="IANA timezone the calendar days are in."),
 ):
-    """Every submission counted in the daily work grid on ``date`` in ``tz``, with its stored evaluation."""
-    return await history.get_history_day(day, timezone_name=tz)
+    """Submissions counted in the daily work grid, with their stored evaluations: on ``date``, for
+    the ``algorithm`` slugs over the last year, or both."""
+    return await history.get_history_submissions(day, algorithm, timezone_name=tz)
 
 
 @router.get("/history/competency", response_model=CompetencyTerrainResponse)

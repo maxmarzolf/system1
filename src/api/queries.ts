@@ -11,7 +11,7 @@ export const queryKeys = {
   skillMap: ['skill-map'] as const,
   skillMapOverview: (historyDays: number | null, tz: string | null) => ['skill-map-overview', historyDays, tz] as const,
   catalogPlaylists: ['catalog', 'playlists'] as const,
-  historyDay: (date: string, tz: string) => ['history', 'day', date, tz] as const,
+  historySubmissions: (date: string | null, algorithms: string[], tz: string) => ['history', 'submissions', date, algorithms, tz] as const,
   competencyTerrain: (tz: string) => ['history', 'competency', tz] as const,
   practiceSettings: ['catalog', 'practice-settings'] as const,
 }
@@ -82,16 +82,18 @@ export function useSkillMap<T>() {
   )
 }
 
-export function useHistoryDay<T>(date: string | null) {
+/** Submissions on a day, for some algorithms across the last year, or both (Journey). */
+export function useHistorySubmissions(date: string | null, algorithms: string[]) {
   const tz = viewerTimeZone()
   return useQuery(
     {
-      queryKey: queryKeys.historyDay(date ?? '', tz),
+      queryKey: queryKeys.historySubmissions(date, algorithms, tz),
       queryFn: async ({ signal }) => {
-        const result = await api.GET('/api/history/day', { params: { query: { date: date ?? '', tz } }, signal })
-        return unwrap(result, `Unable to load this day (${result.response.status})`) as unknown as T
+        const query = { tz, ...(date ? { date } : {}), ...(algorithms.length ? { algorithm: algorithms } : {}) }
+        const result = await api.GET('/api/history/submissions', { params: { query }, signal })
+        return unwrap(result, `Unable to load submissions (${result.response.status})`)
       },
-      enabled: Boolean(date),
+      enabled: Boolean(date) || algorithms.length > 0,
     },
     queryClient,
   )

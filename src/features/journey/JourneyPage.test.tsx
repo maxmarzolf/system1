@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import * as THREE from 'three'
@@ -88,42 +88,56 @@ const renderJourney = () =>
     </ThemeProvider>,
   )
 
+const submissions = (url: string) => {
+  const params = new URL(url, 'http://x').searchParams
+  return { date: params.get('date'), algorithms: params.getAll('algorithm'), submissions: [] }
+}
+
 describe('JourneyPage', () => {
   const routes = (overrides: Record<string, unknown> = {}) =>
     mockFetch([
       { match: '/api/coach/provider-default', body: { provider: 'openai' } },
       { match: '/api/history/competency', body: { decayPerDay: 0.02, freeFallDays: 10, overall: { competency: null, weekChange: null, trend: null, days: [] }, algorithms: [], unpractised: [], days: [], cells: [] } },
-      { match: '/api/history/day', respond: (url) => ({ date: new URL(url, 'http://x').searchParams.get('date'), submissions: [] }) },
+      { match: '/api/history/submissions', respond: submissions },
       { match: '/api/skill-map-overview', body: overview, ...overrides },
     ])
 
-  it('loads a month, selects the latest active day, and toggles filters', async () => {
+  it('loads a year, selects the latest active day, and filters two ways', async () => {
     const fetch = routes()
     renderJourney()
     expect(document.documentElement).toHaveClass('journey-snap')
     await screen.findByText('No submissions recorded on this day.')
-    expect(fetch.calls.find((call) => call.url.includes('skill-map-overview'))?.url).toContain('historyDays=30')
-    expect(fetch.calls.find((call) => call.url.includes('/api/history/day'))?.url).toContain('date=2026-03-02')
+    expect(fetch.calls.find((call) => call.url.includes('skill-map-overview'))?.url).toContain('historyDays=365')
+    const submissionCalls = () => fetch.calls.filter((call) => call.url.includes('/api/history/submissions')).map((call) => call.url)
+    expect(submissionCalls()[0]).toContain('date=2026-03-02')
 
+    // A day, narrowed to an algorithm practised that day.
     const heap = screen.getByRole('button', { name: 'Heap' })
     await userEvent.click(heap)
     expect(heap).toHaveAttribute('aria-pressed', 'true')
-    await userEvent.click(heap)
-    expect(heap).toHaveAttribute('aria-pressed', 'false')
+    await waitFor(() => expect(submissionCalls().at(-1)).toMatch(/date=2026-03-02.*algorithm=heap|algorithm=heap.*date=2026-03-02/))
 
-    const selectedDay = screen.getByRole('button', { name: /is selected/ })
-    await userEvent.click(selectedDay)
-    await screen.findByText(/Select a date on the grid/)
+    // Clearing the day keeps the algorithm: its days light up and its whole year is listed.
+    await userEvent.click(screen.getByRole('button', { name: /^Mon Mar 2/ }))
+    await waitFor(() => expect(submissionCalls().at(-1)).not.toContain('date='))
+    expect(screen.getByRole('button', { name: /^Mon Mar 2/ })).toHaveClass('activity-cell-highlighted')
 
-    await userEvent.click(screen.getByRole('button', { name: 'Week' }))
-    await waitFor(() => expect(fetch.calls.some((call) => call.url.includes('historyDays=7'))).toBe(true))
+    // Choosing a day again starts fresh: all of its submissions.
+    await userEvent.click(screen.getByRole('button', { name: /^Mon Mar 2/ }))
+    expect(screen.getByRole('button', { name: 'Heap' })).toHaveAttribute('aria-pressed', 'false')
+    await userEvent.click(screen.getByRole('button', { name: /^Mon Mar 2/ }))
+    await screen.findByText(/Select a day on the grid/)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Heap' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(screen.getByRole('button', { name: 'Heap' })).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('opens a practised day from an expanded competency row, filtered to its algorithm', async () => {
     const fetch = mockFetch([
       { match: '/api/coach/provider-default', body: { provider: 'openai' } },
       { match: '/api/history/competency', body: competencyTerrain() },
-      { match: '/api/history/day', respond: (url) => ({ date: new URL(url, 'http://x').searchParams.get('date'), submissions: [] }) },
+      { match: '/api/history/submissions', respond: submissions },
       { match: '/api/skill-map-overview', body: overview },
     ])
     renderJourney()
@@ -131,9 +145,9 @@ describe('JourneyPage', () => {
     await userEvent.click(await screen.findByRole('listitem', { name: 'Heap: show details' }))
     const heapDay = await screen.findByRole('button', { name: /^Heap · Mar 1 · competency 80.0/ })
     await userEvent.click(heapDay)
-    await waitFor(() => expect(fetch.calls.some((call) => call.url.includes('/api/history/day') && call.url.includes('date=2026-03-01'))).toBe(true))
-    expect(screen.getByRole('button', { name: 'Heap' })).toHaveAttribute('aria-pressed', 'true')
-    // The scroll to the day detail waits a frame.
+    await waitFor(() => expect(fetch.calls.some((call) => call.url.includes('/api/history/submissions') && call.url.includes('date=2026-03-01') && call.url.includes('algorithm=heap'))).toBe(true))
+    expect(within(screen.getByRole('group', { name: /Algorithms practised on/ })).getByRole('button', { name: 'Heap' })).toHaveAttribute('aria-pressed', 'true')
+    // The scroll to the submission detail waits a frame.
     const frame = vi.mocked(requestAnimationFrame).mock.calls.at(-1)?.[0]
     expect(() => act(() => frame?.(0))).not.toThrow()
   })
@@ -142,7 +156,7 @@ describe('JourneyPage', () => {
     routes()
     renderJourney()
     await screen.findByText('No submissions recorded on this day.')
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Week' }), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Heap' }), { key: 'Enter' })
     fireEvent.keyDown(window, { key: 'Enter', metaKey: true })
     expect(screen.queryByTestId('practice')).toBeNull()
     fireEvent.keyDown(document.body, { key: 'Enter' })

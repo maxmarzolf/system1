@@ -61,10 +61,10 @@ function StandingRow({ terrain, algorithm, onSelect }: {
       }}>
       <div className="competency-row-head">
         <strong className="competency-row-name">
-          {algorithm.freeFall ? <span className="competency-flag competency-tip" data-tip={freeFall} aria-label={freeFall}>!</span> : null}
+          {algorithm.freeFall ? <span className="competency-flag quick-tip" data-tip={freeFall} aria-label={freeFall}>!</span> : null}
           {algorithm.name}
         </strong>
-        <span className={`competency-chip competency-chip-${standing} competency-tip`} data-tip={STANDING_HINTS[standing]}>{STANDING_LABELS[standing]}</span>
+        <span className={`competency-chip competency-chip-${standing} quick-tip`} data-tip={STANDING_HINTS[standing]}>{STANDING_LABELS[standing]}</span>
       </div>
       <div className="competency-row-bar" role="meter" aria-label={`${algorithm.name} competency`}
         aria-valuemin={0} aria-valuemax={100} aria-valuenow={algorithm.competency}>
@@ -87,9 +87,9 @@ function UnpractisedRow({ algorithm }: { algorithm: UnpractisedAlgorithm }) {
     <li className="competency-row competency-row-unpractised">
       <div className="competency-row-head">
         <strong className="competency-row-name">{algorithm.name}</strong>
-        <span className="competency-chip competency-chip-new competency-tip" data-tip="Never practiced.">Not started</span>
+        <span className="competency-chip competency-chip-new quick-tip" data-tip="Never practiced.">Not started</span>
       </div>
-      <span className="competency-never competency-tip" data-tip="Never practiced." aria-label="Never practiced.">-</span>
+      <span className="competency-never quick-tip" data-tip="Never practiced." aria-label="Never practiced.">-</span>
       <PractiseButton algorithm={algorithm} />
     </li>
   )
@@ -116,7 +116,7 @@ function OverallRow({ terrain }: { terrain: CompetencyTerrainData }) {
       <div className="competency-row-head">
         <strong className="competency-row-name">Overall</strong>
         {trend ? (
-          <span className={`competency-chip competency-chip-${TREND_CHIP[trend]} competency-tip`} data-tip={trendTip}>{TREND_LABELS[trend]}</span>
+          <span className={`competency-chip competency-chip-${TREND_CHIP[trend]} quick-tip`} data-tip={trendTip}>{TREND_LABELS[trend]}</span>
         ) : null}
       </div>
       <div className="competency-row-bar" role="meter" aria-label="Overall competency" aria-valuemin={0} aria-valuemax={100} aria-valuenow={competency}>

@@ -57,6 +57,8 @@ class HistorySubmission(ApiModel):
     successful: bool
     elapsedMs: int
     algorithms: list[HistoryAlgorithm]
+    # The calendar day (in the requested time zone) it was submitted on.
+    date: str
     # The stored evaluation exactly as saved (see app.contracts.evaluation); {} when none.
     evaluation: dict[str, Any]
     flow: dict[str, Any]
@@ -64,8 +66,11 @@ class HistorySubmission(ApiModel):
     generationTrace: list[dict[str, Any]] = []
 
 
-class HistoryDayResponse(ApiModel):
-    date: str
+class HistorySubmissionsResponse(ApiModel):
+    # The day asked for, or null when only algorithms were.
+    date: str | None
+    # The algorithm slugs asked for (deduplicated); empty for every algorithm.
+    algorithms: list[str]
     submissions: list[HistorySubmission]
 
 

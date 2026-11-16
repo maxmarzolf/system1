@@ -68,7 +68,7 @@ Top-level modules:
 |---|---|
 | Contracts | `contracts/evaluation.py` (`Evaluation`, builders, `from_stored`/`to_stored`), `contracts/submission.py` (`SubmissionRecord`, `EvaluationOutcome`), `contracts/errors.py`, `contracts/coaching.py`, `contracts/coerce.py`, `contracts/catalog_ids.py` |
 | Submissions | `services/submission_service.py` (runs the pipeline, captures LLM traces), `services/submission_store.py` (validates the `Evaluation` and writes the row) |
-| Read models | `services/read_models/overview.py` (the daily work grid, skill map), `services/read_models/history.py` (day detail, signal history), `services/read_models/common.py`, `domain/readiness.py`, `domain/rubric_summary.py` |
+| Read models | `services/read_models/overview.py` (the daily work grid, skill map), `services/read_models/history.py` (submissions by day and algorithm, competency), `services/read_models/common.py`, `domain/readiness.py`, `domain/rubric_summary.py` |
 | Grading (every modality) | `services/evaluation/` (`pipeline`, `context`, `contexts/{mcq,code}`, `jev`, `verdict`, `feedback`), `core/jev/client.py`, `services/jev_gateway.py`, `core/signals/` (`base`, `definitions`, `deterministic`, `spec`, `seed`, `defaults`, one module per modality), `core/code_checks.py`, `core/feedback_writer.py`, `services/signal_registry_service.py`, `domain/feedback_builder.py`. See [grading.md](grading.md) |
 | `/admin` | `services/signal_admin_service.py`, `services/app_settings_service.py`, `domain/signal_definition_rules.py`, `repositories/signal_definition_repository.py`, `repositories/app_setting_repository.py`, `endpoints/admin.py` |
 | Stored exercises | `repositories/exercise_repository.py` (`generated_exercise`: microdrills and Ladder rungs, written when generated) |
@@ -104,7 +104,7 @@ Every `core/llm` call logs its provider, model, latency and tokens at INFO. Insi
 
 - Generation: each MCQ's exchanges are stored in `multiple_choice_problem.generation_trace`.
 - Grading: `submission_service` captures the pipeline's LLM calls (the feedback writer) into `evaluation.llmTrace`. Jev calls are in `evaluation.jevTrace` with the state and full questions sent, the answers, usage, latency and attempts.
-- `GET /api/history/day` returns `generationTrace` with each submission; Journey's day detail shows all three under **Model calls**.
+- `GET /api/history/submissions` returns `generationTrace` with each submission; Journey's Submission Detail shows all three under **Model calls**.
 
 ### Editing signals and settings: `/api/admin/signals/{modality}…`, `/api/admin/settings`
 
@@ -115,7 +115,7 @@ Every `core/llm` call logs its provider, model, latency and tokens at INFO. Insi
 ### Reads for Journey
 
 - `GET /api/skill-map-overview?historyDays=&tz=` → `read_models/overview.get_skill_map_overview`: the daily work grid's algorithms (catalog order, then static playlists) and its work per algorithm per day.
-- `GET /api/history/day?date=&tz=` → `read_models/history.get_history_day`: every submission on one local day, with its stored evaluation.
+- `GET /api/history/submissions?date=&algorithm=&tz=` → `read_models/history.get_history_submissions`: the daily-work submissions on one local day (oldest first), for any of the `algorithm` slugs over the last year (newest first), or both, each with its stored evaluation and local `date`.
 - `GET /api/history/competency?tz=` → `read_models/history.get_competency_terrain`: competency per algorithm per day, computed by one aggregate query (`attempts_repository.fetch_competency_terrain`; see [data-flow.md](data-flow.md#3-review-journey)).
 
 Days are computed in the viewer's time zone (`resolve_timezone`, falling back to UTC).

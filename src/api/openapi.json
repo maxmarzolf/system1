@@ -1528,28 +1528,6 @@
         "title": "HistoryChoice",
         "type": "object"
       },
-      "HistoryDayResponse": {
-        "additionalProperties": true,
-        "properties": {
-          "date": {
-            "title": "Date",
-            "type": "string"
-          },
-          "submissions": {
-            "items": {
-              "$ref": "#/components/schemas/HistorySubmission"
-            },
-            "title": "Submissions",
-            "type": "array"
-          }
-        },
-        "required": [
-          "date",
-          "submissions"
-        ],
-        "title": "HistoryDayResponse",
-        "type": "object"
-      },
       "HistorySubmission": {
         "additionalProperties": true,
         "properties": {
@@ -1573,6 +1551,10 @@
           },
           "createdAt": {
             "title": "Createdat",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
             "type": "string"
           },
           "elapsedMs": {
@@ -1635,10 +1617,48 @@
           "successful",
           "elapsedMs",
           "algorithms",
+          "date",
           "evaluation",
           "flow"
         ],
         "title": "HistorySubmission",
+        "type": "object"
+      },
+      "HistorySubmissionsResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "algorithms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Algorithms",
+            "type": "array"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "submissions": {
+            "items": {
+              "$ref": "#/components/schemas/HistorySubmission"
+            },
+            "title": "Submissions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "date",
+          "algorithms",
+          "submissions"
+        ],
+        "title": "HistorySubmissionsResponse",
         "type": "object"
       },
       "InlineCompletionRequest": {
@@ -5027,29 +5047,54 @@
         ]
       }
     },
-    "/api/history/day": {
+    "/api/history/submissions": {
       "get": {
-        "description": "Every submission counted in the daily work grid on ``date`` in ``tz``, with its stored evaluation.",
-        "operationId": "get_history_day_api_history_day_get",
+        "description": "Submissions counted in the daily work grid, with their stored evaluations: on ``date``, for\nthe ``algorithm`` slugs over the last year, or both.",
+        "operationId": "get_history_submissions_api_history_submissions_get",
         "parameters": [
           {
+            "description": "A calendar day in tz; omit to search the last year.",
             "in": "query",
             "name": "date",
-            "required": true,
+            "required": false,
             "schema": {
-              "format": "date",
-              "title": "Date",
-              "type": "string"
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A calendar day in tz; omit to search the last year.",
+              "title": "Date"
             }
           },
           {
-            "description": "IANA timezone the calendar day is in.",
+            "description": "Algorithm slugs to keep (any of them); repeatable.",
+            "in": "query",
+            "name": "algorithm",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "Algorithm slugs to keep (any of them); repeatable.",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 50,
+              "title": "Algorithm",
+              "type": "array"
+            }
+          },
+          {
+            "description": "IANA timezone the calendar days are in.",
             "in": "query",
             "name": "tz",
             "required": false,
             "schema": {
               "default": "UTC",
-              "description": "IANA timezone the calendar day is in.",
+              "description": "IANA timezone the calendar days are in.",
               "maxLength": 64,
               "title": "Tz",
               "type": "string"
@@ -5061,7 +5106,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HistoryDayResponse"
+                  "$ref": "#/components/schemas/HistorySubmissionsResponse"
                 }
               }
             },
@@ -5078,7 +5123,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get History Day",
+        "summary": "Get History Submissions",
         "tags": [
           "attempts"
         ]

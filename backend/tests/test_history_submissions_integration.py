@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import asyncpg
@@ -51,6 +51,26 @@ async def _insert_submission(problem_id: str) -> int:
         await conn.close()
 
 
+async def _insert_recent(problem_id: str) -> tuple[int, int]:
+    """Two answers from an hour ago, one sliding window and one heap, under the same marker."""
+    conn = await asyncpg.connect(settings.database_url)
+    try:
+        ids = []
+        for tag in ("sliding-window", "heap"):
+            ids.append(await conn.fetchval(
+                """
+                INSERT INTO submission (multiple_choice_problem_id, answer, question_type, category_tags, successful,
+                                        signals, modality, created_at)
+                VALUES ($1, 'x', 'skill-map', ARRAY['skill-map', $2], FALSE, '{"elapsed_ms": 1}'::jsonb, 'total-recall', $3)
+                RETURNING id
+                """,
+                problem_id, tag, datetime.now(timezone.utc) - timedelta(hours=1),
+            ))
+        return ids[0], ids[1]
+    finally:
+        await conn.close()
+
+
 async def _cleanup(problem_id: str) -> None:
     conn = await asyncpg.connect(settings.database_url)
     try:
@@ -61,18 +81,23 @@ async def _cleanup(problem_id: str) -> None:
 
 
 @pytest.mark.integration
-def test_history_day_lists_the_days_submissions_in_the_viewers_timezone() -> None:
+def test_history_submissions_by_day_algorithm_or_both() -> None:
     problem_id = f"mcq-itest-history-{uuid4().hex[:12]}"
     try:
         submission_id = asyncio.run(_insert_submission(problem_id))
+        window_id, heap_id = asyncio.run(_insert_recent(problem_id))
     except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - environment-dependent integration guard
         pytest.skip(f"Postgres not available for integration test: {exc}")
     try:
         with TestClient(create_app()) as client:
-            new_york_14 = client.get("/api/history/day", params={"date": "2026-01-14", "tz": "America/New_York"})
-            new_york_15 = client.get("/api/history/day", params={"date": "2026-01-15", "tz": "America/New_York"})
-            utc_15 = client.get("/api/history/day", params={"date": "2026-01-15"})
-            bad_date = client.get("/api/history/day", params={"date": "not-a-date"})
+            new_york_14 = client.get("/api/history/submissions", params={"date": "2026-01-14", "tz": "America/New_York"})
+            new_york_15 = client.get("/api/history/submissions", params={"date": "2026-01-15", "tz": "America/New_York"})
+            utc_15 = client.get("/api/history/submissions", params={"date": "2026-01-15"})
+            bad_date = client.get("/api/history/submissions", params={"date": "not-a-date"})
+            filtered_day = client.get("/api/history/submissions", params={"date": "2026-01-14", "tz": "America/New_York", "algorithm": "heap"})
+            windows = client.get("/api/history/submissions", params={"algorithm": ["sliding-window", "sliding-window"]})
+            either = client.get("/api/history/submissions", params={"algorithm": ["sliding-window", "heap"]})
+            nothing = client.get("/api/history/submissions")
     finally:
         asyncio.run(_cleanup(problem_id))
 
@@ -96,3 +121,19 @@ def test_history_day_lists_the_days_submissions_in_the_viewers_timezone() -> Non
     assert submission["algorithms"] == [{"slug": "sliding-window", "algorithm": "Sliding Window"}]
     assert submission["evaluation"]["signalResults"]["conceptRecognition"]["score"] == 90.0
     assert submission["generationTrace"] == GENERATION_TRACE
+    assert submission["date"] == "2026-01-14"  # the day in the requested time zone
+    assert new_york_14.json()["date"] == "2026-01-14" and new_york_14.json()["algorithms"] == []
+
+    # A day narrowed to an algorithm it didn't have.
+    assert submission_id not in ids(filtered_day)
+    assert filtered_day.json()["algorithms"] == ["heap"]
+
+    # Algorithms without a day: the last year, deduplicated, newest first, any of them.
+    assert window_id in ids(windows) and heap_id not in ids(windows)
+    assert windows.json()["date"] is None and windows.json()["algorithms"] == ["sliding-window"]
+    assert {window_id, heap_id} <= set(ids(either))
+    dates = [item["createdAt"] for item in either.json()["submissions"]]
+    assert dates == sorted(dates, reverse=True)
+
+    # Neither: nothing to show.
+    assert nothing.json() == {"date": None, "algorithms": [], "submissions": []}

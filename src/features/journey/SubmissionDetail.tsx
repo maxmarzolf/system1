@@ -1,6 +1,6 @@
 import { errorMessage } from '@/api/client'
-import { useHistoryDay } from '@/api/queries'
-import { formatLongCalendarDate } from '@/shared/lib/dailyWork'
+import { useHistorySubmissions } from '@/api/queries'
+import { formatCalendarDate, formatLongCalendarDate } from '@/shared/lib/dailyWork'
 import ModelCallDetails from './ModelCallDetails'
 import SubmissionSignalDetails from './SubmissionSignalDetails'
 import { modalityLabel } from '@/shared/modality'
@@ -19,12 +19,12 @@ export type HistorySubmission = {
   successful: boolean
   elapsedMs: number
   algorithms: { slug: string; algorithm: string }[]
+  /** The calendar day it was submitted on (viewer's time zone). */
+  date?: string
   evaluation: Record<string, unknown>
   /** The LLM exchanges that generated the MCQ; empty for other modalities and older questions. */
   generationTrace?: Record<string, unknown>[]
 }
-
-type HistoryDay = { date: string; submissions: HistorySubmission[] }
 
 const timeFormatter = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
 
@@ -99,7 +99,7 @@ function SubmissionAnswer({ submission }: { submission: HistorySubmission }) {
   )
 }
 
-function SubmissionCard({ submission }: { submission: HistorySubmission }) {
+function SubmissionCard({ submission, showDate }: { submission: HistorySubmission; showDate: boolean }) {
   const score = overallScore(submission.evaluation)
   // Collapsed by default: the summary line (result, type, time, score, title) opens to the details.
   return (
@@ -114,7 +114,11 @@ function SubmissionCard({ submission }: { submission: HistorySubmission }) {
           <span key={algorithm.slug} className="history-day-badge history-day-badge-dim">{algorithm.algorithm}</span>
         ))}
         <span className="history-day-meta">
-          {submission.createdAt ? <time dateTime={submission.createdAt}>{timeFormatter.format(new Date(submission.createdAt))}</time> : null}
+          {submission.createdAt ? (
+            <time dateTime={submission.createdAt}>
+              {showDate && submission.date ? `${formatCalendarDate(submission.date)} · ` : ''}{timeFormatter.format(new Date(submission.createdAt))}
+            </time>
+          ) : null}
           {formatElapsed(submission.elapsedMs) ? <span>{formatElapsed(submission.elapsedMs)}</span> : null}
           {score !== null ? <span>score {score.toFixed(1)}</span> : null}
         </span>
@@ -137,54 +141,57 @@ function SubmissionCard({ submission }: { submission: HistorySubmission }) {
   )
 }
 
-export default function HistoryDayDetail({
+const nameList = (slugs: string[], names: Record<string, string>) => slugs.map((slug) => names[slug] ?? slug).join(', ')
+
+/**
+ * The submissions behind the daily work selection: a day (optionally narrowed to some
+ * algorithms), or some algorithms across the last year. A subsection of the Daily Work History.
+ */
+export default function SubmissionDetail({
   date,
-  algorithmFilter,
+  algorithms,
   algorithmNames,
 }: {
   date: string | null
-  /** Algorithm slug to show; '' shows every algorithm. Set from the grid's algorithm labels. */
-  algorithmFilter: string
+  algorithms: string[]
   algorithmNames: Record<string, string>
 }) {
-  const dayQuery = useHistoryDay<HistoryDay>(date)
-  const error = date && dayQuery.error ? errorMessage(dayQuery.error, 'Unable to load this day') : ''
-  const day = error ? null : dayQuery.data ?? null
-
-  const loaded = day && day.date === date ? day : null
-  const submissions = (loaded?.submissions ?? []).filter(
-    (submission) => !algorithmFilter || submission.algorithms.some((algorithm) => algorithm.slug === algorithmFilter),
-  )
+  const query = useHistorySubmissions(date, algorithms)
+  const active = Boolean(date) || algorithms.length > 0
+  const error = active && query.error ? errorMessage(query.error, 'Unable to load submissions') : ''
+  // Only show a response for the current selection (never the previous one while loading).
+  const data = error ? null : query.data ?? null
+  const loaded = data && data.date === date && data.algorithms.join() === [...new Set(algorithms)].join() ? data : null
+  const submissions = (loaded?.submissions ?? []) as HistorySubmission[]
   const correct = submissions.filter((submission) => submission.successful).length
+  const heading = date ? formatLongCalendarDate(date) : algorithms.length ? nameList(algorithms, algorithmNames) : ''
 
   return (
-    <section className="daily-work-history history-day" aria-label="Work completed on the selected day" aria-busy={Boolean(date && !loaded && !error)}>
-      <div className="daily-work-history-header">
-        <div>
-          <p className="section-eyebrow">Day Detail</p>
-          {date ? <h3 className="history-day-heading">{formatLongCalendarDate(date)}</h3> : null}
-          {loaded ? (
-            <p className="history-day-summary">
-              {submissions.length} submission{submissions.length === 1 ? '' : 's'} · {correct} correct
-              {algorithmFilter ? ` · ${algorithmNames[algorithmFilter] ?? algorithmFilter} only` : ''}
-            </p>
-          ) : null}
-        </div>
+    <div className="submission-detail history-day" aria-label="Submission detail" aria-busy={Boolean(active && !loaded && !error)}>
+      <div className="submission-detail-header">
+        <p className="section-eyebrow">Submission Detail</p>
+        {heading ? <h3 className="history-day-heading">{heading}</h3> : null}
+        {loaded ? (
+          <p className="history-day-summary">
+            {submissions.length} submission{submissions.length === 1 ? '' : 's'} · {correct} correct
+            {date && algorithms.length ? ` · ${nameList(algorithms, algorithmNames)} only` : ''}
+            {!date ? ' · last year' : ''}
+          </p>
+        ) : null}
       </div>
-      {!date ? <p className="section-meta">Select a date on the grid, or a highlighted square, to see the work completed that day.</p> : null}
+      {!active ? <p className="section-meta">Select a day on the grid, or algorithms under it, to see their submissions.</p> : null}
       {error ? <p className="coach-error" role="alert">{error}</p> : null}
-      {date && !loaded && !error ? <p className="section-meta">Loading the day&rsquo;s work…</p> : null}
-      {loaded && !loaded.submissions.length ? <p className="section-meta">No submissions recorded on this day.</p> : null}
-      {loaded && loaded.submissions.length && !submissions.length ? (
+      {active && !loaded && !error ? <p className="section-meta">Loading submissions…</p> : null}
+      {loaded && !submissions.length ? (
         <p className="section-meta">
-          No {algorithmNames[algorithmFilter] ?? algorithmFilter} submissions on this day.
+          {date && algorithms.length ? `No ${nameList(algorithms, algorithmNames)} submissions on this day.` : date ? 'No submissions recorded on this day.' : 'No submissions in the last year.'}
         </p>
       ) : null}
-      {loaded ? (
+      {loaded && submissions.length ? (
         <div className="history-day-list">
-          {submissions.map((submission) => <SubmissionCard key={submission.id} submission={submission} />)}
+          {submissions.map((submission) => <SubmissionCard key={submission.id} submission={submission} showDate={!date} />)}
         </div>
       ) : null}
-    </section>
+    </div>
   )
 }

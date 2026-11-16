@@ -15,7 +15,7 @@ flowchart LR
   subgraph API["FastAPI (backend/app)"]
     Coach["/api/coach/*<br/>drill generation, session plan"]
     Attempts["POST /api/attempts"]
-    Reads["GET /api/skill-map-overview<br/>/api/history/day · /api/history/competency"]
+    Reads["GET /api/skill-map-overview<br/>/api/history/submissions · /api/history/competency"]
     Catalog["/api/catalog/*"]
     AdminAPI["/api/admin/signals/{modality}*<br/>/api/admin/settings"]
     Pipeline{{"Grading pipeline<br/>(same for every modality)"}}
@@ -138,11 +138,11 @@ Key points:
 ```mermaid
 flowchart LR
   DB[("submission")] --> O["read_models.overview<br/>build_skill_map_overview"]
-  DB --> HD["get_history_day(date, tz)"]
+  DB --> HD["get_history_submissions(date, algorithms, tz)"]
   DB --> SH["get_competency_terrain(tz)<br/>one aggregate query"]
   O -->|"/api/skill-map-overview?historyDays&tz"| Grid["Journey: daily work grid"]
   SH -->|"/api/history/competency?tz"| Terrain["Journey: Competency terrain (three.js)"]
-  HD -->|"/api/history/day?date&tz"| Day["Journey: day detail<br/>each submission's full evaluation"]
+  HD -->|"/api/history/submissions?date&algorithm&tz"| Day["Journey: Submission Detail<br/>each submission's full evaluation"]
 ```
 
 - The browser sends its IANA time zone (`tz`), so "today" and day boundaries match what you see.
@@ -156,7 +156,7 @@ flowchart LR
 - `fetch_competency_overall` averages every practised algorithm's competency per day (the terrain query, grouped by day) for the Overall row, with the change since 7 days earlier (`LAG`, or since the first day with less history) and its trend: improving above +2 points, regressing below −2, maintaining otherwise.
 - Another aggregate query (`fetch_competency_signals`, sharing the same CTEs) averages each signal per algorithm over all time and returns the 3 strongest and 3 weakest; with fewer than 6 signals they are split between the two sides, never repeated.
 - The response also lists known algorithms and playlists with no answers (`unpractised`). The browser only draws all of it: the terrain and the ranked list with its expanded rows read this one response.
-- The day detail renders the stored evaluation as is (`SubmissionSignalDetails.tsx`), including the Jev trace.
+- The Submission Detail renders the stored evaluation as is (`SubmissionSignalDetails.tsx`), including the Jev trace. Choosing a day asks for that day; choosing algorithms with no day asks for their submissions over the last year; both narrows the day.
 
 ## 4. Configure: signals and settings in /admin
 

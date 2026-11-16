@@ -1,60 +1,4 @@
-/* History page: range buttons, selected day, and the day detail card (shares .daily-work-history). */
-.daily-work-history-ranges {
-  display: inline-flex;
-  flex-wrap: wrap;
-  border: 1px solid var(--workbench-edge);
-  border-radius: var(--workbench-radius-sm);
-  overflow: hidden;
-}
-
-button.daily-work-history-range {
-  min-height: 1.85rem;
-  padding: 0.3rem 0.75rem;
-  border: 0;
-  border-right: 1px solid var(--workbench-edge);
-  border-radius: 0;
-  background: transparent;
-  color: var(--hc-fg-dim);
-  font-size: 0.72rem;
-  font-weight: 650;
-  letter-spacing: 0.02em;
-  text-transform: none;
-}
-
-button.daily-work-history-range:last-child {
-  border-right: 0;
-}
-
-button.daily-work-history-range:hover {
-  background: var(--hc-option-hover-bg);
-  color: var(--hc-fg);
-}
-
-button.daily-work-history-range-active,
-button.daily-work-history-range-active:hover {
-  background: color-mix(in srgb, var(--hc-accent) 16%, transparent);
-  color: var(--hc-accent);
-}
-
-button.daily-work-history-cell {
-  cursor: pointer;
-}
-
-button.daily-work-history-cell:hover,
-button.daily-work-history-cell:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--daily-work-history-glow) 70%, white);
-  outline-offset: 1px;
-}
-
-.daily-work-history-cell-selected {
-  outline: 2px solid var(--hc-fg);
-  outline-offset: 1px;
-}
-
-.daily-work-history-x-day-selected strong,
-.daily-work-history-x-day-selected span {
-  color: var(--hc-fg);
-}
+/* Journey: the Submission Detail subsection of the Daily Work History card. */
 
 .history-day-heading {
   margin: 0.3rem 0 0;
@@ -261,73 +205,6 @@ button.daily-work-history-cell:focus-visible {
   }
 }
 
-.daily-work-history-cell-selected:not(.daily-work-history-cell-active) {
-  outline: none;
-  border-color: color-mix(in srgb, var(--hc-fg) 35%, transparent);
-}
-
-
-/* Dates form the x axis under the grid; each is a button that opens that day. */
-.daily-work-history-grid .daily-work-history-x-axis {
-  margin-top: 0.35rem;
-  padding-top: 0.4rem;
-  border-top: 1px solid var(--workbench-edge);
-}
-
-button.daily-work-history-x-day {
-  min-width: 0;
-  min-height: 0;
-  height: auto;
-  padding: 0.2rem 0;
-  border: 1px solid transparent;
-  border-radius: 0.25rem;
-  background: transparent;
-  font: inherit;
-  letter-spacing: normal;
-  text-transform: none;
-  cursor: pointer;
-}
-
-button.daily-work-history-x-day:hover,
-button.daily-work-history-x-day:focus-visible {
-  border-color: var(--workbench-edge-strong);
-  color: var(--hc-fg);
-}
-
-.daily-work-history-x-day-active strong,
-.daily-work-history-x-day-active span {
-  color: var(--daily-work-history-glow);
-}
-
-button.daily-work-history-x-day-selected,
-button.daily-work-history-x-day-selected:hover {
-  border-color: var(--hc-fg);
-  background: color-mix(in srgb, var(--hc-fg) 8%, transparent);
-}
-
-
-/* Hovering (or focusing) a date lights up its whole column. */
-.daily-work-history-cell-column-hover {
-  border-color: color-mix(in srgb, var(--hc-fg) 55%, transparent);
-  background: color-mix(in srgb, var(--hc-fg) 10%, var(--workbench-surface));
-}
-
-.daily-work-history-cell-active.daily-work-history-cell-column-hover {
-  outline: 2px solid color-mix(in srgb, var(--daily-work-history-glow) 70%, white);
-  outline-offset: 1px;
-  background: linear-gradient(
-    145deg,
-    color-mix(in srgb, var(--daily-work-history-glow) 82%, white),
-    color-mix(in srgb, var(--daily-work-history-glow) 84%, var(--hc-bg))
-  );
-}
-
-/* The selected algorithm's row stays readable; the others step back. */
-.daily-work-history-grid:has(.daily-work-history-lane-cells-selected)
-  .daily-work-history-lane-cells:not(.daily-work-history-lane-cells-selected) {
-  opacity: 0.45;
-}
-
 /* Signal score terrain (History): a three.js scene drawn straight on the page. */
 /* No card: the landscape sits directly on the page, and its canvas spans the whole browser window
    (placed by SignalHologram), so zooming in runs to the window's edges, not a box's. */
@@ -471,7 +348,6 @@ html.journey-snap {
   scroll-snap-align: start;
 }
 
-
 /* Journey day detail: each submission is a collapsed row that opens to its question and signals. */
 .history-day-submission-summary {
   display: grid;
@@ -511,7 +387,6 @@ html.journey-snap {
 span.history-day-title {
   display: block;
 }
-
 
 /* Competency: where you stand today (ranked list) beside the history (heatmap). */
 .competency-section-note {
@@ -833,13 +708,13 @@ button.competency-practise {
 
 .competency-chip-new { color: var(--hc-fg-dim); }
 
-/* Quick hover labels (the native title tooltip waits about a second). */
-.competency-tip {
+/* Quick hover labels (the native title tooltip waits about a second); used across Journey. */
+.quick-tip {
   position: relative;
   cursor: help;
 }
 
-.competency-tip::after {
+.quick-tip::after {
   content: attr(data-tip);
   position: absolute;
   bottom: calc(100% + 0.4rem);
@@ -864,8 +739,8 @@ button.competency-practise {
   transition: opacity 0.12s ease 0.15s, transform 0.12s ease 0.15s;
 }
 
-.competency-tip:hover::after,
-.competency-tip:focus-visible::after {
+.quick-tip:hover::after,
+.quick-tip:focus-visible::after {
   opacity: 1;
   transform: translate(-50%, 0);
 }

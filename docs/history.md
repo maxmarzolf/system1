@@ -92,3 +92,7 @@ The Competency section beside it was added to make the data readable for decisio
 ## 7. The Dashboard page is gone
 
 Journey's Competency section replaced it: the ranked list with Practise buttons covers what the Dashboard's readiness cards did. The page, its route and nav entry, its components and styles, and its backend readiness summaries (`/api/skill-map-overview` now returns only the daily work grid's algorithms and activity; the per-card inventory query and `compact_evaluation` went with it) were removed. The readiness helpers in `domain/` remain, because the coach still uses them.
+
+## 8. Daily work history and day detail merged
+
+The swimlane grid (a row per algorithm, with Week / Month / All-Time ranges) became a contribution-style grid of the last year that only marks whether you practised each day, with algorithm tags under it. The day detail moved into the same card as its **Submission Detail** subsection. `GET /api/history/day` became `GET /api/history/submissions`, which also takes algorithm slugs, so selecting algorithms with no day lists their submissions across the year.

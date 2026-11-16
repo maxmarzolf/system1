@@ -504,7 +504,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/history/day": {
+    "/api/history/submissions": {
         parameters: {
             query?: never;
             header?: never;
@@ -512,10 +512,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get History Day
-         * @description Every submission counted in the daily work grid on ``date`` in ``tz``, with its stored evaluation.
+         * Get History Submissions
+         * @description Submissions counted in the daily work grid, with their stored evaluations: on ``date``, for
+         *     the ``algorithm`` slugs over the last year, or both.
          */
-        get: operations["get_history_day_api_history_day_get"];
+        get: operations["get_history_submissions_api_history_submissions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1278,15 +1279,6 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** HistoryDayResponse */
-        HistoryDayResponse: {
-            /** Date */
-            date: string;
-            /** Submissions */
-            submissions: components["schemas"]["HistorySubmission"][];
-        } & {
-            [key: string]: unknown;
-        };
         /** HistorySubmission */
         HistorySubmission: {
             /** Algorithms */
@@ -1297,6 +1289,8 @@ export interface components {
             correctAnswer: string;
             /** Createdat */
             createdAt: string;
+            /** Date */
+            date: string;
             /** Elapsedms */
             elapsedMs: number;
             /** Evaluation */
@@ -1326,6 +1320,17 @@ export interface components {
             title: string;
             /** Useranswer */
             userAnswer: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** HistorySubmissionsResponse */
+        HistorySubmissionsResponse: {
+            /** Algorithms */
+            algorithms: string[];
+            /** Date */
+            date: string | null;
+            /** Submissions */
+            submissions: components["schemas"]["HistorySubmission"][];
         } & {
             [key: string]: unknown;
         };
@@ -3460,11 +3465,14 @@ export interface operations {
             };
         };
     };
-    get_history_day_api_history_day_get: {
+    get_history_submissions_api_history_submissions_get: {
         parameters: {
-            query: {
-                date: string;
-                /** @description IANA timezone the calendar day is in. */
+            query?: {
+                /** @description A calendar day in tz; omit to search the last year. */
+                date?: string | null;
+                /** @description Algorithm slugs to keep (any of them); repeatable. */
+                algorithm?: string[];
+                /** @description IANA timezone the calendar days are in. */
                 tz?: string;
             };
             header?: never;
@@ -3479,7 +3487,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HistoryDayResponse"];
+                    "application/json": components["schemas"]["HistorySubmissionsResponse"];
                 };
             };
             /** @description Validation Error */
