@@ -148,7 +148,7 @@ export default function JourneyPage() {
       <Suspense
         fallback={(
           <section className="signal-hologram" aria-label="Competency terrain">
-            <p className="dashboard-mode-meta signal-hologram-loading">Mapping competency…</p>
+            <p className="section-meta signal-hologram-loading">Mapping competency…</p>
           </section>
         )}
       >

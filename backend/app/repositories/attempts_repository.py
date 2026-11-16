@@ -13,7 +13,6 @@ from app.repositories.types import (
     SubmissionInsertResult,
     SkillMapOverviewAlgorithmRow,
     SkillMapOverviewAttemptRow,
-    SkillMapOverviewGeneratedRow,
 )
 
 
@@ -142,41 +141,6 @@ async def fetch_skill_map_overview_algorithm_rows() -> list[SkillMapOverviewAlgo
     return [cast(SkillMapOverviewAlgorithmRow, dict(row)) for row in rows]
 
 
-async def fetch_skill_map_overview_generated_rows() -> list[SkillMapOverviewGeneratedRow]:
-    async with acquire_connection() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT id, title, tags, algorithm_slug, source_type
-            FROM (
-                SELECT
-                    CASE
-                        WHEN source_type IN ('core-catalog', 'core-meta')
-                            THEN 'core-algorithm-' || slug
-                        ELSE slug
-                    END AS id,
-                    title,
-                    tags,
-                    algorithm_slug,
-                    source_type,
-                    display_order
-                FROM problem
-                WHERE source_type <> 'static-playlist'
-                   OR EXISTS (
-                        SELECT 1
-                        FROM playlist_problem_order ppo
-                        JOIN playlist pl ON pl.slug = ppo.playlist_slug
-                        WHERE ppo.problem_slug = problem.slug
-                          AND ppo.order_slug = 'curated'
-                          AND pl.show_on_skill_map
-                   )
-            ) rows
-            ORDER BY display_order ASC
-            """
-        )
-    return [cast(SkillMapOverviewGeneratedRow, dict(row)) for row in rows]
-
-
-# Submissions the daily work grid counts and the history day view show.
 _DAILY_WORK_SUBMISSION_FILTER = """
     (a.question_type LIKE 'skill-map%'
      OR a.question_type LIKE 'playlist:%'

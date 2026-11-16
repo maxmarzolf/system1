@@ -9,7 +9,6 @@ from app.contracts.evaluation import (
     EVALUATION_VERSION,
     Evaluation,
     build_evaluation,
-    compact_evaluation,
     evaluation_feedback,
 )
 
@@ -76,7 +75,6 @@ def test_readers_tolerate_missing_and_malformed_evaluations() -> None:
     assert evaluation_feedback({"feedback": {"primaryFocus": "p"}}) == {"primaryFocus": "p"}
     assert evaluation_feedback(Evaluation(feedback={"a": 1})) == {"a": 1}
     assert evaluation_feedback(None) == {}
-    assert compact_evaluation(None) == {}
 
 
 def test_scored_entries_skip_unscored_signals_and_keep_spec_order() -> None:
@@ -86,8 +84,6 @@ def test_scored_entries_skip_unscored_signals_and_keep_spec_order() -> None:
     })
     assert [key for key, _ in evaluation.entries()] == ["b", "a", "c"]
     assert [(key, entry.score) for key, entry in evaluation.scored_entries()] == [("b", 90.0), ("c", 55.6)]
-    compact = evaluation.compact()
-    assert set(compact) == {"verdict", "signalSpec", "score", "primaryFailure", "dimensions", "modifiers", "recommendedAction"}
 
 
 def test_evaluators_can_attach_their_own_fields() -> None:

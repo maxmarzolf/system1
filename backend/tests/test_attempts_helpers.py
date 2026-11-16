@@ -52,13 +52,12 @@ async def test_get_skill_map_overview_passes_window_and_timezone(monkeypatch) ->
     async def empty():
         return []
 
-    def build(algorithm_rows, generated_rows, attempt_rows, *, history_days, history_tz):
+    def build(algorithm_rows, attempt_rows, *, history_days, history_tz):
         captured.update(history_days=history_days, history_tz=history_tz)
         return {"algorithms": []}
 
     for name in (
         "fetch_skill_map_overview_algorithm_rows",
-        "fetch_skill_map_overview_generated_rows",
         "fetch_skill_map_overview_attempt_rows",
     ):
         monkeypatch.setattr(overview, name, empty)

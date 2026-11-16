@@ -3008,125 +3008,6 @@
         "title": "SkeletonApplicability",
         "type": "object"
       },
-      "SkillMapActivityDay": {
-        "properties": {
-          "count": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Count",
-            "type": "integer"
-          },
-          "date": {
-            "default": "",
-            "title": "Date",
-            "type": "string"
-          },
-          "inFuture": {
-            "default": false,
-            "title": "Infuture",
-            "type": "boolean"
-          }
-        },
-        "title": "SkillMapActivityDay",
-        "type": "object"
-      },
-      "SkillMapAlgorithmReadiness": {
-        "properties": {
-          "algorithm": {
-            "minLength": 1,
-            "title": "Algorithm",
-            "type": "string"
-          },
-          "dimensionSummary": {
-            "additionalProperties": true,
-            "default": {},
-            "title": "Dimensionsummary",
-            "type": "object"
-          },
-          "ghostRepCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Ghostrepcount",
-            "type": "integer"
-          },
-          "modes": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/SkillMapModeReadiness"
-            },
-            "default": {},
-            "title": "Modes",
-            "type": "object"
-          },
-          "overallAttemptCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Overallattemptcount",
-            "type": "integer"
-          },
-          "overallReadiness": {
-            "default": 0,
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Overallreadiness",
-            "type": "number"
-          },
-          "practicedCards": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Practicedcards",
-            "type": "integer"
-          },
-          "skills": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Skills",
-            "type": "array"
-          },
-          "slug": {
-            "minLength": 1,
-            "title": "Slug",
-            "type": "string"
-          },
-          "staleCards": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Stalecards",
-            "type": "integer"
-          },
-          "totalCards": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Totalcards",
-            "type": "integer"
-          },
-          "unsupportedAttemptCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Unsupportedattemptcount",
-            "type": "integer"
-          },
-          "untouchedCards": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Untouchedcards",
-            "type": "integer"
-          },
-          "workCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Workcount",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "algorithm",
-          "slug"
-        ],
-        "title": "SkillMapAlgorithmReadiness",
-        "type": "object"
-      },
       "SkillMapDrillCard": {
         "properties": {
           "difficulty": {
@@ -3294,14 +3175,6 @@
             "title": "Activedays",
             "type": "integer"
           },
-          "algorithms": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/SkillMapGhostRepAlgorithm"
-            },
-            "title": "Algorithms",
-            "type": "array"
-          },
           "days": {
             "default": [],
             "items": {
@@ -3397,76 +3270,6 @@
         "title": "SkillMapGhostRepActivityDay",
         "type": "object"
       },
-      "SkillMapGhostRepAlgorithm": {
-        "properties": {
-          "algorithm": {
-            "default": "",
-            "title": "Algorithm",
-            "type": "string"
-          },
-          "coreCardCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Corecardcount",
-            "type": "integer"
-          },
-          "daysSinceLastGhostRep": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Dayssincelastghostrep"
-          },
-          "daysSinceLastPractice": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Dayssincelastpractice"
-          },
-          "slug": {
-            "default": "",
-            "title": "Slug",
-            "type": "string"
-          },
-          "totalGhostReps": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Totalghostreps",
-            "type": "integer"
-          },
-          "totalMultipleChoice": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Totalmultiplechoice",
-            "type": "integer"
-          },
-          "totalPerfectRecalls": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Totalperfectrecalls",
-            "type": "integer"
-          },
-          "totalWork": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Totalwork",
-            "type": "integer"
-          }
-        },
-        "title": "SkillMapGhostRepAlgorithm",
-        "type": "object"
-      },
       "SkillMapGhostRepSegment": {
         "properties": {
           "algorithm": {
@@ -3524,186 +3327,20 @@
         "title": "SkillMapGhostRepSkillSegment",
         "type": "object"
       },
-      "SkillMapModeActivity": {
+      "SkillMapGridAlgorithm": {
         "properties": {
-          "activeDays": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Activedays",
-            "type": "integer"
-          },
-          "currentStreak": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Currentstreak",
-            "type": "integer"
-          },
-          "days": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/SkillMapActivityDay"
-            },
-            "title": "Days",
-            "type": "array"
-          },
-          "lastSevenDaySubmitCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Lastsevendaysubmitcount",
-            "type": "integer"
-          },
-          "longestStreak": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Longeststreak",
-            "type": "integer"
-          },
-          "peakDailyCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Peakdailycount",
-            "type": "integer"
-          },
-          "recentSubmitCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Recentsubmitcount",
-            "type": "integer"
-          },
-          "windowEnd": {
+          "algorithm": {
             "default": "",
-            "title": "Windowend",
+            "title": "Algorithm",
             "type": "string"
           },
-          "windowStart": {
+          "slug": {
             "default": "",
-            "title": "Windowstart",
+            "title": "Slug",
             "type": "string"
           }
         },
-        "title": "SkillMapModeActivity",
-        "type": "object"
-      },
-      "SkillMapModeReadiness": {
-        "properties": {
-          "activity": {
-            "$ref": "#/components/schemas/SkillMapModeActivity",
-            "default": {
-              "activeDays": 0,
-              "currentStreak": 0,
-              "days": [],
-              "lastSevenDaySubmitCount": 0,
-              "longestStreak": 0,
-              "peakDailyCount": 0,
-              "recentSubmitCount": 0,
-              "windowEnd": "",
-              "windowStart": ""
-            }
-          },
-          "attemptCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Attemptcount",
-            "type": "integer"
-          },
-          "daysSinceLastSubmit": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Dayssincelastsubmit"
-          },
-          "dimensionSummary": {
-            "additionalProperties": true,
-            "default": {},
-            "title": "Dimensionsummary",
-            "type": "object"
-          },
-          "ghostRepCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Ghostrepcount",
-            "type": "integer"
-          },
-          "lastSubmittedAt": {
-            "default": "",
-            "title": "Lastsubmittedat",
-            "type": "string"
-          },
-          "liveCoachUsedCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Livecoachusedcount",
-            "type": "integer"
-          },
-          "practicedCards": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Practicedcards",
-            "type": "integer"
-          },
-          "readiness": {
-            "default": 0,
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Readiness",
-            "type": "number"
-          },
-          "stale": {
-            "default": false,
-            "title": "Stale",
-            "type": "boolean"
-          },
-          "staleCards": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Stalecards",
-            "type": "integer"
-          },
-          "successRate": {
-            "default": 0,
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Successrate",
-            "type": "number"
-          },
-          "successfulAttempts": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Successfulattempts",
-            "type": "integer"
-          },
-          "totalCards": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Totalcards",
-            "type": "integer"
-          },
-          "unsupportedAttemptCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Unsupportedattemptcount",
-            "type": "integer"
-          },
-          "untouchedCards": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Untouchedcards",
-            "type": "integer"
-          },
-          "workCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Workcount",
-            "type": "integer"
-          }
-        },
-        "title": "SkillMapModeReadiness",
+        "title": "SkillMapGridAlgorithm",
         "type": "object"
       },
       "SkillMapNode": {
@@ -3751,7 +3388,7 @@
           "algorithms": {
             "default": [],
             "items": {
-              "$ref": "#/components/schemas/SkillMapAlgorithmReadiness"
+              "$ref": "#/components/schemas/SkillMapGridAlgorithm"
             },
             "title": "Algorithms",
             "type": "array"
@@ -3760,7 +3397,6 @@
             "$ref": "#/components/schemas/SkillMapGhostRepActivity",
             "default": {
               "activeDays": 0,
-              "algorithms": [],
               "days": [],
               "peakDailyCount": 0,
               "totalGhostReps": 0,

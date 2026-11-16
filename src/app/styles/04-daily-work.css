@@ -1,0 +1,167 @@
+/* ─── Daily work grid (Journey) ─── */
+
+.daily-work-history {
+  --daily-work-history-cell-size: 1.5rem;
+  --daily-work-history-glow: #58a6ff;
+  margin: 0 0 1rem;
+  padding: 1.05rem 1.1rem 1.15rem;
+  border: 1px solid var(--workbench-edge);
+  border-radius: var(--workbench-radius-sm);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--hc-accent) 4%, transparent), transparent 34%),
+    var(--workbench-surface-raised);
+  box-shadow: 0 0.8rem 2rem color-mix(in srgb, var(--hc-bg) 34%, transparent);
+}
+
+.daily-work-history-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.9rem;
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--workbench-edge);
+}
+
+/* Two columns: fixed algorithm labels, then the day grid, which scrolls on its own. */
+.daily-work-history-swimlane {
+  display: grid;
+  grid-template-columns: 9.75rem minmax(0, 1fr);
+  column-gap: 0.65rem;
+  align-items: start;
+}
+
+.daily-work-history-labels,
+.daily-work-history-grid {
+  display: grid;
+  grid-auto-rows: var(--daily-work-history-cell-size);
+  row-gap: 0.3rem;
+  padding-top: 0.1rem;
+}
+
+.daily-work-history-grid {
+  grid-auto-rows: auto;
+  width: max-content;
+}
+
+.daily-work-history-scroll {
+  min-width: 0;
+  overflow-x: auto;
+  padding: 0 0.1rem 0.65rem;
+  scrollbar-color: color-mix(in srgb, var(--hc-accent) 42%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.daily-work-history-x-axis,
+.daily-work-history-lane-cells {
+  display: grid;
+  grid-template-columns: repeat(var(--daily-work-history-days), var(--daily-work-history-cell-size));
+  gap: 0.25rem;
+}
+
+.daily-work-history-x-day {
+  display: grid;
+  place-items: center;
+  gap: 0.12rem;
+  width: var(--daily-work-history-cell-size);
+  color: color-mix(in srgb, var(--hc-fg-dim) 74%, transparent);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.daily-work-history-x-day strong {
+  color: color-mix(in srgb, var(--hc-fg) 88%, var(--hc-fg-dim));
+  font-size: 0.55rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.daily-work-history-x-day span {
+  font-size: 0.46rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.daily-work-history-x-day-today {
+  color: var(--hc-accent);
+}
+
+.daily-work-history-x-day-today strong {
+  color: var(--hc-accent);
+}
+
+.daily-work-history-x-day-today::after {
+  content: '';
+  width: 0.25rem;
+  height: 0.1rem;
+  margin-top: 0.08rem;
+  border-radius: 999px;
+  background: var(--hc-accent);
+  box-shadow: 0 0 0.45rem color-mix(in srgb, var(--hc-accent) 52%, transparent);
+}
+
+button.daily-work-history-lane-label {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: var(--daily-work-history-cell-size);
+  padding: 0 0.35rem;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: color-mix(in srgb, var(--hc-fg) 90%, var(--hc-fg-dim));
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 650;
+  letter-spacing: normal;
+  line-height: calc(var(--daily-work-history-cell-size) - 2px);
+  text-align: left;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+button.daily-work-history-lane-label:hover,
+button.daily-work-history-lane-label:focus-visible {
+  border-color: var(--workbench-edge-strong);
+  color: var(--hc-fg);
+}
+
+button.daily-work-history-lane-label-selected,
+button.daily-work-history-lane-label-selected:hover {
+  border-color: var(--hc-accent);
+  background: color-mix(in srgb, var(--hc-accent) 12%, transparent);
+  color: var(--hc-accent);
+}
+
+.daily-work-history-cell {
+  display: grid;
+  place-items: center;
+  width: var(--daily-work-history-cell-size);
+  height: var(--daily-work-history-cell-size);
+  min-width: var(--daily-work-history-cell-size);
+  min-height: var(--daily-work-history-cell-size);
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--workbench-edge-strong) 50%, transparent);
+  border-radius: 0.18rem;
+  background: color-mix(in srgb, var(--workbench-surface) 76%, var(--hc-bg));
+  color: var(--hc-fg);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--hc-fg) 3%, transparent);
+}
+
+.daily-work-history-cell-active {
+  border-color: color-mix(in srgb, var(--daily-work-history-glow) 84%, white);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--daily-work-history-glow) 82%, white),
+    color-mix(in srgb, var(--daily-work-history-glow) 84%, var(--hc-bg))
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 32%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--daily-work-history-glow) 20%, transparent),
+    0 0 0.75rem color-mix(in srgb, var(--daily-work-history-glow) 24%, transparent);
+}

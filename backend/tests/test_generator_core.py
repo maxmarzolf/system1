@@ -176,7 +176,7 @@ def test_build_generator_context_includes_specimen_tuning(skill_map_request, pro
     assert "Use explicit names" in context.system_prompt
 
 
-def test_focused_generator_context_preserves_dashboard_method_order(progress_summary) -> None:
+def test_focused_generator_context_preserves_skill_map_method_order(progress_summary) -> None:
     request = SkillMapDrillsRequest(
         questionType="skill-map-targeted",
         count=3,
@@ -239,8 +239,8 @@ def test_playlist_generator_context_accepts_google_sized_deck(progress_summary) 
     assert context.llm_payload["skillMap"][49]["playlistSlug"] == "google"
 
 
-def test_focused_core_algorithm_catalog_covers_dashboard_methods() -> None:
-    dashboard_skill_map = [
+def test_focused_core_algorithm_catalog_covers_skill_map_methods() -> None:
+    skill_map_methods = [
         ("Sliding Window", ["fixed vs variable window", "expand / shrink rhythm", "frequency maps", "valid window rule", "window score updates"]),
         ("Two Pointers", ["same-direction scan", "opposing pointers", "sorted-array leverage", "dedupe rules", "pointer move rule"]),
         ("Binary Search", ["left / right bounds", "mid calculation", "search on answer", "first / last occurrence", "boundary rule handling"]),
@@ -255,7 +255,7 @@ def test_focused_core_algorithm_catalog_covers_dashboard_methods() -> None:
         ("Monotonic Stack", ["increasing vs decreasing stack", "next greater / smaller", "pop trigger rule", "index storage", "span / area computation"]),
     ]
 
-    for pattern, methods in dashboard_skill_map:
+    for pattern, methods in skill_map_methods:
         prompts: list[str] = []
         skeletons: list[str] = []
         for method in methods:

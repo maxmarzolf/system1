@@ -36,30 +36,30 @@ describe('navPageIndex', () => {
   it('finds a page by path, ignoring a trailing slash', () => {
     expect(navPageIndex('/practice')).toBe(0)
     expect(navPageIndex('/')).toBe(1)
-    expect(navPageIndex('/admin/')).toBe(5)
+    expect(navPageIndex('/admin/')).toBe(4)
     expect(navPageIndex('/nowhere')).toBe(-1)
   })
 })
 
 describe('usePageHotkeys', () => {
   it('walks left with Cmd+A and wraps from Practice to Admin', () => {
-    renderAt('/dashboard')
-    for (const expected of ['/', '/practice', '/admin', '/evolve', '/tune', '/dashboard']) {
+    renderAt('/tune')
+    for (const expected of ['/', '/practice', '/admin', '/evolve', '/tune']) {
       expect(press('a').defaultPrevented).toBe(true)
       expect(path()).toBe(expected)
     }
   })
 
   it('walks right with Cmd+D and wraps from Admin to Practice', () => {
-    renderAt('/dashboard')
-    for (const expected of ['/tune', '/evolve', '/admin', '/practice', '/', '/dashboard']) {
+    renderAt('/')
+    for (const expected of ['/tune', '/evolve', '/admin', '/practice', '/']) {
       expect(press('D').defaultPrevented).toBe(true)
       expect(path()).toBe(expected)
     }
   })
 
   it('opens Total Recall from every other page with Cmd+Enter', () => {
-    for (const source of ['/', '/dashboard', '/tune', '/evolve', '/admin', '/elsewhere']) {
+    for (const source of ['/', '/tune', '/evolve', '/admin', '/elsewhere']) {
       const { unmount } = renderAt(source)
       expect(press('Enter').defaultPrevented).toBe(true)
       expect(path()).toBe('/practice')

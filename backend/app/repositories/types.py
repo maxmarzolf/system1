@@ -64,14 +64,6 @@ class SkillMapOverviewAlgorithmRow(TypedDict):
     skill_name: str | None
 
 
-class SkillMapOverviewGeneratedRow(TypedDict):
-    id: str
-    title: str
-    tags: list[str] | None
-    algorithm_slug: str
-    source_type: str
-
-
 class ProblemPracticeRow(TypedDict):
     slug: str
     title: str

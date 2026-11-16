@@ -419,7 +419,7 @@ button.daily-work-history-x-day-selected:hover {
   white-space: nowrap;
 }
 
-/* Top nav pinned to the window (Journey, Tune, Admin, Dashboard): no background or rule, and
+/* Top nav pinned to the window (Journey, Tune, Admin): no background or rule, and
    the same 1.25rem gap from the window top as the main page, scrolled or not. */
 :root {
   --page-top-gap: 1.25rem;

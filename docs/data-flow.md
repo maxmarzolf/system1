@@ -1,6 +1,6 @@
 # Data flow
 
-How data moves through System 1: from the practice screen, through the grading pipeline, into Postgres, and back out to the Dashboard, Journey and Admin pages. (Tune only edits personal editor and hotkey preferences stored in the browser.) How grading decides is in [grading.md](grading.md). For the tables themselves, see [database-schema.md](database-schema.md). For the backend's layering rules, see [backend-architecture.md](backend-architecture.md).
+How data moves through System 1: from the practice screen, through the grading pipeline, into Postgres, and back out to the Journey and Admin pages. (Tune only edits personal editor and hotkey preferences stored in the browser.) How grading decides is in [grading.md](grading.md). For the tables themselves, see [database-schema.md](database-schema.md). For the backend's layering rules, see [backend-architecture.md](backend-architecture.md).
 
 ## The whole system
 
@@ -8,7 +8,6 @@ How data moves through System 1: from the practice screen, through the grading p
 flowchart LR
   subgraph Browser["Browser (React + Vite)"]
     Practice["/practice (PracticePage)"]
-    Dashboard["/dashboard"]
     Journey["/ (Journey)"]
     Admin["/admin"]
   end
@@ -38,7 +37,6 @@ flowchart LR
   Pipeline -->|"written feedback (optional)"| LLM
   Pipeline -->|"submission + evaluation"| DB
 
-  Dashboard --> Reads
   Journey --> Reads
   Reads --> DB
   Admin --> Catalog
@@ -51,7 +49,7 @@ flowchart LR
 There are three loops:
 
 1. **Practice:** fetch a drill, answer it, get graded, and store the result.
-2. **Review:** the Dashboard and Journey read stored submissions back as readiness, activity and signal history.
+2. **Review:** Journey reads stored submissions back as competency, daily activity and each day's evaluations.
 3. **Configure:** `/admin` edits every modality's correctness question and signals, and the server-side grading, generation and practice settings. `/tune` adjusts personal editor and hotkey preferences stored in the browser.
 
 ## 1. Practice: submitting an answer
@@ -135,15 +133,14 @@ Key points:
 - **Failures degrade, they don't block.** If Jev is down, the exact check decides correctness and the Jev-backed signals are recorded as `unavailable`.
 - **Every evaluation is explainable later.** It stores the exact spec snapshot and hash, Jev's request ids, the model and the raw answers.
 
-## 3. Review: Dashboard and Journey
+## 3. Review: Journey
 
 ```mermaid
 flowchart LR
   DB[("submission")] --> O["read_models.overview<br/>build_skill_map_overview"]
   DB --> HD["get_history_day(date, tz)"]
   DB --> SH["get_competency_terrain(tz)<br/>one aggregate query"]
-  O -->|"/api/skill-map-overview?historyDays&tz"| Dash["Dashboard<br/>readiness per algorithm"]
-  O -->|"historyDays = all"| Grid["Journey: daily work grid"]
+  O -->|"/api/skill-map-overview?historyDays&tz"| Grid["Journey: daily work grid"]
   SH -->|"/api/history/competency?tz"| Terrain["Journey: Competency terrain (three.js)"]
   HD -->|"/api/history/day?date&tz"| Day["Journey: day detail<br/>each submission's full evaluation"]
 ```

@@ -122,22 +122,7 @@ def test_skill_map_overview_endpoint_contract(monkeypatch) -> None:
     async def _mock_overview(**_kwargs):
         return {
             "algorithms": [
-                {
-                    "algorithm": "Sliding Window",
-                    "slug": "sliding-window",
-                    "skills": ["expand / shrink rhythm"],
-                    "overallReadiness": 90,
-                    "overallAttemptCount": 1,
-                    "ghostRepCount": 0,
-                    "unsupportedAttemptCount": 1,
-                    "workCount": 1,
-                    "totalCards": 1,
-                    "practicedCards": 1,
-                    "untouchedCards": 0,
-                    "staleCards": 0,
-                    "dimensionSummary": {},
-                    "modes": {},
-                }
+                {"algorithm": "Sliding Window", "slug": "sliding-window"}
             ],
             "ghostRepActivity": {
                 "windowStart": "2026-05-01",
@@ -149,7 +134,6 @@ def test_skill_map_overview_endpoint_contract(monkeypatch) -> None:
                 "activeDays": 1,
                 "peakDailyCount": 1,
                 "days": [],
-                "algorithms": [],
             },
         }
 
@@ -174,6 +158,7 @@ def test_skill_map_overview_endpoint_contract(monkeypatch) -> None:
     assert "ghostRepActivity" in payload
     assert payload["algorithms"][0]["slug"] == "sliding-window"
     assert payload["ghostRepActivity"]["totalPerfectRecalls"] == 3
+    assert payload["algorithms"][0] == {"algorithm": "Sliding Window", "slug": "sliding-window"}
 
 
 def test_playlist_drills_endpoint_preserves_unified_static_payload(monkeypatch) -> None:

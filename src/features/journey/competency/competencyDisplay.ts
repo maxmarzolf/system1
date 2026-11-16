@@ -49,6 +49,6 @@ export const pluralize = (count: number, one: string, many = `${one}s`) => `${co
 
 export const daysAgo = (days: number) => (days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`)
 
-/** The deck to practise an algorithm or playlist with (the same URLs Dashboard uses). */
+/** The deck to practise an algorithm or playlist with (`focusPattern` or `playlist` on /practice). */
 export const practiceHref = (algorithm: Pick<UnpractisedAlgorithm, 'slug' | 'kind'>) =>
   `/practice?${new URLSearchParams(algorithm.kind === 'playlist' ? { playlist: algorithm.slug } : { focusPattern: algorithm.slug })}`

@@ -296,7 +296,7 @@ describe('practice: deck sources', () => {
     expect((await screen.findAllByText('Static playlist is unavailable right now.')).length).toBeGreaterThan(0)
   })
 
-  it('focuses a pattern from the dashboard', async () => {
+  it('focuses a pattern from a focusPattern link', async () => {
     setup({ extra: [{ match: '/api/skill-map', body: [{ algorithm: 'Sliding Window', skills: ['expand', 'shrink'] }] }] })
     renderApp('/?focusPattern=sliding-window')
     await screen.findByText(/Window|Generated card/)

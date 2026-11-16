@@ -1,1 +1,1 @@
-"""Read models: what the Dashboard and Journey show, computed from stored submissions."""
+"""Read models: what Journey shows, computed from stored submissions."""

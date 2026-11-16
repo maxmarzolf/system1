@@ -11,7 +11,7 @@ export default function SubmissionFailureModal({ failure, onClose }: { failure: 
         aria-label="Submission feedback unavailable"
         onClick={(event) => event.stopPropagation()}
       >
-        <p className="dashboard-activity-eyebrow">Submission feedback unavailable</p>
+        <p className="section-eyebrow">Submission feedback unavailable</p>
         <h4>Feedback cannot be generated at this time.</h4>
         <p className="coach-panel-copy" style={{ marginBottom: '0.55rem' }}>{failure.message}</p>
         <div className="actions" style={{ marginTop: 0 }}>

@@ -161,7 +161,7 @@ export default function HistoryDayDetail({
     <section className="daily-work-history history-day" aria-label="Work completed on the selected day" aria-busy={Boolean(date && !loaded && !error)}>
       <div className="daily-work-history-header">
         <div>
-          <p className="dashboard-activity-eyebrow">Day Detail</p>
+          <p className="section-eyebrow">Day Detail</p>
           {date ? <h3 className="history-day-heading">{formatLongCalendarDate(date)}</h3> : null}
           {loaded ? (
             <p className="history-day-summary">
@@ -171,12 +171,12 @@ export default function HistoryDayDetail({
           ) : null}
         </div>
       </div>
-      {!date ? <p className="dashboard-mode-meta">Select a date on the grid, or a highlighted square, to see the work completed that day.</p> : null}
+      {!date ? <p className="section-meta">Select a date on the grid, or a highlighted square, to see the work completed that day.</p> : null}
       {error ? <p className="coach-error" role="alert">{error}</p> : null}
-      {date && !loaded && !error ? <p className="dashboard-mode-meta">Loading the day&rsquo;s work…</p> : null}
-      {loaded && !loaded.submissions.length ? <p className="dashboard-mode-meta">No submissions recorded on this day.</p> : null}
+      {date && !loaded && !error ? <p className="section-meta">Loading the day&rsquo;s work…</p> : null}
+      {loaded && !loaded.submissions.length ? <p className="section-meta">No submissions recorded on this day.</p> : null}
       {loaded && loaded.submissions.length && !submissions.length ? (
-        <p className="dashboard-mode-meta">
+        <p className="section-meta">
           No {algorithmNames[algorithmFilter] ?? algorithmFilter} submissions on this day.
         </p>
       ) : null}

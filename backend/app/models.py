@@ -210,24 +210,6 @@ class CoachPracticeHistoryResponse(BaseModel):
     entries: list[CoachPracticeHistoryEntry] = []
 
 
-class SkillMapActivityDay(BaseModel):
-    date: str = ""
-    count: int = Field(default=0, ge=0)
-    inFuture: bool = False
-
-
-class SkillMapModeActivity(BaseModel):
-    windowStart: str = ""
-    windowEnd: str = ""
-    recentSubmitCount: int = Field(default=0, ge=0)
-    lastSevenDaySubmitCount: int = Field(default=0, ge=0)
-    activeDays: int = Field(default=0, ge=0)
-    currentStreak: int = Field(default=0, ge=0)
-    longestStreak: int = Field(default=0, ge=0)
-    peakDailyCount: int = Field(default=0, ge=0)
-    days: list[SkillMapActivityDay] = []
-
-
 class SkillMapGhostRepSkillSegment(BaseModel):
     skill: str = ""
     slug: str = ""
@@ -251,18 +233,6 @@ class SkillMapGhostRepActivityDay(BaseModel):
     segments: list[SkillMapGhostRepSegment] = []
 
 
-class SkillMapGhostRepAlgorithm(BaseModel):
-    algorithm: str = ""
-    slug: str = ""
-    totalGhostReps: int = Field(default=0, ge=0)
-    totalMultipleChoice: int = Field(default=0, ge=0)
-    totalPerfectRecalls: int = Field(default=0, ge=0)
-    totalWork: int = Field(default=0, ge=0)
-    coreCardCount: int = Field(default=0, ge=0)
-    daysSinceLastGhostRep: int | None = Field(default=None, ge=0)
-    daysSinceLastPractice: int | None = Field(default=None, ge=0)
-
-
 class SkillMapGhostRepActivity(BaseModel):
     windowStart: str = ""
     windowEnd: str = ""
@@ -273,47 +243,16 @@ class SkillMapGhostRepActivity(BaseModel):
     activeDays: int = Field(default=0, ge=0)
     peakDailyCount: int = Field(default=0, ge=0)
     days: list[SkillMapGhostRepActivityDay] = []
-    algorithms: list[SkillMapGhostRepAlgorithm] = []
-
-class SkillMapModeReadiness(BaseModel):
-    readiness: float = Field(default=0, ge=0, le=100)
-    attemptCount: int = Field(default=0, ge=0)
-    ghostRepCount: int = Field(default=0, ge=0)
-    unsupportedAttemptCount: int = Field(default=0, ge=0)
-    workCount: int = Field(default=0, ge=0)
-    successfulAttempts: int = Field(default=0, ge=0)
-    successRate: float = Field(default=0, ge=0, le=100)
-    totalCards: int = Field(default=0, ge=0)
-    practicedCards: int = Field(default=0, ge=0)
-    untouchedCards: int = Field(default=0, ge=0)
-    staleCards: int = Field(default=0, ge=0)
-    lastSubmittedAt: str = ""
-    daysSinceLastSubmit: int | None = Field(default=None, ge=0)
-    stale: bool = False
-    liveCoachUsedCount: int = Field(default=0, ge=0)
-    dimensionSummary: dict[str, Any] = {}
-    activity: SkillMapModeActivity = SkillMapModeActivity()
 
 
-class SkillMapAlgorithmReadiness(BaseModel):
-    algorithm: str = Field(min_length=1)
-    slug: str = Field(min_length=1)
-    skills: list[str] = []
-    overallReadiness: float = Field(default=0, ge=0, le=100)
-    overallAttemptCount: int = Field(default=0, ge=0)
-    ghostRepCount: int = Field(default=0, ge=0)
-    unsupportedAttemptCount: int = Field(default=0, ge=0)
-    workCount: int = Field(default=0, ge=0)
-    totalCards: int = Field(default=0, ge=0)
-    practicedCards: int = Field(default=0, ge=0)
-    untouchedCards: int = Field(default=0, ge=0)
-    staleCards: int = Field(default=0, ge=0)
-    dimensionSummary: dict[str, Any] = {}
-    modes: dict[str, SkillMapModeReadiness] = {}
+class SkillMapGridAlgorithm(BaseModel):
+    algorithm: str = ""
+    slug: str = ""
 
 
 class SkillMapOverviewResponse(BaseModel):
-    algorithms: list[SkillMapAlgorithmReadiness] = []
+    # The daily work grid's algorithms, in order, and its work per day (Journey).
+    algorithms: list[SkillMapGridAlgorithm] = []
     ghostRepActivity: SkillMapGhostRepActivity = SkillMapGhostRepActivity()
 
 

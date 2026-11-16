@@ -45,7 +45,7 @@ export default function TopNav({
             key={page.path}
             to={page.path === '/' ? practiceHistoryHref : page.path}
             end={page.path === '/'}
-            className="navbar-dashboard"
+            className="navbar-page-link"
           >
             {page.label}
           </NavLink>

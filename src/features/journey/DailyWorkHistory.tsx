@@ -92,7 +92,7 @@ export default function DailyWorkHistory({
   return (
     <section className="daily-work-history" aria-label="Daily work history" aria-busy={loading}>
       <div className="daily-work-history-header">
-        <p className="dashboard-activity-eyebrow">Daily Work History</p>
+        <p className="section-eyebrow">Daily Work History</p>
         <div className="daily-work-history-ranges" role="group" aria-label="History range">
           {DAILY_WORK_RANGES.map(option => (
             <button
@@ -109,7 +109,7 @@ export default function DailyWorkHistory({
       </div>
 
       {!activity ? (
-        <p className="dashboard-mode-meta">Loading daily work history...</p>
+        <p className="section-meta">Loading daily work history...</p>
       ) : (
         <div className="daily-work-history-swimlane" style={{ '--daily-work-history-days': chartDates.length } as CSSProperties}>
           {/* Labels sit outside the scrolling area, so long ranges scroll under nothing. */}

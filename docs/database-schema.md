@@ -198,7 +198,7 @@ erDiagram
   - `evaluation`: the canonical evaluation, the same shape for every modality: verdict, scores, `signalResults`, `correctness` (who decided, overrides), `provenance` (flags, model), `jevTrace`, `llmTrace`, optional `feedback` and a `signalSpecSnapshot`, so a stored grade can always be explained even after the signals change. Evaluations stored before the pipeline (LLM-assessed recall) have the same top-level shape, but their scores were produced differently.
   - `flow`: flow-mode bookkeeping (`anchorCardId`, …)
   - `modality`: modality-specific extras
-- The Dashboard and Journey pages read from this table. The Journey day view groups rows by date in the viewer's time zone.
+- The Journey page reads from this table. The Journey day view groups rows by date in the viewer's time zone.
 
 ## Signal registry and settings
 

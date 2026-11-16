@@ -25,9 +25,9 @@ describe('TopNav', () => {
 
   it('lists the pages in order and marks Journey only on /', () => {
     renderNav('/')
-    const links = screen.getAllByRole('link').filter((link) => link.classList.contains('navbar-dashboard'))
-    expect(links.map((link) => link.textContent)).toEqual(['Practice', 'Journey', 'Dashboard', 'Tune', 'Evolve', 'Admin'])
-    expect(links.map((link) => link.getAttribute('href'))).toEqual(['/practice', '/', '/dashboard', '/tune', '/evolve', '/admin'])
+    const links = screen.getAllByRole('link').filter((link) => link.classList.contains('navbar-page-link'))
+    expect(links.map((link) => link.textContent)).toEqual(['Practice', 'Journey', 'Tune', 'Evolve', 'Admin'])
+    expect(links.map((link) => link.getAttribute('href'))).toEqual(['/practice', '/', '/tune', '/evolve', '/admin'])
     expect(screen.getByRole('link', { name: 'Journey' })).toHaveClass('active')
     expect(screen.getByRole('link', { name: 'Practice' })).not.toHaveClass('active')
   })

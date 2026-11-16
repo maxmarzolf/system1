@@ -235,10 +235,6 @@
     --related-drawer-gap: 1rem;
   }
 
-  .skill-map-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   .card-side-drawer-actions {
     top: auto;
     bottom: 5rem;
@@ -248,12 +244,6 @@
     top: 4.8rem;
     width: min(15.5rem, calc(100vw - 1rem));
     max-height: calc(100vh - 5.4rem);
-  }
-}
-
-@media (max-width: 840px) {
-  .skill-map-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

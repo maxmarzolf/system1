@@ -207,25 +207,11 @@ class Evaluation(BaseModel):
         """Entries that were graded (pass, partial or fail), skipping not-applicable ones."""
         return ((key, entry) for key, entry in self.entries() if entry.scored)
 
-    def compact(self) -> dict[str, Any]:
-        """The grading summary without narrative, provenance or Jev traces."""
-        return self.model_dump(
-            mode="json",
-            exclude_none=True,
-            include={"verdict", "signalSpec", "score", "primaryFailure", "dimensions", "modifiers", "recommendedAction"},
-        )
-
 
 def evaluation_feedback(raw: Any) -> dict[str, Any]:
     """The coaching feedback of a stored evaluation, or ``{}``."""
     evaluation = raw if isinstance(raw, Evaluation) else Evaluation.from_stored(raw)
     return evaluation.feedback if evaluation else {}
-
-
-def compact_evaluation(raw: Any) -> dict[str, Any]:
-    """:meth:`Evaluation.compact` for stored JSON; ``{}`` when there is no evaluation."""
-    evaluation = Evaluation.from_stored(raw)
-    return evaluation.compact() if evaluation else {}
 
 
 _NARRATIVE_EXCLUDED_KEYS = ("submissionRubric", "llmUsed", "llmProvider", "signals")

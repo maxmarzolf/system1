@@ -148,10 +148,6 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
             {"algorithm_id": 2, "algorithm_name": "Binary Search", "skill_name": "left / right bounds"},
             {"algorithm_id": 2, "algorithm_name": "Binary Search", "skill_name": "search on answer"},
         ],
-        generated_rows=[
-            {"id": "sw-1", "title": "Window", "tags": ["skill-map", "sliding-window"]},
-            {"id": "bs-1", "title": "Search", "tags": ["skill-map", "binary-search"]},
-        ],
         attempt_rows=[
             {
                 "tracked_card_id": "sw-1",
@@ -230,7 +226,6 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
     activity = overview["ghostRepActivity"]
     today_bucket = next(day for day in activity["days"] if day["date"] == today.date().isoformat())
     yesterday_bucket = next(day for day in activity["days"] if day["date"] == yesterday.date().isoformat())
-    pattern_freshness = {item["slug"]: item for item in activity["algorithms"]}
 
     assert activity["totalGhostReps"] == 2
     assert activity["totalMultipleChoice"] == 1
@@ -278,23 +273,21 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
             "skills": [{"skill": "left / right bounds", "slug": "left-right-bounds", "count": 1}],
         }
     ]
-    assert pattern_freshness["sliding-window"]["daysSinceLastGhostRep"] == 5
-    assert pattern_freshness["binary-search"]["daysSinceLastGhostRep"] == 1
-    assert pattern_freshness["binary-search"]["daysSinceLastPractice"] == 0
-    assert pattern_freshness["binary-search"]["totalWork"] == 4
+    # The grid's rows: catalog algorithms in order, then the static playlists.
+    assert overview["algorithms"][:2] == [
+        {"algorithm": "Sliding Window", "slug": "sliding-window"},
+        {"algorithm": "Binary Search", "slug": "binary-search"},
+    ]
+    assert {"algorithm": "Google", "slug": "google"} in overview["algorithms"]
+    assert "algorithms" not in activity
 
 
-def test_skill_map_overview_counts_static_catalog_cards() -> None:
+def test_skill_map_overview_files_playlist_work_under_its_playlist() -> None:
     now = datetime.now(timezone.utc)
 
     overview = build_skill_map_overview(
         algorithm_rows=[
             {"algorithm_id": 1, "algorithm_name": "Sliding Window", "skill_name": "valid window rule"},
-        ],
-        generated_rows=[
-            {"id": "playlist-google-1-two-sum", "title": "1. Two Sum", "tags": ["skill-map", "static-playlist", "google", "arrays-hash-maps"]},
-            {"id": "playlist-google-3-longest-substring-without-repeating-characters", "title": "3. Longest Substring Without Repeating Characters", "tags": ["skill-map", "static-playlist", "google", "sliding-window", "valid-window-rule"]},
-            {"id": "playlist-skeletons-bfs-skeleton", "title": "BFS Skeleton", "tags": ["skill-map", "static-playlist", "skeletons", "graphs", "bfs-skeleton"]},
         ],
         attempt_rows=[
             {
@@ -326,17 +319,7 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
         ],
     )
 
-    sliding = next(item for item in overview["algorithms"] if item["slug"] == "sliding-window")
-    google = next(item for item in overview["algorithms"] if item["slug"] == "google")
-    skeletons = next(item for item in overview["algorithms"] if item["slug"] == "skeletons")
-
     assert all(item["slug"] != "arrays-hash-maps" for item in overview["algorithms"])
-    assert sliding["totalCards"] == 0
-    assert sliding["untouchedCards"] == 0
-    assert google["totalCards"] == 2
-    assert google["overallAttemptCount"] == 1
-    assert skeletons["totalCards"] == 1
-    assert skeletons["overallAttemptCount"] == 1
 
     today_bucket = next(
         day for day in overview["ghostRepActivity"]["days"]
@@ -349,78 +332,6 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
         "google",
         "skeletons",
     ]
-    google_activity = next(
-        item for item in overview["ghostRepActivity"]["algorithms"]
-        if item["slug"] == "google"
-    )
-    skeleton_activity = next(
-        item for item in overview["ghostRepActivity"]["algorithms"]
-        if item["slug"] == "skeletons"
-    )
-    assert google_activity["totalPerfectRecalls"] == 1
-    assert google_activity["coreCardCount"] == 2
-    assert skeleton_activity["totalPerfectRecalls"] == 1
-    assert skeleton_activity["coreCardCount"] == 1
-
-
-def test_skill_map_overview_keeps_generated_cards_out_of_core_catalog_counts() -> None:
-    now = datetime.now(timezone.utc)
-    overview = build_skill_map_overview(
-        algorithm_rows=[
-            {
-                "algorithm_id": 1,
-                "algorithm_slug": "heap",
-                "algorithm_name": "Heap / Priority Queue",
-                "skill_name": "top-k maintenance",
-            },
-        ],
-        generated_rows=[
-            {
-                "id": "core-algorithm-kth-largest",
-                "title": "Kth Largest Heap Top",
-                "tags": ["skill-map", "core-algorithm", "heap"],
-                "algorithm_slug": "heap",
-                "source_type": "core-catalog",
-            },
-            {
-                "id": "skill-map-20260921000000000000-1",
-                "title": "Generated Heap Drill",
-                "tags": ["skill-map", "heap-priority-queue"],
-                "algorithm_slug": "heap",
-                "source_type": "generated-llm",
-            },
-            {
-                "id": "playlist-google-973-k-closest-points",
-                "title": "973. K Closest Points",
-                "tags": ["skill-map", "static-playlist", "google", "heap"],
-                "algorithm_slug": "heap",
-                "source_type": "static-playlist",
-            },
-        ],
-        attempt_rows=[
-            {
-                "tracked_card_id": "skill-map-20260921000000000000-1",
-                "card_title": "Generated Heap Drill",
-                "category_tags": ["skill-map", "heap-priority-queue"],
-                "question_type": "skill-map",
-                "successful": True,
-                "created_at": now,
-                "template_mode": "algorithm",
-                "support_layer": "none",
-                "modality": "total-recall",
-                "live_coach_used": False,
-                "signals": {},
-            },
-        ],
-    )
-
-    heap = next(item for item in overview["algorithms"] if item["slug"] == "heap")
-    google = next(item for item in overview["algorithms"] if item["slug"] == "google")
-
-    assert heap["totalCards"] == 1
-    assert heap["overallAttemptCount"] == 1
-    assert heap["practicedCards"] == 0
-    assert google["totalCards"] == 1
 
 
 def _activity_row(created_at: datetime) -> dict[str, object]:

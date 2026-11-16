@@ -2093,95 +2093,6 @@ export interface components {
             /** Timecomplexity */
             timeComplexity: string;
         };
-        /** SkillMapActivityDay */
-        SkillMapActivityDay: {
-            /**
-             * Count
-             * @default 0
-             */
-            count?: number;
-            /**
-             * Date
-             * @default
-             */
-            date?: string;
-            /**
-             * Infuture
-             * @default false
-             */
-            inFuture?: boolean;
-        };
-        /** SkillMapAlgorithmReadiness */
-        SkillMapAlgorithmReadiness: {
-            /** Algorithm */
-            algorithm: string;
-            /**
-             * Dimensionsummary
-             * @default {}
-             */
-            dimensionSummary?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Ghostrepcount
-             * @default 0
-             */
-            ghostRepCount?: number;
-            /**
-             * Modes
-             * @default {}
-             */
-            modes?: {
-                [key: string]: components["schemas"]["SkillMapModeReadiness"];
-            };
-            /**
-             * Overallattemptcount
-             * @default 0
-             */
-            overallAttemptCount?: number;
-            /**
-             * Overallreadiness
-             * @default 0
-             */
-            overallReadiness?: number;
-            /**
-             * Practicedcards
-             * @default 0
-             */
-            practicedCards?: number;
-            /**
-             * Skills
-             * @default []
-             */
-            skills?: string[];
-            /** Slug */
-            slug: string;
-            /**
-             * Stalecards
-             * @default 0
-             */
-            staleCards?: number;
-            /**
-             * Totalcards
-             * @default 0
-             */
-            totalCards?: number;
-            /**
-             * Unsupportedattemptcount
-             * @default 0
-             */
-            unsupportedAttemptCount?: number;
-            /**
-             * Untouchedcards
-             * @default 0
-             */
-            untouchedCards?: number;
-            /**
-             * Workcount
-             * @default 0
-             */
-            workCount?: number;
-        };
         /** SkillMapDrillCard */
         SkillMapDrillCard: {
             /**
@@ -2278,11 +2189,6 @@ export interface components {
              */
             activeDays?: number;
             /**
-             * Algorithms
-             * @default []
-             */
-            algorithms?: components["schemas"]["SkillMapGhostRepAlgorithm"][];
-            /**
              * Days
              * @default []
              */
@@ -2356,48 +2262,6 @@ export interface components {
              */
             totalRecallCount?: number;
         };
-        /** SkillMapGhostRepAlgorithm */
-        SkillMapGhostRepAlgorithm: {
-            /**
-             * Algorithm
-             * @default
-             */
-            algorithm?: string;
-            /**
-             * Corecardcount
-             * @default 0
-             */
-            coreCardCount?: number;
-            /** Dayssincelastghostrep */
-            daysSinceLastGhostRep?: number | null;
-            /** Dayssincelastpractice */
-            daysSinceLastPractice?: number | null;
-            /**
-             * Slug
-             * @default
-             */
-            slug?: string;
-            /**
-             * Totalghostreps
-             * @default 0
-             */
-            totalGhostReps?: number;
-            /**
-             * Totalmultiplechoice
-             * @default 0
-             */
-            totalMultipleChoice?: number;
-            /**
-             * Totalperfectrecalls
-             * @default 0
-             */
-            totalPerfectRecalls?: number;
-            /**
-             * Totalwork
-             * @default 0
-             */
-            totalWork?: number;
-        };
         /** SkillMapGhostRepSegment */
         SkillMapGhostRepSegment: {
             /**
@@ -2444,149 +2308,18 @@ export interface components {
              */
             slug?: string;
         };
-        /** SkillMapModeActivity */
-        SkillMapModeActivity: {
+        /** SkillMapGridAlgorithm */
+        SkillMapGridAlgorithm: {
             /**
-             * Activedays
-             * @default 0
-             */
-            activeDays?: number;
-            /**
-             * Currentstreak
-             * @default 0
-             */
-            currentStreak?: number;
-            /**
-             * Days
-             * @default []
-             */
-            days?: components["schemas"]["SkillMapActivityDay"][];
-            /**
-             * Lastsevendaysubmitcount
-             * @default 0
-             */
-            lastSevenDaySubmitCount?: number;
-            /**
-             * Longeststreak
-             * @default 0
-             */
-            longestStreak?: number;
-            /**
-             * Peakdailycount
-             * @default 0
-             */
-            peakDailyCount?: number;
-            /**
-             * Recentsubmitcount
-             * @default 0
-             */
-            recentSubmitCount?: number;
-            /**
-             * Windowend
+             * Algorithm
              * @default
              */
-            windowEnd?: string;
+            algorithm?: string;
             /**
-             * Windowstart
+             * Slug
              * @default
              */
-            windowStart?: string;
-        };
-        /** SkillMapModeReadiness */
-        SkillMapModeReadiness: {
-            /**
-             * @default {
-             *       "activeDays": 0,
-             *       "currentStreak": 0,
-             *       "days": [],
-             *       "lastSevenDaySubmitCount": 0,
-             *       "longestStreak": 0,
-             *       "peakDailyCount": 0,
-             *       "recentSubmitCount": 0,
-             *       "windowEnd": "",
-             *       "windowStart": ""
-             *     }
-             */
-            activity?: components["schemas"]["SkillMapModeActivity"];
-            /**
-             * Attemptcount
-             * @default 0
-             */
-            attemptCount?: number;
-            /** Dayssincelastsubmit */
-            daysSinceLastSubmit?: number | null;
-            /**
-             * Dimensionsummary
-             * @default {}
-             */
-            dimensionSummary?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Ghostrepcount
-             * @default 0
-             */
-            ghostRepCount?: number;
-            /**
-             * Lastsubmittedat
-             * @default
-             */
-            lastSubmittedAt?: string;
-            /**
-             * Livecoachusedcount
-             * @default 0
-             */
-            liveCoachUsedCount?: number;
-            /**
-             * Practicedcards
-             * @default 0
-             */
-            practicedCards?: number;
-            /**
-             * Readiness
-             * @default 0
-             */
-            readiness?: number;
-            /**
-             * Stale
-             * @default false
-             */
-            stale?: boolean;
-            /**
-             * Stalecards
-             * @default 0
-             */
-            staleCards?: number;
-            /**
-             * Successrate
-             * @default 0
-             */
-            successRate?: number;
-            /**
-             * Successfulattempts
-             * @default 0
-             */
-            successfulAttempts?: number;
-            /**
-             * Totalcards
-             * @default 0
-             */
-            totalCards?: number;
-            /**
-             * Unsupportedattemptcount
-             * @default 0
-             */
-            unsupportedAttemptCount?: number;
-            /**
-             * Untouchedcards
-             * @default 0
-             */
-            untouchedCards?: number;
-            /**
-             * Workcount
-             * @default 0
-             */
-            workCount?: number;
+            slug?: string;
         };
         /** SkillMapNode */
         SkillMapNode: {
@@ -2619,11 +2352,10 @@ export interface components {
              * Algorithms
              * @default []
              */
-            algorithms?: components["schemas"]["SkillMapAlgorithmReadiness"][];
+            algorithms?: components["schemas"]["SkillMapGridAlgorithm"][];
             /**
              * @default {
              *       "activeDays": 0,
-             *       "algorithms": [],
              *       "days": [],
              *       "peakDailyCount": 0,
              *       "totalGhostReps": 0,

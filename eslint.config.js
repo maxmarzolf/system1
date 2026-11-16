@@ -84,15 +84,6 @@ export default defineConfig([
     },
   },
   {
-    files: ['src/features/dashboard/**/*.{ts,tsx}'],
-    rules: {
-      'no-restricted-imports': ['error', { patterns: [
-        { group: ['@/features/*', '!@/features/dashboard', '!@/features/dashboard/**'], message: 'A feature must not import another feature; move shared code to src/shared/.' },
-        { group: ['../../*'], message: 'Import from outside this feature with @/.' },
-      ] }],
-    },
-  },
-  {
     files: ['src/features/journey/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', { patterns: [

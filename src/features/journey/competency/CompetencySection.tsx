@@ -13,7 +13,7 @@ export default function CompetencySection({ onSelect }: { onSelect: (date: strin
   return (
     <section className="daily-work-history competency-section" aria-label="Competency by algorithm" aria-busy={!terrain && !query.error}>
       <div className="daily-work-history-header">
-        <p className="dashboard-activity-eyebrow">Competency</p>
+        <p className="section-eyebrow">Competency</p>
         {terrain ? (
           <p className="competency-section-note">
             Average signal score per algorithm; days without practice fade {decay}. Learn: never strong. Review: was strong, has faded. Select an algorithm for its history and signals.
@@ -21,8 +21,8 @@ export default function CompetencySection({ onSelect }: { onSelect: (date: strin
         ) : null}
       </div>
       {query.error ? <p className="coach-error" role="alert">{errorMessage(query.error, 'Competency unavailable')}</p> : null}
-      {!terrain && !query.error ? <p className="dashboard-mode-meta">Loading competency…</p> : null}
-      {terrain && !ranked.length ? <p className="dashboard-mode-meta">No graded answers yet.</p> : null}
+      {!terrain && !query.error ? <p className="section-meta">Loading competency…</p> : null}
+      {terrain && !ranked.length ? <p className="section-meta">No graded answers yet.</p> : null}
       {terrain && (ranked.length || terrain.unpractised.length) ? <CompetencyStanding terrain={terrain} ranked={ranked} onSelect={onSelect} /> : null}
     </section>
   )

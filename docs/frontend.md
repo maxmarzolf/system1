@@ -4,13 +4,12 @@ A React 19 + TypeScript app built with Vite (`src/`). It talks to the backend on
 
 ## Pages
 
-Routes are defined in `src/app/routes.tsx`; every page shares `TopNav` (the active page gets an underline). The navbar order lives in `src/app/navPages.ts`: Practice, Journey, Dashboard, Tune, Evolve, Admin. Cmd/Ctrl + A or D moves left or right through that order and wraps at either end (`usePageHotkeys`). Cmd/Ctrl + Enter opens Practice in Total Recall from any other page, with the editor focused once the deck loads. `PageSweep` draws a faint sweep across the window in the direction of travel.
+Routes are defined in `src/app/routes.tsx`; every page shares `TopNav` (the active page gets an underline). The navbar order lives in `src/app/navPages.ts`: Practice, Journey, Tune, Evolve, Admin. Cmd/Ctrl + A or D moves left or right through that order and wraps at either end (`usePageHotkeys`). Cmd/Ctrl + Enter opens Practice in Total Recall from any other page, with the editor focused once the deck loads. `PageSweep` draws a faint sweep across the window in the direction of travel.
 
 | Route | Component | What it does |
 |---|---|---|
 | `/` | `features/journey/JourneyPage.tsx` | Journey, the home page: the competency terrain (algorithms across, days deep, height = competency as computed by the backend, fading on days without practice); the **Competency** section: an **Overall** row on the card (the average of every practised algorithm's competency, a week-trend label — Improving, Maintaining or Regressing — and its whole history as a graph), then a list ranked weakest first (today's value, Learn / Review / Strong, last practised score and how long ago, answers, a 30-day trend line, Practise; a `!` when an algorithm has been decaying longer than the free-fall setting, and a `-` row labelled Not started for algorithms never practised). Labels show quick hover tips (`.competency-tip`, CSS rather than the slow native `title`). Clicking a row expands it (no visual indicator, by design) into its whole competency history as a graph, the same days as a heat strip whose practised days open that day's answers below, and its three strongest and three weakest signals; the daily work grid; and the day detail. Each submission in the day detail shows its signals and **Model calls** (`ModelCallDetails`): the LLM calls that generated or graded it and its Jev calls, with full requests and responses. Enter opens `/practice` |
 | `/practice` | `features/practice/PracticePage.tsx` | The practice screen: MCQ, Recall and Ghost question types, Inline notes, AI completion, and flows. The card is flat (no frame, header or Previous/Next buttons; its title shows as "TOPIC: …" under the Question or Prompt label) and has no toolbar: Cmd/Ctrl + double arrows selects Total Recall (↑), Microdrill (←), Ghost (→), or MCQ (↓), and the navbar shows the current type (or the flow's stage) |
-| `/dashboard` | `features/dashboard/DashboardPage.tsx` | A readiness card per algorithm and playlist; each starts focused practice in Total Recall |
 | `/tune` | `features/tune/TunePage.tsx` | Personal preferences (code editor, AI completion, hotkeys), stored in the browser and saved as you change them. Links to Admin → Settings for everything server-side |
 | `/admin` | `features/admin/AdminPage.tsx` | Grading and generation configuration: a rail of modalities (MCQ, Total Recall, Ghost, Microdrill, Ladder), each with its correctness question, signals by scope, history and Try; plus **Settings** (grading, generation, practice). See [grading.md](grading.md) |
 | `/evolve` | `features/evolve/EvolvePage.tsx` | AlphaEvolve-style prompt runs for MCQ generation |
@@ -22,7 +21,7 @@ The practice screen reads its starting deck from the URL:
 | Parameter | Effect |
 |---|---|
 | none | 10 random core algorithms (`/api/coach/problem-drills?count=10`) |
-| `focusPattern=<slug>` | That algorithm's core cards (from Dashboard) |
+| `focusPattern=<slug>` | That algorithm's core cards (from Journey's Practise buttons) |
 | `focusTag=<tag>` | Cards with that tag |
 | `playlist=<slug>` | A playlist: static decks load from the catalog; other playlists stream generated cards, with a single non-streaming request as the fallback |
 | `panel=flow` | Opens the Flow configuration (the only way in now the card has no toolbar) |
@@ -45,7 +44,6 @@ src/
     data/         bundled catalogs, used when the API has none
   features/
     practice/     /practice    the practice screen
-    dashboard/    /dashboard   readiness cards
     journey/      /            the competency terrain, daily work grid and day detail
     admin/        /admin       signals and settings for every modality
     tune/         /tune        personal preferences

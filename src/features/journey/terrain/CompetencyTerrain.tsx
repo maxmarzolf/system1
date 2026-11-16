@@ -517,10 +517,10 @@ export default function CompetencyTerrain() {
   return (
     <section ref={sectionRef} className="signal-hologram" aria-label="Competency terrain">
       {error ? <p className="coach-error" role="alert">{error}</p> : null}
-      {!terrain && !error ? <p className="dashboard-mode-meta signal-hologram-loading">Mapping competency…</p> : null}
-      {terrain && !cellCount ? <p className="dashboard-mode-meta">No graded answers yet. Answer a few questions to shape the terrain.</p> : null}
+      {!terrain && !error ? <p className="section-meta signal-hologram-loading">Mapping competency…</p> : null}
+      {terrain && !cellCount ? <p className="section-meta">No graded answers yet. Answer a few questions to shape the terrain.</p> : null}
       {cellCount && !webgl ? (
-        <p className="dashboard-mode-meta">The 3D view needs WebGL, which this browser has turned off.</p>
+        <p className="section-meta">The 3D view needs WebGL, which this browser has turned off.</p>
       ) : null}
       {cellCount && webgl ? (
         <div

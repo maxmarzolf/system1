@@ -68,7 +68,7 @@ Top-level modules:
 |---|---|
 | Contracts | `contracts/evaluation.py` (`Evaluation`, builders, `from_stored`/`to_stored`), `contracts/submission.py` (`SubmissionRecord`, `EvaluationOutcome`), `contracts/errors.py`, `contracts/coaching.py`, `contracts/coerce.py`, `contracts/catalog_ids.py` |
 | Submissions | `services/submission_service.py` (runs the pipeline, captures LLM traces), `services/submission_store.py` (validates the `Evaluation` and writes the row) |
-| Read models | `services/read_models/overview.py` (readiness, daily activity, skill map), `services/read_models/history.py` (day detail, signal history), `services/read_models/common.py`, `domain/readiness.py`, `domain/rubric_summary.py` |
+| Read models | `services/read_models/overview.py` (the daily work grid, skill map), `services/read_models/history.py` (day detail, signal history), `services/read_models/common.py`, `domain/readiness.py`, `domain/rubric_summary.py` |
 | Grading (every modality) | `services/evaluation/` (`pipeline`, `context`, `contexts/{mcq,code}`, `jev`, `verdict`, `feedback`), `core/jev/client.py`, `services/jev_gateway.py`, `core/signals/` (`base`, `definitions`, `deterministic`, `spec`, `seed`, `defaults`, one module per modality), `core/code_checks.py`, `core/feedback_writer.py`, `services/signal_registry_service.py`, `domain/feedback_builder.py`. See [grading.md](grading.md) |
 | `/admin` | `services/signal_admin_service.py`, `services/app_settings_service.py`, `domain/signal_definition_rules.py`, `repositories/signal_definition_repository.py`, `repositories/app_setting_repository.py`, `endpoints/admin.py` |
 | Stored exercises | `repositories/exercise_repository.py` (`generated_exercise`: microdrills and Ladder rungs, written when generated) |
@@ -112,11 +112,11 @@ Every `core/llm` call logs its provider, model, latency and tokens at INFO. Insi
 
 "Try it" grades one stored item of the modality with the unsaved draft (one Jev call) and saves nothing. Settings are saved per section (`grading`, `generation`, `practice`) in `app_setting`, versioned the same way (409 if stale). There is no admin token for now.
 
-### Reads for Dashboard and Journey
+### Reads for Journey
 
-- `GET /api/skill-map-overview?historyDays=&tz=` → `read_models/overview.get_skill_map_overview`: readiness per algorithm and the daily activity grid.
+- `GET /api/skill-map-overview?historyDays=&tz=` → `read_models/overview.get_skill_map_overview`: the daily work grid's algorithms (catalog order, then static playlists) and its work per algorithm per day.
 - `GET /api/history/day?date=&tz=` → `read_models/history.get_history_day`: every submission on one local day, with its stored evaluation.
-- `GET /api/history/competency?tz=` → `read_models/history.get_competency_terrain`: competency per algorithm per day, computed by one aggregate query (`attempts_repository.fetch_competency_terrain`; see [data-flow.md](data-flow.md#3-review-dashboard-and-journey)).
+- `GET /api/history/competency?tz=` → `read_models/history.get_competency_terrain`: competency per algorithm per day, computed by one aggregate query (`attempts_repository.fetch_competency_terrain`; see [data-flow.md](data-flow.md#3-review-journey)).
 
 Days are computed in the viewer's time zone (`resolve_timezone`, falling back to UTC).
 

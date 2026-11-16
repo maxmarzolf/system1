@@ -2,7 +2,6 @@
 export const NAV_PAGES = [
   { label: 'Practice', path: '/practice' },
   { label: 'Journey', path: '/' },
-  { label: 'Dashboard', path: '/dashboard' },
   { label: 'Tune', path: '/tune' },
   { label: 'Evolve', path: '/evolve' },
   { label: 'Admin', path: '/admin' },
