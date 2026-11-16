@@ -71,11 +71,13 @@ async def get_history_submissions(
     submissions: list[dict[str, Any]] = []
     for row in rows:
         tags = [str(tag) for tag in (row["category_tags"] or [])]
-        slugs = taxonomy.matched_algorithm_slugs(tags, set(algorithm_names))
-        if not slugs:
+        # Each answer counts toward one algorithm, its first tagged one (as in the grid and Competency).
+        primary = taxonomy.primary_algorithm_slug(tags, set(algorithm_names))
+        if primary is None:
             continue  # The grid does not count it either.
-        if selected and not set(slugs) & set(selected):
+        if selected and primary not in selected:
             continue
+        slugs = [primary]
         signals = coerce_json_object(row["signals"])
         created_at = coerce_utc_datetime(row["created_at"])
         submissions.append({

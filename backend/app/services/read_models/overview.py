@@ -30,11 +30,11 @@ def _build_ghost_rep_activity(
     attempt_rows: list[SkillMapOverviewAttemptRow],
     slug_to_pattern: dict[str, str],
     methods_by_pattern_slug: dict[str, list[str]],
-    primary_activity_slugs: set[str] | None = None,
     window_days: int | None = 42,
     tz: tzinfo = timezone.utc,
 ) -> SkillMapGhostRepActivity:
-    """Daily work per algorithm for the last ``window_days`` calendar days in ``tz``, or since the first attempt when None."""
+    """Daily work per algorithm for the last ``window_days`` calendar days in ``tz``, or since the first
+    attempt when None. Each answer counts once, toward its first tagged algorithm (as in Competency)."""
     today = datetime.now(tz).date()
     if window_days is None:
         attempt_dates = [
@@ -68,15 +68,8 @@ def _build_ghost_rep_activity(
         is_microdrill = modality == "microdrill"
         if not is_ghost_rep and not is_mcq and not is_total_recall and not is_microdrill:
             continue
-        matched_algorithm_slugs = taxonomy.matched_algorithm_slugs(category_tags, known_algorithm_slugs)
-        primary_matches = [
-            slug
-            for slug in matched_algorithm_slugs
-            if slug in (primary_activity_slugs or set())
-        ]
-        if "static-playlist" in category_tags and primary_matches:
-            matched_algorithm_slugs = primary_matches
-        if not matched_algorithm_slugs:
+        primary = taxonomy.primary_algorithm_slug(category_tags, known_algorithm_slugs)
+        if primary is None:
             continue
         work_type = (
             "multiple-choice"
@@ -89,19 +82,18 @@ def _build_ghost_rep_activity(
         )
         attempt_date = created_at.astimezone(tz).date()
         iso_date = attempt_date.isoformat()
-        for slug in matched_algorithm_slugs:
-            known_skills = skills_by_algorithm_slug.get(slug, [])
-            matched_skill_slugs = [
-                taxonomy.algorithm_slug(skill)
-                for skill in known_skills
-                if taxonomy.algorithm_slug(skill) in category_tags
-            ]
-            skill_slug = matched_skill_slugs[0] if matched_skill_slugs else "unclassified"
-            if attempt_date >= window_start:
-                counts_by_day_type_algorithm.setdefault(iso_date, Counter())[(work_type, slug)] += 1
-                skill_counts_by_day_type_algorithm.setdefault((iso_date, work_type, slug), Counter())[skill_slug] += 1
-                if is_total_recall and bool(row.get("successful")):
-                    perfect_recall_counts_in_window[iso_date] += 1
+        if attempt_date < window_start:
+            continue
+        matched_skill_slugs = [
+            taxonomy.algorithm_slug(skill)
+            for skill in skills_by_algorithm_slug.get(primary, [])
+            if taxonomy.algorithm_slug(skill) in category_tags
+        ]
+        skill_slug = matched_skill_slugs[0] if matched_skill_slugs else "unclassified"
+        counts_by_day_type_algorithm.setdefault(iso_date, Counter())[(work_type, primary)] += 1
+        skill_counts_by_day_type_algorithm.setdefault((iso_date, work_type, primary), Counter())[skill_slug] += 1
+        if is_total_recall and bool(row.get("successful")):
+            perfect_recall_counts_in_window[iso_date] += 1
 
     days: list[SkillMapGhostRepActivityDay] = []
     active_days = 0
@@ -194,7 +186,6 @@ def build_skill_map_overview(
             attempt_rows,
             names,
             skills,
-            {str(item["slug"]) for item in static_playlists},
             window_days=history_days,
             tz=history_tz,
         ),

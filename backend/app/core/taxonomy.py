@@ -77,6 +77,16 @@ def matched_algorithm_slugs(tags: list[str], known_slugs: set[str]) -> list[str]
     return list(dict.fromkeys(slug for tag in tags if (slug := algorithm_slug(tag)) in known_slugs))
 
 
+def primary_algorithm_slug(tags: list[str], known_slugs: set[str]) -> str | None:
+    """The one algorithm an answer counts toward: its first tag that names a known algorithm.
+
+    Every Journey view attributes answers this way; the competency SQL
+    (``attempts_repository._COMPETENCY_ENTRIES_CTES``) applies the same rule in the database.
+    """
+    matched = matched_algorithm_slugs(tags, known_slugs)
+    return matched[0] if matched else None
+
+
 def primary_pattern_tag(tags: list[str]) -> str:
     """The highest-priority pattern tag present, or ``""``."""
     return next((tag for tag in PATTERN_TAG_PRIORITY if tag in tags), "")

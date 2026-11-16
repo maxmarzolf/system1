@@ -344,6 +344,17 @@ def _activity_row(created_at: datetime) -> dict[str, object]:
     }
 
 
+def test_an_answer_tagged_with_several_algorithms_counts_once_toward_the_first() -> None:
+    today = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+    row = {**_activity_row(today), "category_tags": ["skill-map", "linked-lists", "two-pointers"], "modality": "ghost-rep"}
+    activity = overview._build_ghost_rep_activity(
+        [row], {"linked-lists": "Linked Lists", "two-pointers": "Two Pointers"}, {}, window_days=1,
+    )
+    (day,) = activity["days"]
+    assert day["total"] == 1
+    assert [segment["slug"] for segment in day["segments"]] == ["linked-lists"]
+
+
 def test_daily_activity_groups_by_the_viewers_calendar_day() -> None:
     now = datetime.now(timezone.utc)
     # 01:00 UTC today is the previous evening in New York (UTC-4 or UTC-5).

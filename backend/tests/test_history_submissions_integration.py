@@ -52,19 +52,20 @@ async def _insert_submission(problem_id: str) -> int:
 
 
 async def _insert_recent(problem_id: str) -> tuple[int, int]:
-    """Two answers from an hour ago, one sliding window and one heap, under the same marker."""
+    """Two answers from an hour ago under the same marker: one sliding window, and one tagged heap
+    first and sliding window second (it counts toward heap only)."""
     conn = await asyncpg.connect(settings.database_url)
     try:
         ids = []
-        for tag in ("sliding-window", "heap"):
+        for tags in (["skill-map", "sliding-window"], ["skill-map", "heap", "sliding-window"]):
             ids.append(await conn.fetchval(
                 """
                 INSERT INTO submission (multiple_choice_problem_id, answer, question_type, category_tags, successful,
                                         signals, modality, created_at)
-                VALUES ($1, 'x', 'skill-map', ARRAY['skill-map', $2], FALSE, '{"elapsed_ms": 1}'::jsonb, 'total-recall', $3)
+                VALUES ($1, 'x', 'skill-map', $2, FALSE, '{"elapsed_ms": 1}'::jsonb, 'total-recall', $3)
                 RETURNING id
                 """,
-                problem_id, tag, datetime.now(timezone.utc) - timedelta(hours=1),
+                problem_id, tags, datetime.now(timezone.utc) - timedelta(hours=1),
             ))
         return ids[0], ids[1]
     finally:
@@ -132,6 +133,8 @@ def test_history_submissions_by_day_algorithm_or_both() -> None:
     assert window_id in ids(windows) and heap_id not in ids(windows)
     assert windows.json()["date"] is None and windows.json()["algorithms"] == ["sliding-window"]
     assert {window_id, heap_id} <= set(ids(either))
+    heap_answer = next(item for item in either.json()["submissions"] if item["id"] == heap_id)
+    assert heap_answer["algorithms"] == [{"slug": "heap", "algorithm": "Heap / Priority Queue"}]
     dates = [item["createdAt"] for item in either.json()["submissions"]]
     assert dates == sorted(dates, reverse=True)
 

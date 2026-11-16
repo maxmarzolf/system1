@@ -147,7 +147,7 @@ flowchart LR
 
 - The browser sends its IANA time zone (`tz`), so "today" and day boundaries match what you see.
 - The terrain plots competency per algorithm (x) per day (y); height is competency, so peaks are strong. One aggregate query (`attempts_repository.fetch_competency_terrain`) computes all of it from the stored evaluations, not by asking Jev again:
-  - each counted submission belongs to the algorithm named by its first matching tag (the daily grid's rule; the tag → algorithm table, aliases included, is passed in as a parameter);
+  - each counted submission belongs to one algorithm, the one named by its first matching tag (`taxonomy.primary_algorithm_slug`; the daily grid and the submission list use the same rule, so every Journey view counts an answer in the same place; the tag → algorithm table, aliases included, is passed in as a parameter);
   - a day's competency is the average of every scored rubric entry (dimensions and modifiers, including correctness and speed) from that algorithm's answers, in the viewer's time zone;
   - each day after that without practice carries the last practised day's value, decayed by the *competency decay* setting (default 2%, compounded): `last × (1 − decay)^days since`;
   - each row also carries the last practised day's average, the days since, and a **standing**: `strong` (competency ≥ 70), `learn` (the last practised average was already below 70: never got good) or `review` (it was above 70 and has decayed);
