@@ -73,7 +73,6 @@ function StandingRow({ terrain, algorithm, onSelect }: {
       <div className="competency-row-bar" role="meter" aria-label={`${algorithm.name} competency`}
         aria-valuemin={0} aria-valuemax={100} aria-valuenow={algorithm.competency}>
         <span style={{ width: `${Math.min(Math.max(algorithm.competency, 0), 100)}%`, background: competencyFill(algorithm.competency) }} />
-        <em>{Math.round(algorithm.competency)}</em>
       </div>
       <p className="competency-row-meta">
         <span className="competency-row-last">last {Math.round(algorithm.lastAverage)} on {formatCalendarDate(algorithm.lastPractised)}</span>
@@ -126,7 +125,6 @@ function OverallRow({ terrain }: { terrain: CompetencyTerrainData }) {
       </div>
       <div className="competency-row-bar" role="meter" aria-label="Overall competency" aria-valuemin={0} aria-valuemax={100} aria-valuenow={competency}>
         <span style={{ width: `${Math.min(Math.max(competency, 0), 100)}%`, background: competencyFill(competency) }} />
-        <em>{Math.round(competency)}</em>
       </div>
       <svg className="competency-overall-graph" viewBox={`0 0 ${OVERALL_WIDTH} ${OVERALL_HEIGHT}`} preserveAspectRatio="none" role="img"
         aria-label={`Overall competency from ${formatCalendarDate(days[0].date)} to ${formatCalendarDate(days[days.length - 1].date)}`}>

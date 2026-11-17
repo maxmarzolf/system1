@@ -50,6 +50,7 @@ describe('CompetencySection', () => {
     expect(rows.map((row) => row.querySelector('strong')?.textContent)).toEqual(['!Heap', 'Sliding Window with a very long name', 'Trees'])
     expect(within(rows[0]).getByText('Review')).toHaveAttribute('data-tip', expect.stringContaining('has faded'))
     expect(within(rows[0]).getByRole('meter', { name: 'Heap competency' })).toHaveAttribute('aria-valuenow', '76.8')
+    expect(within(rows[0]).getByRole('meter', { name: 'Heap competency' }).textContent).toBe('')
     expect(rows[0]).toHaveTextContent(/last 80 on Mar 1 · 2 days ago · 2 answers/)
     expect(within(rows[0]).getByRole('img', { name: 'Heap: the last 3 days of competency' }).querySelectorAll('circle')).toHaveLength(1)
     expect(within(rows[1]).getByText('Strong')).toBeInTheDocument()
@@ -64,7 +65,7 @@ describe('CompetencySection', () => {
     renderSection()
     const overall = await screen.findByRole('meter', { name: 'Overall competency' })
     expect(overall).toHaveAttribute('aria-valuenow', '83.4')
-    expect(overall).toHaveTextContent('83')
+    expect(overall.textContent).toBe('') // the bar alone: no number beside it
     const row = overall.closest('.competency-overall') as HTMLElement
     expect(row).toHaveTextContent('Overall')
     expect(row.closest('ol')).toBeNull()

@@ -460,21 +460,6 @@ span.history-day-title {
   border-radius: inherit;
 }
 
-.competency-row-bar em {
-  position: absolute;
-  top: 50%;
-  right: 0;
-  transform: translate(calc(100% + 0.4rem), -50%);
-  color: var(--hc-fg);
-  font-size: 0.72rem;
-  font-style: normal;
-  font-weight: 700;
-}
-
-.competency-row-bar {
-  margin-right: 2rem;
-}
-
 .competency-row-meta {
   grid-area: meta;
   margin: 0;
@@ -505,18 +490,30 @@ button.competency-practise {
 }
 
 /*
- * Small screens. A row: the name upper-left, the last practised score above the 30-day graph on
- * the right, the standing chip lower-left and Practise lower-right. The decayed competency bar and
- * the recency are left out. Expanded: no preview graph, the detail full width, Practise last.
+ * Small screens. A collapsed row: the name and standing chip on the left, the 30-day graph on the
+ * right (no bar, last score or Practise). Expanded: the last practised score upper-right, no
+ * preview graph, the detail full width, Practise lower-right.
  */
 @media (max-width: 900px) {
   .competency-row {
     grid-template-columns: minmax(0, 1fr) minmax(7rem, 45%);
     grid-template-areas:
-      "head meta"
+      "head spark"
+      "chip spark";
+    align-items: center;
+  }
+
+  /* Collapsed: just the name, the standing chip and the 30-day graph. */
+  .competency-row:not(.competency-row-expanded):not(.competency-overall) .competency-row-meta,
+  .competency-row:not(.competency-row-expanded):not(.competency-row-unpractised):not(.competency-overall) .competency-practise {
+    display: none;
+  }
+
+  /* Never practised: no graph to show, so the dash and Practise take the right side. */
+  .competency-row-unpractised {
+    grid-template-areas:
       "head spark"
       "chip practise";
-    align-items: center;
   }
 
   .competency-row-head {
@@ -802,16 +799,19 @@ button.competency-practise {
   transform: translate(-50%, 0);
 }
 
-/* Small screens: Overall and its trend chip on the left (30%), the bar and graph stacked right. */
+/* Small screens: "Overall" upper-left and its trend chip upper-right, then the graph and the bar
+   across the full width. */
 @media (max-width: 900px) {
   .competency-row.competency-overall {
-    grid-template-columns: minmax(0, 3fr) minmax(0, 7fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
-      "head bar"
-      "chip graph";
+      "head chip"
+      "graph graph"
+      "bar bar";
+    row-gap: 0.5rem;
   }
 
   .competency-row.competency-overall .competency-chip {
-    align-self: start;
+    justify-self: end;
   }
 }
