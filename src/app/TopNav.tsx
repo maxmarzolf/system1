@@ -1,6 +1,7 @@
 import { Link, NavLink } from 'react-router-dom'
-import type { ReactNode } from 'react'
+import { useState, type FocusEvent, type ReactNode } from 'react'
 import { NAV_PAGES } from './navPages'
+import { useNavReveal } from './navRevealContext'
 import { useTheme } from './theme'
 
 type TopNavProps = {
@@ -22,6 +23,10 @@ export default function TopNav({
   solid = false,
 }: TopNavProps) {
   const { theme, setTheme } = useTheme()
+  const routeRevealed = useNavReveal()
+  const [hovered, setHovered] = useState(false)
+  const [focused, setFocused] = useState(false)
+  const pagesVisible = routeRevealed || hovered || focused
   const lightModeEnabled = theme === 'light-high-contrast'
   const themeLabel = theme === 'light-high-contrast' ? 'Light High Contrast' : 'Dark High Contrast'
   const toggleTheme = () => setTheme(lightModeEnabled ? 'dark-high-contrast' : 'light-high-contrast')
@@ -39,17 +44,36 @@ export default function TopNav({
           </>
         ) : null}
       </div>
-      <div className="navbar-right">
-        {NAV_PAGES.map((page) => (
-          <NavLink
-            key={page.path}
-            to={page.path === '/' ? practiceHistoryHref : page.path}
-            end={page.path === '/'}
-            className="navbar-page-link"
-          >
-            {page.label}
-          </NavLink>
-        ))}
+      <div
+        className={['navbar-right', pagesVisible ? 'navbar-right-open' : '', routeRevealed ? 'navbar-right-route-reveal' : ''].filter(Boolean).join(' ')}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onFocusCapture={() => setFocused(true)}
+        onBlurCapture={(event: FocusEvent<HTMLDivElement>) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false)
+        }}
+      >
+        <div id="navbar-pages" className="navbar-pages" aria-label="Pages">
+          {NAV_PAGES.map((page) => (
+            <NavLink
+              key={page.path}
+              to={page.path === '/' ? practiceHistoryHref : page.path}
+              end={page.path === '/'}
+              className="navbar-page-link"
+            >
+              {page.label}
+            </NavLink>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="navbar-pages-trigger"
+          aria-controls="navbar-pages"
+          aria-expanded={pagesVisible}
+          onClick={() => setFocused(true)}
+        >
+          Pages <span aria-hidden="true">⌄</span>
+        </button>
         <div className="navbar-theme">
           <button
             type="button"

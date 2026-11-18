@@ -5,6 +5,7 @@ import JourneyPage from '@/features/journey/JourneyPage'
 import PracticePage from '@/features/practice/PracticePage'
 import TunePage from '@/features/tune/TunePage'
 import PageSweep from './PageSweep'
+import { NavRevealProvider } from './NavRevealProvider'
 import { usePageHotkeys } from './usePageHotkeys'
 
 /** The old Journey URL; keep its query so existing links land on the same view. */
@@ -17,7 +18,7 @@ function LegacyJourneyRedirect() {
 export default function AppRoutes() {
   usePageHotkeys()
   return (
-    <>
+    <NavRevealProvider>
       <Routes>
         <Route path="/" element={<JourneyPage />} />
         <Route path="/practice" element={<PracticePage />} />
@@ -29,6 +30,6 @@ export default function AppRoutes() {
         <Route path="/submission-tuning" element={<Navigate to="/tune" replace />} />
       </Routes>
       <PageSweep />
-    </>
+    </NavRevealProvider>
   )
 }

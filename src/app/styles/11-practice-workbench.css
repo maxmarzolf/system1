@@ -1767,9 +1767,24 @@
 /* One content column for every question type, at the width MCQ always used (about 68 characters):
    the header, the prompt, the response and the action bar share the same left and right edges.
    The side padding grows to centre that column, and never drops below the gutter. */
+.app {
+  --content-rail-width: 43rem;
+  --content-gutter-min: 1.5rem;
+}
+
+.app > .navbar {
+  width: min(var(--content-rail-width), calc(100% - var(--content-gutter-min) - var(--content-gutter-min)));
+  margin-inline: auto;
+  padding-inline: 0;
+}
+
+.app > .navbar .navbar-brand {
+  padding-left: 0;
+}
+
 .card-shell {
-  --card-content-width: 43rem;
-  --card-gutter-min: 1.5rem;
+  --card-content-width: var(--content-rail-width);
+  --card-gutter-min: var(--content-gutter-min);
 }
 
 .card-shell > .card > .card-header,
@@ -1788,8 +1803,8 @@
 }
 
 @media (max-width: 720px) {
-  .card-shell {
-    --card-gutter-min: 1rem;
+  .app {
+    --content-gutter-min: 1rem;
   }
 
   .card-shell .card-grid > .panel:not(.prompt-surface-panel) {
