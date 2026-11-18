@@ -16,21 +16,9 @@ _PROBLEM_PRACTICE_SELECT = """
         p.leetcode_examples,
         p.algorithm_slug,
         a.name AS algorithm_name,
-        COALESCE(tech.slugs, '{}') AS technique_slugs,
-        COALESCE(sk.slugs, '{}') AS skill_slugs,
         p.display_order
     FROM problem p
     JOIN algorithm a ON a.slug = p.algorithm_slug
-    LEFT JOIN LATERAL (
-        SELECT array_agg(pt.technique_slug ORDER BY pt.display_order, pt.technique_slug) AS slugs
-        FROM problem_technique pt
-        WHERE pt.problem_slug = p.slug
-    ) tech ON TRUE
-    LEFT JOIN LATERAL (
-        SELECT array_agg(ps.skill_slug ORDER BY ps.display_order, ps.skill_slug) AS slugs
-        FROM problem_skill ps
-        WHERE ps.problem_slug = p.slug
-    ) sk ON TRUE
 """
 
 _CORE_PRACTICE_FILTER = "p.source_type IN ('core-catalog', 'core-meta')"

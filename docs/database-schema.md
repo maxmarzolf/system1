@@ -15,10 +15,6 @@ Solid lines are foreign keys. Dotted lines are references by value that the data
 ```mermaid
 erDiagram
     algorithm ||--o{ problem : "algorithm_slug"
-    problem ||--o{ problem_skill : ""
-    skill ||--o{ problem_skill : ""
-    problem ||--o{ problem_technique : ""
-    technique ||--o{ problem_technique : ""
     playlist ||--o{ playlist_problem_order : ""
     problem ||--o{ playlist_problem_order : ""
 
@@ -37,16 +33,6 @@ erDiagram
         varchar name
         int display_order
     }
-    technique {
-        varchar slug PK
-        varchar name
-        int display_order
-    }
-    skill {
-        varchar slug PK
-        varchar name
-        int display_order
-    }
     problem {
         varchar slug PK
         varchar algorithm_slug FK
@@ -57,16 +43,6 @@ erDiagram
         varchar source_type "core-catalog | core-meta | static-playlist | generated-llm"
         text_arr tags
         jsonb leetcode_examples
-        int display_order
-    }
-    problem_skill {
-        varchar problem_slug PK,FK
-        varchar skill_slug PK,FK
-        int display_order
-    }
-    problem_technique {
-        varchar problem_slug PK,FK
-        varchar technique_slug PK,FK
         int display_order
     }
     playlist {
@@ -105,8 +81,6 @@ erDiagram
         bool successful
         jsonb signals "elapsed_ms, evaluation, flow, modality"
         text_arr category_tags
-        varchar template_mode
-        varchar support_layer
         timestamptz created_at
     }
     signal_definition {
@@ -169,8 +143,6 @@ erDiagram
 |---|---|---|
 | `algorithm` | One row per algorithm family (sliding window, heap, …). Signals scoped to an algorithm refer to its slug. | Seed (overwrites) |
 | `problem` | A practice card: its code, description (served as the prompt), hint and tags. Every problem belongs to one algorithm. | Seed |
-| `skill`, `technique` | Finer-grained labels. | Seed |
-| `problem_skill`, `problem_technique` | Many-to-many links from problems to skills and techniques. | Seed |
 | `playlist`, `playlist_problem_order` | Ordered decks of problems. A playlist can have several named orders (`order_slug`). | Seed |
 | `multiple_choice_problem` | A generated MCQ: its `choices` array (four `{id, text}` objects, in served order), the answer key (`correct_choice_id`), and the algorithm it was generated for (`algorithm_slug`, when known). `fingerprint` deduplicates identical questions. `generation_trace` holds the LLM exchanges that generated it (prompt, payload, reply, usage, timing, failed attempts); `[]` for questions made before migration 0010. MCQ grading scopes signals by `algorithm_slug`, falling back to the submission's tags. | Generated during practice |
 | `generated_exercise` | A generated microdrill or Ladder rung: the task (`prompt`), the correct solution (`reference`), modality details in `metadata` (a microdrill's template and blank answers; a rung's starter code, technique and index) and `generation_trace`. | Generated during practice |
@@ -262,3 +234,5 @@ The unified grading pipeline:
   - `submission.modality` allows `ladder`.
 - **`0012`** adds `generated_exercise` and `submission.exercise_id`.
 - **`0013`** adds `app_setting`, and drops `algorithm.signal_spec` (recall signals are `signal_definition` rows now).
+- **`0014`** removes the seeded `problem_skill`, `problem_technique`, `skill`, and `technique` tables. Core problems keep their algorithm family and general tags; no submission referenced those tables.
+- **`0015`** backfills legacy MCQ, exercise, and ghost rep modalities, then removes `submission.question_type`, `template_mode`, and `support_layer` with their indexes. Daily-work reads use the `skill-map` tag; practice history uses card IDs, flow anchors, and tags.

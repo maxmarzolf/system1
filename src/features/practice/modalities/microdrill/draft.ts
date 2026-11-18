@@ -11,7 +11,6 @@ export const microdrillDraft = (
   modality: 'microdrill',
   card: context.card,
   question: drill.prompt,
-  questionType: `${context.questionType}:microdrill`,
   categoryTags: context.categoryTags,
   answer,
   reference: drill.solution,

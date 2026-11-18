@@ -20,7 +20,6 @@ export type SubmissionDraft = {
   /** The card being practised (MCQs and exercises are about it too). */
   card: Pick<Flashcard, 'id' | 'title' | 'tags'> & Partial<Flashcard>
   question: string
-  questionType: string
   categoryTags: string[]
   /** Code, or for MCQ the chosen option's id. */
   answer: string
@@ -46,10 +45,9 @@ export type SubmissionDraft = {
  */
 export type ModalityDraft = Omit<SubmissionDraft, 'flowSignals' | 'llmProvider'>
 
-/** How the practice screen names the card being practised (question type and skill tags). */
+/** How the practice screen tags the card being practised. */
 export type DraftCardContext = {
   card: SubmissionDraft['card']
-  questionType: string
   categoryTags: string[]
 }
 
@@ -65,7 +63,6 @@ export function buildAttemptBody(draft: SubmissionDraft): AttemptBody {
     cardId: draft.card.id,
     cardTitle: draft.card.title,
     question: draft.question,
-    questionType: draft.questionType,
     categoryTags: draft.categoryTags,
     correctAnswer: mcq ? undefined : draft.reference,
     userAnswer: mcq ? undefined : draft.answer,
@@ -78,8 +75,6 @@ export function buildAttemptBody(draft: SubmissionDraft): AttemptBody {
     multipleChoiceProblemId: draft.multipleChoiceProblemId,
     selectedChoiceId: mcq ? draft.answer : undefined,
     exerciseId: draft.exerciseId,
-    templateMode: 'algorithm',
-    supportLayer: draft.supportLayer ?? 'none',
     modality: draft.modality,
     signals: {
       ...(draft.flowSignals ? { flow: draft.flowSignals } : {}),

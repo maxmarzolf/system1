@@ -3,21 +3,18 @@ import { MULTIPLE_CHOICE_DIFFICULTY } from './types'
 import { INLINE_LENS, RECALL_TARGET_MODE } from './targets'
 import type { Flashcard, MultipleChoiceCard, PracticeFlowState, PracticeMode } from './types'
 
-const TEMPLATE_MODE = 'algorithm'
 const HIDDEN_TAGS = new Set(['skill-map', 'skill-map-mcq'])
 
 /**
- * How the current card is labelled: its header title, badges and tags, the question types and
- * skill tags its attempts are saved under, and the History link for it.
+ * How the current card is labelled: its header title, badges, tags, and History link.
  */
-export function describeCard({ card, mcqCard, mode, flow, inlineEnabled, requestedQuestionType, mcqFlowMode, hasDeck }: {
+export function describeCard({ card, mcqCard, mode, flow, inlineEnabled, mcqFlowMode, hasDeck }: {
   /** The recall card (the flow's anchor during a flow). */
   card: Flashcard
   mcqCard: MultipleChoiceCard | null
   mode: PracticeMode
   flow: PracticeFlowState | null
   inlineEnabled: boolean
-  requestedQuestionType: string
   mcqFlowMode: McqFlowMode
   hasDeck: boolean
 }) {
@@ -32,15 +29,12 @@ export function describeCard({ card, mcqCard, mode, flow, inlineEnabled, request
     ...(headerTags.includes('core-meta') || headerTags.includes('meta') ? ['Meta'] : []),
   ]
 
-  const questionType = `${requestedQuestionType}:${RECALL_TARGET_MODE}${inlineEnabled ? `:${INLINE_LENS}` : ''}`
   const skillTags = [
     ...card.tags,
-    `template-${TEMPLATE_MODE}`,
     `target-${RECALL_TARGET_MODE}`,
     ...(inlineEnabled ? [`inline-${INLINE_LENS}`] : []),
     ...(flow ? ['mode-flow', `flow-stage-${flow.stage}`, `flow-cycle-${flow.cycle}`] : []),
   ]
-  const mcqQuestionType = flow ? `skill-map-mcq:card:progressive:flow-cycle-${flow.cycle}` : `skill-map-mcq:card:${mcqFlowMode}`
   const mcqSkillTags = [
     ...(mcqCard?.tags ?? []),
     'mode-multiple-choice',
@@ -52,10 +46,10 @@ export function describeCard({ card, mcqCard, mode, flow, inlineEnabled, request
 
   const historyHref = (() => {
     if (!hasDeck) return '/'
-    const [id, title, type, tags] = mcq && mcqCard
-      ? [mcqCard.id, mcqCard.title, mcqQuestionType, mcqSkillTags]
-      : [card.id, card.title, questionType, skillTags]
-    const params = new URLSearchParams({ cardId: id, cardTitle: title, questionType: type })
+    const [id, title, tags] = mcq && mcqCard
+      ? [mcqCard.id, mcqCard.title, mcqSkillTags]
+      : [card.id, card.title, skillTags]
+    const params = new URLSearchParams({ cardId: id, cardTitle: title })
     tags.forEach((tag) => params.append('tag', tag))
     return `/?${params.toString()}`
   })()
@@ -64,12 +58,10 @@ export function describeCard({ card, mcqCard, mode, flow, inlineEnabled, request
     headerTitle,
     badges,
     visibleTags: headerTags.filter((tag) => !HIDDEN_TAGS.has(tag)),
-    questionType,
     skillTags,
-    mcqQuestionType,
     mcqSkillTags,
-    /** Groups recall attempts on the same card and settings for the attempt history. */
-    recallHistoryKey: `${card.id}:${TEMPLATE_MODE}:${RECALL_TARGET_MODE}:${inlineEnabled ? INLINE_LENS : 'plain'}`,
+    /** Groups recall attempts on the same card and settings in the local practice flow. */
+    recallHistoryKey: `${card.id}:${RECALL_TARGET_MODE}:${inlineEnabled ? INLINE_LENS : 'plain'}`,
     historyHref,
   }
 }

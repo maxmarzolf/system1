@@ -6,7 +6,6 @@ export const recallDraft = (payload: AttemptPayload, context: DraftCardContext &
   modality: payload.modality,
   card: context.card,
   question: payload.question ?? context.question,
-  questionType: context.questionType,
   categoryTags: context.categoryTags,
   answer: payload.userAnswer,
   reference: payload.correctAnswer,

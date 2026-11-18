@@ -28,21 +28,20 @@ def test_coerce_utc_datetime_accepts_datetimes_and_iso_strings() -> None:
         assert read_common.coerce_utc_datetime(bad) is None
 
 
-def test_build_skill_map_nodes_groups_skills_by_algorithm() -> None:
+def test_build_skill_map_nodes_lists_algorithms_without_legacy_skills() -> None:
     rows = [
-        {"algorithm_id": 1, "algorithm_name": "Sliding Window", "skill_id": 1, "skill_name": "expand"},
-        {"algorithm_id": 1, "algorithm_name": "Sliding Window", "skill_id": 2, "skill_name": "shrink"},
-        {"algorithm_id": 2, "algorithm_name": "Heap", "skill_id": None, "skill_name": None},
+        {"algorithm_id": 1, "algorithm_slug": "sliding-window", "algorithm_name": "Sliding Window"},
+        {"algorithm_id": 2, "algorithm_slug": "heap", "algorithm_name": "Heap"},
     ]
     nodes = overview.build_skill_map_nodes(rows)
-    assert [(node.algorithm, node.skills) for node in nodes] == [("Sliding Window", ["expand", "shrink"]), ("Heap", [])]
+    assert [(node.algorithm, node.skills) for node in nodes] == [("Sliding Window", []), ("Heap", [])]
 
 
 async def test_get_skill_map_reads_rows(monkeypatch) -> None:
     async def rows():
-        return [{"algorithm_id": 1, "algorithm_name": "Heap", "skill_id": None, "skill_name": None}]
+        return [{"algorithm_id": 1, "algorithm_slug": "heap", "algorithm_name": "Heap"}]
 
-    monkeypatch.setattr(overview, "fetch_algorithms_with_skills_rows", rows)
+    monkeypatch.setattr(overview, "fetch_algorithm_rows", rows)
     assert [node.algorithm for node in await overview.get_skill_map()] == ["Heap"]
 
 
@@ -57,7 +56,7 @@ async def test_get_skill_map_overview_passes_window_and_timezone(monkeypatch) ->
         return {"algorithms": []}
 
     for name in (
-        "fetch_skill_map_overview_algorithm_rows",
+        "fetch_algorithm_rows",
         "fetch_skill_map_overview_attempt_rows",
     ):
         monkeypatch.setattr(overview, name, empty)

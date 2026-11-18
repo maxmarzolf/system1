@@ -6,12 +6,11 @@ export const mcqDraft = (
   card: MultipleChoiceCard,
   choiceId: string,
   timing: { elapsedMs: number; interactionId: string },
-  naming: { questionType: string; categoryTags: string[] },
+  naming: { categoryTags: string[] },
 ): ModalityDraft => ({
   modality: 'mcq',
   card,
   question: card.question,
-  questionType: naming.questionType,
   categoryTags: naming.categoryTags,
   answer: choiceId,
   ...timing,

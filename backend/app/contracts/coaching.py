@@ -31,7 +31,6 @@ class SubmissionModality(str, Enum):
 class SkillMapNode(BaseModel):
     algorithm: str = Field(min_length=1)
     skills: list[str] = []
-    techniques: list[str] = []
     questionTitle: str = ""
     playlistSlug: str = ""
 

@@ -11,7 +11,7 @@ if str(EXAMPLE_DIR) not in sys.path:
     sys.path.insert(0, str(EXAMPLE_DIR))
 
 
-MODEL = "gpt-5.4-mini"
+MODEL = "gpt-5.4"
 CASES = [
     {
         "pattern": "Sliding Window",
@@ -23,9 +23,9 @@ CASES = [
 
 
 def answer_history(reviews: list[dict]) -> list[dict]:
-    """Keep the recent answers and the actual questions available to both models."""
+    """Keep every answered question available to generation and judging."""
     history = []
-    for item in [entry for entry in reviews if entry.get("kind") == "answer"][-3:]:
+    for item in (entry for entry in reviews if entry.get("kind") == "answer"):
         try:
             response = json.loads(item.get("previous_response") or "{}")
         except (TypeError, json.JSONDecodeError):

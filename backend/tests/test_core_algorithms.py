@@ -6,15 +6,10 @@ import re
 
 from app.core import core_algorithms as sf
 from app.core import core_meta
-from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG, CORE_META_CATALOG, problem_slugs_for_skill
+from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG, CORE_META_CATALOG
 from app.core.core_algorithm_practice import build_core_algorithm_drill
 from app.core.static_playlists import GOOGLE_QUESTIONS, build_static_playlist_drills, static_playlist_overview_rows
-from app.core.taxonomy_catalog import (
-    ALGORITHM_SKILLS,
-    ALGORITHMS,
-    CANONICAL_SKILLS,
-    TECHNIQUES,
-)
+from app.core.taxonomy_catalog import ALGORITHMS
 
 
 def core_algorithm_names() -> set[str]:
@@ -25,29 +20,8 @@ def core_algorithm_names() -> set[str]:
     }
 
 
-def test_algorithm_curricula_have_intentionally_sized_unique_taxonomies() -> None:
-    expected_counts = {
-        "sliding-window": 9,
-        "two-pointers": 9,
-        "binary-search": 11,
-        "graphs": 22,
-        "backtracking": 10,
-        "heap": 10,
-        "union-find": 10,
-        "dynamic-programming": 13,
-        "intervals": 10,
-        "prefix-sums": 10,
-        "monotonic-stack": 10,
-    }
-    assert {algorithm: len(skills) for algorithm, skills in ALGORITHM_SKILLS.items()} == expected_counts
-    for skills in ALGORITHM_SKILLS.values():
-        assert len(set(skills)) == len(skills)
-
-
 def test_taxonomy_catalog_is_internally_consistent() -> None:
-    assert set(ALGORITHM_SKILLS) <= set(ALGORITHMS)
     assert "arrays-hash-maps" not in ALGORITHMS
-    assert len(set(CANONICAL_SKILLS)) == len(CANONICAL_SKILLS)
 
 
 def test_core_algorithm_catalog_references_real_functions() -> None:
@@ -73,7 +47,6 @@ def test_core_meta_catalog_references_real_members() -> None:
     assert "meta_clone_graph" not in names
     assert "core-algorithm" not in CORE_META_CATALOG["meta_clone_graph"]["tags"]
     assert "core-algorithm" in CORE_META_CATALOG["meta_merge_intervals"]["tags"]
-    assert set(problem_slugs_for_skill("graph cloning")) == {"meta_clone_graph"}
 
 
 def test_core_algorithm_catalog_has_required_metadata() -> None:
@@ -85,26 +58,9 @@ def test_core_algorithm_catalog_has_required_metadata() -> None:
         assert meta["description"]
         assert meta["algorithm"] in ALGORITHMS
         assert meta["algorithm"] not in forbidden_algorithms
-        assert meta["skills"]
-        assert set(meta["techniques"]) <= set(TECHNIQUES)
+        assert meta["tags"] == ("skill-map", "core-algorithm", meta["algorithm"])
         assert meta["leetcodeExamples"]
         assert name != meta["algorithm"]
-
-
-def test_every_curriculum_algorithm_has_problems() -> None:
-    algorithms_with_problems = {meta["algorithm"] for meta in CORE_ALGORITHM_CATALOG.values()}
-
-    assert set(ALGORITHM_SKILLS) <= algorithms_with_problems
-
-
-def test_exercised_skills_resolve_to_problems() -> None:
-    names = core_algorithm_names()
-    exercised = {slug for meta in CORE_ALGORITHM_CATALOG.values() for slug in meta["skills"]}
-
-    for skill in exercised:
-        matches = problem_slugs_for_skill(skill)
-        assert matches, skill
-        assert set(matches) <= names | set(CORE_META_CATALOG)
 
 
 def test_representative_core_algorithms_behave_correctly() -> None:
@@ -149,8 +105,6 @@ def test_dynamic_programming_core_algorithms_use_dp_recurrences() -> None:
     for name, meta in dp_entries.items():
         source = inspect.getsource(getattr(sf, name))
         assert "dp" in source or "solve" in source
-        assert "greedy" not in meta["techniques"]
-        assert "binary-search" not in meta["techniques"]
 
 
 def test_trie_core_algorithms_share_plain_dict_shape() -> None:
@@ -174,8 +128,6 @@ def test_core_algorithm_row_builds_skill_map_drill_card() -> None:
         "leetcode_examples": ["Binary Search"],
         "algorithm_slug": "binary-search",
         "algorithm_name": "Binary Search",
-        "technique_slugs": [],
-        "skill_slugs": ["left-right-bounds", "mid-calculation"],
     }
 
     card = build_core_algorithm_drill(row)

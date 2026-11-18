@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import TopNav from '@/app/TopNav'
 import EvolveMcqPreview, { type JevFeedback, type McqPreview, type McqAnswer } from './components/EvolveMcqPreview'
 import './EvolvePage.css'
@@ -57,6 +57,7 @@ const jevMetricLabel = (name: string) => ({
   grounded: 'Grounded',
   one_correct: 'One correct',
   distractors: 'Distractors',
+  state_consistency: 'State consistency',
   explanation: 'Explanation',
   probe_choice: 'Next probe',
   probe_alignment: 'Probe alignment',
@@ -79,6 +80,8 @@ async function responseJson<T>(response: Response): Promise<T> {
 export default function EvolvePage() {
   const [overview, setOverview] = useState<Overview | null>(null)
   const [seedPrompt, setSeedPrompt] = useState('')
+  const [editingSeed, setEditingSeed] = useState(false)
+  const seedEditorRef = useRef<HTMLTextAreaElement>(null)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [run, setRun] = useState<RunDetail | null>(null)
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
@@ -92,6 +95,10 @@ export default function EvolvePage() {
   const [confirmReset, setConfirmReset] = useState(false)
   const [resetting, setResetting] = useState(false)
   const [resetNotice, setResetNotice] = useState('')
+
+  useEffect(() => {
+    if (editingSeed) seedEditorRef.current?.focus()
+  }, [editingSeed])
 
   useEffect(() => {
     let cancelled = false
@@ -295,7 +302,7 @@ export default function EvolvePage() {
 
         <div className="evolve-facts" aria-label="Experiment configuration">
           <div><span>Target</span><strong>Sliding Window MCQ prompt</strong></div>
-          <div><span>Model</span><strong>OpenAI · {overview?.model ?? 'gpt-5.4-mini'}</strong></div>
+          <div><span>Next run model</span><strong>OpenAI · {overview?.model ?? 'gpt-5.4'}</strong></div>
           <div><span>Next run evaluation</span><strong>{overview?.jevReady ? 'Jev + format · 1 case' : 'Format · 1 case'}</strong></div>
           <div><span>Search</span><strong>{overview?.iterations ?? 3} initial · 1 per answer</strong></div>
         </div>
@@ -308,16 +315,31 @@ export default function EvolvePage() {
               <div><p className="evolve-kicker">INPUT / 01</p><h2 id="seed-title">Seed prompt</h2></div>
               <span className="evolve-pill">Editable per run</span>
             </div>
-            <p className="evolve-panel-copy">This is the prompt OpenEvolve starts from. Changes here are saved only in the new experiment run.</p>
-            <label className="evolve-editor-label" htmlFor="evolve-seed">Prompt text</label>
-            <textarea
+            <p className="evolve-panel-copy">Read the starting instructions below. Any edits apply to the next run only.</p>
+            <div className="evolve-seed-toolbar">
+              <span className="evolve-editor-label">Prompt text</span>
+              <button type="button" className="evolve-seed-mode-button"
+                onClick={() => setEditingSeed((current) => !current)}>
+                {editingSeed ? 'Done editing' : 'Edit prompt'}
+              </button>
+            </div>
+            {editingSeed ? <textarea
+              ref={seedEditorRef}
               id="evolve-seed"
+              aria-label="Prompt text"
               className="evolve-editor"
               spellCheck={false}
               value={seedPrompt}
               maxLength={6000}
               onChange={(event) => setSeedPrompt(event.target.value)}
-            />
+            /> : <div className="evolve-seed-reading" aria-label="Prompt text">
+              {seedPrompt.trim()
+                ? seedPrompt.trim().split(/\n\s*\n/).map((paragraph, index) =>
+                  <p key={index} className={index === 0 && paragraph.length < 180 ? 'evolve-seed-lead' : undefined}>
+                    {paragraph}
+                  </p>)
+                : <p className="evolve-seed-placeholder">{loading ? 'Loading prompt…' : 'No seed prompt available.'}</p>}
+            </div>}
             <div className="evolve-editor-footer">
               <button type="button" className="evolve-text-button" onClick={() => setSeedPrompt(overview?.seedPrompt ?? '')}
                 disabled={!overview || seedPrompt === overview.seedPrompt}>Reset seed</button>

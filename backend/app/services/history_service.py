@@ -11,7 +11,6 @@ from app.core.taxonomy import slugify
 async def coach_practice_history(body: CoachPracticeHistoryRequest) -> CoachPracticeHistoryResponse:
     history = await fetch_practice_history_entries(
         card_id=body.cardId,
-        question_type=body.questionType,
         skill_tags=body.skillTags,
         limit=body.limit,
     )
@@ -25,7 +24,6 @@ async def load_skill_map_generation_summary(body: SkillMapDrillsRequest) -> Skil
     pattern_tags = [slugify(node.algorithm) for node in body.skillMap[: body.count] if slugify(node.algorithm)]
     history = await fetch_practice_history_entries(
         card_id="",
-        question_type=body.questionType,
         skill_tags=pattern_tags,
         limit=max(20, body.count * 6),
     )

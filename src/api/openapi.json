@@ -424,11 +424,6 @@
             ],
             "title": "Question"
           },
-          "questionType": {
-            "default": "",
-            "title": "Questiontype",
-            "type": "string"
-          },
           "selectedChoiceId": {
             "anyOf": [
               {
@@ -457,14 +452,6 @@
             "additionalProperties": true,
             "title": "Signals",
             "type": "object"
-          },
-          "supportLayer": {
-            "$ref": "#/components/schemas/SupportLayer",
-            "default": "none"
-          },
-          "templateMode": {
-            "$ref": "#/components/schemas/TemplateMode",
-            "default": "algorithm"
           },
           "userAnswer": {
             "anyOf": [
@@ -591,11 +578,6 @@
             "title": "Question",
             "type": "string"
           },
-          "questionType": {
-            "default": "",
-            "title": "Questiontype",
-            "type": "string"
-          },
           "sessionId": {
             "default": "",
             "title": "Sessionid",
@@ -608,16 +590,6 @@
             "default": false,
             "title": "Successful",
             "type": "boolean"
-          },
-          "supportLayer": {
-            "default": "none",
-            "title": "Supportlayer",
-            "type": "string"
-          },
-          "templateMode": {
-            "default": "algorithm",
-            "title": "Templatemode",
-            "type": "string"
           },
           "userAnswer": {
             "default": "",
@@ -644,11 +616,6 @@
             "minimum": 1.0,
             "title": "Limit",
             "type": "integer"
-          },
-          "questionType": {
-            "default": "",
-            "title": "Questiontype",
-            "type": "string"
           },
           "skillTags": {
             "default": [],
@@ -3303,14 +3270,6 @@
             "title": "Count",
             "type": "integer"
           },
-          "skills": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/SkillMapGhostRepSkillSegment"
-            },
-            "title": "Skills",
-            "type": "array"
-          },
           "slug": {
             "default": "",
             "title": "Slug",
@@ -3323,28 +3282,6 @@
           }
         },
         "title": "SkillMapGhostRepSegment",
-        "type": "object"
-      },
-      "SkillMapGhostRepSkillSegment": {
-        "properties": {
-          "count": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Count",
-            "type": "integer"
-          },
-          "skill": {
-            "default": "",
-            "title": "Skill",
-            "type": "string"
-          },
-          "slug": {
-            "default": "",
-            "title": "Slug",
-            "type": "string"
-          }
-        },
-        "title": "SkillMapGhostRepSkillSegment",
         "type": "object"
       },
       "SkillMapGridAlgorithm": {
@@ -3386,14 +3323,6 @@
               "type": "string"
             },
             "title": "Skills",
-            "type": "array"
-          },
-          "techniques": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Techniques",
             "type": "array"
           }
         },
@@ -3666,14 +3595,6 @@
         },
         "title": "SubmissionSignals",
         "type": "object"
-      },
-      "SupportLayer": {
-        "enum": [
-          "none",
-          "ghost-reps"
-        ],
-        "title": "SupportLayer",
-        "type": "string"
       },
       "TemplateMode": {
         "enum": [

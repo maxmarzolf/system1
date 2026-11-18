@@ -20,18 +20,20 @@ class JevEvaluatorTests(unittest.TestCase):
                        for name in captured["payload"]["questions"]}
             return io.BytesIO(json.dumps({"model": "jev-test", "answers": answers}).encode())
 
-        history = {"kind": "answer", "pattern": "Sliding Window", "correct": True,
-                   "choice_id": "A", "previous_response": "Earlier MCQ"}
+        history = [{"kind": "answer", "pattern": "Sliding Window", "correct": True,
+                    "choice_id": "A", "previous_response": f"Earlier MCQ {index}"}
+                   for index in range(4)]
         prompt = "Choose nextProbe from answerHistory and generate one MCQ."
         raw = json.dumps({"nextProbe": "Decide whether to shrink again after the first removal.",
                           "drills": []})
         with patch.object(jev_evaluator, "urlopen", side_effect=fake_urlopen):
             result = jev_evaluator.judge_mcq(prompt, {"pattern": "Sliding Window", "skill": "Shrink left"},
-                                             raw, reviews=[history], api_key="test-key")
+                                             raw, reviews=history, api_key="test-key")
 
         state = captured["payload"]["state"]
         self.assertEqual(state["proposed_probe"], "Decide whether to shrink again after the first removal.")
-        self.assertEqual(state["answer_history"][0]["question"], "Earlier MCQ")
+        self.assertEqual([item["question"] for item in state["answer_history"]],
+                         [f"Earlier MCQ {index}" for index in range(4)])
         self.assertTrue(state["answer_history"][0]["correct"])
         self.assertNotIn("answer_signal", state["answer_history"][0])
         self.assertEqual(state["generated_response"], raw)
@@ -39,10 +41,25 @@ class JevEvaluatorTests(unittest.TestCase):
         self.assertIn("novelty", captured["payload"]["questions"])
         self.assertIn("policy_use", captured["payload"]["questions"])
         self.assertIn("probe_alignment", captured["payload"]["questions"])
+        self.assertIn("state_consistency", captured["payload"]["questions"])
         self.assertTrue(all(question["type"] == "noul" for question in captured["payload"]["questions"].values()))
         self.assertNotIn("learner_answer", state)
         self.assertEqual(result["score"], 0.8)
         self.assertEqual(result["feedback"], [])
+
+    def test_numerical_inconsistency_and_weak_distractors_lower_the_score(self):
+        def fake_urlopen(request, timeout):
+            questions = json.loads(request.data)["questions"]
+            answers = {name: {"type": "noul", "noul": 0.9} for name in questions}
+            answers["distractors"]["noul"] = 0.2
+            answers["state_consistency"]["noul"] = 0.1
+            return io.BytesIO(json.dumps({"answers": answers}).encode())
+
+        with patch.object(jev_evaluator, "urlopen", side_effect=fake_urlopen):
+            result = jev_evaluator.judge_mcq("Generate one MCQ", {"pattern": "Sliding Window", "skill": "Shrink left"},
+                                             "MCQ", api_key="test-key")
+        self.assertLess(result["score"], 0.6)
+        self.assertEqual(result["scores"]["state_consistency"], 0.1)
 
     def test_first_question_has_no_novelty_comparison(self):
         def fake_urlopen(request, timeout):

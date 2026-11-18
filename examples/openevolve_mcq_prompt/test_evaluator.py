@@ -14,6 +14,17 @@ import evaluator
 
 
 class EvaluatorPreviewTests(unittest.TestCase):
+    def test_answer_history_keeps_every_answered_question(self):
+        reviews = [
+            {"kind": "answer", "previous_response": json.dumps({"drills": [{"question": f"Question {index}"}]}),
+             "previous_probe": f"Probe {index}", "correct": True}
+            for index in range(5)
+        ]
+        self.assertEqual(
+            [item["question"] for item in evaluator.answer_history(reviews)],
+            [f"Question {index}" for index in range(5)],
+        )
+
     def test_evaluation_only_generates_a_sliding_window_card(self):
         drill = {
             "id": "slide-1", "title": "Window sum", "pattern": "Sliding Window",
@@ -30,8 +41,10 @@ class EvaluatorPreviewTests(unittest.TestCase):
             "tags": ["skill-map", "skill-map-mcq", "sliding-window"],
         }
         requests = []
+        models = []
 
         def create(**kwargs):
+            models.append(kwargs["model"])
             requests.append(json.loads(kwargs["messages"][1]["content"]))
             return types.SimpleNamespace(choices=[types.SimpleNamespace(
                 message=types.SimpleNamespace(content=json.dumps({"nextProbe": "Update the sum after a left removal.", "drills": [drill]})))])
@@ -47,6 +60,7 @@ class EvaluatorPreviewTests(unittest.TestCase):
         previews = json.loads(result.artifacts["mcq_previews"])
         self.assertEqual(len(previews), 1)
         self.assertEqual(len(requests), 1)
+        self.assertEqual(models, ["gpt-5.4"])
         self.assertEqual(requests[0]["skillMap"][0]["pattern"], "Sliding Window")
         self.assertEqual(requests[0]["answerHistory"], [])
         self.assertEqual(previews[0]["drill"], drill)

@@ -68,7 +68,7 @@ const run = (overrides: Record<string, unknown> = {}) => ({
 
 const overview = (runs: object[] = [{ id: 'run-1', status: 'complete', startedAt: '2026-11-09T12:00:00Z', finishedAt: '2026-11-09T12:05:00Z', iterations: 3 }]) => ({
   seedPrompt,
-  model: 'gpt-5.4-mini',
+  model: 'gpt-5.4',
   iterations: 3,
   ready: true,
   jevReady: true,
@@ -127,7 +127,18 @@ describe('Evolve page', () => {
     renderPage()
 
     expect(await screen.findByRole('button', { name: /Start evolution/ })).toBeEnabled()
+    expect(screen.queryByRole('textbox', { name: 'Prompt text' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Edit prompt' }))
+    const editedPrompt = 'Generate one clear Sliding Window question about the next boundary decision.'
+    const editor = screen.getByRole('textbox', { name: 'Prompt text' })
+    await userEvent.clear(editor)
+    await userEvent.type(editor, editedPrompt)
+    await userEvent.click(screen.getByRole('button', { name: 'Done editing' }))
+    expect(screen.queryByRole('textbox', { name: 'Prompt text' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Prompt text')).toHaveTextContent(editedPrompt)
     await userEvent.click(screen.getByRole('button', { name: /Start evolution/ }))
+    const started = fetch.calls.find((call) => call.url.endsWith('/api/evolve/runs') && call.init?.method === 'POST')
+    expect(JSON.parse(String(started?.init?.body))).toEqual({ prompt: editedPrompt })
     expect(await screen.findByText('This candidate has no saved MCQ output yet.')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /Generate MCQs/ }))
     expect(await screen.findByRole('heading', { name: 'Window decision' })).toBeInTheDocument()

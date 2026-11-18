@@ -29,7 +29,6 @@ def build_core_algorithm_drill(row: dict[str, Any]) -> dict[str, Any]:
     code = str(row["code"]).strip()
     algorithm_slug = str(row["algorithm_slug"])
     algorithm_name = str(row["algorithm_name"])
-    technique_slugs = [str(item) for item in (row.get("technique_slugs") or []) if str(item).strip()]
     tags = [str(tag) for tag in (row.get("tags") or []) if str(tag).strip()]
     is_meta = "core-meta" in tags or algorithm_slug == "meta"
     if "skill-map" not in tags:
@@ -38,9 +37,6 @@ def build_core_algorithm_drill(row: dict[str, Any]) -> dict[str, Any]:
         tags.insert(1, "core-algorithm")
     if algorithm_slug not in tags:
         tags.append(algorithm_slug)
-    for technique_slug in technique_slugs:
-        if technique_slug not in tags:
-            tags.append(technique_slug)
     description = str(row.get("description") or "").strip()
     title = str(row["title"])
     prompt_subject = "Meta question" if "core-meta" in tags else "core algorithm"

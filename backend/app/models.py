@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -21,14 +20,6 @@ from app.contracts.coaching import (  # noqa: F401  (re-exported API schemas)
     TemplateMode,
 )
 from app.contracts.evaluation import Evaluation
-
-
-# ─── Enums ───
-
-
-class SupportLayer(str, Enum):
-    none = "none"
-    ghost_reps = "ghost-reps"
 
 
 # ─── Request schemas ───
@@ -58,7 +49,6 @@ class AttemptCreate(BaseModel):
     cardId: str = Field(min_length=1)
     cardTitle: str | None = None
     question: str | None = None
-    questionType: str = ""
     categoryTags: list[str] = []
     correctAnswer: str | None = None
     userAnswer: str | None = None
@@ -73,8 +63,6 @@ class AttemptCreate(BaseModel):
     selectedChoiceId: str | None = Field(default=None, max_length=8)
     # The stored microdrill or ladder rung this answers (from its generation response).
     exerciseId: str | None = Field(default=None, max_length=80)
-    templateMode: TemplateMode = TemplateMode.algorithm
-    supportLayer: SupportLayer = SupportLayer.none
     modality: SubmissionModality | None = None
     liveCoachUsed: bool = False
     activityFormat: Literal["recall", "multiple-choice", "code-completion"] | None = None
@@ -84,11 +72,12 @@ class AttemptCreate(BaseModel):
     def resolved_modality(self) -> SubmissionModality:
         if self.modality is not None:
             return self.modality
-        if self.activityFormat == "multiple-choice" or self.questionType.startswith("skill-map-mcq"):
+        if self.multipleChoiceProblemId or self.selectedChoiceId or self.activityFormat == "multiple-choice":
             return SubmissionModality.mcq
-        if self.activityFormat == "code-completion" or self.questionType.endswith(":microdrill"):
+        if self.exerciseId or self.activityFormat == "code-completion":
             return SubmissionModality.microdrill
-        if self.supportLayer == SupportLayer.ghost_reps:
+        modality_signals = self.signals.get("modality") if isinstance(self.signals, dict) else None
+        if isinstance(modality_signals, dict) and modality_signals.get("kind") == "ghost-rep":
             return SubmissionModality.ghost_rep
         return SubmissionModality.total_recall
 
@@ -179,7 +168,6 @@ class SkillMapDrillsResponse(BaseModel):
 
 class CoachPracticeHistoryRequest(BaseModel):
     cardId: str = ""
-    questionType: str = ""
     skillTags: list[str] = []
     limit: int = Field(default=6, ge=1, le=20)
 
@@ -191,13 +179,10 @@ class CoachPracticeHistoryEntry(BaseModel):
     cardId: str = ""
     cardTitle: str = ""
     question: str = ""
-    questionType: str = ""
     correctAnswer: str = ""
     userAnswer: str = ""
     successful: bool = False
     signals: SubmissionSignals = Field(default_factory=SubmissionSignals)
-    templateMode: str = TemplateMode.algorithm.value
-    supportLayer: str = SupportLayer.none.value
     modality: str = SubmissionModality.total_recall.value
     liveCoachUsed: bool = False
     categoryTags: list[str] = []
@@ -210,18 +195,11 @@ class CoachPracticeHistoryResponse(BaseModel):
     entries: list[CoachPracticeHistoryEntry] = []
 
 
-class SkillMapGhostRepSkillSegment(BaseModel):
-    skill: str = ""
-    slug: str = ""
-    count: int = Field(default=0, ge=0)
-
-
 class SkillMapGhostRepSegment(BaseModel):
     algorithm: str = ""
     slug: str = ""
     workType: str = "ghost-reps"
     count: int = Field(default=0, ge=0)
-    skills: list[SkillMapGhostRepSkillSegment] = []
 
 
 class SkillMapGhostRepActivityDay(BaseModel):

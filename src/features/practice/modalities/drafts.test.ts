@@ -6,14 +6,14 @@ import { microdrillDraft } from './microdrill/draft'
 import { ladderDraft } from './ladder/draft'
 
 const card = { id: 'card-1', title: 'Window', tags: ['sliding-window', 'arrays'] }
-const naming = { card, questionType: 'Total Recall', categoryTags: ['sliding-window'] }
+const naming = { card, categoryTags: ['sliding-window'] }
 const timing = { elapsedMs: 900, interactionId: 'i-1' }
 
 describe('modality drafts', () => {
   it('describes an MCQ answer as the chosen option of the stored question', () => {
     const mcq = { id: 'mcq-1', question: 'Which?', choices: [] } as unknown as MultipleChoiceCard
-    expect(mcqDraft(mcq, 'C', timing, { questionType: 'MCQ', categoryTags: ['x'] })).toEqual({
-      modality: 'mcq', card: mcq, question: 'Which?', questionType: 'MCQ', categoryTags: ['x'], answer: 'C',
+    expect(mcqDraft(mcq, 'C', timing, { categoryTags: ['x'] })).toEqual({
+      modality: 'mcq', card: mcq, question: 'Which?', categoryTags: ['x'], answer: 'C',
       elapsedMs: 900, interactionId: 'i-1', multipleChoiceProblemId: 'mcq-1', modalitySignals: { selectedChoiceId: 'C' },
     })
   })
@@ -33,7 +33,7 @@ describe('modality drafts', () => {
   it('describes a microdrill answer against its stored drill', () => {
     const drill = { id: 'ex-1', prompt: 'Fill', solution: 'a\nb', template: 'x = ___\ny = ____', language: 'python' } as unknown as FlowMicroDrill
     expect(microdrillDraft(drill, 'x = 1\ny = 2', timing, naming)).toMatchObject({
-      modality: 'microdrill', question: 'Fill', questionType: 'Total Recall:microdrill', reference: 'a\nb', exerciseId: 'ex-1',
+      modality: 'microdrill', question: 'Fill', reference: 'a\nb', exerciseId: 'ex-1',
       modalitySignals: { blankCount: 2, language: 'python', templateLineCount: 2 },
     })
   })

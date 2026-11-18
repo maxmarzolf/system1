@@ -28,7 +28,6 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
             session_id,
             multiple_choice_problem_id,
             answer,
-            question_type,
             category_tags,
             correct_answer,
             successful,
@@ -36,8 +35,7 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
             interaction_id,
             generated_card_id,
             generated_card,
-            template_mode,
-            support_layer,
+            modality,
             live_coach_used,
             created_at
         )
@@ -46,7 +44,6 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
             'fx-perf-session-' || s::text,
             'mcq-fx-perf-q',
             'user-answer-' || s::text,
-            CASE WHEN s % 10 = 0 THEN 'skill-map-lite' ELSE 'skill-map' END,
             ARRAY['skill-map', CASE WHEN s % 2 = 0 THEN 'two-pointers' ELSE 'binary-search' END],
             'correct',
             s % 5 = 0,
@@ -61,8 +58,7 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
             'fx-perf-interaction-' || s::text,
             CASE WHEN s % 5 = 0 THEN 'fx-perf-card-target' ELSE 'fx-perf-card-' || (s % 17)::text END,
             jsonb_build_object('id', 'fx-perf-card-' || s::text, 'title', 'Perf Card ' || s::text),
-            'algorithm',
-            'none',
+            'mcq',
             FALSE,
             NOW() - ((s % 720)::text || ' minutes')::interval
         FROM generate_series(1, 800) AS s
@@ -132,7 +128,7 @@ def test_performance_guard_required_indexes_exist() -> None:
         conn = await _connect_db()
         try:
             submission_indexes = await _fetch_index_names(conn, "submission")
-            assert "idx_submission_question_type_created_at" in submission_indexes
+            assert "idx_submission_question_type_created_at" not in submission_indexes
             assert "idx_submission_card_id_created_at" in submission_indexes
             assert "idx_submission_category_tags" in submission_indexes
             assert "idx_submission_created_at" in submission_indexes
@@ -158,12 +154,10 @@ def test_performance_guard_history_and_overview_queries_avoid_seq_scan() -> None
                 """
                 SELECT a.id
                 FROM submission a
-                WHERE a.question_type = $1
-                  AND (COALESCE(a.generated_card_id, a.multiple_choice_problem_id) = $2 OR a.category_tags && $3::text[])
+                WHERE (COALESCE(a.generated_card_id, a.multiple_choice_problem_id, a.exercise_id) = $1 OR a.category_tags && $2::text[])
                 ORDER BY a.created_at DESC
-                LIMIT $4
+                LIMIT $3
                 """,
-                "skill-map",
                 "fx-perf-card-target",
                 ["binary-search"],
                 25,
@@ -180,7 +174,7 @@ def test_performance_guard_history_and_overview_queries_avoid_seq_scan() -> None
                 """
                 SELECT a.created_at
                 FROM submission a
-                WHERE a.question_type LIKE 'skill-map%'
+                WHERE a.category_tags @> ARRAY['skill-map']::text[]
                 ORDER BY a.created_at DESC
                 LIMIT 100
                 """,
@@ -191,7 +185,7 @@ def test_performance_guard_history_and_overview_queries_avoid_seq_scan() -> None
 
             assert "Limit" in overview_nodes
             assert "Seq Scan" not in overview_nodes
-            assert any(name in {"idx_submission_question_type_created_at", "idx_submission_created_at"} for name in overview_index_names)
+            assert any(name in {"idx_submission_category_tags", "idx_submission_created_at"} for name in overview_index_names)
         finally:
             try:
                 await _cleanup_performance_fixture(conn)

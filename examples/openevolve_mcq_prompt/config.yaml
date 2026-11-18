@@ -9,7 +9,7 @@ llm:
   api_base: https://api.openai.com/v1
   api_key: ${OPENAI_API_KEY}
   models:
-    - name: gpt-5.4-mini
+    - name: gpt-5.4
       weight: 1.0
   reasoning_effort: none
   max_tokens: 2048
@@ -22,11 +22,14 @@ prompt:
     next reasoning decision, and return it as nextProbe alongside drills.
     Evolve the rule for choosing nextProbe, not a fixed probe for one round.
     Preserve the input fields and the JSON output shape {"nextProbe": string,
-    "drills": [...]} with one sound MCQ. Recent selected answers are observations,
+    "drills": [...]} with one sound MCQ. Selected answers are observations,
     not proof of mastery or a misconception. A correct answer can lead to a
     different, untested decision within the same skill; an incorrect answer
     can lead to a clearer related decision. Avoid repeating a decision already
     tested in answerHistory. Changed numbers or a new setting alone do not count.
+    Check that every stated window sum, removal, and limit comparison agrees with
+    the numbers; the correct choice must fit the stated state. Make each wrong
+    choice a plausible local mistake, never a reset-or-restart filler option.
     Jev scores the policy, chosen probe, question soundness, alignment, and novelty.
     Use its scores to improve the rule. Historical human_reviews may appear in old runs.
     Keep the prompt under 5000 characters.

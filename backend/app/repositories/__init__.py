@@ -4,8 +4,7 @@ from app.repositories.coach_repository import (
 	insert_generated_multiple_choice_question_rows,
 )
 from app.repositories.attempts_repository import (
-	fetch_algorithms_with_skills_rows,
-	fetch_skill_map_overview_algorithm_rows,
+	fetch_algorithm_rows,
 	fetch_skill_map_overview_attempt_rows,
 	insert_submission_attempt_row,
 )
@@ -23,8 +22,7 @@ __all__ = [
 	"fetch_practice_history_rows",
 	"insert_generated_multiple_choice_question_rows",
 	"insert_submission_attempt_row",
-	"fetch_algorithms_with_skills_rows",
-	"fetch_skill_map_overview_algorithm_rows",
+	"fetch_algorithm_rows",
 	"fetch_skill_map_overview_attempt_rows",
 	"fetch_problem_practice_rows",
 	"PRACTICE_HISTORY_TABLES",

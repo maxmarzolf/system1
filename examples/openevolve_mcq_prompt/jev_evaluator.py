@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 
 JEV_URL = "https://api.typesafe.ai/v1/systemone"
 JEV_MODEL = "jev-latest"
+SCORE_WEIGHTS = {"distractors": 2, "state_consistency": 3}
 
 
 def proposed_probe(prompt: str) -> str:
@@ -41,9 +42,16 @@ def judge_mcq(prompt: str, case: dict, raw: str, reviews: list[dict] | None = No
         "grounded": {"type": "noul", "instructions":
             "Is the generated MCQ specifically grounded in the requested Sliding Window skill?"},
         "one_correct": {"type": "noul", "instructions":
-            "Does the MCQ have exactly one defensibly correct answer among its choices?"},
+            "Does the MCQ have exactly one defensibly correct answer for the stated numerical state?"},
         "distractors": {"type": "noul", "instructions":
-            "Are the incorrect choices plausible mistakes for this skill?"},
+            "Are all three incorrect choices plausible mistakes at this exact step? "
+            "An unrelated reset, restart, or obviously absurd action is a weak distractor even "
+            "when the correct answer is clear."},
+        "state_consistency": {"type": "noul", "instructions":
+            "Are all stated window elements, sums, removals, and comparisons with the limit "
+            "arithmetically and logically consistent? Check the actual numbers. If the question "
+            "claims a window is still above the limit when its sum is at or below the limit, "
+            "answer no even if the intended lesson is clear."},
         "explanation": {"type": "noul", "instructions":
             "Does the explanation accurately justify the correct choice and teach the decision?"},
         "policy_use": {"type": "noul", "instructions":
@@ -96,9 +104,11 @@ def judge_mcq(prompt: str, case: dict, raw: str, reviews: list[dict] | None = No
         if isinstance(probability, bool) or not isinstance(probability, (int, float)) or not 0 <= probability <= 1:
             raise ValueError(f"Jev returned an invalid answer for {name}")
         scores[name] = round(float(probability), 4)
+    total_weight = sum(SCORE_WEIGHTS.get(name, 1) for name in scores)
     return {
         "model": result.get("model", JEV_MODEL),
-        "score": round(sum(scores.values()) / len(scores), 4),
+        "score": round(sum(value * SCORE_WEIGHTS.get(name, 1) for name, value in scores.items())
+                       / total_weight, 4),
         "scores": scores,
         "feedback": [],
     }

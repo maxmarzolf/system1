@@ -37,9 +37,9 @@ async def _insert_submission(problem_id: str) -> int:
         )
         return await conn.fetchval(
             """
-            INSERT INTO submission (multiple_choice_problem_id, answer, question_type, category_tags, correct_answer,
+            INSERT INTO submission (multiple_choice_problem_id, answer, category_tags, correct_answer,
                                     successful, signals, modality, created_at)
-            VALUES ($1, 'A. While invalid', 'skill-map-mcq:card:random', ARRAY['skill-map', 'sliding-window'],
+            VALUES ($1, 'A. While invalid', ARRAY['skill-map', 'sliding-window'],
                     'A. While invalid', TRUE, $2::jsonb, 'mcq', $3)
             RETURNING id
             """,
@@ -60,9 +60,9 @@ async def _insert_recent(problem_id: str) -> tuple[int, int]:
         for tags in (["skill-map", "sliding-window"], ["skill-map", "heap", "sliding-window"]):
             ids.append(await conn.fetchval(
                 """
-                INSERT INTO submission (multiple_choice_problem_id, answer, question_type, category_tags, successful,
+                INSERT INTO submission (multiple_choice_problem_id, answer, category_tags, successful,
                                         signals, modality, created_at)
-                VALUES ($1, 'x', 'skill-map', $2, FALSE, '{"elapsed_ms": 1}'::jsonb, 'total-recall', $3)
+                VALUES ($1, 'x', $2, FALSE, '{"elapsed_ms": 1}'::jsonb, 'mcq', $3)
                 RETURNING id
                 """,
                 problem_id, tags, datetime.now(timezone.utc) - timedelta(hours=1),

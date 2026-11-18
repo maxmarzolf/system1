@@ -718,11 +718,6 @@ export interface components {
             multipleChoiceProblemId?: string | null;
             /** Question */
             question?: string | null;
-            /**
-             * Questiontype
-             * @default
-             */
-            questionType?: string;
             /** Selectedchoiceid */
             selectedChoiceId?: string | null;
             /** Sessionid */
@@ -731,10 +726,6 @@ export interface components {
             signals?: {
                 [key: string]: unknown;
             };
-            /** @default none */
-            supportLayer?: components["schemas"]["SupportLayer"];
-            /** @default algorithm */
-            templateMode?: components["schemas"]["TemplateMode"];
             /** Useranswer */
             userAnswer?: string | null;
         };
@@ -811,11 +802,6 @@ export interface components {
              */
             question?: string;
             /**
-             * Questiontype
-             * @default
-             */
-            questionType?: string;
-            /**
              * Sessionid
              * @default
              */
@@ -826,16 +812,6 @@ export interface components {
              * @default false
              */
             successful?: boolean;
-            /**
-             * Supportlayer
-             * @default none
-             */
-            supportLayer?: string;
-            /**
-             * Templatemode
-             * @default algorithm
-             */
-            templateMode?: string;
             /**
              * Useranswer
              * @default
@@ -854,11 +830,6 @@ export interface components {
              * @default 6
              */
             limit?: number;
-            /**
-             * Questiontype
-             * @default
-             */
-            questionType?: string;
             /**
              * Skilltags
              * @default []
@@ -2280,11 +2251,6 @@ export interface components {
              */
             count?: number;
             /**
-             * Skills
-             * @default []
-             */
-            skills?: components["schemas"]["SkillMapGhostRepSkillSegment"][];
-            /**
              * Slug
              * @default
              */
@@ -2294,24 +2260,6 @@ export interface components {
              * @default ghost-reps
              */
             workType?: string;
-        };
-        /** SkillMapGhostRepSkillSegment */
-        SkillMapGhostRepSkillSegment: {
-            /**
-             * Count
-             * @default 0
-             */
-            count?: number;
-            /**
-             * Skill
-             * @default
-             */
-            skill?: string;
-            /**
-             * Slug
-             * @default
-             */
-            slug?: string;
         };
         /** SkillMapGridAlgorithm */
         SkillMapGridAlgorithm: {
@@ -2345,11 +2293,6 @@ export interface components {
              * @default []
              */
             skills?: string[];
-            /**
-             * Techniques
-             * @default []
-             */
-            techniques?: string[];
         };
         /** SkillMapOverviewResponse */
         SkillMapOverviewResponse: {
@@ -2491,11 +2434,6 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
-        /**
-         * SupportLayer
-         * @enum {string}
-         */
-        SupportLayer: "none" | "ghost-reps";
         /**
          * TemplateMode
          * @enum {string}

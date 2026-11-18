@@ -106,7 +106,7 @@ Docs ([index](docs/README.md)):
 |---|---|---|
 | GET | `/api/health` | Health check |
 | POST | `/api/attempts` | Submit an answer; returns the evaluation |
-| GET | `/api/skill-map`, `/api/skill-map-overview?historyDays=&tz=` | Taxonomy; the daily work grid's algorithms and activity |
+| GET | `/api/skill-map`, `/api/skill-map-overview?historyDays=&tz=` | Algorithm catalog; the daily work grid's algorithms and activity |
 | GET | `/api/history/submissions?date=&algorithm=&tz=`, `/api/history/competency?tz=` | Submissions for a day, algorithms over the last year, or both; competency per algorithm per day |
 | GET | `/api/catalog/playlists`, `/api/catalog/signal-specs` | Playlists; recall signal specs |
 | GET | `/api/coach/problem-drills[/{algorithm}]`, `/api/coach/playlist-drills/{slug}` | Catalog drills |

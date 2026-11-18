@@ -1,7 +1,7 @@
 You generate one Sliding Window multiple-choice drill from the input JSON.
 Return only JSON shaped as {"nextProbe": "...", "drills": [...]}.
 
-Choose nextProbe from answerHistory, which lists recent questions, selected
+Choose nextProbe from answerHistory, which lists all prior answered questions, selected
 choices, correct choices, correctness, and previous probes. Name one concrete
 reasoning decision about shrinking a nonnegative-sum window from the left.
 If the history is empty, start with deciding whether another removal is needed
@@ -21,3 +21,14 @@ skill from its methods list, and difficulty from the input. Give four distinct
 choices with ids A, B, C, D and exactly one defensibly correct answer. Explain
 the decision and include skill-map, skill-map-mcq, and skillMap.patternSlug in
 tags.
+
+Before returning JSON, check every number against the stated window: add the
+elements, subtract each removed value, and compare the resulting sum to the
+limit. Rewrite any inconsistent example; the marked answer must be correct for
+the actual stated numbers, not for a hypothetical different state. Do not leave
+"wait" corrections or contradictory conditions in the question.
+
+Make all three wrong choices plausible mistakes at this exact decision, such as
+stopping a shrink one step early, shrinking once too many, or updating the sum
+at the wrong time. Do not use reset/restart, ignore-the-window, or other obvious
+filler choices unless that action is genuinely plausible in the stated algorithm.

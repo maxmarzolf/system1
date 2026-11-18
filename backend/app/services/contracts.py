@@ -61,18 +61,11 @@ class AttemptSaveResult(TypedDict):
 	attemptId: int | None
 
 
-class SkillMapGhostRepSkillSegment(TypedDict):
-	skill: str
-	slug: str
-	count: int
-
-
 class SkillMapGhostRepSegment(TypedDict):
 	algorithm: str
 	slug: str
 	workType: str
 	count: int
-	skills: list[SkillMapGhostRepSkillSegment]
 
 
 class SkillMapGhostRepActivityDay(TypedDict):

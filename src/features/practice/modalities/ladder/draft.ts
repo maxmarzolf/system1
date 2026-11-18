@@ -16,7 +16,6 @@ export const ladderDraft = (
   modality: 'ladder',
   card: context.card,
   question: question.question,
-  questionType: `${context.questionType}:microdrill`,
   categoryTags: context.card.tags,
   answer,
   reference: question.solution,

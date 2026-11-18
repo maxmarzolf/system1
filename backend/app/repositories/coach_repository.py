@@ -19,16 +19,13 @@ _PRACTICE_HISTORY_SELECT = """
         a.id AS "attemptId",
         COALESCE(a.session_id, '') AS "sessionId",
         COALESCE(a.interaction_id, '') AS "interactionId",
-        COALESCE(a.generated_card_id, a.multiple_choice_problem_id) AS "cardId",
+        COALESCE(a.generated_card_id, a.multiple_choice_problem_id, a.exercise_id) AS "cardId",
         COALESCE(NULLIF(a.generated_card->>'title', ''), q.question_text, a.multiple_choice_problem_id) AS "cardTitle",
         COALESCE(q.question_text, NULLIF(a.generated_card->>'prompt', ''), '') AS question,
-        a.question_type AS "questionType",
         a.correct_answer AS "correctAnswer",
         a.answer AS "userAnswer",
         a.successful,
         a.signals,
-        a.template_mode AS "templateMode",
-        a.support_layer AS "supportLayer",
         a.modality,
         a.live_coach_used AS "liveCoachUsed",
         a.category_tags AS "categoryTags",
@@ -36,57 +33,28 @@ _PRACTICE_HISTORY_SELECT = """
         a.created_at
     FROM submission a
     LEFT JOIN multiple_choice_problem q ON q.id = a.multiple_choice_problem_id
-        WHERE a.question_type <> ''
 """
 
 
 async def fetch_practice_history_rows(
     card_id: str,
-    question_type: str,
     skill_tags: list[str],
     limit: int = 20,
 ) -> list[PracticeHistoryRow]:
     async with acquire_connection() as conn:
-        if question_type:
-            rows = await conn.fetch(
-                f"""
-                {_PRACTICE_HISTORY_SELECT}
-                                    AND a.question_type = $2
-                                    AND (COALESCE(a.generated_card_id, a.multiple_choice_problem_id) = $1 OR a.category_tags && $3::text[])
-                                ORDER BY a.created_at DESC
-                LIMIT $4
-                """,
-                card_id,
-                question_type,
-                skill_tags,
-                limit,
-            )
-        elif skill_tags:
-            rows = await conn.fetch(
-                f"""
-                {_PRACTICE_HISTORY_SELECT}
-                                    AND (COALESCE(a.generated_card_id, a.multiple_choice_problem_id) = $1 OR a.category_tags && $2::text[])
-                                ORDER BY a.created_at DESC
-                LIMIT $3
-                """,
-                card_id,
-                skill_tags,
-                limit,
-            )
-        else:
-            rows = await conn.fetch(
-                f"""
-                {_PRACTICE_HISTORY_SELECT}
-                                    AND (
-                                        COALESCE(a.generated_card_id, a.multiple_choice_problem_id) = $1
-                                        OR (a.signals ? 'flow' AND a.signals->'flow'->>'anchorCardId' = $1)
-                                    )
-                                ORDER BY a.created_at DESC
-                LIMIT $2
-                """,
-                card_id,
-                limit,
-            )
+        rows = await conn.fetch(
+            f"""
+            {_PRACTICE_HISTORY_SELECT}
+            WHERE COALESCE(a.generated_card_id, a.multiple_choice_problem_id, a.exercise_id) = $1
+               OR (a.signals ? 'flow' AND a.signals->'flow'->>'anchorCardId' = $1)
+               OR a.category_tags && $2::text[]
+            ORDER BY a.created_at DESC
+            LIMIT $3
+            """,
+            card_id,
+            skill_tags,
+            limit,
+        )
 
     return [cast(PracticeHistoryRow, dict(row)) for row in rows]
 
@@ -142,11 +110,10 @@ def _multiple_choice_question_fingerprint(question: dict[str, Any]) -> str:
 
 async def fetch_practice_history_entries(
     card_id: str,
-    question_type: str,
     skill_tags: list[str],
     limit: int = 20,
 ) -> list[PracticeHistoryEntry]:
-    rows = await fetch_practice_history_rows(card_id, question_type, skill_tags, limit)
+    rows = await fetch_practice_history_rows(card_id, skill_tags, limit)
     history: list[PracticeHistoryEntry] = []
     for row in rows:
         stored_signals = _parse_json_field(row["signals"], {})
@@ -158,7 +125,6 @@ async def fetch_practice_history_entries(
             "cardId": row["cardId"],
             "cardTitle": row["cardTitle"],
             "question": row["question"] or "",
-            "questionType": row["questionType"] or "",
             "correctAnswer": row["correctAnswer"] or "",
             "userAnswer": row["userAnswer"] or "",
             "successful": bool(row["successful"]),
@@ -168,8 +134,6 @@ async def fetch_practice_history_entries(
                 "flow": _parse_json_field(stored_signals.get("flow"), {}),
                 "modality": _parse_json_field(stored_signals.get("modality"), {}),
             },
-            "templateMode": str(row["templateMode"] or "algorithm"),
-            "supportLayer": str(row["supportLayer"] or "none"),
             "modality": str(row["modality"] or "total-recall"),
             "liveCoachUsed": bool(row["liveCoachUsed"]),
             "categoryTags": list(row["categoryTags"] or []),

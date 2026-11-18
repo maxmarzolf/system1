@@ -6,12 +6,11 @@ from typing import Any, cast
 from app.contracts.catalog_ids import problem_slug_candidates
 from app.repositories.base import acquire_connection
 from app.repositories.types import (
-    AlgorithmSkillRow,
+    AlgorithmRow,
     CompetencyOverallRow,
     CompetencySignalRow,
     CompetencyTerrainRow,
     SubmissionInsertResult,
-    SkillMapOverviewAlgorithmRow,
     SkillMapOverviewAttemptRow,
 )
 
@@ -22,7 +21,6 @@ async def insert_submission_attempt_row(
     card_id: str,
     card_title: str,
     question: str,
-    question_type: str,
     category_tags: list[str],
     correct_answer: str,
     user_answer: str,
@@ -32,8 +30,6 @@ async def insert_submission_attempt_row(
     interaction_id: str,
     generated_card_id: str | None,
     generated_card_json: str | None,
-    template_mode: str,
-    support_layer: str,
     live_coach_used: bool,
     modality: str,
     created_at: datetime,
@@ -62,17 +58,16 @@ async def insert_submission_attempt_row(
         row = await conn.fetchrow(
             """
             INSERT INTO submission
-                (session_id, multiple_choice_problem_id, answer, question_type, category_tags,
+                (session_id, multiple_choice_problem_id, answer, category_tags,
                  correct_answer, successful, signals, interaction_id,
-                 generated_card_id, problem_slug, generated_card, template_mode, support_layer,
+                 generated_card_id, problem_slug, generated_card,
                  live_coach_used, modality, created_at, exercise_id)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
             RETURNING id
             """,
             session_id or "0000",
             multiple_choice_problem_id,
             normalized_user_answer,
-            question_type,
             category_tags,
             normalized_correct_answer,
             successful,
@@ -81,8 +76,6 @@ async def insert_submission_attempt_row(
             generated_card_id,
             problem_slug,
             generated_card_json,
-            template_mode,
-            support_layer,
             live_coach_used,
             modality,
             created_at,
@@ -94,58 +87,19 @@ async def insert_submission_attempt_row(
     return cast(SubmissionInsertResult, dict(row)) if row else None
 
 
-_ALGORITHM_SKILL_JOIN = """
-    FROM algorithm a
-    LEFT JOIN (
-        SELECT
-            p.algorithm_slug,
-            ps.skill_slug,
-            MIN(ps.display_order) AS display_order
-        FROM problem p
-        JOIN problem_skill ps ON ps.problem_slug = p.slug
-        GROUP BY p.algorithm_slug, ps.skill_slug
-    ) links ON links.algorithm_slug = a.slug
-    LEFT JOIN skill s ON s.slug = links.skill_slug
-"""
-
-
-async def fetch_algorithms_with_skills_rows() -> list[AlgorithmSkillRow]:
+async def fetch_algorithm_rows() -> list[AlgorithmRow]:
     async with acquire_connection() as conn:
         rows = await conn.fetch(
-            f"""
-            SELECT
-                (DENSE_RANK() OVER (ORDER BY a.display_order ASC, a.slug ASC))::int AS algorithm_id,
-                a.name AS algorithm_name,
-                (ROW_NUMBER() OVER (ORDER BY a.display_order ASC, links.display_order ASC, s.slug ASC))::int AS skill_id,
-                s.name AS skill_name
-            {_ALGORITHM_SKILL_JOIN}
-            ORDER BY a.display_order ASC, links.display_order ASC, s.slug ASC
             """
-        )
-    return [cast(AlgorithmSkillRow, dict(row)) for row in rows]
-
-
-async def fetch_skill_map_overview_algorithm_rows() -> list[SkillMapOverviewAlgorithmRow]:
-    async with acquire_connection() as conn:
-        rows = await conn.fetch(
-            f"""
             SELECT
                 (DENSE_RANK() OVER (ORDER BY a.display_order ASC, a.slug ASC))::int AS algorithm_id,
                 a.slug AS algorithm_slug,
-                a.name AS algorithm_name,
-                s.name AS skill_name
-            {_ALGORITHM_SKILL_JOIN}
-            ORDER BY a.display_order ASC, links.display_order ASC, s.slug ASC
+                a.name AS algorithm_name
+            FROM algorithm a
+            ORDER BY a.display_order ASC, a.slug ASC
             """
         )
-    return [cast(SkillMapOverviewAlgorithmRow, dict(row)) for row in rows]
-
-
-_DAILY_WORK_SUBMISSION_FILTER = """
-    (a.question_type LIKE 'skill-map%'
-     OR a.question_type LIKE 'playlist:%'
-     OR a.category_tags && ARRAY['skill-map']::text[])
-"""
+    return [cast(AlgorithmRow, dict(row)) for row in rows]
 
 
 async def fetch_skill_map_overview_attempt_rows() -> list[SkillMapOverviewAttemptRow]:
@@ -156,17 +110,14 @@ async def fetch_skill_map_overview_attempt_rows() -> list[SkillMapOverviewAttemp
                 COALESCE(a.generated_card_id, a.multiple_choice_problem_id) AS tracked_card_id,
                 COALESCE(NULLIF(a.generated_card->>'title', ''), q.question_text, a.multiple_choice_problem_id) AS card_title,
                 a.category_tags AS category_tags,
-                a.question_type AS question_type,
                 a.successful,
                 a.created_at,
-                a.template_mode,
-                a.support_layer,
                 a.modality,
                 a.live_coach_used,
                 a.signals
             FROM submission a
             LEFT JOIN multiple_choice_problem q ON q.id = a.multiple_choice_problem_id
-            WHERE {_DAILY_WORK_SUBMISSION_FILTER}
+            WHERE a.category_tags @> ARRAY['skill-map']::text[]
             ORDER BY a.created_at DESC
             """
         )
@@ -189,7 +140,7 @@ attributed AS (
     FROM submission a
     CROSS JOIN LATERAL unnest(a.category_tags) WITH ORDINALITY AS t(tag, position)
     JOIN tag_algorithm m ON m.tag = lower(t.tag)
-    WHERE {_DAILY_WORK_SUBMISSION_FILTER}
+    WHERE a.category_tags @> ARRAY['skill-map']::text[]
     ORDER BY a.id, t.position
 ),
 -- Every scored rubric entry (dimensions and modifiers), clamped to 0-100.
@@ -388,7 +339,6 @@ async def fetch_history_day_rows(day_start: datetime, day_end: datetime) -> list
                 a.id,
                 a.created_at,
                 a.modality,
-                a.question_type,
                 a.category_tags,
                 a.successful,
                 a.answer,
@@ -403,8 +353,8 @@ async def fetch_history_day_rows(day_start: datetime, day_end: datetime) -> list
                 q.generation_trace AS multiple_choice_generation_trace
             FROM submission a
             LEFT JOIN multiple_choice_problem q ON q.id = a.multiple_choice_problem_id
-            WHERE {_DAILY_WORK_SUBMISSION_FILTER}
-              AND a.created_at >= $1 AND a.created_at < $2
+            WHERE a.created_at >= $1 AND a.created_at < $2
+              AND a.category_tags @> ARRAY['skill-map']::text[]
             ORDER BY a.created_at ASC, a.id ASC
             """,
             day_start,

@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 from typing import Any
 
 READINESS_STALE_DAYS = 7
-READINESS_MODE_ORDER = ("algorithm",)
 
 
 def _coerce_datetime(value: Any) -> datetime | None:
@@ -29,11 +28,11 @@ def _clamp(value: float, lower: float, upper: float) -> float:
     return max(lower, min(upper, value))
 
 
-def support_cap(live_coach_used: bool, support_layer: str = "none") -> float:
+def support_cap(live_coach_used: bool, modality: str = "total-recall") -> float:
     cap = 1.0
     if live_coach_used:
         cap -= 0.15
-    if support_layer == "ghost-reps":
+    if modality == "ghost-rep":
         cap = min(cap, 0.45)
     return _clamp(cap, 0.35, 1.0)
 
@@ -45,7 +44,7 @@ def attempt_mastery_score(attempt: dict[str, Any]) -> float:
         1.0,
         support_cap(
             bool(attempt.get("liveCoachUsed")),
-            str(attempt.get("supportLayer") or attempt.get("support_layer") or "none"),
+            str(attempt.get("modality") or "total-recall"),
         ),
     )
     return _clamp(capped_score, 0.0, 1.0)
@@ -102,7 +101,7 @@ def summarize_readiness(attempts: list[dict[str, Any]], now: datetime | None = N
         total_weight += weight
         if bool(attempt.get("successful")):
             successful_outcomes += 1
-            if str(attempt.get("supportLayer") or attempt.get("support_layer") or "none") == "none":
+            if str(attempt.get("modality") or "total-recall") != "ghost-rep":
                 successful_attempts += 1
         if bool(attempt.get("liveCoachUsed")):
             live_coach_used_count += 1

@@ -92,17 +92,13 @@ def test_catalog_hash_is_stable_and_sensitive_to_content() -> None:
 def test_taxonomy_rows_cover_every_algorithm() -> None:
     rows = database._taxonomy_rows()
     assert {slug for slug, _name, _order in rows["algorithm"]} == set(ALGORITHMS)
-    assert {row[0] for row in rows["problem_skill"]} <= {row[0] for row in rows["problem"]}
-
-
-def test_dedupe_pairs_keeps_the_last_order_per_pair() -> None:
-    assert database._dedupe_pairs([("p", "s", 1), ("p", "t", 2), ("p", "s", 3)]) == [("p", "s", 3), ("p", "t", 2)]
+    assert set(rows) == {"algorithm", "problem"}
 
 
 def test_seed_taxonomy_prunes_stale_rows_but_never_problems_with_submissions() -> None:
     source = inspect.getsource(database._write_taxonomy)
     assert "NOT EXISTS (SELECT 1 FROM submission s WHERE s.problem_slug = p.slug)" in source
-    assert "DELETE FROM skill WHERE slug <> ALL($1::text[])" in source
+    assert "problem_skill" not in source
     assert "executemany" in source
 
 
@@ -169,6 +165,26 @@ def test_startup_is_idempotent_and_seeds_every_modalitys_signals() -> None:
     assert migration_key_columns == 0
     script = ScriptDirectory.from_config(runner.alembic_config(settings.database_url))
     assert version == script.get_current_head()
+
+
+@pytest.mark.integration
+def test_submission_context_cleanup_keeps_legacy_mcqs_identifiable() -> None:
+    async def _check() -> tuple[set[str], int]:
+        await _boot()
+        columns = await _fetch(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'submission' AND column_name = ANY($1::text[])",
+            ["question_type", "template_mode", "support_layer"],
+        )
+        misclassified = await _fetch(
+            "SELECT COUNT(*) AS count FROM submission "
+            "WHERE multiple_choice_problem_id IS NOT NULL AND modality <> 'mcq'"
+        )
+        return {row["column_name"] for row in columns}, misclassified[0]["count"]
+
+    columns, misclassified = _run_integration(_check)
+    assert columns == set()
+    assert misclassified == 0
 
 
 async def _boot_with_seeders_tracked(monkeypatch: pytest.MonkeyPatch, *, stale: bool) -> tuple[list[str], str]:
@@ -307,6 +323,7 @@ def test_migrations_run_twice_cleanly_on_a_fresh_database() -> None:
     assert version == script.get_current_head()
     for table in ("alembic_version", "seed_state", "submission", "problem", "signal_definition", "playlist"):
         assert table in tables
+    assert not {"problem_skill", "problem_technique", "skill", "technique"} & set(tables)
 
 
 LEGACY_SHAPE = """
@@ -356,6 +373,7 @@ async def _legacy_database_upgrades(url: str) -> dict[str, object]:
             "version": await conn.fetchval("SELECT version_num FROM alembic_version"),
             "signal_spec": ("algorithm", "signal_spec") in columns,
             "migration_key": ("submission", "migration_key") in columns,
+            "legacy_taxonomy": {table for table, _column in columns} & {"problem_skill", "problem_technique", "skill", "technique"},
             "stamped": json.loads(await conn.fetchval(
                 "SELECT signals->'evaluation'->'signalSpec' FROM submission WHERE id = $1", unstamped_id
             )),
@@ -379,6 +397,7 @@ def test_migrations_upgrade_a_pre_alembic_database_and_rerun_cleanly() -> None:
     assert result["version"] == script.get_current_head()
     assert result["signal_spec"] is False  # recall specs are signal_definition rows now (0013)
     assert result["migration_key"] is False
+    assert result["legacy_taxonomy"] == set()
     assert result["stamped"] == {"algorithm": "default", "version": 0}
     assert result["linked"] == "fx-problem"
     assert result["description"] == DEFAULT_MCQ_DEFINITIONS[0]["description"]

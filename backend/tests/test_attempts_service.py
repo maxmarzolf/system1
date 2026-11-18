@@ -75,7 +75,6 @@ def test_create_attempt_persists_flow_and_modality_signals(monkeypatch) -> None:
         "cardId": "flow-card",
         "mode": "main-recall",
         "elapsedMs": 1500,
-        "supportLayer": "ghost-reps",
         "modality": "ghost-rep",
         "signals": {
             "flow": {
@@ -144,9 +143,8 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
 
     overview = build_skill_map_overview(
         algorithm_rows=[
-            {"algorithm_id": 1, "algorithm_name": "Sliding Window", "skill_name": "valid window rule"},
-            {"algorithm_id": 2, "algorithm_name": "Binary Search", "skill_name": "left / right bounds"},
-            {"algorithm_id": 2, "algorithm_name": "Binary Search", "skill_name": "search on answer"},
+            {"algorithm_id": 1, "algorithm_slug": "sliding-window", "algorithm_name": "Sliding Window"},
+            {"algorithm_id": 2, "algorithm_slug": "binary-search", "algorithm_name": "Binary Search"},
         ],
         attempt_rows=[
             {
@@ -155,8 +153,6 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
                 "category_tags": ["skill-map", "sliding-window"],
                 "successful": True,
                 "created_at": five_days_ago,
-                "template_mode": "algorithm",
-                "support_layer": "ghost-reps",
                 "modality": "ghost-rep",
                 "live_coach_used": False,
                 "signals": {},
@@ -167,8 +163,6 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
                 "category_tags": ["skill-map", "binary-search", "left-right-bounds"],
                 "successful": True,
                 "created_at": yesterday,
-                "template_mode": "algorithm",
-                "support_layer": "ghost-reps",
                 "modality": "ghost-rep",
                 "live_coach_used": False,
                 "signals": {},
@@ -179,8 +173,6 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
                 "category_tags": ["skill-map", "binary-search"],
                 "successful": False,
                 "created_at": today,
-                "template_mode": "algorithm",
-                "support_layer": "none",
                 "live_coach_used": False,
                 "signals": {},
             },
@@ -190,8 +182,6 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
                 "category_tags": ["skill-map", "binary-search"],
                 "successful": True,
                 "created_at": today,
-                "template_mode": "algorithm",
-                "support_layer": "none",
                 "modality": "mcq",
                 "live_coach_used": False,
                 "signals": {},
@@ -202,8 +192,6 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
                 "category_tags": ["skill-map", "sliding-window", "fixed-vs-variable-window"],
                 "successful": True,
                 "created_at": today,
-                "template_mode": "algorithm",
-                "support_layer": "none",
                 "modality": "total-recall",
                 "live_coach_used": False,
                 "signals": {},
@@ -214,8 +202,6 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
                 "category_tags": ["skill-map", "binary-search", "search-on-answer"],
                 "successful": False,
                 "created_at": today,
-                "template_mode": "algorithm",
-                "support_layer": "none",
                 "modality": "microdrill",
                 "live_coach_used": False,
                 "signals": {},
@@ -240,28 +226,24 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
             "slug": "binary-search",
             "workType": "total-recall",
             "count": 1,
-            "skills": [{"skill": "Unclassified", "slug": "unclassified", "count": 1}],
         },
         {
             "algorithm": "Binary Search",
             "slug": "binary-search",
             "workType": "multiple-choice",
             "count": 1,
-            "skills": [{"skill": "Unclassified", "slug": "unclassified", "count": 1}],
         },
         {
             "algorithm": "Binary Search",
             "slug": "binary-search",
             "workType": "microdrill",
             "count": 1,
-            "skills": [{"skill": "search on answer", "slug": "search-on-answer", "count": 1}],
         },
         {
             "algorithm": "Sliding Window",
             "slug": "sliding-window",
             "workType": "total-recall",
             "count": 1,
-            "skills": [{"skill": "Unclassified", "slug": "unclassified", "count": 1}],
         },
     ]
     assert yesterday_bucket["segments"] == [
@@ -270,7 +252,6 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
             "slug": "binary-search",
             "workType": "ghost-reps",
             "count": 1,
-            "skills": [{"skill": "left / right bounds", "slug": "left-right-bounds", "count": 1}],
         }
     ]
     # The grid's rows: catalog algorithms in order, then the static playlists.
@@ -287,18 +268,15 @@ def test_skill_map_overview_files_playlist_work_under_its_playlist() -> None:
 
     overview = build_skill_map_overview(
         algorithm_rows=[
-            {"algorithm_id": 1, "algorithm_name": "Sliding Window", "skill_name": "valid window rule"},
+            {"algorithm_id": 1, "algorithm_slug": "sliding-window", "algorithm_name": "Sliding Window"},
         ],
         attempt_rows=[
             {
                 "tracked_card_id": "playlist-google-1-two-sum",
                 "card_title": "1. Two Sum",
                 "category_tags": ["skill-map", "static-playlist", "google", "arrays-hash-maps"],
-                "question_type": "playlist:google:algorithm",
                 "successful": True,
                 "created_at": now,
-                "template_mode": "algorithm",
-                "support_layer": "none",
                 "modality": "total-recall",
                 "live_coach_used": False,
                 "signals": {},
@@ -307,11 +285,8 @@ def test_skill_map_overview_files_playlist_work_under_its_playlist() -> None:
                 "tracked_card_id": "playlist-skeletons-bfs-skeleton",
                 "card_title": "BFS Skeleton",
                 "category_tags": ["skill-map", "static-playlist", "google-skeletons", "graphs", "bfs-skeleton"],
-                "question_type": "playlist:google-skeletons:algorithm",
                 "successful": True,
                 "created_at": now,
-                "template_mode": "algorithm",
-                "support_layer": "none",
                 "modality": "total-recall",
                 "live_coach_used": False,
                 "signals": {},
@@ -338,7 +313,6 @@ def _activity_row(created_at: datetime) -> dict[str, object]:
     return {
         "created_at": created_at,
         "category_tags": ["skill-map", "sliding-window"],
-        "question_type": "skill-map-mcq:card:random",
         "modality": "mcq",
         "successful": True,
     }
@@ -348,7 +322,7 @@ def test_an_answer_tagged_with_several_algorithms_counts_once_toward_the_first()
     today = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
     row = {**_activity_row(today), "category_tags": ["skill-map", "linked-lists", "two-pointers"], "modality": "ghost-rep"}
     activity = overview._build_ghost_rep_activity(
-        [row], {"linked-lists": "Linked Lists", "two-pointers": "Two Pointers"}, {}, window_days=1,
+        [row], {"linked-lists": "Linked Lists", "two-pointers": "Two Pointers"}, window_days=1,
     )
     (day,) = activity["days"]
     assert day["total"] == 1
@@ -362,9 +336,9 @@ def test_daily_activity_groups_by_the_viewers_calendar_day() -> None:
     rows = [_activity_row(late_evening)]
     slugs = {"sliding-window": "Sliding Window"}
 
-    utc = overview._build_ghost_rep_activity(rows, slugs, {}, window_days=7)
+    utc = overview._build_ghost_rep_activity(rows, slugs, window_days=7)
     new_york = overview._build_ghost_rep_activity(
-        rows, slugs, {}, window_days=7, tz=read_common.resolve_timezone("America/New_York"),
+        rows, slugs, window_days=7, tz=read_common.resolve_timezone("America/New_York"),
     )
 
     def active(activity):
@@ -379,7 +353,7 @@ def test_all_time_activity_starts_at_the_first_attempt() -> None:
     first = now - timedelta(days=90)
     rows = [_activity_row(first), _activity_row(now)]
 
-    activity = overview._build_ghost_rep_activity(rows, {"sliding-window": "Sliding Window"}, {}, window_days=None)
+    activity = overview._build_ghost_rep_activity(rows, {"sliding-window": "Sliding Window"}, window_days=None)
 
     assert activity["windowStart"] == first.date().isoformat()
     assert len(activity["days"]) == 91
@@ -445,7 +419,7 @@ def test_competency_terrain_names_algorithms_and_shapes_query_rows(monkeypatch) 
     monkeypatch.setattr(history, "fetch_competency_overall", _overall)
 
     monkeypatch.setattr(history, "fetch_competency_terrain", _terrain)
-    monkeypatch.setattr(history, "fetch_skill_map_overview_algorithm_rows", _algorithm_rows)
+    monkeypatch.setattr(history, "fetch_algorithm_rows", _algorithm_rows)
     monkeypatch.setattr(history.app_settings_service, "grading", _grading)
 
     terrain = asyncio.run(history.get_competency_terrain("America/New_York"))
@@ -501,7 +475,7 @@ def test_competency_terrain_falls_back_to_utc_for_unknown_timezones(monkeypatch)
         return []
 
     monkeypatch.setattr(history, "fetch_competency_terrain", _terrain)
-    monkeypatch.setattr(history, "fetch_skill_map_overview_algorithm_rows", _no_algorithms)
+    monkeypatch.setattr(history, "fetch_algorithm_rows", _no_algorithms)
 
     async def _no_signals(**_kwargs):
         return []

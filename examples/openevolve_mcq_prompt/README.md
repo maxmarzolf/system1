@@ -1,8 +1,9 @@
 # Evolve the MCQ-generation prompt
 
 This example evolves a reusable plain-text prompt, not Python code. The prompt
-reads recent answer history, chooses the next reasoning decision, and generates
-an MCQ. For each candidate prompt, `evaluator.py` asks OpenAI for one Sliding Window card, then
+reads answer history, chooses the next reasoning decision, and generates
+an MCQ. The experiment uses `gpt-5.4` to revise prompts and generate each
+Sliding Window card. For each candidate prompt, `evaluator.py` asks OpenAI for one card, then
 scores JSON structure and a few cues in the question, selected answer, and
 explanation. When Jev is configured, it also judges question quality. The
 score is from `0.0` to `1.0`.
@@ -62,9 +63,9 @@ docker compose up -d --no-deps --force-recreate evolve
 After the answer is saved, the page automatically starts one more OpenEvolve
 iteration when the current run is complete. It resumes the latest population
 checkpoint, so candidates, archive, and iteration numbers carry forward. The
-recent answers and actual prior questions are added to the prompt-generation
+full answer history and actual prior questions are added to the prompt-generation
 instructions. OpenEvolve evolves the reusable rule for choosing a probe.
-The prompt and recent answer history go to OpenAI, which returns both a
+The prompt and full answer history go to OpenAI, which returns both a
 `nextProbe` and an MCQ. Then
 [TypeSafe Jev](https://docs.typesafe.ai/api/system-one) judges whether the MCQ
 is sound, whether the prompt used its rule to choose the probe, whether the
@@ -80,7 +81,11 @@ checks (40%) with Jev's question score (60%), and returns the result to OpenEvol
 artifacts so prompt revisions can address weak probes or repeated questions. Answer correctness
 itself is not a fitness score, since that would favor trivial questions. New answers affect the
 next iteration; earlier candidate scores remain the scores from when they were
-evaluated, so compare them with that context in mind.
+evaluated, so compare them with that context in mind. New evaluations ask Jev to
+check arithmetic and state consistency and to penalize obvious filler distractors;
+those two dimensions carry extra weight in Jev's score. Historical runs retain
+their original model outputs and scores, so old and new percentages are not
+directly comparable.
 
 Without a Jev key, answer-guided continuation is unavailable. Existing runs,
 including those with written reviews, remain readable.

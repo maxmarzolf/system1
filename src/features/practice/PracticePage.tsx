@@ -152,7 +152,6 @@ function PracticePage() {
     mode: currentPracticeMode,
     flow: practiceFlow,
     inlineEnabled,
-    requestedQuestionType,
     mcqFlowMode: practiceSettings.mcqFlowMode,
     hasDeck,
   })
@@ -238,7 +237,7 @@ function PracticePage() {
     }
     return saved
   }
-  const cardNaming = { card, questionType: cardMeta.questionType, categoryTags: cardMeta.skillTags }
+  const cardNaming = { card, categoryTags: cardMeta.skillTags }
 
   const resetPerCardInteraction = () => {
     recall.reset()
@@ -319,7 +318,7 @@ function PracticePage() {
     const interactionId = recall.ensureInteractionId()
     await mcq.submit(
       mcqCard,
-      (selectedChoice, elapsedMs) => submit(mcqDraft(mcqCard, selectedChoice.id, { elapsedMs, interactionId }, { questionType: cardMeta.mcqQuestionType, categoryTags: cardMeta.mcqSkillTags })),
+      (selectedChoice, elapsedMs) => submit(mcqDraft(mcqCard, selectedChoice.id, { elapsedMs, interactionId }, { categoryTags: cardMeta.mcqSkillTags })),
       (saved, elapsedMs) => {
         if (!isFlowActive) completeCardInSession(saved.successful, elapsedMs)
       },

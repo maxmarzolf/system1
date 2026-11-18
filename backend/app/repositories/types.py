@@ -11,13 +11,10 @@ class PracticeHistoryRow(TypedDict):
     cardId: str
     cardTitle: str
     question: str
-    questionType: str
     correctAnswer: str
     userAnswer: str
     successful: bool
     signals: dict[str, Any] | str | None
-    templateMode: str
-    supportLayer: str
     modality: str
     liveCoachUsed: bool
     categoryTags: list[str]
@@ -32,13 +29,10 @@ class PracticeHistoryEntry(TypedDict):
     cardId: str
     cardTitle: str
     question: str
-    questionType: str
     correctAnswer: str
     userAnswer: str
     successful: bool
     signals: dict[str, Any]
-    templateMode: str
-    supportLayer: str
     modality: str
     liveCoachUsed: bool
     categoryTags: list[str]
@@ -50,18 +44,10 @@ class SubmissionInsertResult(TypedDict):
     id: int
 
 
-class AlgorithmSkillRow(TypedDict):
-    algorithm_id: int
-    algorithm_name: str
-    skill_id: int | None
-    skill_name: str | None
-
-
-class SkillMapOverviewAlgorithmRow(TypedDict):
+class AlgorithmRow(TypedDict):
     algorithm_id: int
     algorithm_slug: str
     algorithm_name: str
-    skill_name: str | None
 
 
 class ProblemPracticeRow(TypedDict):
@@ -74,19 +60,14 @@ class ProblemPracticeRow(TypedDict):
     leetcode_examples: list[str] | str | None
     algorithm_slug: str
     algorithm_name: str
-    technique_slugs: list[str]
-    skill_slugs: list[str]
 
 
 class SkillMapOverviewAttemptRow(TypedDict):
     tracked_card_id: str
     card_title: str
     category_tags: list[str] | None
-    question_type: str | None
     successful: bool
     created_at: datetime
-    template_mode: str
-    support_layer: str
     modality: str | None
     live_coach_used: bool
     signals: dict[str, Any] | str | None

@@ -30,32 +30,32 @@ def _entry(status: str, score: float) -> dict:
     return {"status": status, "score": score}
 
 
-# (created_at UTC, tags, question_type, signals)
+# (created_at UTC, tags, signals)
 SUBMISSIONS = [
     # Jan 1 (New York): two answers. Scored entries 100, 60, 80 (+ 50 from the second) → 72.5.
     # The not_applicable and unavailable entries don't count; a modifier does; 140 clamps to 100.
-    (datetime(2026, 1, 1, 15, tzinfo=timezone.utc), ["skill-map", TAG], "skill-map-mcq",
+    (datetime(2026, 1, 1, 15, tzinfo=timezone.utc), ["skill-map", TAG],
      _evaluation({"correctness": _entry("pass", 100), "nearMiss": _entry("not_applicable", 0),
                   "structure": _entry("partial", 60)}, {"speed": _entry("fail", 80), "x": _entry("unavailable", 0)})),
-    (datetime(2026, 1, 1, 16, tzinfo=timezone.utc), ["skill-map", ALIAS], "skill-map-recall",
+    (datetime(2026, 1, 1, 16, tzinfo=timezone.utc), ["skill-map", ALIAS],
      _evaluation({"correctness": _entry("fail", 50)})),
     # 03:30 UTC on Jan 5 is 22:30 on Jan 4 in New York: a new practice day at 100 (clamped from 140).
-    (datetime(2026, 1, 5, 3, 30, tzinfo=timezone.utc), ["skill-map", TAG], "skill-map-mcq",
+    (datetime(2026, 1, 5, 3, 30, tzinfo=timezone.utc), ["skill-map", TAG],
      _evaluation({"correctness": _entry("pass", 140)})),
     # A second algorithm, practised on Jan 5 only (local), at 40.
-    (datetime(2026, 1, 5, 15, tzinfo=timezone.utc), ["skill-map", OTHER], "skill-map-mcq",
+    (datetime(2026, 1, 5, 15, tzinfo=timezone.utc), ["skill-map", OTHER],
      _evaluation({"correctness": _entry("fail", 40)})),
     # Not daily work (no skill-map marker): excluded.
-    (datetime(2026, 1, 2, 15, tzinfo=timezone.utc), [TAG], "standalone", _evaluation({"correctness": _entry("fail", 0)})),
+    (datetime(2026, 1, 2, 15, tzinfo=timezone.utc), [TAG], _evaluation({"correctness": _entry("fail", 0)})),
 ]
 
 
 async def _insert(conn: asyncpg.Connection) -> None:
-    for created_at, tags, question_type, signals in SUBMISSIONS:
+    for created_at, tags, signals in SUBMISSIONS:
         await conn.execute(
-            """INSERT INTO submission (answer, question_type, category_tags, signals, created_at, interaction_id, modality)
-               VALUES ('a', $1, $2, $3::jsonb, $4, $5, 'mcq')""",
-            question_type, tags, signals, created_at, INTERACTION,
+            """INSERT INTO submission (answer, category_tags, signals, created_at, interaction_id, modality)
+               VALUES ('a', $1, $2::jsonb, $3, $4, 'mcq')""",
+            tags, signals, created_at, INTERACTION,
         )
 
 

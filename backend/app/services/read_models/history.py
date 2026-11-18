@@ -11,7 +11,7 @@ from app.contracts.coerce import coerce_json_object
 from app.core import taxonomy
 from app.core.static_playlists import static_playlist_activity_rows
 from app.repositories.multiple_choice_repository import stored_choices
-from app.repositories.attempts_repository import fetch_competency_overall, fetch_competency_signals, fetch_competency_terrain, fetch_history_day_rows, fetch_skill_map_overview_algorithm_rows
+from app.repositories.attempts_repository import fetch_algorithm_rows, fetch_competency_overall, fetch_competency_signals, fetch_competency_terrain, fetch_history_day_rows
 from app.services import app_settings_service
 from app.services.read_models.common import coerce_utc_datetime, resolve_timezone, submission_modality
 
@@ -65,7 +65,7 @@ async def get_history_submissions(
         start, end = _midnight(today - timedelta(days=max(window_days - 1, 0)), tz), _midnight(today + timedelta(days=1), tz)
     rows = await fetch_history_day_rows(start, end)
     algorithm_names = {
-        str(row["algorithm_slug"]): str(row["algorithm_name"]) for row in await fetch_skill_map_overview_algorithm_rows()
+        str(row["algorithm_slug"]): str(row["algorithm_name"]) for row in await fetch_algorithm_rows()
     }
     algorithm_names.update({str(item["slug"]): str(item["algorithm"]) for item in static_playlist_activity_rows()})
     submissions: list[dict[str, Any]] = []
@@ -127,7 +127,7 @@ async def get_competency_terrain(timezone_name: str | None = None) -> dict[str, 
     algorithms and shapes the rows.
     """
     tz = resolve_timezone(timezone_name)
-    known = {str(row["algorithm_slug"]): str(row["algorithm_name"]) for row in await fetch_skill_map_overview_algorithm_rows()}
+    known = {str(row["algorithm_slug"]): str(row["algorithm_name"]) for row in await fetch_algorithm_rows()}
     playlists = {str(item["slug"]): str(item["algorithm"]) for item in static_playlist_activity_rows()}
     known.update(playlists)
     grading = await app_settings_service.grading()

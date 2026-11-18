@@ -74,7 +74,7 @@ export const flowAttemptFromHistoryEntry = (entry: FlowHistoryEntry, anchorCardI
 
 export const requestFlowAttemptHistory = async (anchorCard: Flashcard): Promise<FlowAttempt[]> => {
   const result = await api.POST('/api/coach/history', {
-    body: { cardId: anchorCard.id, questionType: '', skillTags: [], limit: 20 },
+    body: { cardId: anchorCard.id, skillTags: [], limit: 20 },
   })
   const payload = unwrap(result, 'Unable to load flow history') as unknown as FlowHistoryResponse
   return payload.entries

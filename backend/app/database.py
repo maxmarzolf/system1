@@ -11,7 +11,7 @@ import asyncpg
 from app.config import settings
 from app.core import core_algorithms, core_meta
 from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG, CORE_META_CATALOG
-from app.core.taxonomy_catalog import ALGORITHMS, CANONICAL_SKILLS, TECHNIQUES
+from app.core.taxonomy_catalog import ALGORITHMS
 from app.db import close_pool, get_pool, open_pool  # noqa: F401 - get_pool re-exported for callers
 from app.migrations.runner import upgrade_to_head
 from app.repositories import unified_catalog_repository
@@ -40,26 +40,6 @@ async def connect() -> asyncpg.Pool:
 
 async def disconnect() -> None:
     await close_pool()
-
-
-def _display_label(slug: str) -> str:
-    overrides = {
-        "dfs-bfs": "DFS / BFS",
-        "heap": "Heap / Priority Queue",
-        "dynamic-programming": "Dynamic Programming",
-        "prefix-sums": "Prefix Sums",
-        "monotonic-stack": "Monotonic Stack",
-        "stacks-queues": "Stacks / Queues",
-        "linked-lists": "Linked Lists",
-        "matrix-grid": "Matrix / Grid",
-        "topological-sort": "Topological Sort",
-        "greedy-sorting": "Greedy / Sorting",
-        "trie": "Trie",
-        "trees": "Trees",
-    }
-    if slug in overrides:
-        return overrides[slug]
-    return " ".join(part.capitalize() for part in slug.split("-") if part)
 
 
 async def _seed_catalog(db_pool: asyncpg.Pool) -> None:
@@ -111,11 +91,8 @@ def _json_default(value: Any) -> Any:
 
 
 def _taxonomy_rows() -> dict[str, list[tuple[Any, ...]]]:
-    """Rows for algorithm, technique, skill, problem, problem_skill and problem_technique."""
-    skill_order: dict[str, int] = {slug: index + 1 for index, slug in enumerate(CANONICAL_SKILLS)}
+    """Rows for algorithm families and core practice problems."""
     problem_rows: list[tuple[Any, ...]] = []
-    problem_skill_rows: list[tuple[str, str, int]] = []
-    problem_technique_rows: list[tuple[str, str, int]] = []
 
     catalog_sources = (
         (core_algorithms, CORE_ALGORITHM_CATALOG),
@@ -141,22 +118,12 @@ def _taxonomy_rows() -> dict[str, list[tuple[Any, ...]]]:
                     "core-meta" if "core-meta" in meta["tags"] else "core-catalog",
                 )
             )
-            for skill_slug in meta["skills"]:
-                skill_order.setdefault(skill_slug, len(skill_order) + 1)
-                problem_skill_rows.append((problem_slug, skill_slug, problem_index))
-            for technique_slug in meta["techniques"]:
-                problem_technique_rows.append((problem_slug, technique_slug, problem_index))
-
     return {
         "algorithm": [
             (slug, name, order)
             for order, (slug, name) in enumerate(ALGORITHMS.items(), start=1)
         ],
-        "technique": [(slug, name, order) for order, (slug, name) in enumerate(TECHNIQUES.items(), start=1)],
-        "skill": [(slug, _display_label(slug).lower(), order) for slug, order in skill_order.items()],
         "problem": problem_rows,
-        "problem_skill": problem_skill_rows,
-        "problem_technique": problem_technique_rows,
     }
 
 
@@ -178,28 +145,6 @@ async def _write_taxonomy(conn: asyncpg.Connection, rows: dict[str, list[tuple[A
             updated_at = NOW()
         """,
         rows["algorithm"],
-    )
-    await conn.executemany(
-        """
-        INSERT INTO technique (slug, name, display_order, updated_at)
-        VALUES ($1, $2, $3, NOW())
-        ON CONFLICT (slug) DO UPDATE SET
-            name = EXCLUDED.name,
-            display_order = EXCLUDED.display_order,
-            updated_at = NOW()
-        """,
-        rows["technique"],
-    )
-    await conn.executemany(
-        """
-        INSERT INTO skill (slug, name, display_order, updated_at)
-        VALUES ($1, $2, $3, NOW())
-        ON CONFLICT (slug) DO UPDATE SET
-            name = EXCLUDED.name,
-            display_order = EXCLUDED.display_order,
-            updated_at = NOW()
-        """,
-        rows["skill"],
     )
     await conn.executemany(
         """
@@ -251,24 +196,3 @@ async def _write_taxonomy(conn: asyncpg.Connection, rows: dict[str, list[tuple[A
             len(kept),
             ", ".join(row["slug"] for row in kept),
         )
-
-    await conn.execute("DELETE FROM problem_skill")
-    await conn.executemany(
-        "INSERT INTO problem_skill (problem_slug, skill_slug, display_order) VALUES ($1, $2, $3)",
-        _dedupe_pairs(rows["problem_skill"]),
-    )
-    await conn.execute("DELETE FROM problem_technique")
-    await conn.executemany(
-        "INSERT INTO problem_technique (problem_slug, technique_slug, display_order) VALUES ($1, $2, $3)",
-        _dedupe_pairs(rows["problem_technique"]),
-    )
-
-    await conn.execute(
-        "DELETE FROM skill WHERE slug <> ALL($1::text[])",
-        [row[0] for row in rows["skill"]],
-    )
-
-
-def _dedupe_pairs(rows: list[tuple[str, str, int]]) -> list[tuple[str, str, int]]:
-    """Last write wins per (problem, other) pair, like the old ON CONFLICT DO UPDATE."""
-    return list({(row[0], row[1]): row for row in rows}.values())

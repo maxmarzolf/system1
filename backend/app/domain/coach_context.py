@@ -3,15 +3,14 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any, TypedDict
 
-from app.contracts.coaching import SkillMapNode, TemplateMode
-from app.domain.readiness import READINESS_MODE_ORDER, summarize_readiness
+from app.contracts.coaching import SkillMapNode
+from app.domain.readiness import summarize_readiness
 from app.domain.rubric_summary import summarize_submission_rubrics
 from app.contracts.evaluation import evaluation_feedback
-from app.core.taxonomy import primary_pattern_tag, slugify
+from app.core.taxonomy import slugify
 
 
 class AttemptHistoryEntry(TypedDict, total=False):
-    templateMode: str
     categoryTags: list[str]
     signals: dict[str, Any]
     question: str
@@ -30,7 +29,6 @@ class AttemptHistorySummary(TypedDict, total=False):
     daysSinceLastSubmit: int | None
     stale: bool
     dimensionSummary: dict[str, Any]
-    templateModes: dict[str, dict[str, Any]]
 
 
 class PatternProgressSummary(TypedDict, total=False):
@@ -51,15 +49,6 @@ class SkillMapProgressSummary(TypedDict):
 
 
 def summarize_attempt_history(history: list[AttemptHistoryEntry]) -> AttemptHistorySummary:
-    template_mode_summaries = {
-        mode: {
-            **summarize_readiness([item for item in history if str(item.get("templateMode", "")) == mode]),
-            "dimensionSummary": summarize_submission_rubrics([
-                item for item in history if str(item.get("templateMode", "")) == mode
-            ]),
-        }
-        for mode in READINESS_MODE_ORDER
-    }
     readiness_summary = summarize_readiness(history)
     dimension_summary = summarize_submission_rubrics(history)
     if not history:
@@ -74,7 +63,6 @@ def summarize_attempt_history(history: list[AttemptHistoryEntry]) -> AttemptHist
             "daysSinceLastSubmit": readiness_summary["daysSinceLastSubmit"],
             "stale": readiness_summary["stale"],
             "dimensionSummary": dimension_summary,
-            "templateModes": template_mode_summaries,
         }
 
     successes = [bool(item.get("successful")) for item in history]
@@ -115,7 +103,6 @@ def summarize_attempt_history(history: list[AttemptHistoryEntry]) -> AttemptHist
         "daysSinceLastSubmit": readiness_summary["daysSinceLastSubmit"],
         "stale": readiness_summary["stale"],
         "dimensionSummary": dimension_summary,
-        "templateModes": template_mode_summaries,
     }
 
 
@@ -189,43 +176,3 @@ def summarize_skill_map_progress(
         },
         "patterns": progress_by_pattern,
     }
-
-
-def pattern_display_name(skill_tags: list[str]) -> str:
-    pattern_tag = primary_pattern_tag(skill_tags)
-    return {
-        "sliding-window": "sliding window",
-        "two-pointers": "two pointers",
-        "binary-search": "binary search",
-        "trees": "trees",
-        "graphs": "graphs",
-        "dfs-bfs": "graphs",
-        "graph-traversal": "graphs",
-        "backtracking": "backtracking",
-        "heap-priority-queue": "heap",
-        "heap": "heap",
-        "union-find": "union find",
-        "dynamic-programming": "dynamic programming",
-        "dp": "dynamic programming",
-        "intervals": "intervals",
-        "prefix-sums": "prefix sums",
-        "monotonic-stack": "monotonic stack",
-        "stacks-queues": "stacks and queues",
-        "linked-lists": "linked lists",
-        "matrix-grid": "matrix grid",
-        "trie": "trie",
-        "sorting": "sorting",
-        "greedy-sorting": "sorting",
-        "stack": "stack",
-    }.get(pattern_tag, "algorithm")
-
-
-def algorithmic_template_label(skill_tags: list[str], template_mode: str) -> str:
-    pattern_name = pattern_display_name(skill_tags)
-    if pattern_name == "algorithm":
-        return {
-            TemplateMode.algorithm.value: "algorithm template",
-        }.get(template_mode, "algorithm template")
-    return {
-        TemplateMode.algorithm.value: f"{pattern_name} template",
-    }.get(template_mode, f"{pattern_name} template")

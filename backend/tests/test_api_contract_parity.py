@@ -70,7 +70,6 @@ def test_coach_history_endpoint_contract(monkeypatch) -> None:
                     "cardId": "card-42",
                     "cardTitle": "Card Title",
                     "question": "What is X?",
-                    "questionType": "skill-map",
                     "correctAnswer": "A",
                     "userAnswer": "A",
                     "successful": True,
@@ -78,8 +77,7 @@ def test_coach_history_endpoint_contract(monkeypatch) -> None:
                         "elapsedMs": 2500,
                         "evaluation": {},
                     },
-                    "templateMode": "algorithm",
-                    "supportLayer": "none",
+                    "modality": "total-recall",
                     "liveCoachUsed": False,
                     "categoryTags": ["skill-map"],
                     "generatedCard": {},
@@ -104,7 +102,6 @@ def test_coach_history_endpoint_contract(monkeypatch) -> None:
             "/api/coach/history",
             json={
                 "cardId": "",
-                "questionType": "skill-map",
                 "skillTags": [],
                 "limit": 6,
             },
@@ -115,7 +112,7 @@ def test_coach_history_endpoint_contract(monkeypatch) -> None:
     assert "summary" in payload
     assert "entries" in payload
     assert payload["entries"][0]["attemptId"] == 42
-    assert payload["entries"][0]["questionType"] == "skill-map"
+    assert payload["entries"][0]["modality"] == "total-recall"
 
 
 def test_skill_map_overview_endpoint_contract(monkeypatch) -> None:

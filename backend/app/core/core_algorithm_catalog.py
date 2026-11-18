@@ -2,28 +2,22 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.core.taxonomy_catalog import ALGORITHMS, TECHNIQUES
-from app.core.taxonomy import catalog_slug as taxonomy_slug
+from app.core.taxonomy_catalog import ALGORITHMS
 
 
 def _entry(
     title: str,
     algorithm: str,
-    skills: tuple[str, ...],
-    techniques: tuple[str, ...],
     difficulty: str,
     description: str,
     examples: tuple[str, ...],
 ) -> dict[str, Any]:
     assert algorithm in ALGORITHMS, f"unknown algorithm slug: {algorithm}"
-    assert all(slug in TECHNIQUES for slug in techniques), f"unknown technique in: {techniques}"
     return {
         "title": title,
         "algorithm": algorithm,
-        "skills": skills,
-        "techniques": techniques,
         "difficulty": difficulty,
-        "tags": tuple(dict.fromkeys(("skill-map", "core-algorithm", algorithm, *techniques, *skills))),
+        "tags": ("skill-map", "core-algorithm", algorithm),
         "description": description,
         "leetcodeExamples": examples,
     }
@@ -31,15 +25,14 @@ def _entry(
 
 def _meta_entry(
     title: str,
-    skills: tuple[str, ...],
     difficulty: str,
     description: str,
     examples: tuple[str, ...],
     source_name: str,
 ) -> dict[str, Any]:
-    entry = _entry(title, "meta", skills, (), difficulty, description, examples)
+    entry = _entry(title, "meta", difficulty, description, examples)
     shared_core_tag = ("core-algorithm",) if source_name in CORE_ALGORITHM_CATALOG else ()
-    entry["tags"] = tuple(dict.fromkeys(("skill-map", *shared_core_tag, "core-meta", "meta", *skills)))
+    entry["tags"] = ("skill-map", *shared_core_tag, "core-meta", "meta")
     entry["sourceName"] = source_name
     return entry
 
@@ -48,8 +41,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "fixed_window_sum": _entry(
         "Fixed Window Sum",
         "sliding-window",
-        ("fixed-vs-variable-window", "window-score-updates"),
-        (),
         "Easy",
         "Track one fixed-size rolling total across an array.",
         ("Maximum Average Subarray I", "Grumpy Bookstore Owner"),
@@ -57,8 +48,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "max_fixed_window_sum": _entry(
         "Maximum Fixed Window Sum",
         "sliding-window",
-        ("fixed-vs-variable-window", "window-score-updates"),
-        (),
         "Easy",
         "Update the current score by adding the entrant and removing the leaver.",
         ("Maximum Average Subarray I", "Maximum Points from Cards"),
@@ -66,8 +55,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "min_subarray_len_at_least": _entry(
         "Minimum Valid Window",
         "sliding-window",
-        ("expand-shrink-rhythm", "valid-window-rule"),
-        (),
         "Med.",
         "Expand until valid, then shrink while the invariant still holds.",
         ("Minimum Size Subarray Sum", "Max Consecutive Ones III"),
@@ -75,8 +62,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "longest_window_at_most_k_distinct": _entry(
         "At-Most-K Distinct Window",
         "sliding-window",
-        ("valid-window-rule", "frequency-maps"),
-        (),
         "Med.",
         "Maintain counts and shrink only when the distinct-count rule breaks.",
         ("Fruit Into Baskets", "Longest Substring with At Most K Distinct Characters"),
@@ -84,8 +69,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "permutation_window_match": _entry(
         "Permutation Frequency Window",
         "sliding-window",
-        ("frequency-maps", "fixed-vs-variable-window"),
-        (),
         "Med.",
         "Compare fixed-size frequency state against a target multiset.",
         ("Permutation in String", "Find All Anagrams in a String"),
@@ -93,8 +76,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "two_sum_sorted": _entry(
         "Sorted Two Sum Scan",
         "two-pointers",
-        ("opposing-pointers", "sorted-array-leverage", "pointer-move-rule"),
-        (),
         "Easy",
         "Use the current sum to decide which boundary can move.",
         ("Two Sum II", "3Sum"),
@@ -102,8 +83,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "remove_duplicates_sorted": _entry(
         "Read/Write Deduplication",
         "two-pointers",
-        ("same-direction-scan", "dedupe-rules"),
-        (),
         "Easy",
         "Scan with read and compact kept values with write.",
         ("Remove Duplicates from Sorted Array", "Move Zeroes"),
@@ -111,8 +90,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "partition_by_pivot": _entry(
         "In-Place Pivot Partition",
         "two-pointers",
-        ("same-direction-scan", "sorted-array-leverage"),
-        ("sorting",),
         "Med.",
         "Move selected values forward while preserving a boundary.",
         ("Sort Colors", "Partition Array"),
@@ -120,8 +97,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "valid_palindrome": _entry(
         "Mirror Pointer Palindrome",
         "two-pointers",
-        ("opposing-pointers", "pointer-move-rule"),
-        (),
         "Easy",
         "Compare mirrored characters and move both sides inward.",
         ("Valid Palindrome", "Reverse String"),
@@ -129,8 +104,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "valid_palindrome_one_delete": _entry(
         "One-Deletion Palindrome",
         "two-pointers",
-        ("opposing-pointers", "pointer-move-rule"),
-        (),
         "Easy",
         "Branch once when mirrored characters do not match.",
         ("Valid Palindrome II", "Almost Palindrome"),
@@ -138,8 +111,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "binary_search": _entry(
         "Closed-Interval Binary Search",
         "binary-search",
-        ("left-right-bounds", "mid-calculation", "boundary-rule-handling"),
-        (),
         "Easy",
         "Probe the middle and discard one half of a closed interval.",
         ("Binary Search", "Search Insert Position"),
@@ -147,8 +118,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "lower_bound": _entry(
         "Lower Bound",
         "binary-search",
-        ("left-right-bounds", "first-last-occurrence", "boundary-rule-handling"),
-        (),
         "Easy",
         "Find the first index whose value is not less than target.",
         ("Search Insert Position", "Find First and Last Position"),
@@ -156,8 +125,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "upper_bound": _entry(
         "Upper Bound",
         "binary-search",
-        ("first-last-occurrence", "boundary-rule-handling"),
-        (),
         "Easy",
         "Find the first index whose value is greater than target.",
         ("Find First and Last Position", "Count Target Occurrences"),
@@ -165,8 +132,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "search_rotated": _entry(
         "Rotated Sorted Search",
         "binary-search",
-        ("left-right-bounds", "sorted-array-leverage", "boundary-rule-handling"),
-        (),
         "Med.",
         "Identify the sorted half before discarding a boundary.",
         ("Search in Rotated Sorted Array", "Find Minimum in Rotated Sorted Array"),
@@ -174,8 +139,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "binary_search_answer": _entry(
         "Search on Answer",
         "binary-search",
-        ("search-on-answer", "boundary-rule-handling"),
-        (),
         "Med.",
         "Binary search a monotonic feasible answer space.",
         ("Koko Eating Bananas", "Capacity To Ship Packages"),
@@ -183,8 +146,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "preorder_recursive": _entry(
         "Recursive Preorder Traversal",
         "trees",
-        ("base-case-guards", "pre-post-order-thinking"),
-        ("dfs",),
         "Easy",
         "Visit node, then recurse into left and right children.",
         ("Binary Tree Preorder Traversal", "Same Tree"),
@@ -192,8 +153,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "inorder_iterative": _entry(
         "Iterative Inorder Traversal",
         "trees",
-        ("base-case-guards", "pre-post-order-thinking"),
-        ("dfs", "stack"),
         "Easy",
         "Use a stack to walk left spine before visiting nodes.",
         ("Binary Tree Inorder Traversal", "Kth Smallest Element in a BST"),
@@ -201,8 +160,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "postorder_recursive": _entry(
         "Recursive Postorder Traversal",
         "trees",
-        ("pre-post-order-thinking", "base-case-guards"),
-        ("dfs",),
         "Easy",
         "Recurse into children before combining at the parent.",
         ("Binary Tree Postorder Traversal", "Diameter of Binary Tree"),
@@ -210,8 +167,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "max_tree_depth": _entry(
         "Tree Depth Recursion",
         "trees",
-        ("base-case-guards", "pre-post-order-thinking"),
-        ("dfs",),
         "Easy",
         "Return the child result needed by the parent.",
         ("Maximum Depth of Binary Tree", "Balanced Binary Tree"),
@@ -219,8 +174,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "tree_has_path_sum": _entry(
         "Root-to-Leaf Path Sum",
         "trees",
-        ("base-case-guards", "pre-post-order-thinking"),
-        ("dfs",),
         "Easy",
         "Carry remaining target down the recursive path.",
         ("Path Sum", "Path Sum II"),
@@ -228,8 +181,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "lowest_common_ancestor": _entry(
         "Tree Lowest Common Ancestor",
         "trees",
-        ("pre-post-order-thinking", "base-case-guards"),
-        ("dfs",),
         "Med.",
         "Return found targets upward and detect the split point.",
         ("Lowest Common Ancestor of a Binary Tree", "LCA of Deepest Leaves"),
@@ -237,8 +188,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "bst_range_sum": _entry(
         "BST Range Pruning",
         "trees",
-        ("boundary-rule-handling", "sorted-array-leverage"),
-        ("dfs", "binary-search"),
         "Easy",
         "Use BST ordering to skip impossible subtrees.",
         ("Range Sum of BST", "Search in a BST"),
@@ -246,8 +195,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "dfs_iterative": _entry(
         "Iterative DFS",
         "graphs",
-        ("visited-tracking", "adjacency-representation"),
-        ("dfs", "stack"),
         "Med.",
         "Use a stack and mark nodes before pushing new work.",
         ("Number of Islands", "Clone Graph"),
@@ -255,8 +202,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "bfs_order": _entry(
         "Queue BFS Order",
         "graphs",
-        ("queue-frontier-management", "visited-tracking", "adjacency-representation"),
-        ("bfs", "queue"),
         "Med.",
         "Process a FIFO frontier while guarding against revisits.",
         ("Rotting Oranges", "Open the Lock"),
@@ -264,8 +209,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "bfs_levels_graph": _entry(
         "BFS Level Groups",
         "graphs",
-        ("level-by-level-expansion", "queue-frontier-management"),
-        ("bfs", "queue"),
         "Med.",
         "Freeze the current queue length to separate BFS layers.",
         ("Binary Tree Level Order Traversal", "Word Ladder"),
@@ -273,8 +216,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "shortest_path_unweighted": _entry(
         "Unweighted Shortest Path",
         "graphs",
-        ("shortest-path-framing", "queue-frontier-management"),
-        ("bfs",),
         "Med.",
         "Use BFS distance because each edge has equal cost.",
         ("Shortest Path in Binary Matrix", "Word Ladder"),
@@ -282,8 +223,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "count_graph_components": _entry(
         "Graph Component Starts",
         "graphs",
-        ("start-state-selection", "visited-tracking"),
-        ("dfs",),
         "Med.",
         "Start a traversal only from unseen nodes.",
         ("Number of Connected Components", "Number of Islands"),
@@ -291,8 +230,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "subsets": _entry(
         "Choose or Skip Subsets",
         "backtracking",
-        ("choice-explore-undo", "path-state", "result-collection"),
-        (),
         "Med.",
         "Explore both branches and record a copy at the leaf.",
         ("Subsets", "Subsets II"),
@@ -300,8 +237,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "combinations": _entry(
         "Start-Index Combinations",
         "backtracking",
-        ("start-index-control", "choice-explore-undo", "result-collection"),
-        (),
         "Med.",
         "Advance the start index so combinations stay ordered.",
         ("Combinations", "Combination Sum III"),
@@ -309,8 +244,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "permutations": _entry(
         "Used-Set Permutations",
         "backtracking",
-        ("path-state", "choice-explore-undo", "result-collection"),
-        (),
         "Med.",
         "Track used choices while building one active path.",
         ("Permutations", "Permutations II"),
@@ -318,8 +251,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "combination_sum": _entry(
         "Pruned Combination Sum",
         "backtracking",
-        ("pruning-conditions", "choice-explore-undo", "start-index-control"),
-        (),
         "Med.",
         "Stop branches once sorted candidates exceed the target.",
         ("Combination Sum", "Combination Sum II"),
@@ -327,8 +258,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "palindrome_partitions": _entry(
         "Palindrome Partition DFS",
         "backtracking",
-        ("result-collection", "path-state", "pruning-conditions"),
-        (),
         "Med.",
         "Choose valid prefixes and record paths at string end.",
         ("Palindrome Partitioning", "Restore IP Addresses"),
@@ -336,8 +265,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "climb_stairs": _entry(
         "Bottom-Up Climbing Stairs",
         "dynamic-programming",
-        ("base-cases", "transition-equation", "bottom-up-tabulation"),
-        (),
         "Easy",
         "Seed the smallest states, then fill later states in dependency order.",
         ("Climbing Stairs", "Fibonacci Number"),
@@ -345,8 +272,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "house_robber": _entry(
         "Top-Down Take-or-Skip DP",
         "dynamic-programming",
-        ("state-definition", "transition-equation", "top-down-memoization"),
-        (),
         "Med.",
         "Memoize the best result after branching between skip and take.",
         ("House Robber", "Delete and Earn"),
@@ -354,8 +279,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "min_cost_climbing_stairs": _entry(
         "Min-Cost Transition DP",
         "dynamic-programming",
-        ("transition-equation", "base-cases", "bottom-up-tabulation"),
-        (),
         "Easy",
         "Compute each state from the cheaper previous step.",
         ("Min Cost Climbing Stairs", "Climbing Stairs"),
@@ -363,8 +286,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "coin_change_min": _entry(
         "Amount-Order Coin DP",
         "dynamic-programming",
-        ("iteration-order", "transition-equation", "bottom-up-tabulation"),
-        (),
         "Med.",
         "Fill totals in dependency order and minimize coin count.",
         ("Coin Change", "Perfect Squares"),
@@ -372,8 +293,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "unique_paths": _entry(
         "Bottom-Up Grid DP",
         "dynamic-programming",
-        ("state-definition", "transition-equation", "bottom-up-tabulation"),
-        ("grid-modeling",),
         "Med.",
         "Fill each grid state from its solved top and left dependencies.",
         ("Unique Paths", "Minimum Path Sum"),
@@ -381,8 +300,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "longest_increasing_subsequence": _entry(
         "Bottom-Up Subsequence DP",
         "dynamic-programming",
-        ("state-definition", "transition-equation", "bottom-up-tabulation"),
-        (),
         "Med.",
         "Build the best subsequence ending at each state from earlier values.",
         ("Longest Increasing Subsequence", "Russian Doll Envelopes"),
@@ -390,8 +307,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "longest_common_subsequence": _entry(
         "Bottom-Up Two-String DP",
         "dynamic-programming",
-        ("state-definition", "transition-equation", "bottom-up-tabulation"),
-        (),
         "Med.",
         "Fill prefix-pair states using the diagonal, top, and left dependencies.",
         ("Longest Common Subsequence", "Edit Distance"),
@@ -399,8 +314,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "keep_top_k": _entry(
         "Top-K Min Heap",
         "heap",
-        ("top-k-maintenance", "push-pop-discipline"),
-        (),
         "Med.",
         "Push each candidate and prune when the heap grows past k.",
         ("Kth Largest Element in an Array", "Top K Frequent Elements"),
@@ -408,8 +321,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "kth_largest": _entry(
         "Kth Largest Heap Top",
         "heap",
-        ("top-k-maintenance", "min-vs-max-heap-choice"),
-        (),
         "Med.",
         "Keep the k largest values so the heap top is kth largest.",
         ("Kth Largest Element in an Array", "Kth Largest in a Stream"),
@@ -417,8 +328,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "merge_k_sorted_arrays": _entry(
         "Heap Frontier Merge",
         "heap",
-        ("stream-processing", "push-pop-discipline"),
-        (),
         "Hard",
         "Keep one frontier item per sorted source.",
         ("Merge k Sorted Lists", "Smallest Range Covering Elements from K Lists"),
@@ -426,8 +335,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "running_kth_largest": _entry(
         "Streaming Kth Largest",
         "heap",
-        ("stream-processing", "top-k-maintenance"),
-        (),
         "Easy",
         "Update the top-k heap after each stream value.",
         ("Kth Largest in a Stream", "Last Stone Weight"),
@@ -435,8 +342,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "two_heap_medians": _entry(
         "Two-Heap Running Median",
         "heap",
-        ("push-pop-discipline", "stream-processing", "min-vs-max-heap-choice"),
-        (),
         "Hard",
         "Balance a max-heap lower half against a min-heap upper half.",
         ("Find Median from Data Stream", "Sliding Window Median"),
@@ -444,8 +349,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "prune_deleted_heap": _entry(
         "Lazy Heap Deletion",
         "heap",
-        ("lazy-deletion-patterns", "push-pop-discipline"),
-        (),
         "Hard",
         "Mark removals first and physically pop only when stale values reach the top.",
         ("Sliding Window Median", "Maximum Performance of a Team"),
@@ -453,8 +356,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "init_parent": _entry(
         "Union-Find Parent Setup",
         "union-find",
-        ("parent-initialization",),
-        (),
         "Med.",
         "Start every node as its own parent and size-one component.",
         ("Number of Provinces", "Number of Connected Components"),
@@ -462,8 +363,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "find": _entry(
         "Find with Compression",
         "union-find",
-        ("find-with-compression",),
-        (),
         "Med.",
         "Walk to root while shortening the parent chain.",
         ("Accounts Merge", "Number of Provinces"),
@@ -471,8 +370,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "union_by_size": _entry(
         "Union by Size",
         "union-find",
-        ("union-by-rank-size", "component-counting", "cycle-detection"),
-        (),
         "Med.",
         "Attach the smaller root beneath the larger root.",
         ("Number of Connected Components", "Redundant Connection"),
@@ -480,8 +377,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "count_components_union_find": _entry(
         "Component Count by Union",
         "union-find",
-        ("component-counting", "cycle-detection"),
-        (),
         "Med.",
         "Decrement component count only when two roots merge.",
         ("Number of Connected Components", "Number of Provinces"),
@@ -489,8 +384,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "sort_intervals": _entry(
         "Sort Intervals by Boundary",
         "intervals",
-        ("sort-by-start-end", "boundary-comparisons", "sorted-decisions"),
-        ("sorting",),
         "Easy",
         "Order ranges so local boundary comparisons are meaningful.",
         ("Meeting Rooms", "Merge Intervals"),
@@ -498,8 +391,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "merge_intervals": _entry(
         "Merge Overlapping Intervals",
         "intervals",
-        ("merge-overlap-logic", "boundary-comparisons"),
-        (),
         "Med.",
         "Append disjoint ranges and extend the current tail on overlap.",
         ("Merge Intervals", "Employee Free Time"),
@@ -507,8 +398,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "insert_interval": _entry(
         "Insert and Merge Interval",
         "intervals",
-        ("boundary-comparisons", "merge-overlap-logic"),
-        (),
         "Med.",
         "Copy ranges before, merge overlaps, then append ranges after.",
         ("Insert Interval", "Merge Intervals"),
@@ -516,8 +405,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "min_meeting_rooms": _entry(
         "Meeting Room Boundary Count",
         "intervals",
-        ("room-resource-counting", "sweep-decisions"),
-        ("sorting",),
         "Med.",
         "Compare sorted starts and ends to count active rooms.",
         ("Meeting Rooms II", "Minimum Number of Arrows"),
@@ -525,8 +412,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "running_prefix": _entry(
         "Running Prefix Totals",
         "prefix-sums",
-        ("running-total-setup", "constant-time-range-queries"),
-        (),
         "Easy",
         "Carry a cumulative total and store each boundary prefix.",
         ("Running Sum of 1d Array", "Range Sum Query Immutable"),
@@ -534,8 +419,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "range_sum": _entry(
         "Prefix Range Difference",
         "prefix-sums",
-        ("subarray-difference-trick", "constant-time-range-queries"),
-        (),
         "Easy",
         "Subtract the prefix before left from the prefix after right.",
         ("Range Sum Query Immutable", "Range Sum Query 2D"),
@@ -543,8 +426,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "count_subarrays_sum": _entry(
         "Prefix Sum Count Map",
         "prefix-sums",
-        ("sum-to-index-map", "subarray-difference-trick"),
-        (),
         "Med.",
         "Count previous prefixes that would complete the target sum.",
         ("Subarray Sum Equals K", "Path Sum III"),
@@ -552,8 +433,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "count_subarrays_divisible_by_k": _entry(
         "Modulo Prefix Buckets",
         "prefix-sums",
-        ("mod-remainder-buckets", "sum-to-index-map"),
-        (),
         "Med.",
         "Equal prefix remainders create divisible subarrays.",
         ("Subarray Sums Divisible by K", "Continuous Subarray Sum"),
@@ -561,8 +440,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "matrix_prefix_sum": _entry(
         "2D Prefix Sum",
         "prefix-sums",
-        ("constant-time-range-queries", "running-total-setup"),
-        ("grid-modeling",),
         "Med.",
         "Build inclusion-exclusion prefixes for rectangular queries.",
         ("Range Sum Query 2D", "Matrix Block Sum"),
@@ -570,8 +447,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "next_greater": _entry(
         "Next Greater Stack",
         "monotonic-stack",
-        ("next-greater-smaller", "pop-trigger-rule"),
-        (),
         "Easy",
         "Pop unresolved smaller values when the current value answers them.",
         ("Next Greater Element", "Daily Temperatures"),
@@ -579,8 +454,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "daily_temperatures": _entry(
         "Daily Temperatures Stack",
         "monotonic-stack",
-        ("next-greater-smaller", "index-storage"),
-        (),
         "Med.",
         "Store indices so the answer can be a distance.",
         ("Daily Temperatures", "Online Stock Span"),
@@ -588,8 +461,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "largest_rectangle_area": _entry(
         "Histogram Rectangle Stack",
         "monotonic-stack",
-        ("pop-trigger-rule", "span-area-computation", "index-storage"),
-        (),
         "Hard",
         "When height drops, popped bars receive their final span.",
         ("Largest Rectangle in Histogram", "Maximal Rectangle"),
@@ -597,8 +468,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "sliding_window_max": _entry(
         "Monotonic Queue Window Max",
         "monotonic-stack",
-        ("increasing-vs-decreasing-stack", "window-score-updates", "queue-frontier-management"),
-        ("queue", "sliding-window"),
         "Hard",
         "Keep candidate indices in decreasing value order.",
         ("Sliding Window Maximum", "Constrained Subsequence Sum"),
@@ -606,8 +475,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "valid_parentheses": _entry(
         "Balanced Parentheses Stack",
         "stacks-queues",
-        ("lifo-fifo-state", "simulation"),
-        ("stack",),
         "Easy",
         "Push openers and require each closer to match the top.",
         ("Valid Parentheses", "Minimum Remove to Make Valid Parentheses"),
@@ -615,8 +482,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "eval_rpn": _entry(
         "Evaluate Reverse Polish Notation",
         "stacks-queues",
-        ("simulation", "lifo-fifo-state"),
-        ("stack",),
         "Med.",
         "Use the stack as deferred operands for each operator.",
         ("Evaluate Reverse Polish Notation", "Basic Calculator II"),
@@ -624,8 +489,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "simplify_path": _entry(
         "Path Simplification Stack",
         "stacks-queues",
-        ("simulation", "lifo-fifo-state"),
-        ("stack",),
         "Med.",
         "Push folder names and pop for parent-directory tokens.",
         ("Simplify Path", "Crawler Log Folder"),
@@ -633,8 +496,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "decode_string": _entry(
         "Nested Decode Stack",
         "stacks-queues",
-        ("simulation", "lifo-fifo-state"),
-        ("stack",),
         "Med.",
         "Save prior string and repeat count at each nested bracket.",
         ("Decode String", "Basic Calculator"),
@@ -642,8 +503,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "min_stack_operations": _entry(
         "Min Stack State",
         "stacks-queues",
-        ("min-stack-shape", "lifo-fifo-state", "simulation"),
-        ("stack",),
         "Med.",
         "Mirror the value stack with a stack of current minimums.",
         ("Min Stack", "Maximum Frequency Stack"),
@@ -651,8 +510,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "reverse_list": _entry(
         "Reverse Linked List",
         "linked-lists",
-        ("pointer-rewiring", "same-direction-scan"),
-        ("two-pointers",),
         "Easy",
         "Walk the list while reversing each next pointer.",
         ("Reverse Linked List", "Reverse Linked List II"),
@@ -660,8 +517,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "merge_two_lists": _entry(
         "Merge Two Sorted Lists",
         "linked-lists",
-        ("dummy-node", "pointer-rewiring", "sorted-array-leverage"),
-        ("two-pointers",),
         "Easy",
         "Use a dummy tail to stitch the smaller current node.",
         ("Merge Two Sorted Lists", "Merge k Sorted Lists"),
@@ -669,8 +524,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "has_cycle": _entry(
         "Linked List Cycle",
         "linked-lists",
-        ("fast-slow-pointers", "pointer-move-rule"),
-        ("two-pointers",),
         "Easy",
         "Move fast twice and slow once to detect a meeting point.",
         ("Linked List Cycle", "Find the Duplicate Number"),
@@ -678,8 +531,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "middle_node": _entry(
         "Fast/Slow Middle Node",
         "linked-lists",
-        ("fast-slow-pointers", "same-direction-scan"),
-        ("two-pointers",),
         "Easy",
         "Advance fast twice so slow lands at the middle.",
         ("Middle of the Linked List", "Remove Nth Node From End"),
@@ -687,8 +538,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "remove_nth_from_end": _entry(
         "Remove Nth from End",
         "linked-lists",
-        ("fast-slow-pointers", "dummy-node", "pointer-rewiring"),
-        ("two-pointers",),
         "Med.",
         "Offset fast by n, then move both pointers to find the predecessor.",
         ("Remove Nth Node From End of List", "Delete Node in a Linked List"),
@@ -696,8 +545,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "grid_neighbors": _entry(
         "Grid Direction Neighbors",
         "matrix-grid",
-        ("direction-vectors", "bounds-checks", "adjacency-representation"),
-        ("grid-modeling",),
         "Easy",
         "Generate valid four-direction neighbors with bounds checks.",
         ("Number of Islands", "Flood Fill"),
@@ -705,8 +552,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "flood_fill": _entry(
         "Grid Flood Fill",
         "matrix-grid",
-        ("grid-neighbors", "visited-tracking", "queue-frontier-management"),
-        ("bfs",),
         "Easy",
         "Spread from a start cell through matching neighbors.",
         ("Flood Fill", "Surrounded Regions"),
@@ -714,8 +559,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "num_islands": _entry(
         "Number of Islands",
         "matrix-grid",
-        ("grid-neighbors", "start-state-selection", "visited-tracking"),
-        ("bfs",),
         "Med.",
         "Start traversal from each unvisited land cell.",
         ("Number of Islands", "Max Area of Island"),
@@ -723,8 +566,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "oranges_rotting": _entry(
         "Multi-Source Grid BFS",
         "matrix-grid",
-        ("multi-source-bfs", "queue-frontier-management", "level-by-level-expansion"),
-        ("bfs",),
         "Med.",
         "Seed the queue with every source and expand by time.",
         ("Rotting Oranges", "Walls and Gates"),
@@ -732,8 +573,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "shortest_path_grid": _entry(
         "Grid Shortest Path BFS",
         "matrix-grid",
-        ("shortest-path-framing", "bounds-checks", "queue-frontier-management"),
-        ("bfs",),
         "Med.",
         "Run BFS over open cells and return the first target distance.",
         ("Shortest Path in Binary Matrix", "Nearest Exit from Entrance in Maze"),
@@ -741,8 +580,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "spiral_order": _entry(
         "Spiral Matrix Boundaries",
         "matrix-grid",
-        ("bounds-checks", "boundary-comparisons"),
-        (),
         "Med.",
         "Shrink four boundaries after reading each edge.",
         ("Spiral Matrix", "Rotate Image"),
@@ -750,8 +587,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "trie_insert": _entry(
         "Trie Insert",
         "trie",
-        ("prefix-tree-nodes", "character-transitions", "word-markers"),
-        (),
         "Med.",
         "Create character nodes and mark the terminal word.",
         ("Implement Trie", "Design Add and Search Words Data Structure"),
@@ -759,8 +594,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "trie_search": _entry(
         "Trie Exact Search",
         "trie",
-        ("prefix-tree-nodes", "character-transitions", "word-markers"),
-        (),
         "Med.",
         "Follow characters and require the final word marker.",
         ("Implement Trie", "Word Search II"),
@@ -768,8 +601,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "trie_starts_with": _entry(
         "Trie Prefix Search",
         "trie",
-        ("prefix-tree-nodes", "character-transitions"),
-        (),
         "Med.",
         "Follow the prefix path without requiring a word marker.",
         ("Implement Trie", "Search Suggestions System"),
@@ -777,8 +608,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "word_dictionary_search": _entry(
         "Trie Wildcard DFS",
         "trie",
-        ("word-markers", "character-transitions", "visited-tracking"),
-        ("dfs",),
         "Med.",
         "Branch over children when the pattern has a wildcard.",
         ("Design Add and Search Words Data Structure", "Word Search II"),
@@ -786,8 +615,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "sort_by_key": _entry(
         "Sort by Decision Key",
         "sorting",
-        ("sort-by-key", "sorted-decisions"),
-        ("greedy",),
         "Easy",
         "Choose the ordering that makes local decisions simple.",
         ("Meeting Rooms", "Queue Reconstruction by Height"),
@@ -795,8 +622,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "erase_overlap_intervals": _entry(
         "Greedy Non-Overlap Intervals",
         "intervals",
-        ("activity-selection", "local-choice-rule", "sweep-decisions"),
-        ("greedy", "sorting"),
         "Med.",
         "Keep the earliest-ending compatible interval.",
         ("Non-overlapping Intervals", "Minimum Number of Arrows"),
@@ -804,8 +629,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "can_jump": _entry(
         "Bottom-Up Reachability DP",
         "dynamic-programming",
-        ("state-definition", "transition-equation", "bottom-up-tabulation"),
-        (),
         "Med.",
         "Mark each index reachable when any solved earlier state can jump to it.",
         ("Jump Game", "Gas Station"),
@@ -813,8 +636,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "jump_game_min_jumps": _entry(
         "Bottom-Up Minimum-Jumps DP",
         "dynamic-programming",
-        ("state-definition", "transition-equation", "bottom-up-tabulation"),
-        (),
         "Med.",
         "Minimize each index from solved earlier states that can reach it.",
         ("Jump Game II", "Minimum Number of Taps"),
@@ -822,8 +643,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "partition_labels": _entry(
         "Partition Labels Greedy",
         "intervals",
-        ("sorted-decisions", "boundary-comparisons", "local-choice-rule"),
-        ("greedy", "sorting"),
         "Med.",
         "Extend the current segment to the farthest last occurrence.",
         ("Partition Labels", "Merge Intervals"),
@@ -831,8 +650,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "build_indegree": _entry(
         "Build Indegree Map",
         "graphs",
-        ("indegree-bookkeeping", "topological-ordering"),
-        ("topological-sort",),
         "Med.",
         "Count remaining prerequisites for every graph node.",
         ("Course Schedule", "Course Schedule II"),
@@ -840,8 +657,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "topo_order": _entry(
         "Kahn Topological Order",
         "graphs",
-        ("topological-ordering", "indegree-bookkeeping"),
-        ("topological-sort", "bfs"),
         "Med.",
         "Process zero-indegree nodes and release their neighbors.",
         ("Course Schedule II", "Alien Dictionary"),
@@ -849,8 +664,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
     "has_cycle_directed": _entry(
         "Directed Cycle by Toposort",
         "graphs",
-        ("cycle-detection", "topological-ordering", "indegree-bookkeeping"),
-        ("topological-sort",),
         "Med.",
         "A directed graph has a cycle when topological order misses nodes.",
         ("Course Schedule", "Find Eventual Safe States"),
@@ -861,7 +674,6 @@ CORE_ALGORITHM_CATALOG: dict[str, dict[str, Any]] = {
 CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     "meta_clone_graph": _meta_entry(
         "Clone Graph",
-        ("graph-cloning", "visited-map", "neighbor-wiring"),
         "Med.",
         "Copy each graph node once, then wire cloned neighbors from the visited map.",
         ("Clone Graph",),
@@ -869,7 +681,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "meta_nested_list_weight_sum": _meta_entry(
         "Nested List Weight Sum",
-        ("nested-traversal", "depth-tracking", "weighted-accumulation"),
         "Med.",
         "Traverse nested values level by level while carrying the current depth.",
         ("Nested List Weight Sum",),
@@ -877,7 +688,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "MetaValidWordAbbr": _meta_entry(
         "Unique Word Abbreviation",
-        ("string-encoding", "collision-detection", "uniqueness-lookup"),
         "Med.",
         "Map each abbreviation to the set of original words that can produce it.",
         ("Unique Word Abbreviation",),
@@ -885,7 +695,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "meta_destination_city": _meta_entry(
         "Destination City",
-        ("set-difference", "terminal-node", "directed-path"),
         "Easy",
         "Track outgoing cities, then find the city that never appears as a start.",
         ("Destination City",),
@@ -893,7 +702,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "MetaParentPointerLCA": _meta_entry(
         "LCA With Parent Pointers",
-        ("parent-pointers", "depth-alignment", "ancestor-walk"),
         "Med.",
         "Align node depths with parent pointers, then climb together to the meeting node.",
         ("Lowest Common Ancestor of a Binary Tree III",),
@@ -901,7 +709,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "MetaNextPermutation": _meta_entry(
         "Next Permutation",
-        ("pivot-search", "suffix-reversal", "next-greater-swap"),
         "Med.",
         "Find the rightmost rising pivot, swap with the next greater suffix value, then reverse the suffix.",
         ("Next Permutation",),
@@ -909,7 +716,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "meta_lowest_common_ancestor_bst": _meta_entry(
         "BST Lowest Common Ancestor",
-        ("bst-pruning", "split-detection", "ordered-branching"),
         "Easy",
         "Use BST ordering to recurse toward both targets until their paths split.",
         ("Lowest Common Ancestor of a Binary Search Tree",),
@@ -917,7 +723,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "meta_top_k_frequent": _meta_entry(
         "Top K Frequent Elements",
-        ("frequency-map", "top-k-selection", "heap-or-quickselect"),
         "Med.",
         "Count values, then select the k keys with the highest frequencies.",
         ("Top K Frequent Elements",),
@@ -925,7 +730,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "MetaMovingAverage": _meta_entry(
         "Moving Average From Data Stream",
-        ("fixed-window-queue", "running-sum", "stream-processing"),
         "Easy",
         "Keep the most recent values in a fixed-size stream window and average that window.",
         ("Moving Average from Data Stream",),
@@ -933,7 +737,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "meta_merge_intervals": _meta_entry(
         "Merge Intervals",
-        ("sort-by-start", "merge-overlap", "boundary-comparison"),
         "Med.",
         "Sort intervals by start and extend the previous merged interval when boundaries overlap.",
         ("Merge Intervals",),
@@ -941,7 +744,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "meta_valid_parentheses": _meta_entry(
         "Valid Parentheses",
-        ("stack-matching", "open-close-pairs", "invalid-close-guard"),
         "Easy",
         "Push opens and require each close to match the latest unmatched open.",
         ("Valid Parentheses",),
@@ -949,7 +751,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "meta_top_k_heap": _meta_entry(
         "Kth Largest Element",
-        ("min-heap-of-size-k", "candidate-pruning", "order-statistic"),
         "Med.",
         "Maintain a min-heap of the k largest seen values so the root is the answer.",
         ("Kth Largest Element in an Array",),
@@ -957,7 +758,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "meta_custom_sort_string": _meta_entry(
         "Custom Sort String",
-        ("rank-map", "custom-ordering", "stable-tail"),
         "Med.",
         "Sort characters by their custom alphabet rank while leaving unknown characters after ranked ones.",
         ("Custom Sort String",),
@@ -965,7 +765,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "meta_simplify_path": _meta_entry(
         "Simplify Path",
-        ("path-normalization", "folder-stack", "root-boundary"),
         "Med.",
         "Treat path segments as stack operations and rebuild the canonical absolute path.",
         ("Simplify Path",),
@@ -973,7 +772,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "meta_vertical_order_traversal": _meta_entry(
         "Vertical Order Traversal",
-        ("column-indexing", "level-order-traversal", "ordered-grouping"),
         "Hard",
         "Collect tree nodes by column and row, then return values in sorted vertical order.",
         ("Vertical Order Traversal of a Binary Tree",),
@@ -981,7 +779,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "meta_valid_palindrome": _meta_entry(
         "Valid Palindrome",
-        ("opposing-pointers", "alphanumeric-filter", "case-folded-compare"),
         "Easy",
         "Move inward over non-alphanumeric characters and compare normalized characters.",
         ("Valid Palindrome",),
@@ -989,7 +786,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "meta_range_sum_bst": _meta_entry(
         "Range Sum of BST",
-        ("tree-dfs", "range-bounds", "sum-accumulation"),
         "Easy",
         "Traverse the tree and accumulate node values that fall inside the target range.",
         ("Range Sum of BST",),
@@ -997,7 +793,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "MetaStockPrice": _meta_entry(
         "Stock Price Fluctuation",
-        ("timestamp-map", "frequency-bookkeeping", "current-min-max"),
         "Med.",
         "Track timestamp corrections separately from price frequencies and the latest timestamp.",
         ("Stock Price Fluctuation",),
@@ -1005,7 +800,6 @@ CORE_META_CATALOG: dict[str, dict[str, Any]] = {
     ),
     "meta_unique_paths_dp": _meta_entry(
         "Unique Paths",
-        ("grid-dp", "state-transition", "base-row-column"),
         "Med.",
         "Fill each grid cell with the number of ways to reach it from top or left.",
         ("Unique Paths",),
@@ -1018,19 +812,3 @@ CORE_PRACTICE_CATALOG: dict[str, dict[str, Any]] = {
     **CORE_ALGORITHM_CATALOG,
     **CORE_META_CATALOG,
 }
-
-
-def problem_slugs_for_skill(skill: str) -> tuple[str, ...]:
-    skill_key = taxonomy_slug(skill)
-    exact = [
-        name
-        for name, meta in CORE_PRACTICE_CATALOG.items()
-        if skill_key in meta["skills"]
-    ]
-    if exact:
-        return tuple(exact)
-    return tuple(
-        name
-        for name, meta in CORE_PRACTICE_CATALOG.items()
-        if skill_key == meta["algorithm"] or skill_key in meta["techniques"]
-    )
