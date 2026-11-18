@@ -1,7 +1,7 @@
 """The stored evaluation: what every evaluator produces and every reader consumes.
 
-Evaluators build an :class:`Evaluation` (via :func:`build_evaluation` or
-:func:`outcome_evaluation`), ``submission_service`` validates and stores it, and
+The evaluation pipeline builds an :class:`Evaluation` (via :func:`build_evaluation`),
+``submission_service`` stores it, and
 readers load stored JSON back with :meth:`Evaluation.from_stored`. Nothing else
 parses ``submission.signals.evaluation`` by hand, so an evaluator can change how it
 grades without breaking the overview, history or coaching readers.
@@ -132,9 +132,9 @@ def _entries(value: Any) -> dict[str, RubricEntry]:
 class Evaluation(BaseModel):
     """A stored evaluation. Dimension and modifier keys are the referenced spec's signal keys.
 
-    Jev MCQ evaluations also carry ``correctness``, ``signalResults``,
-    ``signalSpecSnapshot`` and ``jevTrace``. Any evaluation that called an LLM while grading
-    carries ``llmTrace``: each exchange's prompt, payload, reply, usage and timing.
+    Pipeline evaluations (every modality) also carry ``correctness`` (who decided and how),
+    ``signalResults``, ``signalSpecSnapshot`` and, when Jev was called, ``jevTrace``. Any
+    evaluation that called an LLM while grading (the feedback writer) carries ``llmTrace``.
     """
 
     model_config = ConfigDict(extra="allow", validate_assignment=False)
@@ -149,7 +149,7 @@ class Evaluation(BaseModel):
     recommendedAction: str = ""
     feedback: dict[str, Any] = Field(default_factory=dict)
     provenance: Provenance = Field(default_factory=Provenance)
-    # Jev MCQ extensions.
+    # Pipeline extensions.
     correctness: dict[str, Any] | None = None
     signalResults: dict[str, Any] | None = None
     signalSpecSnapshot: dict[str, Any] | None = None
@@ -207,25 +207,11 @@ class Evaluation(BaseModel):
         """Entries that were graded (pass, partial or fail), skipping not-applicable ones."""
         return ((key, entry) for key, entry in self.entries() if entry.scored)
 
-    def compact(self) -> dict[str, Any]:
-        """The grading summary without narrative, provenance or Jev traces."""
-        return self.model_dump(
-            mode="json",
-            exclude_none=True,
-            include={"verdict", "signalSpec", "score", "primaryFailure", "dimensions", "modifiers", "recommendedAction"},
-        )
-
 
 def evaluation_feedback(raw: Any) -> dict[str, Any]:
     """The coaching feedback of a stored evaluation, or ``{}``."""
     evaluation = raw if isinstance(raw, Evaluation) else Evaluation.from_stored(raw)
     return evaluation.feedback if evaluation else {}
-
-
-def compact_evaluation(raw: Any) -> dict[str, Any]:
-    """:meth:`Evaluation.compact` for stored JSON; ``{}`` when there is no evaluation."""
-    evaluation = Evaluation.from_stored(raw)
-    return evaluation.compact() if evaluation else {}
 
 
 _NARRATIVE_EXCLUDED_KEYS = ("submissionRubric", "llmUsed", "llmProvider", "signals")
@@ -238,7 +224,7 @@ def build_evaluation(
     *,
     provider: str = "",
     llm_used: bool = False,
-    source: str = "assessor-narrator",
+    source: str = "jev",
 ) -> Evaluation:
     """An evaluation from a graded rubric (``verdict``, ``score``, ``dimensions``…) and narrative feedback."""
     graded = coerce_json_object(rubric)
@@ -253,23 +239,5 @@ def build_evaluation(
         "modifiers": graded.get("modifiers", {}),
         "recommendedAction": graded.get("recommendedAction") or "",
         "feedback": narrative,
-        "provenance": {"llmUsed": bool(llm_used), "provider": provider if llm_used else "", "source": source},
-    })
-
-
-def outcome_evaluation(
-    successful: bool,
-    spec: SignalSpecReference,
-    *,
-    llm_used: bool = False,
-    provider: str = "",
-    source: str = "deterministic",
-) -> Evaluation:
-    """An evaluation with only a verdict: full marks when sound, zero when not (no fluency signal)."""
-    score = 100.0 if successful else 0.0
-    return Evaluation.model_validate({
-        "signalSpec": spec.reference(),
-        "verdict": "sound" if successful else "needs-work",
-        "score": {"overall": score, "conceptual": score, "fidelity": score, "executable": score, "fluency": 0.0},
         "provenance": {"llmUsed": bool(llm_used), "provider": provider if llm_used else "", "source": source},
     })

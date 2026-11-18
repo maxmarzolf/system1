@@ -61,3 +61,38 @@ Added at the same time:
 
 - a Vitest suite for the frontend, and backend coverage raised to a 90% gate;
 - this docs set.
+
+## 5. One grading pipeline for every modality (branch `feature/unified-jev-submissions`)
+
+Every modality now follows the MCQ flow: a generated question is stored, the learner answers, Jev grades, and one result view shows the result. See [grading.md](grading.md).
+
+Backend:
+
+- **One signal system:** `core/signal_catalog.py` (recall specs in code, copied into `algorithm.signal_spec`) is gone. Every modality's signals are `signal_definition` rows keyed by `(modality, key)`, seeded from `core/signals/defaults.py` and edited on `/admin`. Shared keys (`nearMiss`, `completionTime`, `syntaxValid`) mean the same thing everywhere.
+- **One pipeline:** `services/evaluation/` replaced `services/evaluators/`. The LLM assessor and narrator, the semantic grader and `domain/recall_soundness.py` were removed. Each modality only adds a context builder.
+- **Hard code checks:** answers that are empty, don't parse or never return are incorrect whatever Jev says. Calibration (`scripts/jev_recall_calibration.py`) found Jev accepting a return-less answer.
+- **Banded verdict:** `close` now means a `nearMiss` score at or above an Admin threshold, instead of an LLM's three-way verdict.
+- **Feedback text** is written by an optional LLM step from Jev's results, and never changes the grade.
+- **Stored exercises:** microdrills and Ladder rungs are stored in `generated_exercise` and graded against the stored copy. Ladder is its own modality (it was saved as `microdrill`).
+- **Server-side settings:** `app_setting` holds grading, generation and practice settings, edited in Admin → Settings.
+
+Frontend:
+
+- `shared/modality.ts` (one vocabulary), `shared/evaluation/` (types, readers, `EvaluationResult`), `features/practice/submission/` (one submit path and save state), and `features/practice/modalities/{mcq,recall,microdrill,ladder}/`. ESLint forbids a modality importing another.
+- Admin has a rail of modalities, each with the same signal editor, plus Settings. Tune keeps only editor, AI completion and hotkey preferences. The specimen, MCQ, submission and playlist tuning modules were removed.
+
+History before this change mixes evaluations from the old LLM assessor with Jev's under the same keys. The stored spec reference (modality, version, hash) tells them apart.
+
+## 6. Journey terrain shows competency per algorithm
+
+The terrain's X axis was every signal key (Solution Structure, nearMiss, windowState…), and its height was shortfall, so peaks were weak spots. That mixed unrelated measures and didn't point at anything to practise. It now shows **competency per algorithm per day**: the average of every scored signal from that algorithm's answers that day, and peaks are strong. On days without practice, the last value fades by an Admin setting (default 2% a day, compounded). One aggregate query computes it (`GET /api/history/competency`); the browser's Gaussian smoothing (`signalTerrain.ts`) was removed, and `GET /api/history/signals` with it.
+
+The Competency section beside it was added to make the data readable for decisions: a list ranked weakest first, labelled Learn (never strong) / Review (was strong, has faded) / Strong, with a trend line and a Practise button, and a 2D heatmap of algorithms by day whose practised days open the day detail. The learn/review/strong label comes from the same query. The separate heatmap was later folded into the list: long decay made most of it orange and red, so each row now carries a free-fall `!` (or a `-` when never practised) and expands into its own history graph, heat strip and strongest/weakest signals.
+
+## 7. The Dashboard page is gone
+
+Journey's Competency section replaced it: the ranked list with Practise buttons covers what the Dashboard's readiness cards did. The page, its route and nav entry, its components and styles, and its backend readiness summaries (`/api/skill-map-overview` now returns only the daily work grid's algorithms and activity; the per-card inventory query and `compact_evaluation` went with it) were removed. The readiness helpers in `domain/` remain, because the coach still uses them.
+
+## 8. Daily work history and day detail merged
+
+The swimlane grid (a row per algorithm, with Week / Month / All-Time ranges) became a contribution-style grid of the last year that only marks whether you practised each day, with algorithm tags under it. The day detail moved into the same card as its **Submission Detail** subsection. `GET /api/history/day` became `GET /api/history/submissions`, which also takes algorithm slugs, so selecting algorithms with no day lists their submissions across the year.

@@ -59,6 +59,8 @@ async def create_attempt(
         correct_answer=record.correct_answer if record else body.correctAnswer,
         user_answer=record.user_answer if record else body.userAnswer,
         multiple_choice_problem_id=record.multiple_choice_problem_id if record else None,
+        problem_slug=record.problem_slug if record else None,
+        exercise_id=record.exercise_id if record else None,
         mode=body.mode.value,
         successful=successful,
         signals_json=json.dumps({key: value for key, value in signals.items() if value is not None}),

@@ -171,6 +171,7 @@ def normalize_directive(draft: Mapping[str, Any]) -> dict[str, Any]:
         "instructions": _text(draft.get("instructions")),
         "criteria": {label: _text(raw_criteria.get(label)) for label in CORRECTNESS_LABELS},
         "correctness_weight": weight,
+        "correctness_source": _text(draft.get("correctness_source")) or "jev",
         "extra_labels": sorted(set(raw_criteria) - set(CORRECTNESS_LABELS)),
     }
 
@@ -187,4 +188,6 @@ def validate_directive(directive: Mapping[str, Any]) -> SignalErrors:
         errors["criteria"] = 'Describe both "1" (answered correctly) and "0".'
     if not 0.0 <= directive["correctness_weight"] <= 1.0:
         errors["correctness_weight"] = "Weight must be between 0 and 1."
+    if directive.get("correctness_source", "jev") not in {"jev", "deterministic"}:
+        errors["correctness_source"] = 'Correctness is decided by "jev" or "deterministic".'
     return errors

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, TypedDict
 
 
@@ -64,14 +64,6 @@ class SkillMapOverviewAlgorithmRow(TypedDict):
     skill_name: str | None
 
 
-class SkillMapOverviewGeneratedRow(TypedDict):
-    id: str
-    title: str
-    tags: list[str] | None
-    algorithm_slug: str
-    source_type: str
-
-
 class ProblemPracticeRow(TypedDict):
     slug: str
     title: str
@@ -100,14 +92,34 @@ class SkillMapOverviewAttemptRow(TypedDict):
     signals: dict[str, Any] | str | None
 
 
-class AlgorithmSignalSpecRow(TypedDict):
-    slug: str
-    signal_spec: dict[str, Any] | str | None
-    matched_by: str
+class CompetencyTerrainRow(TypedDict):
+    algorithm: str
+    day: date
+    observed: bool
+    answers: int
+    signals: int
+    average: float | None
+    competency: float
+    last_practised: date
+    last_average: float
+    days_since: int
+    standing: str
+    free_fall: bool
 
 
-class AlgorithmSignalSpecListRow(TypedDict):
-    slug: str
-    name: str
-    display_order: int
-    signal_spec: dict[str, Any] | str | None
+class CompetencySignalRow(TypedDict):
+    algorithm: str
+    key: str
+    label: str
+    average: float
+    answers: int
+    side: str  # strongest | weakest
+    position: int
+
+
+class CompetencyOverallRow(TypedDict):
+    day: date
+    competency: float
+    algorithms: int
+    week_change: float
+    trend: str  # improving | maintaining | regressing

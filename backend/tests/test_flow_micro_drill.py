@@ -3,8 +3,21 @@ from app.models import FlowMicroDrillRequest
 from app.services import micro_drill_service as service
 
 
+@pytest.fixture(autouse=True)
+def stored(monkeypatch):
+    """Generated exercises are stored; capture what would be written."""
+    items: list[dict] = []
+
+    async def insert_exercise(**fields):
+        items.append(fields)
+        return {"id": f"{fields['modality']}-1", **fields}
+
+    monkeypatch.setattr(service.exercise_repository, "insert_exercise", insert_exercise)
+    return items
+
+
 @pytest.mark.asyncio
-async def test_flow_micro_drill_reconstructs_solution_and_preserves_focus(monkeypatch):
+async def test_flow_micro_drill_reconstructs_solution_and_preserves_focus(monkeypatch, stored):
     monkeypatch.setattr(service, "resolve_available_llm_provider", lambda _: "openai")
     monkeypatch.setattr(service, "llm_provider_available", lambda _: True)
     captured = {}
@@ -32,6 +45,12 @@ async def test_flow_micro_drill_reconstructs_solution_and_preserves_focus(monkey
     assert captured["recentAttempts"][0]["modality"] == "mcq"
     assert "immutable anchor" in captured["system_prompt"]
     assert "recentAttempts" in captured["system_prompt"]
+    # Stored so the answer is graded against it, with its answers and generation trace.
+    assert result.id == "microdrill-1"
+    assert stored[0]["modality"] == "microdrill" and stored[0]["reference"] == result.solution
+    assert stored[0]["metadata"]["answers"] == ["total", "value"]
+    assert stored[0]["metadata"]["template"] == result.template
+    assert "tags" not in captured
 
 
 @pytest.mark.asyncio

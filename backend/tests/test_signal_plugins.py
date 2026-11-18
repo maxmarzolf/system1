@@ -146,7 +146,7 @@ def test_rubric_for_a_wrong_answer_names_the_misconception() -> None:
 
     assert rubric["verdict"] == "needs-work"
     assert rubric["primaryFailure"]["key"] == "correctness"
-    assert rubric["primaryFailure"]["evidence"] == ["Likely misconception: off_by_one"]
+    assert rubric["primaryFailure"]["evidence"] == ["Misconception behind the wrong choice: off_by_one"]
     assert rubric["score"]["overall"] == 0.0
 
 

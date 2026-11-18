@@ -61,57 +61,6 @@ class AttemptSaveResult(TypedDict):
 	attemptId: int | None
 
 
-class SkillMapModeActivityDay(TypedDict):
-	date: str
-	count: int
-	inFuture: bool
-
-
-class SkillMapModeActivity(TypedDict):
-	windowStart: str
-	windowEnd: str
-	recentSubmitCount: int
-	lastSevenDaySubmitCount: int
-	activeDays: int
-	currentStreak: int
-	longestStreak: int
-	peakDailyCount: int
-	days: list[SkillMapModeActivityDay]
-
-
-class SkillMapModeSummary(TypedDict, total=False):
-	readiness: float
-	attemptCount: int
-	daysSinceLastSubmit: int | None
-	stale: bool
-	ghostRepCount: int
-	unsupportedAttemptCount: int
-	workCount: int
-	totalCards: int
-	practicedCards: int
-	untouchedCards: int
-	staleCards: int
-	dimensionSummary: dict[str, Any]
-	activity: SkillMapModeActivity
-
-
-class SkillMapAlgorithmSummary(TypedDict):
-	algorithm: str
-	slug: str
-	skills: list[str]
-	overallReadiness: float
-	overallAttemptCount: int
-	ghostRepCount: int
-	unsupportedAttemptCount: int
-	workCount: int
-	totalCards: int
-	practicedCards: int
-	untouchedCards: int
-	staleCards: int
-	dimensionSummary: dict[str, Any]
-	modes: dict[str, SkillMapModeSummary]
-
-
 class SkillMapGhostRepSkillSegment(TypedDict):
 	skill: str
 	slug: str
@@ -135,18 +84,6 @@ class SkillMapGhostRepActivityDay(TypedDict):
 	segments: list[SkillMapGhostRepSegment]
 
 
-class SkillMapGhostRepAlgorithm(TypedDict):
-	algorithm: str
-	slug: str
-	totalGhostReps: int
-	totalMultipleChoice: int
-	totalPerfectRecalls: int
-	totalWork: int
-	coreCardCount: int
-	daysSinceLastGhostRep: int | None
-	daysSinceLastPractice: int | None
-
-
 class SkillMapGhostRepActivity(TypedDict):
 	windowStart: str
 	windowEnd: str
@@ -157,10 +94,14 @@ class SkillMapGhostRepActivity(TypedDict):
 	activeDays: int
 	peakDailyCount: int
 	days: list[SkillMapGhostRepActivityDay]
-	algorithms: list[SkillMapGhostRepAlgorithm]
+
+class SkillMapGridAlgorithm(TypedDict):
+	algorithm: str
+	slug: str
+
 
 class SkillMapOverviewPayload(TypedDict):
-	algorithms: list[SkillMapAlgorithmSummary]
+	algorithms: list[SkillMapGridAlgorithm]
 	ghostRepActivity: SkillMapGhostRepActivity
 
 class FeedbackPayload(TypedDict, total=False):

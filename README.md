@@ -3,16 +3,18 @@
 System 1 is a practice app for coding-interview algorithms. You recall code from memory, get graded, and track where you're weak over time.
 
 - **Practice** (`/practice`): recall a card's code from memory, or answer multiple-choice questions (MCQs). Cmd/Ctrl + double arrows selects Total Recall (↑), Microdrill (←), Ghost (→), or MCQ (↓); the navbar shows which is on. From any other page, Cmd/Ctrl + Enter opens Total Recall with the code editor focused. Optional supports: Ghost Reps (type over the target), Inline notes, AI completion, a Sliding Window Ladder, and adaptive or custom **flows** that mix all four modalities.
-- **Dashboard** (`/dashboard`): readiness per algorithm and playlist; start focused practice from any card.
-- **Journey** (`/`, the home page): a 3D *Signal Score Terrain* of every graded signal over time, a daily work grid, and the full stored evaluation of each submission on any day.
-- **Tune** (`/tune`): local preferences: specimen style, editor, MCQ set size, grading strictness, hotkeys.
+- **Journey** (`/`, the home page): a 3D *competency terrain* (each algorithm's average signal score per day, fading 2% a day without practice), a daily work grid, and the full stored evaluation of each submission on any day.
+- **Tune** (`/tune`): personal preferences: code editor, AI completion, hotkeys.
 - **Evolve** (`/evolve`): run and review the AlphaEvolve MCQ prompt experiment. See [the experiment guide](examples/openevolve_mcq_prompt/README.md).
-- **Admin** (`/admin`): edit the signals Jev uses to grade MCQs, try a draft against a stored question, and view the read-only recall specs.
+- **Admin** (`/admin`): configure grading and generation. For each modality, edit the correctness question and the signals Jev uses, and try a draft against a stored item; under Settings, edit grading thresholds, written feedback, code style for generated cards, MCQ models and practice defaults.
 
 Grading:
 
-- **MCQs** are graded by **Jev** ([TypeSafe System One](https://docs.typesafe.ai)). One call asks whether the answer was correct, plus one question per signal defined in `/admin`.
-- **Recall** answers are graded by an LLM assessor and narrator against per-algorithm signal specs.
+- Every modality is graded the same way by **Jev** ([TypeSafe System One](https://docs.typesafe.ai)). One call asks whether the answer was correct, plus one question per signal defined in `/admin`.
+- Code is never run. Empty, unparsable or return-less code is incorrect whatever Jev says. If Jev is unavailable, an exact check decides.
+- Ghost reps are checked exactly, with no Jev call.
+- An optional LLM step writes coaching text from Jev's results and never changes the grade.
+- See [docs/grading.md](docs/grading.md).
 
 ## Stack
 
@@ -39,12 +41,12 @@ Configuration lives in `backend/.env` (gitignored). The backend reads it only wh
 
 | Variable | Purpose |
 |---|---|
-| `TYPESAFE_API_KEY` | Jev, for MCQ grading. Without it, MCQs fall back to the stored answer key. |
+| `TYPESAFE_API_KEY` | Jev, for grading every modality. Without it, grading falls back to the exact checks (the answer key for MCQs, a structural match for code) and flags the evaluation. |
 | `JEV_MODEL` | Pinned Jev model (default `jev-1.13.0`). Also `TYPESAFE_BASE_URL`, `JEV_TIMEOUT_SECONDS`, `JEV_ENABLED`. |
 | `LLM_DEFAULT` | Default coach provider: `openai`, `claude` or `gemma`. |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `COACH_GEMMA_API_KEY` | Provider keys (each also has a `COACH_*` alias). |
 | `COACH_OPENAI_MODEL`, `COACH_ANTHROPIC_MODEL`, `COACH_GEMMA_MODEL` | Provider models; `*_BASE_URL` overrides exist too. |
-| `COACH_MCQ_ANTHROPIC_MODEL`, `COACH_MCQ_OPENAI_MODEL`, `COACH_MCQ_GEMMA_MODEL` | Models for MCQ generation only (default `claude-haiku-4-5` for Claude; empty uses the provider model). Grading keeps the provider model. An unavailable model falls back to the provider model. |
+| `COACH_MCQ_ANTHROPIC_MODEL`, `COACH_MCQ_OPENAI_MODEL`, `COACH_MCQ_GEMMA_MODEL` | Default models for MCQ generation only (default `claude-haiku-4-5` for Claude; empty uses the provider model). Admin → Settings → Generation overrides them. An unavailable model falls back to the provider model. |
 | `COACH_LIVE_MODEL` | OpenAI model for live recall coaching (default `gpt-6-astra`). |
 | `COACH_GENERATOR_*` | Drill generator tuning: tokens, timeout, temperature, readiness threshold, prompt length. |
 | `ADMIN_RESET_TOKEN` | Confirmation token for `npm run reset:practice-history`. |
@@ -58,12 +60,12 @@ The Evolve page uses a separate Compose service. Run `docker compose up -d --bui
 ```
 React pages ──► FastAPI endpoints ──► services ──► domain / core ──► repositories ──► Postgres
                                          │
-                                         ├──► Jev (MCQ grading, /admin "Try it")
+                                         ├──► Jev (grading, /admin "Try it")
                                          └──► LLM providers (drill generation, recall grading)
 ```
 
-- Every answer goes to `POST /api/attempts`. An **evaluator registry** picks the grader by modality: `mcq` goes to Jev; `total-recall`, `microdrill` and `ghost-rep` go to the LLM graders. The result is stored as one `submission` row.
-- **MCQ signals live in the database** and are read on every submission, so a save in `/admin` applies to the next answer with no restart. Signals are archived, never deleted; every change is versioned and logged.
+- Every answer goes to `POST /api/attempts`, and **one grading pipeline** handles every modality. Only the per-modality context builder (which loads the stored item) and the modality's signals differ. The result is stored as one `submission` row.
+- **Signals and settings live in the database** and are read on every submission, so a save in `/admin` applies to the next answer with no restart. Signals are archived, never deleted; every change is versioned and logged.
 - **Recall signal specs** live in `backend/app/core/signal_catalog.py` and are reseeded at startup.
 - The schema is managed by **Alembic** with raw-SQL revisions in `backend/app/migrations/versions/`. The backend runs `alembic upgrade head` at startup (under a Postgres advisory lock), then seeds the catalog only when its code changed (a hash in `seed_state`). New schema change: `cd backend && alembic revision -m "..." --rev-id <next>`, then restart or `alembic upgrade head`. Details in [docs/database-schema.md](docs/database-schema.md#migrations).
 
@@ -71,7 +73,8 @@ Docs ([index](docs/README.md)):
 
 | Doc | What it covers |
 |---|---|
-| [docs/data-flow.md](docs/data-flow.md) | Diagrams of every flow: practice, MCQ grading with Jev, review, `/admin` |
+| [docs/grading.md](docs/grading.md) | How answers are graded, without reading the code |
+| [docs/data-flow.md](docs/data-flow.md) | Diagrams of every flow: practice, grading with Jev, review, `/admin` |
 | [docs/backend-architecture.md](docs/backend-architecture.md) | Layers and enforced rules, where new code goes, module map, request paths |
 | [docs/frontend.md](docs/frontend.md) | Pages, URL parameters, stored settings, the practice flow engine, test helpers |
 | [docs/database-schema.md](docs/database-schema.md) | ER diagram, content rules, what a stored evaluation holds |
@@ -86,15 +89,15 @@ Docs ([index](docs/README.md)):
 | Path | Role |
 |---|---|
 | `backend/app/core/jev/` | Jev REST client (`POST /v1/systemone`) |
-| `backend/app/core/signals/` | Signal plug-ins: Jev questions built from DB rows; deterministic signals (e.g. `completionTime`) registered in code |
-| `backend/app/services/evaluators/` | One evaluator per modality |
-| `backend/app/services/signal_registry_service.py` | Loads the active MCQ spec for an algorithm; seeds defaults (insert-if-missing) |
-| `backend/app/services/signal_admin_service.py` | `/admin`: list, create, edit, archive, restore, try |
+| `backend/app/core/signals/` | Signal plug-ins: Jev questions built from DB rows; deterministic signals (e.g. `completionTime`) registered in code; each modality's defaults |
+| `backend/app/services/evaluation/` | The grading pipeline: context builders, Jev passes, verdict, feedback |
+| `backend/app/services/signal_registry_service.py` | Loads a modality's active spec for an algorithm; seeds defaults (insert-if-missing) |
+| `backend/app/services/signal_admin_service.py`, `app_settings_service.py` | `/admin`: signals per modality (list, create, edit, archive, restore, try) and settings |
 | `backend/app/contracts/` | Shapes shared across layers, including the versioned `Evaluation` |
-| `backend/app/services/read_models/` | Readiness, daily activity, day detail and signal history |
+| `backend/app/services/read_models/` | Journey: daily activity, submissions and competency |
 | `src/api/` | The typed API client: `client.ts` (openapi-fetch typed from the generated `schema.d.ts`, one `ApiError` for every error shape) and `queries.ts` (TanStack Query hooks for shared reads) |
 | `src/app/` | The shell: routes, TopNav, theme and the global styles (`app/styles/`, imported in cascade order) |
-| `src/features/` | One folder per page: `practice/` (the practice screen and its flow, ladder and editor), `dashboard/`, `journey/` (incl. the score terrain), `admin/`, `tune/`, `evolve/` |
+| `src/features/` | One folder per page: `practice/` (the practice screen: `modalities/`, `submission/`, flow and editor), `journey/` (incl. the competency terrain), `admin/`, `tune/`, `evolve/` |
 | `src/shared/` | Components, helpers, settings and catalogs used by more than one page |
 
 ## API
@@ -103,18 +106,20 @@ Docs ([index](docs/README.md)):
 |---|---|---|
 | GET | `/api/health` | Health check |
 | POST | `/api/attempts` | Submit an answer; returns the evaluation |
-| GET | `/api/skill-map`, `/api/skill-map-overview?historyDays=&tz=` | Taxonomy; readiness and daily activity |
-| GET | `/api/history/day?date=&tz=`, `/api/history/signals?tz=` | One day's submissions; every scored signal over time |
+| GET | `/api/skill-map`, `/api/skill-map-overview?historyDays=&tz=` | Taxonomy; the daily work grid's algorithms and activity |
+| GET | `/api/history/submissions?date=&algorithm=&tz=`, `/api/history/competency?tz=` | Submissions for a day, algorithms over the last year, or both; competency per algorithm per day |
 | GET | `/api/catalog/playlists`, `/api/catalog/signal-specs` | Playlists; recall signal specs |
 | GET | `/api/coach/problem-drills[/{algorithm}]`, `/api/coach/playlist-drills/{slug}` | Catalog drills |
 | POST | `/api/coach/skill-map-drills[-stream]`, `/api/coach/multiple-choice-drills`, `/api/coach/micro-drill` | Generated drills |
 | POST | `/api/coach/sliding-window-ladder` | Follow-up drills |
 | POST | `/api/coach/inline-completion`, `/api/coach/session-plan`, `/api/coach/history` | Editor suggestions, session plan, practice history |
 | GET | `/api/coach/provider-default` | Configured coach provider |
-| GET, POST | `/api/admin/signals` | List or create MCQ signals |
-| PUT | `/api/admin/signals/{key}`, `/api/admin/signals/directive/mcq` | Edit a signal; edit the correctness question |
-| POST | `/api/admin/signals/{key}/archive`, `/restore` | Archive or restore |
-| POST, GET | `/api/admin/signals/try`, `/samples`, `/revisions/{subject}` | Try a draft; sample MCQs; change history |
+| GET, POST | `/api/admin/signals/{modality}` | List or create a modality's signals |
+| PUT | `/api/admin/signals/{modality}/{key}`, `/api/admin/signals/{modality}/directive` | Edit a signal; edit the correctness question |
+| POST | `/api/admin/signals/{modality}/{key}/archive`, `/restore` | Archive or restore |
+| POST, GET | `/api/admin/signals/{modality}/preview`, `/try`, `/samples`, `/revisions/{subject}` | Preview the Jev question; try a draft; sample stored items; change history |
+| GET, PUT | `/api/admin/settings`, `/api/admin/settings/{section}` | Read all settings; save one section (`grading`, `generation`, `practice`) |
+| GET | `/api/catalog/practice-settings` | The practice section, for the practice screen |
 | POST | `/api/admin/reset-practice-history` | Clear submissions and generated problems |
 
 ## Testing
@@ -201,7 +206,7 @@ docker compose down && rm -rf backend/data/postgres && docker compose up -d --bu
 ### Troubleshooting
 
 - **Backend unhealthy:** check `docker compose logs backend --tail=300` and `curl -i http://localhost:3001/api/health`. Schema errors on startup usually mean a database that predates the current schema; reinitialize it.
-- **MCQ feedback says Jev is unavailable:** check `TYPESAFE_API_KEY` in `backend/.env`, then `docker compose up -d backend`.
+- **A result is flagged "Jev unavailable":** check `TYPESAFE_API_KEY` in `backend/.env`, then `docker compose up -d backend`.
 - **Recall feedback unavailable:** check the provider key for `LLM_DEFAULT` and the provider's billing. Anthropic reports exhausted credits as `invalid_request_error`.
 
 ## Commits

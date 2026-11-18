@@ -6,8 +6,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from app.contracts.coaching import (  # noqa: F401  (re-exported API schemas)
-    CoachAttemptEvaluationRequest,
-    CoachAttemptFeedbackRequest,
     FlowAttemptContext,
     GameMode,
     MultipleChoiceCard,
@@ -73,13 +71,14 @@ class AttemptCreate(BaseModel):
     generatedCard: dict[str, Any] | None = None
     multipleChoiceProblemId: str | None = Field(default=None, max_length=80)
     selectedChoiceId: str | None = Field(default=None, max_length=8)
+    # The stored microdrill or ladder rung this answers (from its generation response).
+    exerciseId: str | None = Field(default=None, max_length=80)
     templateMode: TemplateMode = TemplateMode.algorithm
     supportLayer: SupportLayer = SupportLayer.none
     modality: SubmissionModality | None = None
     liveCoachUsed: bool = False
     activityFormat: Literal["recall", "multiple-choice", "code-completion"] | None = None
     signals: dict[str, Any] = Field(default_factory=dict)
-    submissionTuning: dict[str, Any] = Field(default_factory=dict)
     llmProvider: str = "openai"
 
     def resolved_modality(self) -> SubmissionModality:
@@ -211,24 +210,6 @@ class CoachPracticeHistoryResponse(BaseModel):
     entries: list[CoachPracticeHistoryEntry] = []
 
 
-class SkillMapActivityDay(BaseModel):
-    date: str = ""
-    count: int = Field(default=0, ge=0)
-    inFuture: bool = False
-
-
-class SkillMapModeActivity(BaseModel):
-    windowStart: str = ""
-    windowEnd: str = ""
-    recentSubmitCount: int = Field(default=0, ge=0)
-    lastSevenDaySubmitCount: int = Field(default=0, ge=0)
-    activeDays: int = Field(default=0, ge=0)
-    currentStreak: int = Field(default=0, ge=0)
-    longestStreak: int = Field(default=0, ge=0)
-    peakDailyCount: int = Field(default=0, ge=0)
-    days: list[SkillMapActivityDay] = []
-
-
 class SkillMapGhostRepSkillSegment(BaseModel):
     skill: str = ""
     slug: str = ""
@@ -252,18 +233,6 @@ class SkillMapGhostRepActivityDay(BaseModel):
     segments: list[SkillMapGhostRepSegment] = []
 
 
-class SkillMapGhostRepAlgorithm(BaseModel):
-    algorithm: str = ""
-    slug: str = ""
-    totalGhostReps: int = Field(default=0, ge=0)
-    totalMultipleChoice: int = Field(default=0, ge=0)
-    totalPerfectRecalls: int = Field(default=0, ge=0)
-    totalWork: int = Field(default=0, ge=0)
-    coreCardCount: int = Field(default=0, ge=0)
-    daysSinceLastGhostRep: int | None = Field(default=None, ge=0)
-    daysSinceLastPractice: int | None = Field(default=None, ge=0)
-
-
 class SkillMapGhostRepActivity(BaseModel):
     windowStart: str = ""
     windowEnd: str = ""
@@ -274,47 +243,16 @@ class SkillMapGhostRepActivity(BaseModel):
     activeDays: int = Field(default=0, ge=0)
     peakDailyCount: int = Field(default=0, ge=0)
     days: list[SkillMapGhostRepActivityDay] = []
-    algorithms: list[SkillMapGhostRepAlgorithm] = []
-
-class SkillMapModeReadiness(BaseModel):
-    readiness: float = Field(default=0, ge=0, le=100)
-    attemptCount: int = Field(default=0, ge=0)
-    ghostRepCount: int = Field(default=0, ge=0)
-    unsupportedAttemptCount: int = Field(default=0, ge=0)
-    workCount: int = Field(default=0, ge=0)
-    successfulAttempts: int = Field(default=0, ge=0)
-    successRate: float = Field(default=0, ge=0, le=100)
-    totalCards: int = Field(default=0, ge=0)
-    practicedCards: int = Field(default=0, ge=0)
-    untouchedCards: int = Field(default=0, ge=0)
-    staleCards: int = Field(default=0, ge=0)
-    lastSubmittedAt: str = ""
-    daysSinceLastSubmit: int | None = Field(default=None, ge=0)
-    stale: bool = False
-    liveCoachUsedCount: int = Field(default=0, ge=0)
-    dimensionSummary: dict[str, Any] = {}
-    activity: SkillMapModeActivity = SkillMapModeActivity()
 
 
-class SkillMapAlgorithmReadiness(BaseModel):
-    algorithm: str = Field(min_length=1)
-    slug: str = Field(min_length=1)
-    skills: list[str] = []
-    overallReadiness: float = Field(default=0, ge=0, le=100)
-    overallAttemptCount: int = Field(default=0, ge=0)
-    ghostRepCount: int = Field(default=0, ge=0)
-    unsupportedAttemptCount: int = Field(default=0, ge=0)
-    workCount: int = Field(default=0, ge=0)
-    totalCards: int = Field(default=0, ge=0)
-    practicedCards: int = Field(default=0, ge=0)
-    untouchedCards: int = Field(default=0, ge=0)
-    staleCards: int = Field(default=0, ge=0)
-    dimensionSummary: dict[str, Any] = {}
-    modes: dict[str, SkillMapModeReadiness] = {}
+class SkillMapGridAlgorithm(BaseModel):
+    algorithm: str = ""
+    slug: str = ""
 
 
 class SkillMapOverviewResponse(BaseModel):
-    algorithms: list[SkillMapAlgorithmReadiness] = []
+    # The daily work grid's algorithms, in order, and its work per day (Journey).
+    algorithms: list[SkillMapGridAlgorithm] = []
     ghostRepActivity: SkillMapGhostRepActivity = SkillMapGhostRepActivity()
 
 
@@ -338,10 +276,14 @@ class FlowMicroDrillRequest(BaseModel):
     proficiency: int = Field(default=0, ge=0, le=100)
     weaknessSummary: str = ""
     recentAttempts: list[FlowAttemptContext] = Field(default_factory=list, max_length=8)
+    # The card's tags; the stored drill is filed under their algorithm.
+    tags: list[str] = Field(default_factory=list)
     llmProvider: str = "openai"
 
 
 class FlowMicroDrillResponse(BaseModel):
+    # The stored generated exercise; submit it as exerciseId so the answer is graded against it.
+    id: str = ""
     prompt: str
     language: str
     template: str
@@ -368,6 +310,8 @@ class SlidingWindowLadderRequest(BaseModel):
 
 
 class SlidingWindowLadderResponse(BaseModel):
+    # The stored generated exercise; submit it as exerciseId so the answer is graded against it.
+    id: str = ""
     rungTitle: str
     question: str
     starterCode: str
@@ -411,10 +355,27 @@ class SignalDirectiveUpdate(BaseModel):
     instructions: str = ""
     criteria: dict[str, str] = Field(default_factory=dict)
     correctnessWeight: float = 0.6
+    # "jev" asks Jev the correctness question; "deterministic" lets the modality's own check decide.
+    correctnessSource: str = "jev"
     version: int
 
 
 class SignalTryRequest(BaseModel):
+    """Try a draft against one stored item (a sample) answered with ``answer``.
+
+    MCQ: ``answer`` is a choice id. Code modalities: the code to grade. Ghost reps also take the
+    target ``reference`` the rep is typed against."""
+
     draft: SignalDefinitionDraft
-    problemId: str = Field(min_length=1, max_length=80)
-    choiceId: str = Field(min_length=1, max_length=8)
+    sampleId: str = Field(min_length=1, max_length=80)
+    answer: str = Field(min_length=1, max_length=20_000)
+    reference: str = Field(default="", max_length=20_000)
+
+
+class SignalPreviewRequest(BaseModel):
+    draft: SignalDefinitionDraft
+
+
+class SettingsUpdate(BaseModel):
+    value: dict[str, Any]
+    version: int = Field(ge=0)

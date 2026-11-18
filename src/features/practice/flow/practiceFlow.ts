@@ -1,12 +1,16 @@
+import { MODALITY_LABELS, type Modality } from '@/shared/modality'
+
 export const FLOW_STAGES = ['recall', 'ghost', 'multiple-choice', 'microdrill'] as const
 export type FlowStage = typeof FLOW_STAGES[number]
-export const FLOW_LABELS: Record<FlowStage, string> = {
-  recall: 'Recall', ghost: 'Ghost', 'multiple-choice': 'MCQ', microdrill: 'Microdrill',
-}
-export type SubmissionModality = 'total-recall' | 'ghost-rep' | 'mcq' | 'microdrill'
+/** The modalities a flow can run (the ladder runs on its own). */
+export type SubmissionModality = Exclude<Modality, 'ladder'>
 export const STAGE_MODALITY: Record<FlowStage, SubmissionModality> = {
   recall: 'total-recall', ghost: 'ghost-rep', 'multiple-choice': 'mcq', microdrill: 'microdrill',
 }
+/** A stage is named by its modality's shared label. */
+export const FLOW_LABELS = Object.fromEntries(
+  FLOW_STAGES.map((stage) => [stage, MODALITY_LABELS[STAGE_MODALITY[stage]]]),
+) as Record<FlowStage, string>
 export const MODALITY_STAGE: Record<SubmissionModality, FlowStage> = {
   'total-recall': 'recall', 'ghost-rep': 'ghost', mcq: 'multiple-choice', microdrill: 'microdrill',
 }

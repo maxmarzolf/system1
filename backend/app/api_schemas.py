@@ -57,6 +57,8 @@ class HistorySubmission(ApiModel):
     successful: bool
     elapsedMs: int
     algorithms: list[HistoryAlgorithm]
+    # The calendar day (in the requested time zone) it was submitted on.
+    date: str
     # The stored evaluation exactly as saved (see app.contracts.evaluation); {} when none.
     evaluation: dict[str, Any]
     flow: dict[str, Any]
@@ -64,31 +66,86 @@ class HistorySubmission(ApiModel):
     generationTrace: list[dict[str, Any]] = []
 
 
-class HistoryDayResponse(ApiModel):
-    date: str
+class HistorySubmissionsResponse(ApiModel):
+    # The day asked for, or null when only algorithms were.
+    date: str | None
+    # The algorithm slugs asked for (deduplicated); empty for every algorithm.
+    algorithms: list[str]
     submissions: list[HistorySubmission]
 
 
-class SignalHistorySignal(ApiModel):
+class CompetencySignal(ApiModel):
     key: str
     label: str
-    count: int
+    average: float
+    answers: int
 
 
-class SignalHistoryPoint(ApiModel):
-    submission: int
-    createdAt: str
+class CompetencyOverallDay(ApiModel):
     date: str
-    signal: str
-    score: float
-    title: str
-    modality: str
+    competency: float
+
+
+class CompetencyOverall(ApiModel):
+    # Today's overall competency; null before any graded answer.
+    competency: float | None
+    # Points gained or lost since a week ago, and its band: improving | maintaining | regressing.
+    weekChange: float | None
+    trend: str | None
+    days: list[CompetencyOverallDay]
+
+
+class UnpractisedAlgorithm(ApiModel):
+    slug: str
+    name: str
+    kind: str
+
+
+class CompetencyAlgorithm(ApiModel):
+    slug: str
+    name: str
+    # 'algorithm' (practise with focusPattern) or 'playlist' (practise with playlist).
+    kind: str
+    answers: int
+    # Today's competency (decayed since the last practice).
+    competency: float
+    lastPractised: str
+    # The last practised day's average, before any decay.
+    lastAverage: float
+    daysSince: int
+    # strong | learn (was never strong) | review (was strong, has decayed)
+    standing: str
+    # Decaying for more than freeFallDays days.
+    freeFall: bool
+    # The signals with the highest and lowest all-time average for this algorithm (up to 3 each).
+    strongestSignals: list[CompetencySignal]
+    weakestSignals: list[CompetencySignal]
+
+
+class CompetencyCell(ApiModel):
     algorithm: str
+    date: str
+    competency: float
+    # Practised that day; otherwise the competency is the last practised day's, decayed.
+    observed: bool
+    answers: int
+    signals: int
+    # That day's average across every scored signal; null on days without practice.
+    average: float | None
+    lastPractised: str
+    standing: str
 
 
-class SignalHistoryResponse(ApiModel):
-    signals: list[SignalHistorySignal]
-    points: list[SignalHistoryPoint]
+class CompetencyTerrainResponse(ApiModel):
+    decayPerDay: float
+    freeFallDays: int
+    # The average of every practised algorithm's competency, per day.
+    overall: CompetencyOverall
+    algorithms: list[CompetencyAlgorithm]
+    # Known algorithms and playlists with no graded answers yet, in catalog order.
+    unpractised: list[UnpractisedAlgorithm]
+    days: list[str]
+    cells: list[CompetencyCell]
 
 
 # ─── Catalog ───
@@ -111,37 +168,6 @@ class PlaylistCatalogEntry(ApiModel):
 
 class PlaylistCatalogResponse(ApiModel):
     playlists: list[PlaylistCatalogEntry]
-
-
-class RecallSignalJson(ApiModel):
-    key: str
-    label: str
-    kind: str
-    role: str
-    weight: float
-    guidance: str
-    variationStrategy: str
-    axis: str | None = None
-
-
-class RecallSignalSpecJson(ApiModel):
-    algorithm: str
-    version: int
-    signals: list[RecallSignalJson]
-    structuralElements: list[str]
-
-
-class AlgorithmSignalSpec(ApiModel):
-    slug: str
-    name: str
-    usesDefault: bool
-    seeded: bool
-    spec: RecallSignalSpecJson
-
-
-class SignalSpecCatalogResponse(ApiModel):
-    default: RecallSignalSpecJson
-    algorithms: list[AlgorithmSignalSpec]
 
 
 # ─── /admin signals ───
@@ -180,6 +206,8 @@ class CorrectnessDirective(ApiModel):
     instructions: str
     criteria: dict[str, str]
     correctnessWeight: float
+    # "jev" asks Jev; "deterministic" lets the modality's own check decide (ghost reps).
+    correctnessSource: str = "jev"
     version: int
     updatedAt: str | None = None
     # Only in the catalog listing.
@@ -221,12 +249,37 @@ class McqChoice(ApiModel):
     text: str
 
 
-class McqSample(ApiModel):
+class SignalSample(ApiModel):
+    """A stored item a signal draft can be tried against."""
+
     id: str
-    question: str
-    explanation: str = ""
-    choices: list[McqChoice]
-    correctChoiceId: str
+    title: str
+    prompt: str
+    reference: str
+    # MCQ only.
+    choices: list[McqChoice] = []
+    correctChoiceId: str | None = None
+
+
+class SignalPreview(ApiModel):
+    question: dict[str, Any] | None = None
+
+
+class SettingsSection(ApiModel):
+    value: dict[str, Any]
+    version: int
+
+
+class AdminSettings(ApiModel):
+    grading: SettingsSection
+    generation: SettingsSection
+    practice: SettingsSection
+
+
+class PracticeSettings(ApiModel):
+    mcqQuestionCount: int
+    mcqFlowMode: str
+    playlistOrder: str
 
 
 class SignalResultJson(ApiModel):

@@ -11,7 +11,6 @@ import asyncpg
 from app.config import settings
 from app.core import core_algorithms, core_meta
 from app.core.core_algorithm_catalog import CORE_ALGORITHM_CATALOG, CORE_META_CATALOG
-from app.core.signal_catalog import get_signal_spec, spec_to_json
 from app.core.taxonomy_catalog import ALGORITHMS, CANONICAL_SKILLS, TECHNIQUES
 from app.db import close_pool, get_pool, open_pool  # noqa: F401 - get_pool re-exported for callers
 from app.migrations.runner import upgrade_to_head
@@ -150,7 +149,7 @@ def _taxonomy_rows() -> dict[str, list[tuple[Any, ...]]]:
 
     return {
         "algorithm": [
-            (slug, name, order, json.dumps(spec_to_json(get_signal_spec(slug))))
+            (slug, name, order)
             for order, (slug, name) in enumerate(ALGORITHMS.items(), start=1)
         ],
         "technique": [(slug, name, order) for order, (slug, name) in enumerate(TECHNIQUES.items(), start=1)],
@@ -171,12 +170,11 @@ async def _seed_taxonomy(db_pool: asyncpg.Pool, rows: dict[str, list[tuple[Any, 
 async def _write_taxonomy(conn: asyncpg.Connection, rows: dict[str, list[tuple[Any, ...]]]) -> None:
     await conn.executemany(
         """
-        INSERT INTO algorithm (slug, name, display_order, signal_spec, updated_at)
-        VALUES ($1, $2, $3, $4::jsonb, NOW())
+        INSERT INTO algorithm (slug, name, display_order, updated_at)
+        VALUES ($1, $2, $3, NOW())
         ON CONFLICT (slug) DO UPDATE SET
             name = EXCLUDED.name,
             display_order = EXCLUDED.display_order,
-            signal_spec = EXCLUDED.signal_spec,
             updated_at = NOW()
         """,
         rows["algorithm"],

@@ -86,7 +86,7 @@ export function SignalCard({
           ) : null}
           <div className="admin-actions">
             <button type="button" disabled={!dirty || busy}
-              onClick={() => handle(() => updateSignal(signal.key, draft, signal.version), 'Saved. Applies to the next MCQ evaluation.')}>
+              onClick={() => handle(() => updateSignal(catalog.modality, signal.key, draft, signal.version), 'Saved. Applies to the next evaluation.')}>
               Save
             </button>
             <button type="button" className="secondary" disabled={!dirty || busy} onClick={() => setDraft(original)}>Discard</button>
@@ -94,14 +94,14 @@ export function SignalCard({
             <button type="button" className="secondary" disabled={busy || dirty}
               title={dirty ? 'Save or discard changes first' : undefined}
               onClick={() => handle(
-                () => setSignalArchived(signal.key, !archived, signal.version),
+                () => setSignalArchived(catalog.modality, signal.key, !archived, signal.version),
                 archived ? 'Restored. Runs again from the next evaluation.' : 'Archived. No longer sent to Jev.',
               )}>
               {archived ? 'Restore' : 'Archive'}
             </button>
           </div>
-          {draft.source === 'jev' ? <TryPanel draft={draft} /> : null}
-          <RevisionHistory subject={signal.key} />
+          <TryPanel modality={catalog.modality} draft={draft} />
+          <RevisionHistory modality={catalog.modality} subject={signal.key} />
         </div>
       ) : null}
     </article>

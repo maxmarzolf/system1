@@ -6,8 +6,6 @@ whose ``code`` comes from a single taxonomy. Callers choose how to fail:
 
 - :func:`complete_json` raises :class:`LlmUnavailableError`;
 - :func:`call_llm_json` returns ``None`` instead (and logs why);
-- :func:`call_llm_json_for_submission` returns ``(data, code, message, retryable)``
-  for the narrator's retry loop;
 - :func:`stream_openai_text` yields streamed text deltas;
 - :func:`complete_json_with_fallback` (async) retries and walks a provider chain.
 
@@ -545,19 +543,6 @@ async def complete_json_with_fallback(
                 await asyncio.sleep(retry_delays_seconds[attempt])
         logger.warning("%s: retries exhausted for %s; trying the next provider.", label, llm_provider_label(provider))
     return None
-
-
-def call_llm_json_for_submission(
-    system_prompt: str,
-    user_payload: dict[str, Any],
-    provider: str,
-) -> tuple[dict[str, Any] | None, str, str, bool]:
-    """``(data, error_code, error_message, retryable)`` for the narrator's retry loop."""
-    try:
-        timeout = 60 if provider == "gemma" else 30
-        return complete_json_call(system_prompt, user_payload, provider, LlmCall(1800, timeout, 0.2)), "", "", False
-    except LlmUnavailableError as error:
-        return None, error.code, error.message, error.retryable
 
 
 def stream_openai_text(

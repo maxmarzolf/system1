@@ -1,4 +1,6 @@
 import { api, ApiError, unwrap } from '@/api/client'
+import type { Modality } from '@/shared/modality'
+import type { PracticeSettings } from '@/api/queries'
 
 export type SignalPrimitive = 'choice' | 'score' | 'noul'
 export type SignalRole = 'dimension' | 'modifier' | 'diagnostic'
@@ -40,11 +42,15 @@ export type AdminSignal = SignalDraft & {
   effectiveShare: number
 }
 
+export type CorrectnessSource = 'jev' | 'deterministic'
+
 export type CorrectnessDirective = {
   modality: string
   instructions: string
   criteria: Record<string, string>
   correctnessWeight: number
+  /** Who decides correctness: Jev, or the modality's own deterministic check (ghost reps). */
+  correctnessSource: CorrectnessSource
   version: number
   updatedAt: string
   labels: string[]
@@ -52,7 +58,7 @@ export type CorrectnessDirective = {
 }
 
 export type SignalAdminCatalog = {
-  modality: string
+  modality: Modality
   stateFields: string[]
   directive: CorrectnessDirective
   signals: AdminSignal[]
@@ -69,11 +75,14 @@ export type SignalRevision = {
   createdAt: string
 }
 
-export type McqSample = {
+/** A stored item a draft can be tried against: an MCQ, a catalog problem, or a generated exercise. */
+export type SignalSample = {
   id: string
-  question: string
+  title: string
+  prompt: string
+  reference: string
   choices: { id: string; text: string }[]
-  correctChoiceId: string
+  correctChoiceId: string | null
 }
 
 export type SignalTryResult = {
@@ -90,39 +99,52 @@ export type SignalTryResult = {
 /** Admin calls fail with an ApiError; 422s carry per-field messages in `fieldErrors`. */
 export { ApiError as SignalAdminError }
 
-export const fetchSignalAdminCatalog = async (signal?: AbortSignal) =>
-  unwrap(await api.GET('/api/admin/signals', { signal })) as unknown as SignalAdminCatalog
+const path = (modality: Modality) => ({ params: { path: { modality } } })
 
-export const createSignal = async (draft: SignalDraft) =>
-  unwrap(await api.POST('/api/admin/signals', { body: draft })) as unknown as AdminSignal
+export const fetchSignalAdminCatalog = async (modality: Modality, signal?: AbortSignal) =>
+  unwrap(await api.GET('/api/admin/signals/{modality}', { ...path(modality), signal })) as unknown as SignalAdminCatalog
 
-export const updateSignal = async (key: string, draft: SignalDraft, version: number) =>
+export const createSignal = async (modality: Modality, draft: SignalDraft) =>
+  unwrap(await api.POST('/api/admin/signals/{modality}', { ...path(modality), body: draft })) as unknown as AdminSignal
+
+export const updateSignal = async (modality: Modality, key: string, draft: SignalDraft, version: number) =>
   unwrap(
-    await api.PUT('/api/admin/signals/{key}', { params: { path: { key } }, body: { ...draft, version } }),
+    await api.PUT('/api/admin/signals/{modality}/{key}', { params: { path: { modality, key } }, body: { ...draft, version } }),
   ) as unknown as AdminSignal
 
-export const setSignalArchived = async (key: string, archived: boolean, version: number) => {
-  const options = { params: { path: { key } }, body: { version } }
+export const setSignalArchived = async (modality: Modality, key: string, archived: boolean, version: number) => {
+  const options = { params: { path: { modality, key } }, body: { version } }
   const result = archived
-    ? await api.POST('/api/admin/signals/{key}/archive', options)
-    : await api.POST('/api/admin/signals/{key}/restore', options)
+    ? await api.POST('/api/admin/signals/{modality}/{key}/archive', options)
+    : await api.POST('/api/admin/signals/{modality}/{key}/restore', options)
   return unwrap(result) as unknown as AdminSignal
 }
 
 export const updateDirective = async (
-  directive: Pick<CorrectnessDirective, 'instructions' | 'criteria' | 'correctnessWeight' | 'version'>,
-) => unwrap(await api.PUT('/api/admin/signals/directive/mcq', { body: directive })) as unknown as CorrectnessDirective
+  modality: Modality,
+  directive: Pick<CorrectnessDirective, 'instructions' | 'criteria' | 'correctnessWeight' | 'correctnessSource' | 'version'>,
+) => unwrap(await api.PUT('/api/admin/signals/{modality}/directive', { ...path(modality), body: directive })) as unknown as CorrectnessDirective
 
-export const fetchSignalRevisions = async (subject: string) =>
+/** ``subject`` is a signal key, or ``directive`` for the correctness question. */
+export const fetchSignalRevisions = async (modality: Modality, subject: string) =>
   unwrap(
-    await api.GET('/api/admin/signals/revisions/{subject}', { params: { path: { subject } } }),
+    await api.GET('/api/admin/signals/{modality}/revisions/{subject}', { params: { path: { modality, subject } } }),
   ) as unknown as SignalRevision[]
 
-export const fetchMcqSamples = async () =>
-  unwrap(await api.GET('/api/admin/signals/samples')) as unknown as McqSample[]
+/** The Jev question a draft would send, built by the server (``null`` for deterministic signals). */
+export const previewSignal = async (modality: Modality, draft: SignalDraft, signal?: AbortSignal) =>
+  (unwrap(await api.POST('/api/admin/signals/{modality}/preview', { ...path(modality), body: { draft }, signal })) as unknown as {
+    question: Record<string, unknown> | null
+  }).question
 
-export const trySignal = async (draft: SignalDraft, problemId: string, choiceId: string) =>
-  unwrap(await api.POST('/api/admin/signals/try', { body: { draft, problemId, choiceId } })) as unknown as SignalTryResult
+export const fetchSignalSamples = async (modality: Modality) =>
+  unwrap(await api.GET('/api/admin/signals/{modality}/samples', path(modality))) as unknown as SignalSample[]
+
+/** MCQ: ``answer`` is a choice id. Code: the code to grade; ghost reps also take the target ``reference``. */
+export const trySignal = async (modality: Modality, draft: SignalDraft, sampleId: string, answer: string, reference = '') =>
+  unwrap(
+    await api.POST('/api/admin/signals/{modality}/try', { ...path(modality), body: { draft, sampleId, answer, reference } }),
+  ) as unknown as SignalTryResult
 
 export const emptySignalDraft = (): SignalDraft => ({
   key: '',
@@ -162,20 +184,36 @@ export const draftFromSignal = (signal: AdminSignal): SignalDraft => ({
   displayOrder: signal.displayOrder,
 })
 
-/** The question this draft sends to Jev (mirrors the backend's JevSignal.question). */
-export const jevQuestionFor = (draft: SignalDraft): Record<string, unknown> | null => {
-  if (draft.source !== 'jev' || !draft.primitive) return null
-  if (draft.primitive === 'choice') {
-    return { type: 'choice', instructions: draft.instructions, criteria: draft.criteria ?? {} }
-  }
-  if (draft.primitive === 'score') {
-    return { type: 'score', instructions: draft.instructions, criteria: Array.isArray(draft.criteria) ? draft.criteria : [] }
-  }
-  const outcomes = !Array.isArray(draft.criteria) && draft.criteria ? draft.criteria : {}
-  const described = Object.fromEntries(
-    (['true', 'false'] as const).filter((key) => outcomes[key]).map((key) => [key, outcomes[key]]),
-  )
-  return Object.keys(described).length
-    ? { type: 'noul', instructions: draft.instructions, criteria: described }
-    : { type: 'noul', instructions: draft.instructions }
+
+// ─── Server-side settings (grading, generation, practice) ───
+
+export type GradingSettings = {
+  feedbackModalities: Modality[]
+  nearMissThreshold: number
+  lowConfidenceThreshold: number
+  competencyDecayPerDay: number
+  competencyFreeFallDays: number
 }
+
+export type GenerationSettings = {
+  specimen: { typeHints: 'omit' | 'include'; comments: 'omit' | 'brief'; variableNames: 'readable' | 'concise' | 'descriptive' }
+  mcqModels: { claude: string; openai: string; gemma: string }
+}
+
+export type SettingsSection<T> = { value: T; version: number }
+
+export type AdminSettings = {
+  grading: SettingsSection<GradingSettings>
+  generation: SettingsSection<GenerationSettings>
+  practice: SettingsSection<PracticeSettings>
+}
+
+export type SettingsKey = keyof AdminSettings
+
+export const fetchAdminSettings = async () => unwrap(await api.GET('/api/admin/settings')) as unknown as AdminSettings
+
+export const saveSettingsSection = async <K extends SettingsKey>(section: K, value: AdminSettings[K]['value'], version: number) =>
+  unwrap(
+    await api.PUT('/api/admin/settings/{section}', { params: { path: { section } }, body: { value, version } }),
+  ) as unknown as AdminSettings[K]
+

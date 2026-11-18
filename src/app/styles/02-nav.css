@@ -225,7 +225,7 @@
   border: 0;
 }
 
-.navbar-dashboard {
+.navbar-page-link {
   font-size: 0.65rem;
   font-weight: 600;
   color: var(--hc-accent);
@@ -235,7 +235,7 @@
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.navbar-dashboard:hover {
+.navbar-page-link:hover {
   background: var(--hc-nav-link-hover-bg);
   border-color: var(--hc-fg);
   color: var(--hc-fg);

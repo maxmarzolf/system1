@@ -7,7 +7,6 @@ from app.repositories.attempts_repository import (
 	fetch_algorithms_with_skills_rows,
 	fetch_skill_map_overview_algorithm_rows,
 	fetch_skill_map_overview_attempt_rows,
-	fetch_skill_map_overview_generated_rows,
 	insert_submission_attempt_row,
 )
 from app.repositories.problems_repository import (
@@ -26,7 +25,6 @@ __all__ = [
 	"insert_submission_attempt_row",
 	"fetch_algorithms_with_skills_rows",
 	"fetch_skill_map_overview_algorithm_rows",
-	"fetch_skill_map_overview_generated_rows",
 	"fetch_skill_map_overview_attempt_rows",
 	"fetch_problem_practice_rows",
 	"PRACTICE_HISTORY_TABLES",

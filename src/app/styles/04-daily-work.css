@@ -1,0 +1,189 @@
+/* ─── Daily work grid (Journey) ─── */
+
+.daily-work-history {
+  margin: 0 0 1rem;
+  padding: 1.05rem 1.1rem 1.15rem;
+  border: 1px solid var(--workbench-edge);
+  border-radius: var(--workbench-radius-sm);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--hc-accent) 4%, transparent), transparent 34%),
+    var(--workbench-surface-raised);
+  box-shadow: 0 0.8rem 2rem color-mix(in srgb, var(--hc-bg) 34%, transparent);
+}
+
+.daily-work-history-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.9rem;
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--workbench-edge);
+}
+
+/* Two columns: fixed algorithm labels, then the day grid, which scrolls on its own. */
+
+/* ─── Contribution-style activity grid ─── */
+
+.work-history-note {
+  margin: 0;
+  color: var(--hc-fg-dim);
+  font-size: 0.74rem;
+}
+
+.activity-grid-scroll {
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
+}
+
+.activity-grid {
+  --activity-gap: 3px;
+  display: grid;
+  grid-template-areas:
+    "months"
+    "weeks";
+  gap: 0.3rem;
+  /* The year fills the card; below a readable cell size it scrolls sideways instead. */
+  width: 100%;
+  min-width: calc(var(--activity-weeks) * (0.62rem + var(--activity-gap)));
+}
+
+.activity-grid-months,
+.activity-grid-weeks {
+  display: grid;
+  grid-template-columns: repeat(var(--activity-weeks), minmax(0, 1fr));
+  column-gap: var(--activity-gap);
+}
+
+.activity-grid-months {
+  grid-area: months;
+  color: var(--hc-fg-dim);
+  font-size: 0.64rem;
+  white-space: nowrap;
+}
+
+.activity-grid-weeks {
+  grid-area: weeks;
+}
+
+.activity-grid-week {
+  display: grid;
+  grid-template-rows: repeat(7, auto);
+  row-gap: var(--activity-gap);
+}
+
+.activity-cell {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  height: auto;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--hc-fg) 7%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--hc-fg) 5%, transparent);
+}
+
+.activity-cell-empty {
+  visibility: hidden;
+}
+
+button.activity-cell {
+  min-height: 0;
+  cursor: pointer;
+}
+
+.activity-cell-active {
+  border-color: color-mix(in srgb, var(--hc-accent) 70%, transparent);
+  background: color-mix(in srgb, var(--hc-accent) 72%, transparent);
+}
+
+/* An algorithm filter with no day: its days stay lit, the rest fade. */
+.activity-cell-dimmed {
+  border-color: color-mix(in srgb, var(--hc-accent) 25%, transparent);
+  background: color-mix(in srgb, var(--hc-accent) 18%, transparent);
+}
+
+.activity-cell-highlighted {
+  border-color: var(--hc-accent);
+  background: var(--hc-accent);
+  box-shadow: 0 0 0.45rem color-mix(in srgb, var(--hc-accent) 55%, transparent);
+}
+
+.activity-cell-today {
+  border-color: var(--hc-fg-dim);
+}
+
+button.activity-cell:hover,
+button.activity-cell:focus-visible,
+.activity-cell-selected {
+  outline: 2px solid var(--hc-fg);
+  outline-offset: 1px;
+}
+
+/* Multi-select algorithm tags under the grid. */
+.algorithm-filter {
+  --filter-chip-height: 1.75rem;
+  --filter-gap: 0.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--filter-gap);
+  margin: 1rem 0 0;
+  /* At most three rows of tags; more scroll, like the grid does sideways. */
+  max-height: calc(3 * var(--filter-chip-height) + 2 * var(--filter-gap));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+button.algorithm-filter-chip,
+button.algorithm-filter-clear {
+  min-height: var(--filter-chip-height);
+  height: var(--filter-chip-height);
+  padding: 0.2rem 0.75rem;
+  border: 1px solid var(--workbench-edge);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--hc-fg-dim);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+button.algorithm-filter-chip:hover {
+  border-color: var(--hc-accent);
+  color: var(--hc-fg);
+}
+
+button.algorithm-filter-chip-selected,
+button.algorithm-filter-chip-selected:hover {
+  border-color: var(--hc-accent);
+  background: color-mix(in srgb, var(--hc-accent) 18%, transparent);
+  color: var(--hc-accent);
+}
+
+button.algorithm-filter-clear {
+  border-style: dashed;
+}
+
+button.algorithm-filter-clear:hover {
+  border-color: var(--hc-fg);
+  color: var(--hc-fg);
+}
+
+/* Submission Detail: the card's bottom subsection. */
+.submission-detail {
+  margin-top: 1.3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--workbench-edge);
+}
+
+.submission-detail-header {
+  margin-bottom: 0.75rem;
+}
+
+.submission-detail-updating .history-day-summary,
+.submission-detail-updating .history-day-list {
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}

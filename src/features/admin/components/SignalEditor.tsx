@@ -1,6 +1,6 @@
 import InfoTip from '@/shared/components/InfoTip'
 import { SIGNAL_FIELD_HELP } from '../signalFieldHelp'
-import { jevQuestionFor } from '../api'
+import { useJevPreview } from '../useJevPreview'
 import type { SignalAdminCatalog, SignalAppliesWhen, SignalAxis, SignalDraft, SignalPrimitive, SignalRole } from '../api'
 import { ChoiceCriteriaEditor, NoulCriteriaEditor, ScoreCriteriaEditor } from './CriteriaEditors'
 import { FieldError, JsonPreview } from './fields'
@@ -25,6 +25,7 @@ export function SignalEditor({
     onChange({ ...draft, primitive, criteria, scoreMap: {} })
   }
   const choiceCriteria = draft.criteria && !Array.isArray(draft.criteria) ? draft.criteria : {}
+  const preview = useJevPreview(catalog.modality, draft)
 
   return (
     <div className="admin-editor">
@@ -59,7 +60,7 @@ export function SignalEditor({
         <label className="tune-control">
           <span className="tune-control-label">Scope <InfoTip label="scope">{SIGNAL_FIELD_HELP.scope}</InfoTip></span>
           <select value={draft.scope} onChange={(event) => set('scope', event.target.value)}>
-            <option value="general">General — every MCQ</option>
+            <option value="general">General — every answer</option>
             {catalog.algorithms.map((algorithm) => (
               <option key={algorithm.slug} value={algorithm.slug}>{algorithm.name} only</option>
             ))}
@@ -207,9 +208,10 @@ export function SignalEditor({
 
       <details className="signal-trace-raw" open>
         <summary>Sent to Jev</summary>
-        {jevQuestionFor(draft) ? <JsonPreview value={{ [draft.key || 'newSignal']: jevQuestionFor(draft) }} /> : (
-          <p className="tune-footnote">Computed locally; nothing is sent to Jev.</p>
-        )}
+        {preview.status === 'ready' && preview.question ? <JsonPreview value={{ [draft.key || 'newSignal']: preview.question }} /> : null}
+        {preview.status === 'ready' && !preview.question ? <p className="tune-footnote">Computed locally; nothing is sent to Jev.</p> : null}
+        {preview.status === 'invalid' ? <p className="tune-footnote">Fix the fields above to see the question.</p> : null}
+        {preview.status === 'loading' ? <p className="tune-footnote" aria-busy="true">Building the question…</p> : null}
       </details>
     </div>
   )

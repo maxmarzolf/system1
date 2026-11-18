@@ -5,12 +5,13 @@ import DailyWorkHistory, {
   type DailyWorkActivity,
   type DailyWorkAlgorithm,
 } from './DailyWorkHistory'
-import { DAILY_WORK_RANGES, type DailyWorkRange, viewerTimeZone } from '@/shared/lib/dailyWork'
-import HistoryDayDetail from './HistoryDayDetail'
+import { viewerTimeZone } from '@/shared/lib/dailyWork'
+import CompetencySection from './competency/CompetencySection'
+import { SNAP_PAUSED, pauseJourneySnap as pauseSnap, resumeSnapOnScrollInput } from './snapPause'
 import TopNav from '@/app/TopNav'
 
 // three.js is large; load the score terrain only when this page renders it.
-const SignalHologram = lazy(() => import('./terrain/SignalHologram'))
+const CompetencyTerrain = lazy(() => import('./terrain/CompetencyTerrain'))
 
 type SkillMapOverview = {
   algorithms: DailyWorkAlgorithm[]
@@ -19,29 +20,56 @@ type SkillMapOverview = {
 
 const INTERACTIVE_SELECTOR = 'a, button, input, textarea, select, summary, [contenteditable="true"], [role="button"], [role="link"], [role="option"], [role="menuitem"], [role="tab"], [role="gridcell"]'
 
+// The activity grid shows a year, like a contribution graph.
+const ACTIVITY_DAYS = 365
+
 const latestActiveDate =(activity: DailyWorkActivity) =>
   [...activity.days].reverse().find(day => day.segments.some(segment => segment.count > 0))?.date ?? null
 
 export default function JourneyPage() {
-  const [range, setRange] = useState<DailyWorkRange>('month')
-  const historyDays = DAILY_WORK_RANGES.find(option => option.value === range)?.days ?? 30
-  const overviewQuery = useSkillMapOverview<SkillMapOverview>(historyDays, viewerTimeZone())
+  const overviewQuery = useSkillMapOverview<SkillMapOverview>(ACTIVITY_DAYS, viewerTimeZone())
   const skillMapOverview = overviewQuery.error ? null : overviewQuery.data ?? null
   const skillMapOverviewError = overviewQuery.error ? 'Daily work history is unavailable right now.' : ''
   const loading = overviewQuery.isFetching
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  // Algorithm slug the day detail shows; '' shows every algorithm.
-  const [selectedAlgorithm, setSelectedAlgorithm] = useState('')
+  // Algorithm slugs the submissions are filtered to (or, with no day, whose days are highlighted).
+  const [selectedAlgorithms, setSelectedAlgorithms] = useState<string[]>([])
 
-  // Clicking the date or algorithm that is already selected clears just that filter.
-  const selectDate = (date: string) => setSelectedDate(current => (current === date ? null : date))
-  const selectAlgorithm = (slug: string) => setSelectedAlgorithm(current => (current === slug ? '' : slug))
+  // Choosing a day starts fresh: all of that day's submissions. Clicking it again clears just the
+  // day, so any chosen algorithms carry on across the year.
+  const selectDate = (date: string) => {
+    pauseSnap()
+    if (date === selectedDate) {
+      setSelectedDate(null)
+      return
+    }
+    setSelectedDate(date)
+    setSelectedAlgorithms([])
+  }
+  const toggleAlgorithm = (slug: string) => {
+    pauseSnap()
+    setSelectedAlgorithms(current => (current.includes(slug) ? current.filter(item => item !== slug) : [...current, slug]))
+  }
+  const clearAlgorithms = () => {
+    pauseSnap()
+    setSelectedAlgorithms([])
+  }
+  // A practised day in an expanded competency row: that day's submissions for that algorithm.
+  const openDay = (date: string, slug: string) => {
+    pauseSnap()
+    setSelectedDate(date)
+    setSelectedAlgorithms([slug])
+    requestAnimationFrame(() => document.querySelector('.submission-detail')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }))
+  }
 
   // Sections snap into view instead of free-scrolling (styles keyed off this class).
   useEffect(() => {
     document.documentElement.classList.add('journey-snap')
-    return () => document.documentElement.classList.remove('journey-snap')
+    return () => document.documentElement.classList.remove('journey-snap', SNAP_PAUSED)
   }, [])
+
+  // A selection resizes the submission list, which would re-snap the page; see snapPause.
+  useEffect(resumeSnapOnScrollInput, [])
 
   // Wheel scrolling moves a whole section at a time from a snapped position: CSS mandatory snapping
   // alone sends a short trackpad scroll back to the nearest (current) section. A section taller than
@@ -106,7 +134,7 @@ export default function JourneyPage() {
     }
   }, [])
 
-  // Enter starts practice, unless it is pressing a focused control (a day, a range button, a field).
+  // Enter starts practice, unless it is pressing a focused control (a day, a filter, a field).
   const navigate = useNavigate()
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -140,32 +168,25 @@ export default function JourneyPage() {
       <TopNav pinned solid={navSolid} />
       <Suspense
         fallback={(
-          <section className="signal-hologram" aria-label="Signal score terrain">
-            <p className="dashboard-mode-meta signal-hologram-loading">Mapping signal scores…</p>
+          <section className="signal-hologram" aria-label="Competency terrain">
+            <p className="section-meta signal-hologram-loading">Mapping competency…</p>
           </section>
         )}
       >
-        <SignalHologram />
+        <CompetencyTerrain />
       </Suspense>
+      <CompetencySection onSelect={openDay} />
       <DailyWorkHistory
         activity={skillMapOverview?.ghostRepActivity}
         algorithmOrder={skillMapOverview?.algorithms ?? []}
-        range={range}
-        onRangeChange={setRange}
         selectedDate={selectedDate}
         onSelectDate={selectDate}
-        selectedAlgorithm={selectedAlgorithm}
-        onSelectAlgorithm={selectAlgorithm}
+        selectedAlgorithms={selectedAlgorithms}
+        onToggleAlgorithm={toggleAlgorithm}
+        onClearAlgorithms={clearAlgorithms}
         loading={loading}
       />
       {skillMapOverviewError && <p className="coach-error">{skillMapOverviewError}</p>}
-      {skillMapOverview ? (
-        <HistoryDayDetail
-          date={selectedDate}
-          algorithmFilter={selectedAlgorithm}
-          algorithmNames={Object.fromEntries(skillMapOverview.algorithms.map(algorithm => [algorithm.slug, algorithm.algorithm]))}
-        />
-      ) : null}
     </div>
   )
 }

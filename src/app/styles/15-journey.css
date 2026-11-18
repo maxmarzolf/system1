@@ -1,60 +1,4 @@
-/* History page: range buttons, selected day, and the day detail card (shares .daily-work-history). */
-.daily-work-history-ranges {
-  display: inline-flex;
-  flex-wrap: wrap;
-  border: 1px solid var(--workbench-edge);
-  border-radius: var(--workbench-radius-sm);
-  overflow: hidden;
-}
-
-button.daily-work-history-range {
-  min-height: 1.85rem;
-  padding: 0.3rem 0.75rem;
-  border: 0;
-  border-right: 1px solid var(--workbench-edge);
-  border-radius: 0;
-  background: transparent;
-  color: var(--hc-fg-dim);
-  font-size: 0.72rem;
-  font-weight: 650;
-  letter-spacing: 0.02em;
-  text-transform: none;
-}
-
-button.daily-work-history-range:last-child {
-  border-right: 0;
-}
-
-button.daily-work-history-range:hover {
-  background: var(--hc-option-hover-bg);
-  color: var(--hc-fg);
-}
-
-button.daily-work-history-range-active,
-button.daily-work-history-range-active:hover {
-  background: color-mix(in srgb, var(--hc-accent) 16%, transparent);
-  color: var(--hc-accent);
-}
-
-button.daily-work-history-cell {
-  cursor: pointer;
-}
-
-button.daily-work-history-cell:hover,
-button.daily-work-history-cell:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--daily-work-history-glow) 70%, white);
-  outline-offset: 1px;
-}
-
-.daily-work-history-cell-selected {
-  outline: 2px solid var(--hc-fg);
-  outline-offset: 1px;
-}
-
-.daily-work-history-x-day-selected strong,
-.daily-work-history-x-day-selected span {
-  color: var(--hc-fg);
-}
+/* Journey: the Submission Detail subsection of the Daily Work History card. */
 
 .history-day-heading {
   margin: 0.3rem 0 0;
@@ -261,73 +205,6 @@ button.daily-work-history-cell:focus-visible {
   }
 }
 
-.daily-work-history-cell-selected:not(.daily-work-history-cell-active) {
-  outline: none;
-  border-color: color-mix(in srgb, var(--hc-fg) 35%, transparent);
-}
-
-
-/* Dates form the x axis under the grid; each is a button that opens that day. */
-.daily-work-history-grid .daily-work-history-x-axis {
-  margin-top: 0.35rem;
-  padding-top: 0.4rem;
-  border-top: 1px solid var(--workbench-edge);
-}
-
-button.daily-work-history-x-day {
-  min-width: 0;
-  min-height: 0;
-  height: auto;
-  padding: 0.2rem 0;
-  border: 1px solid transparent;
-  border-radius: 0.25rem;
-  background: transparent;
-  font: inherit;
-  letter-spacing: normal;
-  text-transform: none;
-  cursor: pointer;
-}
-
-button.daily-work-history-x-day:hover,
-button.daily-work-history-x-day:focus-visible {
-  border-color: var(--workbench-edge-strong);
-  color: var(--hc-fg);
-}
-
-.daily-work-history-x-day-active strong,
-.daily-work-history-x-day-active span {
-  color: var(--daily-work-history-glow);
-}
-
-button.daily-work-history-x-day-selected,
-button.daily-work-history-x-day-selected:hover {
-  border-color: var(--hc-fg);
-  background: color-mix(in srgb, var(--hc-fg) 8%, transparent);
-}
-
-
-/* Hovering (or focusing) a date lights up its whole column. */
-.daily-work-history-cell-column-hover {
-  border-color: color-mix(in srgb, var(--hc-fg) 55%, transparent);
-  background: color-mix(in srgb, var(--hc-fg) 10%, var(--workbench-surface));
-}
-
-.daily-work-history-cell-active.daily-work-history-cell-column-hover {
-  outline: 2px solid color-mix(in srgb, var(--daily-work-history-glow) 70%, white);
-  outline-offset: 1px;
-  background: linear-gradient(
-    145deg,
-    color-mix(in srgb, var(--daily-work-history-glow) 82%, white),
-    color-mix(in srgb, var(--daily-work-history-glow) 84%, var(--hc-bg))
-  );
-}
-
-/* The selected algorithm's row stays readable; the others step back. */
-.daily-work-history-grid:has(.daily-work-history-lane-cells-selected)
-  .daily-work-history-lane-cells:not(.daily-work-history-lane-cells-selected) {
-  opacity: 0.45;
-}
-
 /* Signal score terrain (History): a three.js scene drawn straight on the page. */
 /* No card: the landscape sits directly on the page, and its canvas spans the whole browser window
    (placed by SignalHologram), so zooming in runs to the window's edges, not a box's. */
@@ -419,7 +296,7 @@ button.daily-work-history-x-day-selected:hover {
   white-space: nowrap;
 }
 
-/* Top nav pinned to the window (Journey, Tune, Admin, Dashboard): no background or rule, and
+/* Top nav pinned to the window (Journey, Tune, Admin): no background or rule, and
    the same 1.25rem gap from the window top as the main page, scrolled or not. */
 :root {
   --page-top-gap: 1.25rem;
@@ -467,10 +344,14 @@ html.journey-snap {
   }
 }
 
+/* Paused after a selection so a resized section doesn't re-snap the page (see JourneyPage). */
+html.journey-snap.journey-snap-paused {
+  scroll-snap-type: none;
+}
+
 .app-history > section {
   scroll-snap-align: start;
 }
-
 
 /* Journey day detail: each submission is a collapsed row that opens to its question and signals. */
 .history-day-submission-summary {
@@ -512,3 +393,425 @@ span.history-day-title {
   display: block;
 }
 
+/* Competency: where you stand today (ranked list) beside the history (heatmap). */
+.competency-section-note {
+  margin: 0;
+  max-width: 46rem;
+  color: var(--hc-fg-dim);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.competency-standing {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.competency-row {
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: minmax(10rem, 16rem) minmax(6rem, 1fr) minmax(14rem, 18rem) 7.5rem 5.5rem;
+  grid-template-areas: "head bar meta spark practise";
+  align-items: center;
+  gap: 0.35rem 0.9rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--workbench-edge);
+  border-radius: var(--workbench-radius-sm);
+  background: color-mix(in srgb, var(--hc-bg) 40%, transparent);
+}
+
+.competency-row-head {
+  grid-area: head;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.84rem;
+}
+
+.competency-chip {
+  padding: 0.08rem 0.45rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.competency-chip-strong { color: var(--hc-success); }
+.competency-chip-review { color: var(--hc-warning); }
+.competency-chip-learn { color: var(--hc-error); }
+
+.competency-row-bar {
+  grid-area: bar;
+  position: relative;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--hc-fg) 8%, transparent);
+}
+
+.competency-row-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.competency-row-meta {
+  grid-area: meta;
+  margin: 0;
+  color: var(--hc-fg-dim);
+  font-size: 0.7rem;
+}
+
+.competency-spark {
+  grid-area: spark;
+  width: 100%;
+  height: 1.6rem;
+  overflow: visible;
+}
+
+.competency-spark polyline {
+  fill: none;
+  stroke: color-mix(in srgb, var(--hc-accent) 70%, transparent);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+button.competency-practise {
+  grid-area: practise;
+  justify-self: end;
+  min-height: 1.7rem;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.72rem;
+}
+
+/*
+ * Small screens. A collapsed row: the name and standing chip on the left, the 30-day graph on the
+ * right (no bar, last score or Practise). Expanded: the last practised score upper-right, no
+ * preview graph, the detail full width, Practise lower-right.
+ */
+@media (max-width: 900px) {
+  .competency-row {
+    grid-template-columns: minmax(0, 1fr) minmax(7rem, 45%);
+    grid-template-areas:
+      "head spark"
+      "chip spark";
+    align-items: center;
+  }
+
+  /* Collapsed: just the name, the standing chip and the 30-day graph. */
+  .competency-row:not(.competency-row-expanded):not(.competency-overall) .competency-row-meta,
+  .competency-row:not(.competency-row-expanded):not(.competency-row-unpractised):not(.competency-overall) .competency-practise {
+    display: none;
+  }
+
+  /* Never practised: no graph to show, so the dash and Practise take the right side. */
+  .competency-row-unpractised {
+    grid-template-areas:
+      "head spark"
+      "chip practise";
+  }
+
+  .competency-row-head {
+    display: contents;
+  }
+
+  .competency-row-name {
+    grid-area: head;
+    align-self: start;
+    white-space: normal;
+  }
+
+  .competency-row .competency-chip {
+    grid-area: chip;
+    justify-self: start;
+  }
+
+  .competency-row:not(.competency-overall) .competency-row-bar,
+  .competency-row-recency {
+    display: none;
+  }
+
+  .competency-row-meta {
+    text-align: right;
+  }
+
+  .competency-row-unpractised .competency-never {
+    grid-area: spark;
+    justify-self: end;
+  }
+
+  .competency-row-expanded {
+    grid-template-areas:
+      "head meta"
+      "chip chip"
+      "detail detail"
+      ". practise";
+  }
+
+  .competency-row-expanded .competency-spark {
+    display: none;
+  }
+
+  .competency-row-expanded .competency-detail {
+    grid-area: detail;
+  }
+
+  /* Scoped to the row so they win over the base rules defined later in this file. */
+  .competency-row .competency-detail-ticks span:nth-child(even):not(:last-child) { display: none; }
+  .competency-row .competency-detail-signals { grid-template-columns: minmax(0, 1fr); }
+}
+
+.competency-row:focus-visible {
+  outline: 2px solid var(--hc-accent);
+  outline-offset: 2px;
+}
+
+.competency-row-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.competency-flag {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--hc-warning) 22%, transparent);
+  color: var(--hc-warning);
+  font-size: 0.72rem;
+  font-weight: 800;
+  cursor: help;
+}
+
+.competency-row-unpractised {
+  cursor: default;
+}
+
+.competency-never {
+  grid-area: bar;
+  align-self: center;
+  justify-self: center;
+  color: var(--hc-fg-dim);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: help;
+}
+
+.competency-detail {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--workbench-edge);
+  cursor: default;
+}
+
+.competency-detail-graph {
+  display: block;
+  width: 100%;
+  height: 6rem;
+}
+
+.competency-detail-graph polyline {
+  fill: none;
+  stroke: var(--hc-accent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.competency-detail-dot {
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+
+.competency-detail-gridline {
+  stroke: color-mix(in srgb, var(--hc-fg) 10%, transparent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.competency-detail-strip {
+  display: block;
+  width: 100%;
+  height: 0.9rem;
+}
+
+.competency-strip-cell { opacity: 0.55; }
+
+.competency-strip-practised {
+  opacity: 1;
+  stroke: var(--hc-fg);
+  stroke-width: 1;
+  cursor: pointer;
+}
+
+.competency-strip-practised:hover,
+.competency-strip-practised:focus-visible {
+  stroke: var(--hc-accent);
+  stroke-width: 2;
+  outline: none;
+}
+
+.competency-detail-ticks {
+  position: relative;
+  height: 1rem;
+  color: var(--hc-fg-dim);
+  font-size: 0.64rem;
+}
+
+.competency-detail-ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.competency-detail-ticks span:first-child { transform: none; }
+.competency-detail-ticks span:last-child:not(:first-child) { transform: translateX(-100%); }
+
+.competency-detail-status {
+  min-height: 1.1rem;
+  margin: 0;
+  color: var(--hc-fg-dim);
+  font-size: 0.7rem;
+}
+
+.competency-detail-signals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 0.4rem;
+}
+
+.competency-signals {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--workbench-edge);
+  border-radius: var(--workbench-radius-sm);
+}
+
+.competency-signals h4 {
+  margin: 0 0 0.45rem;
+  color: var(--hc-fg-dim);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.competency-signals ol {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.competency-signals li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 0.76rem;
+}
+
+.competency-signals em {
+  color: var(--hc-fg-dim);
+  font-size: 0.66rem;
+  font-style: normal;
+}
+
+.competency-signals p {
+  margin: 0;
+  color: var(--hc-fg-dim);
+  font-size: 0.72rem;
+}
+
+/* Overall sits on the card: the rows' grid (so its bar matches theirs), no outline or background. */
+.competency-row.competency-overall {
+  grid-template-areas: "head bar graph graph graph";
+  margin-bottom: 0.45rem;
+  border-color: transparent;
+  background: transparent;
+  cursor: default;
+}
+
+.competency-overall-graph {
+  grid-area: graph;
+  display: block;
+  min-width: 0;
+  width: 100%;
+  height: 2.4rem;
+}
+
+.competency-overall-graph polyline {
+  fill: none;
+  stroke: var(--hc-accent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.competency-chip-new { color: var(--hc-fg-dim); }
+
+/* Quick hover labels (the native title tooltip waits about a second); used across Journey. */
+.quick-tip {
+  position: relative;
+  cursor: help;
+}
+
+.quick-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  left: 50%;
+  z-index: 5;
+  width: max-content;
+  max-width: 16rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--workbench-edge);
+  border-radius: var(--workbench-radius-sm);
+  background: var(--hc-panel-bg);
+  color: var(--hc-fg);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: normal;
+  line-height: 1.35;
+  text-transform: none;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 0.2rem);
+  transition: opacity 0.12s ease 0.15s, transform 0.12s ease 0.15s;
+}
+
+.quick-tip:hover::after,
+.quick-tip:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* Small screens: "Overall" upper-left and its trend chip upper-right, then the graph and the bar
+   across the full width. */
+@media (max-width: 900px) {
+  .competency-row.competency-overall {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "head chip"
+      "graph graph"
+      "bar bar";
+    row-gap: 0.5rem;
+  }
+
+  .competency-row.competency-overall .competency-chip {
+    justify-self: end;
+  }
+}

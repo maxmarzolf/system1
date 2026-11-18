@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import ast
 import asyncio
+from collections.abc import Awaitable, Callable
 
-from app.core.llm import call_llm_json, llm_provider_available, resolve_available_llm_provider
+from app.core.llm import call_llm_json, capture_llm_exchanges, llm_provider_available, resolve_available_llm_provider
 from app.models import SlidingWindowLadderRequest, SlidingWindowLadderResponse
+from app.repositories import exercise_repository
+
+PersistItem = Callable[..., Awaitable[exercise_repository.StoredExercise]]
 
 
 class LadderGenerationError(RuntimeError):
@@ -67,7 +71,11 @@ def _valid_question(raw: object) -> bool:
     return any(not isinstance(node, (ast.Expr, ast.Pass)) for node in solution_function.body)
 
 
-async def generate_ladder_question(body: SlidingWindowLadderRequest) -> SlidingWindowLadderResponse:
+async def generate_ladder_question(
+    body: SlidingWindowLadderRequest,
+    persist: PersistItem | None = None,
+) -> SlidingWindowLadderResponse:
+    """Generate one rung and store it, so the answer is graded against the stored copy."""
     provider = resolve_available_llm_provider(body.llmProvider)
     if not llm_provider_available(provider):
         raise LadderGenerationError("Configure a model provider to generate Ladder questions.")
@@ -89,6 +97,22 @@ async def generate_ladder_question(body: SlidingWindowLadderRequest) -> SlidingW
         "Do not include partial solution lines in starterCode. Do not ask for a single missing line. "
         "Do not use a timer, time pressure, or automatic difficulty change based on elapsed time."
     )
+    with capture_llm_exchanges() as exchanges:
+        raw = await _generate(system_prompt, body, provider)
+    if raw is None:
+        raise LadderGenerationError("The generated Ladder question was incomplete. Try again.")
+    question, starter, solution = raw["question"].strip(), raw["starterCode"].strip(), raw["solution"].strip()
+    item = await (persist or exercise_repository.insert_exercise)(
+        modality="ladder", prompt=question, reference=solution, algorithm_slug="sliding-window",
+        metadata={"starterCode": starter, "technique": body.technique, "rungIndex": body.rungIndex, "rungTitle": rung_title,
+                  "rep": body.rep, "cardTitle": body.cardTitle, "language": "python"},
+        generation_trace=list(exchanges),
+    )
+    return SlidingWindowLadderResponse(id=item["id"], rungTitle=rung_title, question=question, starterCode=starter, solution=solution)
+
+
+async def _generate(system_prompt: str, body: SlidingWindowLadderRequest, provider: str) -> dict | None:
+    """A valid, non-repeated question within two tries, or ``None``."""
     for attempt_number in range(2):
         retry_note = "" if attempt_number == 0 else " The previous draft was incomplete or repeated a recent question. Write a different valid question."
         try:
@@ -103,10 +127,5 @@ async def generate_ladder_question(body: SlidingWindowLadderRequest) -> SlidingW
             for previous in body.recentAttempts
         ):
             continue
-        return SlidingWindowLadderResponse(
-            rungTitle=rung_title,
-            question=raw["question"].strip(),
-            starterCode=raw["starterCode"].strip(),
-            solution=raw["solution"].strip(),
-        )
-    raise LadderGenerationError("The generated Ladder question was incomplete. Try again.")
+        return raw
+    return None

@@ -14,8 +14,8 @@ export const SIGNAL_FIELD_HELP = {
     'Notes for developers and admins: what the signal is for and how to read it. Never sent to Jev. Anything Jev needs belongs in the instructions and criteria.',
   scope: (
     <>
-      <strong>General</strong> signals run for every MCQ. An algorithm scope runs only when the MCQ&rsquo;s algorithm
-      (from its pattern tag) matches, in addition to the general signals.
+      <strong>General</strong> signals run for every answer in this modality. An algorithm scope runs only when the
+      item&rsquo;s algorithm (from the stored item, else its pattern tag) matches, in addition to the general signals.
     </>
   ),
   source: (
@@ -70,9 +70,9 @@ export const SIGNAL_FIELD_HELP = {
   directiveIncorrect: 'What label "0" means. The label itself is fixed: when Jev chooses "0", the submission is graded as incorrect.',
   directiveWeight: 'Weight of the correctness result in the overall score, relative to the weights of the signals.',
   tryQuestion:
-    'A recent MCQ stored in the database. The draft is asked about it exactly as it would be during a real evaluation.',
+    'A stored item of this modality (a recent MCQ, a catalog problem, or a generated exercise). The draft is asked about it exactly as it would be during a real evaluation.',
   tryAnswer:
-    'The choice to evaluate as if the person had picked it. Whether it is correct comes from the stored answer key.',
+    'The answer to evaluate: a choice for MCQ, otherwise code (prefilled with the reference; edit it to try a mistake). "Answered correctly" comes from the deterministic check, not Jev.',
   criteria: {
     choice:
       'The labels Jev can choose from, each with a description that tells it apart from the others. Up to 255 labels; descriptions are sent to Jev.',

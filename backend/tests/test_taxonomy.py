@@ -39,3 +39,10 @@ def test_primary_pattern_follows_priority() -> None:
     assert taxonomy.primary_pattern_tag(["skill-map"]) == ""
     assert taxonomy.algorithm_slug_for_tags(["dp"]) == "dynamic-programming"
     assert taxonomy.algorithm_slug_for_tags([]) == ""
+
+
+def test_an_answer_counts_toward_its_first_tagged_algorithm() -> None:
+    known = {"linked-lists", "two-pointers", "heap"}
+    assert taxonomy.primary_algorithm_slug(["skill-map", "linked-lists", "two-pointers"], known) == "linked-lists"
+    assert taxonomy.primary_algorithm_slug(["skill-map", "heap-priority-queue", "two-pointers"], known) == "heap"  # alias
+    assert taxonomy.primary_algorithm_slug(["skill-map", "core-algorithm"], known) is None

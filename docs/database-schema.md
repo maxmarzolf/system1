@@ -1,12 +1,12 @@
 # Database schema
 
-Postgres. The schema is built by [Alembic](https://alembic.sqlalchemy.org/) migrations written as raw SQL in [`backend/app/migrations/versions/`](../backend/app/migrations/versions/); there are no ORM models. Revision `0001` is the baseline ([`0001_baseline.sql`](../backend/app/migrations/versions/0001_baseline.sql), frozen), and each later revision is one change on top of it. Startup (`connect()` in `backend/app/database.py`) takes a Postgres advisory lock, runs `alembic upgrade head`, seeds the catalog if it changed, and seeds any missing default MCQ signals. See [Migrations](#migrations) below.
+Postgres. The schema is built by [Alembic](https://alembic.sqlalchemy.org/) migrations written as raw SQL in [`backend/app/migrations/versions/`](../backend/app/migrations/versions/); there are no ORM models. Revision `0001` is the baseline ([`0001_baseline.sql`](../backend/app/migrations/versions/0001_baseline.sql), frozen), and each later revision is one change on top of it. Startup (`connect()` in `backend/app/database.py`) takes a Postgres advisory lock, runs `alembic upgrade head`, seeds the catalog if it changed, and seeds any missing default signals for every modality. See [Migrations](#migrations) below.
 
 The tables fall into three groups:
 
 - **Content catalog:** what you practice. Seeded from code at boot whenever the code catalogs change.
 - **Practice records:** what you did. Written by `POST /api/attempts`.
-- **Signal registry:** how MCQ answers are graded by Jev. Seeded once (insert-if-missing), then owned by `/admin`.
+- **Signal registry and settings:** how every modality's answers are graded, and the server-side grading, generation and practice settings. Signals are seeded once (insert-if-missing), then owned by `/admin`. See [grading.md](grading.md).
 
 ## Entity relationships
 
@@ -28,13 +28,14 @@ erDiagram
     algorithm |o--o{ multiple_choice_problem : "algorithm_slug"
     algorithm |o..o{ signal_definition : "scope (or 'general')"
     signal_definition ||..o{ signal_definition_revision : "subject = key"
-    signal_evaluation_directive ||..o{ signal_definition_revision : "subject = directive:mcq"
+    signal_evaluation_directive ||..o{ signal_definition_revision : "subject = directive:<modality>"
+    generated_exercise ||--o{ submission : "exercise_id"
+    algorithm ||--o{ generated_exercise : "algorithm_slug"
 
     algorithm {
         varchar slug PK
         varchar name
         int display_order
-        jsonb signal_spec "recall signal spec (seeded)"
     }
     technique {
         varchar slug PK
@@ -97,7 +98,8 @@ erDiagram
         varchar session_id
         varchar problem_slug FK
         varchar multiple_choice_problem_id FK
-        varchar modality "total-recall | ghost-rep | mcq | microdrill"
+        varchar exercise_id FK "generated_exercise, nullable"
+        varchar modality "mcq | total-recall | ghost-rep | microdrill | ladder"
         text answer
         text correct_answer
         bool successful
@@ -108,8 +110,8 @@ erDiagram
         timestamptz created_at
     }
     signal_definition {
-        varchar key PK
-        varchar modality "mcq"
+        varchar modality PK "mcq | total-recall | ghost-rep | microdrill | ladder"
+        varchar key PK "unique per modality"
         varchar scope "general or algorithm slug"
         text label
         text description "admin only, never sent to Jev"
@@ -132,6 +134,7 @@ erDiagram
         text instructions
         jsonb criteria "labels fixed to 1 / 0"
         float correctness_weight
+        varchar correctness_source "jev | deterministic"
         int version
     }
     signal_definition_revision {
@@ -142,18 +145,35 @@ erDiagram
         jsonb after
         timestamptz created_at
     }
+    generated_exercise {
+        varchar id PK
+        varchar modality "microdrill | ladder"
+        varchar algorithm_slug FK "nullable"
+        text prompt
+        text reference
+        jsonb metadata "template, answers, starterCode, rungIndex…"
+        jsonb generation_trace
+        timestamptz created_at
+    }
+    app_setting {
+        varchar key PK "grading | generation | practice"
+        jsonb value
+        int version "optimistic lock"
+        timestamptz updated_at
+    }
 ```
 
 ## Content catalog
 
 | Table | Holds | Written by |
 |---|---|---|
-| `algorithm` | One row per algorithm family (sliding window, heap, …). `signal_spec` is the recall signal spec used by the legacy LLM evaluators. | Seed (overwrites) |
+| `algorithm` | One row per algorithm family (sliding window, heap, …). Signals scoped to an algorithm refer to its slug. | Seed (overwrites) |
 | `problem` | A practice card: its code, description (served as the prompt), hint and tags. Every problem belongs to one algorithm. | Seed |
 | `skill`, `technique` | Finer-grained labels. | Seed |
 | `problem_skill`, `problem_technique` | Many-to-many links from problems to skills and techniques. | Seed |
 | `playlist`, `playlist_problem_order` | Ordered decks of problems. A playlist can have several named orders (`order_slug`). | Seed |
 | `multiple_choice_problem` | A generated MCQ: its `choices` array (four `{id, text}` objects, in served order), the answer key (`correct_choice_id`), and the algorithm it was generated for (`algorithm_slug`, when known). `fingerprint` deduplicates identical questions. `generation_trace` holds the LLM exchanges that generated it (prompt, payload, reply, usage, timing, failed attempts); `[]` for questions made before migration 0010. MCQ grading scopes signals by `algorithm_slug`, falling back to the submission's tags. | Generated during practice |
+| `generated_exercise` | A generated microdrill or Ladder rung: the task (`prompt`), the correct solution (`reference`), modality details in `metadata` (a microdrill's template and blank answers; a rung's starter code, technique and index) and `generation_trace`. | Generated during practice |
 
 ### Content rules
 
@@ -162,7 +182,7 @@ erDiagram
 - **Playlists only organize:** `playlist` and `playlist_problem_order` reference problems by slug and never copy their content.
 - **Submissions keep a snapshot:** `submission.generated_card` stores the card exactly as shown, so history renders correctly even if the problem later changes.
 - **Resetting practice history** deletes `generated-llm` problems but never core or playlist rows.
-- **MCQs are separate on purpose:** they live in `multiple_choice_problem`. A stored question is never edited, so every MCQ answer can be checked against what was shown.
+- **MCQs and generated exercises are separate on purpose:** they live in `multiple_choice_problem` and `generated_exercise`. A stored item is never edited, so every answer is graded against what was shown.
 - The Python and TypeScript catalogs in code (`backend/app/core/*catalog*.py`, `src/shared/data/`) are seed inputs and offline fallbacks; reads at runtime go through the repositories.
 - **Seeding is skipped when nothing changed:** the seed hashes the code catalogs plus the seeding code and stores the hash in `seed_state` (key `catalog`). A boot with a matching hash writes nothing. To force a reseed, `DELETE FROM seed_state WHERE key = 'catalog'` and restart.
 - **Retired core problems that have submissions are kept:** `submission.problem_slug` is `ON DELETE RESTRICT`, so the seed skips deleting them and logs a warning instead of failing the boot.
@@ -171,27 +191,29 @@ erDiagram
 
 `submission` is the only table practice writes to. One row per answer, across every modality.
 
-- `modality` picks the evaluator (see [data-flow.md](data-flow.md)).
-- `problem_slug` links recall-style answers to a catalog problem. `multiple_choice_problem_id` links MCQ answers to their question.
+- `modality` picks the context builder and signal spec the grading pipeline uses (see [grading.md](grading.md)).
+- `problem_slug` links recall-style answers to a catalog problem. `multiple_choice_problem_id` links MCQ answers to their question. `exercise_id` links microdrill and Ladder answers to their stored exercise.
 - `signals` is a JSONB object, and a CHECK constraint allows only these keys:
   - `elapsed_ms` (required, a number)
-  - `evaluation`: the canonical evaluation. For MCQ this includes `signalResults`, `correctness`, `provenance`, `jevTrace` and a `signalSpecSnapshot`, so a stored grade can always be explained even after the signals change.
+  - `evaluation`: the canonical evaluation, the same shape for every modality: verdict, scores, `signalResults`, `correctness` (who decided, overrides), `provenance` (flags, model), `jevTrace`, `llmTrace`, optional `feedback` and a `signalSpecSnapshot`, so a stored grade can always be explained even after the signals change. Evaluations stored before the pipeline (LLM-assessed recall) have the same top-level shape, but their scores were produced differently.
   - `flow`: flow-mode bookkeeping (`anchorCardId`, …)
   - `modality`: modality-specific extras
-- The Dashboard and Journey pages read from this table. The Journey day view groups rows by date in the viewer's time zone.
+- The Journey page reads from this table. The Journey day view groups rows by date in the viewer's time zone.
 
-## Signal registry
+## Signal registry and settings
 
-These three tables make MCQ grading data-driven. See [backend-architecture.md](backend-architecture.md) for the code side.
+These tables make grading data-driven for every modality. See [backend-architecture.md](backend-architecture.md) for the code side.
 
-- **`signal_definition`:** one row per signal. A signal is either a Jev question (`source = 'jev'`, with a `primitive`) or a deterministic implementation registered in code (`source = 'deterministic'`, with an `implementation` such as `completionTime`). The `signal_definition_source_fields_check` constraint enforces that split.
-  - `scope` is `general` (applies to every MCQ) or an algorithm slug (applies only to that algorithm's MCQs). It is checked in code, not by a foreign key.
+- **`signal_definition`:** one row per signal, keyed by `(modality, key)`, so modalities can share keys with the same meaning (`nearMiss`, `completionTime`). A signal is either a Jev question (`source = 'jev'`, with a `primitive`) or a deterministic implementation registered in code (`source = 'deterministic'`, with an `implementation` such as `completionTime`). The `signal_definition_source_fields_check` constraint enforces that split.
+  - `scope` is `general` (applies to every item of the modality) or an algorithm slug (applies only to that algorithm's items). It is checked in code, not by a foreign key.
   - Signals are archived, never deleted: past evaluations refer to their keys.
   - Every write must send the current `version`. A stale version is a 409.
-- **`signal_evaluation_directive`:** the correctness question for a modality. Its wording and weight are editable; its labels are always `"1"` and `"0"`.
-- **`signal_definition_revision`:** an append-only log of every seed, create, update, archive and restore, with before and after snapshots. `subject` is a signal key, or `directive:<modality>` for the correctness question.
+- **`signal_evaluation_directive`:** the correctness question for a modality. Its wording, weight and `correctness_source` (`jev`, or `deterministic` to let the modality's exact check decide) are editable; its labels are always `"1"` and `"0"`.
+- **`signal_definition_revision`:** an append-only log of every seed, create, update, archive and restore, with before and after snapshots. `subject` is `<modality>:<key>` for a signal, or `directive:<modality>` for the correctness question.
 
-The evaluator reads the active definitions on every MCQ submission, so an edit in `/admin` applies to the next answer without a restart.
+- **`app_setting`:** one JSON document per settings section (`grading`, `generation`, `practice`), validated by `services/app_settings_service.py` and versioned like signals (409 if stale). A missing section uses the defaults.
+
+The pipeline reads the active definitions and settings on every submission, so an edit in `/admin` applies to the next answer without a restart.
 
 ## Migrations
 
@@ -229,3 +251,14 @@ Cleanup revisions:
   - `question_help_text` is renamed `explanation`;
   - timestamps become `TIMESTAMPTZ`;
   - a nullable `algorithm_slug` links each MCQ to its algorithm.
+- **`0010`** adds `multiple_choice_problem.generation_trace`.
+
+The unified grading pipeline:
+
+- **`0011`** opens the signal registry to every modality:
+  - `signal_definition` is keyed by `(modality, key)`;
+  - revision subjects become `<modality>:<key>`;
+  - `signal_evaluation_directive.correctness_source` is added;
+  - `submission.modality` allows `ladder`.
+- **`0012`** adds `generated_exercise` and `submission.exercise_id`.
+- **`0013`** adds `app_setting`, and drops `algorithm.signal_spec` (recall signals are `signal_definition` rows now).

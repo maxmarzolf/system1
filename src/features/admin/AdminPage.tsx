@@ -1,74 +1,76 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { fetchSignalSpecCatalog } from './signalSpecs'
-import type { SignalSpecCatalog } from './signalSpecs'
 import TopNav from '@/app/TopNav'
 import { TuneSection } from '@/shared/components/settingControls'
+import { MODALITIES, MODALITY_LABELS, isModality, type Modality } from '@/shared/modality'
 import { fetchSignalAdminCatalog } from './api'
 import type { SignalAdminCatalog } from './api'
 import { DirectiveEditor } from './components/DirectiveEditor'
 import { NewSignal } from './components/NewSignal'
-import { RecallView } from './components/RecallView'
+import { SettingsView } from './components/SettingsView'
 import { SignalCard } from './components/SignalCard'
 import { errorMessage } from './lib'
 
-type QuestionType = 'mcq' | 'recall'
-const QUESTION_TYPE_LABELS: Record<QuestionType, string> = { mcq: 'MCQ', recall: 'Recall' }
 const ALL_SCOPES = 'all'
+const SETTINGS_VIEW = 'settings'
 
+/**
+ * Everything that configures grading and generation: each modality's correctness question and
+ * signals (the same editor for every modality), and the server-side settings.
+ */
 export default function AdminPage() {
-  const [catalog, setCatalog] = useState<SignalAdminCatalog | null>(null)
-  const [specs, setSpecs] = useState<SignalSpecCatalog | null>(null)
-  const [error, setError] = useState('')
-  // Question type and scope live in the URL (?type=recall&scope=binary-search), so views are linkable.
+  // The view lives in the URL (?modality=total-recall&scope=binary-search, or ?view=settings).
   const [searchParams, setSearchParams] = useSearchParams()
-  const questionType: QuestionType = searchParams.get('type') === 'recall' ? 'recall' : 'mcq'
+  const settingsOpen = searchParams.get('view') === SETTINGS_VIEW
+  const requested = searchParams.get('modality')
+  const modality: Modality = isModality(requested) ? requested : 'mcq'
   const scope = searchParams.get('scope') || ALL_SCOPES
-  const select = (type: QuestionType, nextScope: string) => setSearchParams(
-    nextScope === ALL_SCOPES && type === 'mcq' ? {} : { type, scope: nextScope },
+  const select = (next: Modality, nextScope: string) => setSearchParams(
+    next === 'mcq' && nextScope === ALL_SCOPES ? {} : { modality: next, scope: nextScope },
   )
 
+  const [catalog, setCatalog] = useState<SignalAdminCatalog | null>(null)
+  const [error, setError] = useState('')
   const load = useCallback(() => {
-    fetchSignalAdminCatalog()
+    if (settingsOpen) return
+    const controller = new AbortController()
+    fetchSignalAdminCatalog(modality, controller.signal)
       .then((result) => {
         setCatalog(result)
         setError('')
       })
-      .catch((reason: unknown) => setError(errorMessage(reason)))
-  }, [])
-
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) setError(errorMessage(reason))
+      })
+    return () => controller.abort()
+  }, [modality, settingsOpen])
   useEffect(load, [load])
-  useEffect(() => {
-    fetchSignalSpecCatalog().then(setSpecs).catch((reason: unknown) => setError(errorMessage(reason)))
-  }, [])
 
-  const algorithmName = (slug: string) => catalog?.algorithms.find((algorithm) => algorithm.slug === slug)?.name ?? slug
-  const signalCount = (slug: string) => catalog?.signals.filter((signal) => signal.scope === slug).length ?? 0
-  const mcqScopes = [
-    { slug: ALL_SCOPES, label: 'All', count: catalog?.signals.length ?? 0 },
+  const current = catalog && catalog.modality === modality ? catalog : null
+  const label = MODALITY_LABELS[modality]
+  const algorithmName = (slug: string) => current?.algorithms.find((algorithm) => algorithm.slug === slug)?.name ?? slug
+  const signalCount = (slug: string) => current?.signals.filter((signal) => signal.scope === slug).length ?? 0
+  const scopes = [
+    { slug: ALL_SCOPES, label: 'All', count: current?.signals.length ?? 0 },
     { slug: 'general', label: 'General', count: signalCount('general') },
-    ...(catalog?.algorithms ?? []).map((algorithm) => ({ slug: algorithm.slug, label: algorithm.name, count: signalCount(algorithm.slug) })),
-  ]
-  const recallScopes = [
-    { slug: ALL_SCOPES, label: 'All', count: 0 },
-    ...(specs?.algorithms ?? []).map((algorithm) => ({ slug: algorithm.slug, label: algorithm.name, count: algorithm.usesDefault ? 0 : algorithm.spec.signals.length })),
+    ...(current?.algorithms ?? []).map((algorithm) => ({ slug: algorithm.slug, label: algorithm.name, count: signalCount(algorithm.slug) })),
   ]
 
-  // MCQ: the selected scope's signals; "All" groups every scope, general first. Archived signals
-  // stay in their group, after the active ones.
-  const visible = (catalog?.signals ?? [])
+  // The selected scope's signals; "All" groups every scope, general first. Archived signals stay
+  // in their group, after the active ones.
+  const visible = (current?.signals ?? [])
     .filter((signal) => scope === ALL_SCOPES || signal.scope === scope)
     .sort((a, b) => Number(a.status === 'archived') - Number(b.status === 'archived'))
   const groups = [...new Set(visible.map((signal) => signal.scope))].sort(
     (a, b) => Number(a !== 'general') - Number(b !== 'general'),
   )
-  const scopeLabel = scope === ALL_SCOPES ? 'All MCQ' : scope === 'general' ? 'General' : algorithmName(scope)
+  const scopeLabel = scope === ALL_SCOPES ? `All ${label}` : scope === 'general' ? 'General' : algorithmName(scope)
   const generalCount = signalCount('general')
   const scopeCopy = scope === ALL_SCOPES
-    ? 'Every MCQ signal, grouped by scope. Archived signals are not sent to Jev and can be restored; keys are permanent.'
+    ? `Every ${label} signal, grouped by scope. Archived signals are not used and can be restored; keys are permanent.`
     : scope === 'general'
-      ? 'Asked for every MCQ, in one Jev call with the correctness question.'
-      : `Asked in addition to the ${generalCount} general signal${generalCount === 1 ? '' : 's'} when the MCQ's algorithm is ${algorithmName(scope)}.`
+      ? `Used for every ${label} answer: Jev signals in one call with the correctness question, deterministic ones computed locally.`
+      : `Used in addition to the ${generalCount} general signal${generalCount === 1 ? '' : 's'} when the item's algorithm is ${algorithmName(scope)}.`
 
   return (
     <div className="app app-tune">
@@ -78,7 +80,7 @@ export default function AdminPage() {
         <div className="tune-hero">
           <div>
             <h2>Admin</h2>
-            <p>Signals each question type produces. MCQ signals are Jev questions you can edit; recall signals are the assessor&rsquo;s read-only specs.</p>
+            <p>How every answer is graded and every question is written. Each modality has a correctness question and signals, edited the same way; settings apply server-wide.</p>
           </div>
           <div className="tune-hero-meta" aria-label="Admin page behavior">
             <span>Saved explicitly</span>
@@ -87,62 +89,72 @@ export default function AdminPage() {
         </div>
 
         <div className="tune-layout">
-          <nav className="tune-rail" aria-label="Question types and scopes">
-            {(['mcq', 'recall'] as QuestionType[]).map((type) => (
-              <div key={type} className="admin-rail-group">
+          <nav className="tune-rail" aria-label="Modalities, scopes and settings">
+            {MODALITIES.map((item) => (
+              <div key={item} className="admin-rail-group">
                 <button
                   type="button"
-                  className={`admin-rail-group-label${questionType === type ? ' admin-rail-active-group' : ''}`}
-                  onClick={() => select(type, ALL_SCOPES)}
+                  className={`admin-rail-group-label${!settingsOpen && modality === item ? ' admin-rail-active-group' : ''}`}
+                  onClick={() => select(item, ALL_SCOPES)}
                 >
-                  {QUESTION_TYPE_LABELS[type]}
+                  {MODALITY_LABELS[item]}
                 </button>
-                {(type === 'mcq' ? mcqScopes : recallScopes).map((item) => {
-                  const current = questionType === type && scope === item.slug
+                {!settingsOpen && modality === item ? scopes.map((entry) => {
+                  const selected = scope === entry.slug
                   return (
                     <button
-                      key={item.slug}
+                      key={entry.slug}
                       type="button"
-                      className={`admin-rail-item${current ? ' admin-rail-item-current' : ''}${item.slug !== ALL_SCOPES && !item.count ? ' admin-rail-item-empty' : ''}`}
-                      aria-current={current ? 'page' : undefined}
-                      onClick={() => select(type, item.slug)}
+                      className={`admin-rail-item${selected ? ' admin-rail-item-current' : ''}${entry.slug !== ALL_SCOPES && !entry.count ? ' admin-rail-item-empty' : ''}`}
+                      aria-current={selected ? 'page' : undefined}
+                      onClick={() => select(item, entry.slug)}
                     >
-                      <span>{item.label}</span>
-                      {item.count ? <span className="admin-rail-count">{item.count}</span> : null}
+                      <span>{entry.label}</span>
+                      {entry.count ? <span className="admin-rail-count">{entry.count}</span> : null}
                     </button>
                   )
-                })}
+                }) : null}
               </div>
             ))}
+            <div className="admin-rail-group">
+              <button
+                type="button"
+                className={`admin-rail-group-label${settingsOpen ? ' admin-rail-active-group' : ''}`}
+                aria-current={settingsOpen ? 'page' : undefined}
+                onClick={() => setSearchParams({ view: SETTINGS_VIEW })}
+              >
+                Settings
+              </button>
+            </div>
           </nav>
 
           <div className="tune-content">
-            {error ? <p className="admin-field-error admin-page-error" role="alert">{error}</p> : null}
-            {questionType === 'recall' ? <RecallView specs={specs} scope={scope} /> : null}
-            {questionType === 'mcq' && !catalog && !error ? <p className="tune-footnote admin-page-error" aria-busy="true">Loading signals…</p> : null}
-            {questionType === 'mcq' && catalog ? (
+            {settingsOpen ? <SettingsView /> : null}
+            {!settingsOpen && error ? <p className="admin-field-error admin-page-error" role="alert">{error}</p> : null}
+            {!settingsOpen && !current && !error ? <p className="tune-footnote admin-page-error" aria-busy="true">Loading signals…</p> : null}
+            {!settingsOpen && current ? (
               <>
                 {scope === ALL_SCOPES || scope === 'general' ? (
-                  <TuneSection eyebrow="MCQ" title="Correctness question"
-                    copy={'Decides whether the answer was correct. Jev answers "1" (correct) or "0"; the labels are fixed and this question cannot be archived.'}>
-                    <DirectiveEditor directive={catalog.directive} onSaved={load} />
+                  <TuneSection eyebrow={label} title="Correctness question"
+                    copy={'Decides whether the answer was correct: Jev answers "1" (correct) or "0", or the modality’s own check decides. The labels are fixed and this question cannot be archived.'}>
+                    <DirectiveEditor modality={modality} directive={current.directive} onSaved={load} />
                   </TuneSection>
                 ) : null}
 
-                <TuneSection eyebrow="MCQ" title={`${scopeLabel} signals`} copy={scopeCopy}>
+                <TuneSection eyebrow={label} title={`${scopeLabel} signals`} copy={scopeCopy}>
                   <div className="admin-signal-list">
                     {groups.map((group) => (
                       <div key={group} className="admin-signal-group">
                         {scope === ALL_SCOPES ? <h4>{group === 'general' ? 'General' : algorithmName(group)}</h4> : null}
                         {visible.filter((signal) => signal.scope === group).map((signal) => (
-                          <SignalCard key={signal.key} signal={signal} catalog={catalog} onSaved={load} />
+                          <SignalCard key={`${modality}:${signal.key}`} signal={signal} catalog={current} onSaved={load} />
                         ))}
                       </div>
                     ))}
                     {!groups.length ? <p className="tune-footnote">No {scopeLabel} signals yet.</p> : null}
                     <NewSignal
-                      key={scope}
-                      catalog={catalog}
+                      key={`${modality}:${scope}`}
+                      catalog={current}
                       defaultScope={scope === ALL_SCOPES ? 'general' : scope}
                       onSaved={load}
                     />

@@ -17,7 +17,7 @@ from app.services import (
     signal_admin_service,
 )
 from app.services.read_models import history, overview
-from app.services.submission_context_service import SubmissionContextError
+from app.services.evaluation.context import SubmissionContextError
 
 
 @pytest.fixture
@@ -64,9 +64,9 @@ def test_health(client) -> None:
 
 def test_read_routes(client, monkeypatch) -> None:
     monkeypatch.setattr(overview, "get_skill_map", returns([{"algorithm": "Heap", "skills": []}]))
-    monkeypatch.setattr(history, "get_signal_history", returns({"signals": [], "points": []}))
+    monkeypatch.setattr(history, "get_competency_terrain", returns({"decayPerDay": 0.02, "freeFallDays": 10, "overall": {"competency": None, "weekChange": None, "trend": None, "days": []}, "algorithms": [], "unpractised": [], "days": [], "cells": []}))
     assert client.get("/api/skill-map").json()[0]["algorithm"] == "Heap"
-    assert client.get("/api/history/signals?tz=UTC").json() == {"signals": [], "points": []}
+    assert client.get("/api/history/competency?tz=UTC").json() == {"decayPerDay": 0.02, "freeFallDays": 10, "overall": {"competency": None, "weekChange": None, "trend": None, "days": []}, "algorithms": [], "unpractised": [], "days": [], "cells": []}
 
 
 def test_coach_routes_reach_their_services(client, monkeypatch) -> None:
@@ -106,7 +106,7 @@ def test_reset_route_maps_permission_error(client, monkeypatch) -> None:
 )
 def test_signal_admin_errors_map_to_statuses(client, monkeypatch, error, status, code) -> None:
     monkeypatch.setattr(signal_admin_service, "list_signals", raises(error))
-    response = client.get("/api/admin/signals")
+    response = client.get("/api/admin/signals/total-recall")
     assert response.status_code == status
     assert response.json()["detail"]["code"] == code
 

@@ -15,13 +15,13 @@ endpoints ──► services ──► domain ──► core ──► contracts
 | Endpoints | `app/endpoints/` | HTTP binding: parse the request, call one service, wrap streams in `StreamingResponse` | `app.core`, `app.repositories`, `app.database` |
 | Services | `app/services/` | Use cases: orchestration, calling Jev and LLM providers, deciding what to persist, read models | `fastapi`, `starlette`, endpoints, `app.api_schemas`, `app.database` |
 | Domain | `app/domain/` | Pure decisions: rubric summaries, signal validation, readiness, coaching context | services, repositories, `app.models`, `fastapi` |
-| Core | `app/core/` | Engines and catalogs: the Jev client, signal plug-ins, the LLM client, assessor, narrator, drill generator, taxonomy, seeded content | domain, services, repositories, `app.models`, `fastapi` |
+| Core | `app/core/` | Engines and catalogs: the Jev client, signal plug-ins, code checks, the feedback writer, the LLM client, drill generator, taxonomy, seeded content | domain, services, repositories, `app.models`, `fastapi` |
 | Contracts | `app/contracts/` | Shapes shared across layers: the `Evaluation` model, `EvaluationOutcome`, `LlmUnavailableError`, coaching request models | anything else in `app` |
 | Repositories | `app/repositories/` | All SQL, and shaping rows into typed dicts | services, endpoints, domain, core, `app.models` |
 
 Top-level modules:
 
-- `app/main.py`: the app factory and composition root. It registers the default evaluators and the error handlers.
+- `app/main.py`: the app factory and composition root. It registers each modality's grading context builder and the error handlers.
 - `app/database.py`: boot. It opens the pool, then runs migrations and seeding under an advisory lock.
 - `app/db.py`: the asyncpg pool, the only database module repositories import.
 - `app/config.py`: settings from the environment.
@@ -44,10 +44,10 @@ Top-level modules:
 - **SQL:** a function in the relevant repository. Its row type goes in `app/repositories/types.py`.
 - **A payload passed between services** (callbacks, summaries, drill payloads): a `TypedDict` in `app/services/contracts.py`.
 - **A shape that crosses layers** (core, domain and services all read it): a Pydantic model or dataclass in `app/contracts/`.
-- **A new submission modality:** a class with `async evaluate(body) -> EvaluationOutcome` in `app/services/evaluators/`, added to `default_evaluators()` in `evaluators/defaults.py`. It must return an `Evaluation`; readers never parse the stored JSON by hand. Tests can register a replacement with `register_evaluator` before `create_app()` runs.
-- **A new deterministic MCQ signal:** a `DeterministicSignal` registered in `app/core/signals/`. It then appears as an implementation in `/admin`.
-- **A new Jev MCQ signal:** no code. Create it in `/admin`.
-- **A recall signal spec for another algorithm:** a `SignalSpec` in `app/core/signal_catalog.py`. Bump its `version` whenever its signals change.
+- **A new submission modality:** a defaults module in `app/core/signals/` and a `ContextBuilder` in `app/services/evaluation/contexts/`, registered in `register_default_context_builders`. The pipeline does the rest. Steps are in [grading.md → Adding a modality](grading.md#adding-a-modality).
+- **A new deterministic signal:** a `DeterministicSignal` registered in `app/core/signals/deterministic.py`. It then appears as an implementation in `/admin` for every modality.
+- **A new Jev signal, for any modality or algorithm:** no code. Create it in `/admin`.
+- **A new grading, generation or practice setting:** a field on the section's Pydantic model in `services/app_settings_service.py`, and a control in `features/admin/components/SettingsView.tsx`.
 - **Slugs, tag aliases, tag → algorithm mapping:** `app/core/taxonomy.py`. Don't write another slugify.
 - **An LLM call:** use `app/core/llm.py`:
   - `complete_json` raises `LlmUnavailableError`;
@@ -67,11 +67,11 @@ Top-level modules:
 | Area | Modules |
 |---|---|
 | Contracts | `contracts/evaluation.py` (`Evaluation`, builders, `from_stored`/`to_stored`), `contracts/submission.py` (`SubmissionRecord`, `EvaluationOutcome`), `contracts/errors.py`, `contracts/coaching.py`, `contracts/coerce.py`, `contracts/catalog_ids.py` |
-| Submissions | `services/submission_service.py` (dispatch), `services/evaluators/` (`base`, `registry`, `defaults`, `jev_mcq`, `legacy_recall`), `services/submission_store.py` (validates the `Evaluation` and writes the row) |
-| Read models | `services/read_models/overview.py` (readiness, daily activity, skill map), `services/read_models/history.py` (day detail, signal history), `services/read_models/common.py`, `domain/readiness.py`, `domain/rubric_summary.py` |
-| MCQ grading | `core/jev/client.py`, `services/jev_gateway.py` (shared gateway factory), `core/signals/` (`base`, `definitions`, `registry`, `spec`, `mcq`), `services/signal_registry_service.py`, `services/submission_context_service.py`, `domain/feedback_builder.py` |
-| `/admin` | `services/signal_admin_service.py`, `domain/signal_definition_rules.py`, `repositories/signal_definition_repository.py`, `endpoints/admin.py` |
-| Recall grading | `services/feedback_service.py`, `core/assessor.py`, `core/narrator.py`, `services/evaluation_service.py`, `domain/recall_soundness.py`, `services/signal_spec_service.py`, `core/signal_catalog.py` |
+| Submissions | `services/submission_service.py` (runs the pipeline, captures LLM traces), `services/submission_store.py` (validates the `Evaluation` and writes the row) |
+| Read models | `services/read_models/overview.py` (the daily work grid, skill map), `services/read_models/history.py` (submissions by day and algorithm, competency), `services/read_models/common.py`, `domain/readiness.py`, `domain/rubric_summary.py` |
+| Grading (every modality) | `services/evaluation/` (`pipeline`, `context`, `contexts/{mcq,code}`, `jev`, `verdict`, `feedback`), `core/jev/client.py`, `services/jev_gateway.py`, `core/signals/` (`base`, `definitions`, `deterministic`, `spec`, `seed`, `defaults`, one module per modality), `core/code_checks.py`, `core/feedback_writer.py`, `services/signal_registry_service.py`, `domain/feedback_builder.py`. See [grading.md](grading.md) |
+| `/admin` | `services/signal_admin_service.py`, `services/app_settings_service.py`, `domain/signal_definition_rules.py`, `repositories/signal_definition_repository.py`, `repositories/app_setting_repository.py`, `endpoints/admin.py` |
+| Stored exercises | `repositories/exercise_repository.py` (`generated_exercise`: microdrills and Ladder rungs, written when generated) |
 | Drills | `services/drill_generation_service.py` and `core/generator/` (generated cards and MCQs, split into `mcq`, `mcq_prompt`, `skill_map`, `prompts`, `inline_notes`, `code_style`, `text`, `types`), `services/problem_practice_service.py` (catalog drills), `services/micro_drill_service.py`, `services/sliding_window_ladder_service.py`, `services/inline_completion_service.py` |
 | Coach orchestration | `services/coach_orchestration_service.py` wires persistence callbacks into the drill and feedback services |
 | Catalog content | `core/core_algorithm_catalog.py`, `core/core_algorithms.py` and `core/core_meta.py` (answer bank), `core/static_playlists.py`, `core/taxonomy_catalog.py`, `core/taxonomy.py` (slugs and aliases), `services/unified_catalog_service.py`, `services/catalog_service.py` |
@@ -83,63 +83,40 @@ Top-level modules:
 ### Submitting an answer: `POST /api/attempts`
 
 1. `endpoints/attempts.py` calls `submission_service.create_submission`.
-2. `evaluators/registry.py::get_evaluator` picks the evaluator for the submission's `modality`:
-   - `mcq`: `JevMcqEvaluator` (next section);
-   - `total-recall`, `microdrill`: `AssessorEvaluator`;
-   - `ghost-rep`: `GhostRepEvaluator` (semantic check only).
-3. The evaluator returns an `EvaluationOutcome`: `successful`, the canonical `evaluation`, and, for MCQs, a `SubmissionRecord` with the server-trusted answer text and problem id.
+2. `services/evaluation/pipeline.py::evaluate` grades it, the same way for every modality: the modality's context builder loads the stored item; the modality's signal spec is loaded; Jev is asked (one or two passes); correctness is decided (hard override, deterministic directive, Jev, or fallback); signals are interpreted; the verdict is banded; the rubric is built; and, if enabled, an LLM writes feedback from the results.
+3. The pipeline returns an `EvaluationOutcome`: `successful`, the canonical `evaluation`, and a `SubmissionRecord` with the server-trusted answer, reference and item id.
 4. `submission_store.create_attempt` validates it as an `Evaluation` and stores it as one `submission` row.
 
-The client never supplies its own verdict or scores; the evaluator is the only place that decides `successful`.
+The client never supplies its own verdict or scores; the pipeline is the only place that decides `successful`. Every step, rule and setting is described in [grading.md](grading.md).
 
-### MCQ grading with Jev
-
-1. `submission_context_service.build_mcq_context` loads the stored `multiple_choice_problem` by `multipleChoiceProblemId` and the client's `selectedChoiceId`. An unknown problem or choice is a 422. Client-sent question text is ignored.
-2. `signal_registry_service.load_mcq_spec` reads, on every submission, the active `signal_definition` rows (general, plus those scoped to the algorithm from `core/taxonomy.py::algorithm_slug_for_tags`) and the correctness wording from `signal_evaluation_directive`.
-3. One `HttpJevGateway.system_one` call carries the correctness question (a Choice: `"1"` correct, `"0"` incorrect) and one question per Jev signal. The state is `{question, answers, correctAnswer, submittedAnswer}`.
-4. `successful` is Jev's correctness label. It is compared with the answer key; disagreement, or confidence below 0.6, adds a `provenance.flags` entry.
-5. Signals marked `needs_correctness` go in a second call whose state adds `answeredCorrectly`.
-6. Each plug-in interprets its own answer; `applies_when` is applied afterwards.
-7. `domain/feedback_builder.py::rubric_from_signal_results` builds the rubric. Diagnostic signals are stored but not scored.
-8. If Jev is unavailable, the answer key decides, Jev signals are recorded as `unavailable`, and deterministic signals still score.
-
-Generated MCQs are stored when they are generated, and the served card always uses the stored id and choice order, so an answer is graded against exactly what was shown.
+Generated MCQs, microdrills and Ladder rungs are stored when they are generated, and the client submits the stored id, so an answer is graded against exactly what was shown.
 
 ### MCQ generation: `POST /api/coach/multiple-choice-drills`
 
 - `core/generator/mcq_prompt.py` builds what to ask; `core/generator/mcq.py` runs the calls and validates each card; `core/llm.complete_json_with_fallback` owns retries and the provider chain.
 - A **random** set fans out into one concurrent call per question, each from a different angle (invariant, edge case, state update, common bug, tradeoff), so it takes about as long as one question. A **progressive** set (a Socratic chain) stays one call. A bad reply retries only its own question; the set fails only when a question still has no valid card.
 - The model is asked only for what the server can't derive (`title`, `skill`, `question`, `choices`, `correctChoiceId`, `explanation`).
-- Calls use `COACH_MCQ_*_MODEL` (default Claude Haiku), via `LlmCall.models`; an unavailable model falls back to the provider model.
+- Calls use the MCQ model from Admin → Settings → Generation (defaulting to `COACH_MCQ_*_MODEL`, Claude Haiku), via `LlmCall.models`; an unavailable model falls back to the provider model.
 
 ### What went into and out of the models
 
 Every `core/llm` call logs its provider, model, latency and tokens at INFO. Inside a `capture_llm_exchanges()` block it is also recorded as an exchange: settings, system prompt, payload, raw reply, parsed reply, usage, latency, and any error (failed attempts included). API keys and headers are never recorded.
 
 - Generation: each MCQ's exchanges are stored in `multiple_choice_problem.generation_trace`.
-- Grading: `submission_service` captures the evaluator's LLM calls into `evaluation.llmTrace`. Jev calls are in `evaluation.jevTrace` with the state and full questions sent, the answers, usage, latency and attempts.
-- `GET /api/history/day` returns `generationTrace` with each submission; Journey's day detail shows all three under **Model calls**.
+- Grading: `submission_service` captures the pipeline's LLM calls (the feedback writer) into `evaluation.llmTrace`. Jev calls are in `evaluation.jevTrace` with the state and full questions sent, the answers, usage, latency and attempts.
+- `GET /api/history/submissions` returns `generationTrace` with each submission; Journey's Submission Detail shows all three under **Model calls**.
 
-### Recall grading
-
-1. `signal_spec_service.resolve_signal_spec` picks the spec: the problem's algorithm, else the primary skill tag's algorithm, else `DEFAULT_SIGNAL_SPEC`.
-2. `feedback_service.coach_submission_evaluation` loads recent history (`history_service.load_feedback_context`), then runs:
-   - the **assessor** (`core/assessor.py`), which must score every signal in the spec, or the response is rejected;
-   - the **narrator** (`core/narrator.py`), which writes the coaching text, retrying retryable provider failures.
-3. `domain/feedback_builder.py::submission_rubric_from_assessment` and `contracts/evaluation.py::build_evaluation` build the stored evaluation.
-4. When the assessor or narrator fails, `AssessorEvaluator` falls back to the semantic check (`evaluation_service`, then the AST check in `domain/recall_soundness.py`) and returns `feedbackUnavailable` so the UI can say why.
-
-### Editing signals: `/api/admin/signals…`
+### Editing signals and settings: `/api/admin/signals/{modality}…`, `/api/admin/settings`
 
 `signal_admin_service` validates every write with `domain/signal_definition_rules.py` (422 with per-field errors). It writes through `signal_definition_repository`, which checks the row's `version` (409 if stale) and appends a `signal_definition_revision`.
 
-"Try it" asks Jev one draft question about a stored MCQ and saves nothing. There is no admin token for now.
+"Try it" grades one stored item of the modality with the unsaved draft (one Jev call) and saves nothing. Settings are saved per section (`grading`, `generation`, `practice`) in `app_setting`, versioned the same way (409 if stale). There is no admin token for now.
 
-### Reads for Dashboard and Journey
+### Reads for Journey
 
-- `GET /api/skill-map-overview?historyDays=&tz=` → `read_models/overview.get_skill_map_overview`: readiness per algorithm and the daily activity grid.
-- `GET /api/history/day?date=&tz=` → `read_models/history.get_history_day`: every submission on one local day, with its stored evaluation.
-- `GET /api/history/signals?tz=` → `read_models/history.get_signal_history`: every scored rubric entry over time, for the terrain.
+- `GET /api/skill-map-overview?historyDays=&tz=` → `read_models/overview.get_skill_map_overview`: the daily work grid's algorithms (catalog order, then static playlists) and its work per algorithm per day.
+- `GET /api/history/submissions?date=&algorithm=&tz=` → `read_models/history.get_history_submissions`: the daily-work submissions on one local day (oldest first), for any of the `algorithm` slugs over the last year (newest first), or both, each with its stored evaluation and local `date`.
+- `GET /api/history/competency?tz=` → `read_models/history.get_competency_terrain`: competency per algorithm per day, computed by one aggregate query (`attempts_repository.fetch_competency_terrain`; see [data-flow.md](data-flow.md#3-review-journey)).
 
 Days are computed in the viewer's time zone (`resolve_timezone`, falling back to UTC).
 

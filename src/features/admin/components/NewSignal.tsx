@@ -25,8 +25,8 @@ export function NewSignal({
     setMessage('')
     setErrors({})
     try {
-      const created = await createSignal(draft)
-      setMessage(`Created ${created.key}. Applies to the next MCQ evaluation.`)
+      const created = await createSignal(catalog.modality, draft)
+      setMessage(`Created ${created.key}. Applies to the next evaluation.`)
       setDraft(emptySignalDraft())
       setOpen(false)
       onSaved()
@@ -53,7 +53,7 @@ export function NewSignal({
           <strong>+ New signal</strong>
         </span>
         <span className="admin-signal-meta">
-          <span>Define a Jev question, try it on a stored MCQ, then create it.</span>
+          <span>Define a Jev question, try it on a stored item, then create it.</span>
         </span>
       </button>
       {message && !open ? <p className="admin-success admin-signal-new-message" role="status">{message}</p> : null}
@@ -68,7 +68,7 @@ export function NewSignal({
               Cancel
             </button>
           </div>
-          {draft.source === 'jev' ? <TryPanel draft={draft} /> : null}
+          <TryPanel modality={catalog.modality} draft={draft} />
         </div>
       ) : null}
     </article>

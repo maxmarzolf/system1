@@ -2,16 +2,26 @@ from __future__ import annotations
 
 import asyncio
 import re
+from collections.abc import Awaitable, Callable
+from typing import Any
 
-from app.core.llm import call_llm_json, llm_provider_available, resolve_available_llm_provider
+from app.core.llm import call_llm_json, capture_llm_exchanges, llm_provider_available, resolve_available_llm_provider
+from app.core.taxonomy import algorithm_slug_for_tags
 from app.models import FlowMicroDrillRequest, FlowMicroDrillResponse
+from app.repositories import exercise_repository
+
+PersistItem = Callable[..., Awaitable[exercise_repository.StoredExercise]]
 
 
 class MicroDrillGenerationError(RuntimeError):
     pass
 
 
-async def generate_flow_micro_drill(body: FlowMicroDrillRequest) -> FlowMicroDrillResponse:
+async def generate_flow_micro_drill(
+    body: FlowMicroDrillRequest,
+    persist: PersistItem | None = None,
+) -> FlowMicroDrillResponse:
+    """Generate a fill-in-the-blank drill and store it, so the answer is graded against the stored copy."""
     provider = resolve_available_llm_provider(body.llmProvider)
     if not llm_provider_available(provider):
         raise MicroDrillGenerationError("Configure a model provider to generate microdrills.")
@@ -27,7 +37,8 @@ async def generate_flow_micro_drill(body: FlowMicroDrillRequest) -> FlowMicroDri
         "Do not use triple underscores anywhere else. No explanation field."
     )
     try:
-        result = await asyncio.to_thread(call_llm_json, prompt, body.model_dump(), provider, 1800, 45, 0.7)
+        with capture_llm_exchanges() as exchanges:
+            result = await asyncio.to_thread(call_llm_json, prompt, body.model_dump(exclude={"tags"}), provider, 1800, 45, 0.7)
     except Exception as error:
         raise MicroDrillGenerationError("Microdrill generation failed. Try again.") from error
     if not isinstance(result, dict):
@@ -46,4 +57,11 @@ async def generate_flow_micro_drill(body: FlowMicroDrillRequest) -> FlowMicroDri
     template = template.rstrip("\r\n")
     replacements = iter(answers)
     solution = re.sub(r"_{3,}", lambda _: next(replacements), template)
-    return FlowMicroDrillResponse(prompt=task.strip(), template=template, solution=solution, language=str(result.get("language") or "python"))
+    language = str(result.get("language") or "python")
+    metadata: dict[str, Any] = {"template": template, "answers": [str(answer) for answer in answers], "language": language,
+                                "cardTitle": body.cardTitle, "focus": body.focus, "rep": body.rep}
+    item = await (persist or exercise_repository.insert_exercise)(
+        modality="microdrill", prompt=task.strip(), reference=solution, metadata=metadata,
+        generation_trace=list(exchanges), algorithm_slug=algorithm_slug_for_tags(body.tags),
+    )
+    return FlowMicroDrillResponse(id=item["id"], prompt=task.strip(), template=template, solution=solution, language=language)

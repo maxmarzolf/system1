@@ -1,3 +1,5 @@
+import EvaluationResult from '@/shared/evaluation/EvaluationResult'
+import type { Evaluation } from '@/shared/evaluation/evaluation'
 import { JsonBlock } from './TraceBlocks'
 import { asRecord } from './traceFormat'
 
@@ -89,8 +91,8 @@ function SignalResultRows({ entries }: { entries: Record<string, unknown> }) {
 }
 
 /**
- * Everything a stored submission evaluation says: spec, verdict, provenance, scores, and every
- * signal. The raw model and Jev exchanges are shown by ModelCallDetails.
+ * Everything a stored submission evaluation says: the practice-screen result, then spec, verdict,
+ * provenance, scores, and every signal. The raw model and Jev exchanges are shown by ModelCallDetails.
  */
 export default function SubmissionSignalDetails({ evaluation: rawEvaluation }: { evaluation: unknown }) {
   const evaluation = asRecord(rawEvaluation)
@@ -106,6 +108,8 @@ export default function SubmissionSignalDetails({ evaluation: rawEvaluation }: {
 
   return (
     <div className="submission-signal-details">
+      {/* The same result view the practice screen showed, then everything behind it. */}
+      <EvaluationResult evaluation={evaluation as Evaluation} compact />
       <dl className="signal-trace-facts">
         <div><dt>Spec</dt><dd><code>{String(spec.algorithm ?? '—')}</code> v{String(spec.version ?? '—')}{spec.hash ? <> · <code>{String(spec.hash)}</code></> : null}</dd></div>
         <div><dt>Verdict</dt><dd>{String(evaluation.verdict ?? '—')}</dd></div>

@@ -4,41 +4,44 @@ import { vs, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { loadFlowConfig, saveFlowConfig, type FlowStage } from './flow/practiceFlow'
 import RelatedLeetCodeDrawer from './components/RelatedLeetCodeDrawer'
 import { resolveRelatedLeetCodeSet } from '@/shared/data/related-leetcode'
-import { loadStoredSubmissionTuning, saveStoredSubmissionTuning } from '@/shared/settings/submissionTuning'
 import { loadStoredCodeEditorTuning, saveStoredCodeEditorTuning } from '@/shared/settings/codeEditorTuning'
-import { loadStoredMcqTuning } from '@/shared/settings/mcqTuning'
-import { loadStoredGooglePlaylistTuning } from '@/shared/settings/googlePlaylistTuning'
+import { DEFAULT_PRACTICE_SETTINGS, usePracticeSettings } from '@/api/queries'
 import { useConfiguredProviderLabel } from '@/shared/lib/llmProviderDefault'
 import TopNav from '@/app/TopNav'
 import { useTheme } from '@/app/theme'
-import SlidingWindowLadder from './ladder/WindowLadderPanel'
-import { slidingWindowTechnique } from './ladder/windowLadderPlan'
-import FlowMicroDrillCard from './flow/FlowMicroDrillCard'
+import SlidingWindowLadder from './modalities/ladder/WindowLadderPanel'
+import { slidingWindowTechnique } from './modalities/ladder/windowLadderPlan'
+import MicroDrillCard from './modalities/microdrill/MicroDrillCard'
 import { buildFlowFocusSummary, buildFlowGhostScaffold, buildFlowGhostTarget, firstIncompleteGhostLineNumber, toMultipleChoiceFocusLines } from './lib/lineReview'
 import { usePracticeFlowControls, usePracticeFlowState, type FlowChange } from './flow/usePracticeFlow'
-import { useMultipleChoiceAttempt } from './hooks/useMultipleChoiceAttempt'
-import { useRecallAttempt, type RecallSubmitted } from './hooks/useRecallAttempt'
+import { useMultipleChoiceAttempt } from './modalities/mcq/useMultipleChoiceAttempt'
+import { useRecallAttempt, type RecallSubmitted } from './modalities/recall/useRecallAttempt'
 import { usePracticeSession, useSessionPlan } from './hooks/usePracticeSession'
 import { usePracticeHotkeys } from './hooks/usePracticeHotkeys'
-import { useMultipleChoiceHotkeys } from './hooks/useMultipleChoiceHotkeys'
+import { useMultipleChoiceHotkeys } from './modalities/mcq/useMultipleChoiceHotkeys'
 import { usePracticePanels } from './hooks/usePracticePanels'
 import { usePracticeFocus } from './hooks/usePracticeFocus'
 import FlowPanel from './flow/FlowPanel'
-import MultipleChoicePanel from './components/MultipleChoicePanel'
+import MultipleChoicePanel from './modalities/mcq/MultipleChoicePanel'
 import PracticeControlBar from './components/PracticeControlBar'
 import PromptPanel from './components/PromptPanel'
-import RecallPanel from './components/RecallPanel'
+import RecallPanel from './modalities/recall/RecallPanel'
 import SessionSummary from './components/SessionSummary'
 import SubmissionFailureModal from './components/SubmissionFailureModal'
 import { useFlowMultipleChoiceDeck, useMultipleChoiceDeck, useRecallDeck } from './hooks/useDecks'
-import { cardSpecimen, flowMultipleChoiceRequest, multipleChoiceAttemptBody, multipleChoiceDeckRequest, postAttempt, recallAttemptBody } from './api'
+import { cardSpecimen, flowMultipleChoiceRequest, multipleChoiceDeckRequest } from './api'
+import { submitAnswer, type ModalityDraft } from './submission/submission'
+import { mcqDraft } from './modalities/mcq/draft'
+import { recallDraft } from './modalities/recall/draft'
+import { microdrillDraft } from './modalities/microdrill/draft'
+import { ladderDraft } from './modalities/ladder/draft'
 import { resolvePrimaryAction, type PrimaryActionKind } from './lib/primaryAction'
 import { derivePracticeTargets } from './lib/targets'
 import { focusMicroDrillInput } from './lib/markdownText'
 import { describeCard } from './lib/cardMeta'
 import { questionTypeLabel, questionTypeOf, type QuestionType } from './lib/questionType'
 import { useDoubleTapArrows } from '@/shared/lib/useDoubleTapArrows'
-import { INLINE_FEEDBACK_ENABLED, emptySkillMapCard, EMPTY_FLOW_MICRODRILL_ACTION_STATE, type AttemptPayload, type MultipleChoiceCard, type MultipleChoiceSpecimenContext, type PracticeMode, type SupportLayer, type TemplateMode } from './lib/types'
+import { INLINE_FEEDBACK_ENABLED, emptySkillMapCard, EMPTY_FLOW_MICRODRILL_ACTION_STATE, type MultipleChoiceSpecimenContext, type PracticeMode, type SupportLayer, type TemplateMode } from './lib/types'
 
 function PracticePage() {
   const { state: arrivalState } = useLocation()
@@ -60,20 +63,19 @@ function PracticePage() {
   const configuredProviderLabel = useConfiguredProviderLabel()
   // Always "Auto": an empty provider lets the server use its configured one.
   const requestLlmProvider = ''
-  const [submissionTuning] = useState(() => loadStoredSubmissionTuning())
   const [codeEditorTuning, setCodeEditorTuning] = useState(() => loadStoredCodeEditorTuning())
   const syntaxTheme = theme === 'light-high-contrast' ? vs : vscDarkPlus
-  const mcqTuning = useMemo(() => loadStoredMcqTuning(), [])
-  const googlePlaylistTuning = useMemo(() => loadStoredGooglePlaylistTuning(), [])
-  const multipleChoiceQuestionCount = mcqTuning.questionCount
+  // MCQ set size and order, and playlist order, are server settings (/admin).
+  const practiceSettings = usePracticeSettings().data ?? DEFAULT_PRACTICE_SETTINGS
+  const multipleChoiceQuestionCount = practiceSettings.mcqQuestionCount
   const flowStageContentRef = useRef<HTMLDivElement | null>(null)
   const { focusedCardPending, focusedCardNotFound, requestedQuestionType } = practiceFocus
-  const recallDeck = useRecallDeck(practiceFocus, googlePlaylistTuning.order, requestLlmProvider)
+  const recallDeck = useRecallDeck(practiceFocus, practiceSettings.playlistOrder, requestLlmProvider)
   const filteredDeck = recallDeck.deck
   const skillMapLoading = recallDeck.loading
   const mcqDeck = useMultipleChoiceDeck(
     practiceMode === 'multiple-choice' && mcqSourceSpecimen
-      ? multipleChoiceDeckRequest(mcqSourceSpecimen, { count: multipleChoiceQuestionCount, flowMode: mcqTuning.flowMode, llmProvider: requestLlmProvider })
+      ? multipleChoiceDeckRequest(mcqSourceSpecimen, { count: multipleChoiceQuestionCount, flowMode: practiceSettings.mcqFlowMode, llmProvider: requestLlmProvider })
       : null,
     mcqRequestId,
     requestedQuestionType,
@@ -90,10 +92,6 @@ function PracticePage() {
     recall.resetHistory()
     sessionMcq.resetAll(true)
   }
-
-  useEffect(() => {
-    saveStoredSubmissionTuning(submissionTuning)
-  }, [submissionTuning])
 
   useEffect(() => {
     saveStoredCodeEditorTuning(codeEditorTuning)
@@ -155,7 +153,7 @@ function PracticePage() {
     flow: practiceFlow,
     inlineEnabled,
     requestedQuestionType,
-    mcqFlowMode: mcqTuning.flowMode,
+    mcqFlowMode: practiceSettings.mcqFlowMode,
     hasDeck,
   })
   const activeDeck = currentPracticeMode === 'multiple-choice' ? (isFlowActive ? flowMcqDeck : mcqDeck) : recallDeck
@@ -182,7 +180,7 @@ function PracticePage() {
     templateMode: currentTemplateMode,
     historyKey: cardMeta.recallHistoryKey,
     providerLabel: configuredProviderLabel,
-    save: (payload) => submitAttemptToServer(payload),
+    save: (payload) => submit(recallDraft(payload, { ...cardNaming, question: practicePrompt })),
     flowVersion: flowState.versionRef,
     onSubmitted: (result) => handleRecallSubmitted(result),
   })
@@ -220,45 +218,27 @@ function PracticePage() {
 
   const completeCardInSession = (isCorrect: boolean, elapsedMs?: number) => session.complete(activeCardId, isCorrect, elapsedMs)
 
-  const submitAttemptToServer = async (payload: AttemptPayload) => {
-    const flowSignals = payload.outsideFlow ? null : flowState.signals() ?? null
-    const saved = await postAttempt(recallAttemptBody(payload, {
-      card, prompt: practicePrompt, questionType: cardMeta.questionType, skillTags: cardMeta.skillTags,
-      flowSignals, submissionTuning, llmProvider: requestLlmProvider,
-    }))
-    if (flowSignals) {
+  /**
+   * Every modality submits the same way: it describes its answer as a draft, the page adds the
+   * flow context and provider, and flow modalities record the graded result in the flow.
+   */
+  const submit = async (draft: ModalityDraft, { inFlow = true } = {}) => {
+    const flowSignals = inFlow ? flowState.signals() ?? null : null
+    const saved = await submitAnswer({ ...draft, flowSignals, llmProvider: requestLlmProvider })
+    if (flowSignals && draft.modality !== 'ladder') {
       flowState.recordSubmission({
         response: saved,
         flowSignals,
-        modality: payload.modality,
-        modalitySignals: payload.signals?.modality ?? {},
-        elapsedMs: payload.elapsedMs,
-        interactionId: payload.interactionId,
-        question: payload.question ?? practicePrompt,
+        modality: draft.modality,
+        modalitySignals: draft.modalitySignals ?? {},
+        elapsedMs: draft.elapsedMs,
+        interactionId: draft.interactionId,
+        question: draft.question,
       })
     }
     return saved
   }
-
-  const submitMultipleChoiceAttemptToServer = async (mcqCard: MultipleChoiceCard, choiceId: string, elapsedMs: number, interactionId: string) => {
-    const flowSignals = flowState.signals() ?? null
-    const saved = await postAttempt(multipleChoiceAttemptBody({
-      card: mcqCard, choiceId, elapsedMs, interactionId, questionType: cardMeta.mcqQuestionType, skillTags: cardMeta.mcqSkillTags,
-      flowSignals, submissionTuning, llmProvider: requestLlmProvider,
-    }))
-    if (flowSignals) {
-      flowState.recordSubmission({
-        response: saved,
-        flowSignals,
-        modality: 'mcq',
-        modalitySignals: { correct: saved.successful, selectedChoiceId: choiceId },
-        elapsedMs,
-        interactionId,
-        question: mcqCard.question,
-      })
-    }
-    return saved
-  }
+  const cardNaming = { card, questionType: cardMeta.questionType, categoryTags: cardMeta.skillTags }
 
   const resetPerCardInteraction = () => {
     recall.reset()
@@ -339,7 +319,7 @@ function PracticePage() {
     const interactionId = recall.ensureInteractionId()
     await mcq.submit(
       mcqCard,
-      (selectedChoice, elapsedMs) => submitMultipleChoiceAttemptToServer(mcqCard, selectedChoice.id, elapsedMs, interactionId),
+      (selectedChoice, elapsedMs) => submit(mcqDraft(mcqCard, selectedChoice.id, { elapsedMs, interactionId }, { questionType: cardMeta.mcqQuestionType, categoryTags: cardMeta.mcqSkillTags })),
       (saved, elapsedMs) => {
         if (!isFlowActive) completeCardInSession(saved.successful, elapsedMs)
       },
@@ -457,11 +437,6 @@ function PracticePage() {
     selectQuestionType(next)
   })
 
-  const saveMicroDrill = (payload: Pick<AttemptPayload, 'correctAnswer' | 'userAnswer' | 'question' | 'elapsedMs' | 'interactionId' | 'signals' | 'outsideFlow'>) =>
-    submitAttemptToServer({
-      mode: 'main-recall', microdrill: true, templateMode: currentTemplateMode, supportLayer: 'none', liveCoachUsed: false, modality: 'microdrill', ...payload,
-    })
-
   const stage = ladderActive && ladderTechnique ? (
     <SlidingWindowLadder
       key={card.id}
@@ -473,32 +448,22 @@ function PracticePage() {
       provider={requestLlmProvider}
       theme={theme}
       onClose={panels.closeLadder}
-      onSave={(question, answer, elapsedMs, interactionId, rungIndex, rep) => saveMicroDrill({
-        correctAnswer: question.solution, userAnswer: answer, question: question.question, elapsedMs, interactionId,
-        signals: { modality: { ladder: true, technique: ladderTechnique, rungIndex, rep, language: 'python' } },
-        outsideFlow: true,
-      })}
+      onSave={(question, answer, elapsedMs, interactionId, rungIndex, rep) => submit(
+        ladderDraft(question, answer, { elapsedMs, interactionId }, { technique: ladderTechnique, rungIndex, rep }, cardNaming),
+        { inFlow: false },
+      )}
     />
   ) : practiceFlow?.stage === 'microdrill' ? (
-    <FlowMicroDrillCard
+    <MicroDrillCard
       key={flowMicroDrillActionKey}
-      title={card.title} prompt={practicePrompt} target={practiceTarget}
+      title={card.title} prompt={practicePrompt} target={practiceTarget} tags={card.tags}
       focus={practiceFlow.focus.focusSummary} rep={practiceFlow.step + 1}
       context={flowState.generationContext}
       provider={requestLlmProvider} theme={theme} syntaxTheme={syntaxTheme}
       actionKey={flowMicroDrillActionKey}
       primaryActionRef={flowMicroDrillPrimaryActionRef}
       onPrimaryActionStateChange={flowState.setMicroDrillAction}
-      onSave={(drill, answer, elapsedMs, interactionId) => saveMicroDrill({
-        correctAnswer: drill.solution, userAnswer: answer, question: drill.prompt, elapsedMs, interactionId,
-        signals: {
-          modality: {
-            blankCount: drill.template.match(/_{3,}/g)?.length ?? 0,
-            language: drill.language,
-            templateLineCount: drill.template.split('\n').length,
-          },
-        },
-      })}
+      onSave={(drill, answer, elapsedMs, interactionId) => submit(microdrillDraft(drill, answer, { elapsedMs, interactionId }, cardNaming))}
     />
   ) : panels.flowOpen ? (
     <FlowPanel

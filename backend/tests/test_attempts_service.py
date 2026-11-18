@@ -148,10 +148,6 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
             {"algorithm_id": 2, "algorithm_name": "Binary Search", "skill_name": "left / right bounds"},
             {"algorithm_id": 2, "algorithm_name": "Binary Search", "skill_name": "search on answer"},
         ],
-        generated_rows=[
-            {"id": "sw-1", "title": "Window", "tags": ["skill-map", "sliding-window"]},
-            {"id": "bs-1", "title": "Search", "tags": ["skill-map", "binary-search"]},
-        ],
         attempt_rows=[
             {
                 "tracked_card_id": "sw-1",
@@ -230,7 +226,6 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
     activity = overview["ghostRepActivity"]
     today_bucket = next(day for day in activity["days"] if day["date"] == today.date().isoformat())
     yesterday_bucket = next(day for day in activity["days"] if day["date"] == yesterday.date().isoformat())
-    pattern_freshness = {item["slug"]: item for item in activity["algorithms"]}
 
     assert activity["totalGhostReps"] == 2
     assert activity["totalMultipleChoice"] == 1
@@ -278,23 +273,21 @@ def test_skill_map_overview_groups_all_modalities_as_daily_work() -> None:
             "skills": [{"skill": "left / right bounds", "slug": "left-right-bounds", "count": 1}],
         }
     ]
-    assert pattern_freshness["sliding-window"]["daysSinceLastGhostRep"] == 5
-    assert pattern_freshness["binary-search"]["daysSinceLastGhostRep"] == 1
-    assert pattern_freshness["binary-search"]["daysSinceLastPractice"] == 0
-    assert pattern_freshness["binary-search"]["totalWork"] == 4
+    # The grid's rows: catalog algorithms in order, then the static playlists.
+    assert overview["algorithms"][:2] == [
+        {"algorithm": "Sliding Window", "slug": "sliding-window"},
+        {"algorithm": "Binary Search", "slug": "binary-search"},
+    ]
+    assert {"algorithm": "Google", "slug": "google"} in overview["algorithms"]
+    assert "algorithms" not in activity
 
 
-def test_skill_map_overview_counts_static_catalog_cards() -> None:
+def test_skill_map_overview_files_playlist_work_under_its_playlist() -> None:
     now = datetime.now(timezone.utc)
 
     overview = build_skill_map_overview(
         algorithm_rows=[
             {"algorithm_id": 1, "algorithm_name": "Sliding Window", "skill_name": "valid window rule"},
-        ],
-        generated_rows=[
-            {"id": "playlist-google-1-two-sum", "title": "1. Two Sum", "tags": ["skill-map", "static-playlist", "google", "arrays-hash-maps"]},
-            {"id": "playlist-google-3-longest-substring-without-repeating-characters", "title": "3. Longest Substring Without Repeating Characters", "tags": ["skill-map", "static-playlist", "google", "sliding-window", "valid-window-rule"]},
-            {"id": "playlist-skeletons-bfs-skeleton", "title": "BFS Skeleton", "tags": ["skill-map", "static-playlist", "skeletons", "graphs", "bfs-skeleton"]},
         ],
         attempt_rows=[
             {
@@ -326,17 +319,7 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
         ],
     )
 
-    sliding = next(item for item in overview["algorithms"] if item["slug"] == "sliding-window")
-    google = next(item for item in overview["algorithms"] if item["slug"] == "google")
-    skeletons = next(item for item in overview["algorithms"] if item["slug"] == "skeletons")
-
     assert all(item["slug"] != "arrays-hash-maps" for item in overview["algorithms"])
-    assert sliding["totalCards"] == 0
-    assert sliding["untouchedCards"] == 0
-    assert google["totalCards"] == 2
-    assert google["overallAttemptCount"] == 1
-    assert skeletons["totalCards"] == 1
-    assert skeletons["overallAttemptCount"] == 1
 
     today_bucket = next(
         day for day in overview["ghostRepActivity"]["days"]
@@ -349,78 +332,6 @@ def test_skill_map_overview_counts_static_catalog_cards() -> None:
         "google",
         "skeletons",
     ]
-    google_activity = next(
-        item for item in overview["ghostRepActivity"]["algorithms"]
-        if item["slug"] == "google"
-    )
-    skeleton_activity = next(
-        item for item in overview["ghostRepActivity"]["algorithms"]
-        if item["slug"] == "skeletons"
-    )
-    assert google_activity["totalPerfectRecalls"] == 1
-    assert google_activity["coreCardCount"] == 2
-    assert skeleton_activity["totalPerfectRecalls"] == 1
-    assert skeleton_activity["coreCardCount"] == 1
-
-
-def test_skill_map_overview_keeps_generated_cards_out_of_core_catalog_counts() -> None:
-    now = datetime.now(timezone.utc)
-    overview = build_skill_map_overview(
-        algorithm_rows=[
-            {
-                "algorithm_id": 1,
-                "algorithm_slug": "heap",
-                "algorithm_name": "Heap / Priority Queue",
-                "skill_name": "top-k maintenance",
-            },
-        ],
-        generated_rows=[
-            {
-                "id": "core-algorithm-kth-largest",
-                "title": "Kth Largest Heap Top",
-                "tags": ["skill-map", "core-algorithm", "heap"],
-                "algorithm_slug": "heap",
-                "source_type": "core-catalog",
-            },
-            {
-                "id": "skill-map-20260921000000000000-1",
-                "title": "Generated Heap Drill",
-                "tags": ["skill-map", "heap-priority-queue"],
-                "algorithm_slug": "heap",
-                "source_type": "generated-llm",
-            },
-            {
-                "id": "playlist-google-973-k-closest-points",
-                "title": "973. K Closest Points",
-                "tags": ["skill-map", "static-playlist", "google", "heap"],
-                "algorithm_slug": "heap",
-                "source_type": "static-playlist",
-            },
-        ],
-        attempt_rows=[
-            {
-                "tracked_card_id": "skill-map-20260921000000000000-1",
-                "card_title": "Generated Heap Drill",
-                "category_tags": ["skill-map", "heap-priority-queue"],
-                "question_type": "skill-map",
-                "successful": True,
-                "created_at": now,
-                "template_mode": "algorithm",
-                "support_layer": "none",
-                "modality": "total-recall",
-                "live_coach_used": False,
-                "signals": {},
-            },
-        ],
-    )
-
-    heap = next(item for item in overview["algorithms"] if item["slug"] == "heap")
-    google = next(item for item in overview["algorithms"] if item["slug"] == "google")
-
-    assert heap["totalCards"] == 1
-    assert heap["overallAttemptCount"] == 1
-    assert heap["practicedCards"] == 0
-    assert google["totalCards"] == 1
 
 
 def _activity_row(created_at: datetime) -> dict[str, object]:
@@ -431,6 +342,17 @@ def _activity_row(created_at: datetime) -> dict[str, object]:
         "modality": "mcq",
         "successful": True,
     }
+
+
+def test_an_answer_tagged_with_several_algorithms_counts_once_toward_the_first() -> None:
+    today = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+    row = {**_activity_row(today), "category_tags": ["skill-map", "linked-lists", "two-pointers"], "modality": "ghost-rep"}
+    activity = overview._build_ghost_rep_activity(
+        [row], {"linked-lists": "Linked Lists", "two-pointers": "Two Pointers"}, {}, window_days=1,
+    )
+    (day,) = activity["days"]
+    assert day["total"] == 1
+    assert [segment["slug"] for segment in day["segments"]] == ["linked-lists"]
 
 
 def test_daily_activity_groups_by_the_viewers_calendar_day() -> None:
@@ -470,50 +392,129 @@ def test_unknown_timezones_fall_back_to_utc() -> None:
     assert str(read_common.resolve_timezone("Europe/Paris")) == "Europe/Paris"
 
 
-def test_signal_history_lists_scored_signals_from_counted_submissions(monkeypatch) -> None:
-    def _row(created_at: datetime, tags: list[str], dimensions: dict, modifiers: dict | None = None) -> dict[str, object]:
-        return {
-            "created_at": created_at,
-            "category_tags": tags,
-            "question_type": "skill-map-mcq:card:random",
-            "modality": "mcq",
-            "card_title": "Window question",
-            "signals": {"evaluation": {"dimensions": dimensions, "modifiers": modifiers or {}}},
-        }
+def test_competency_terrain_names_algorithms_and_shapes_query_rows(monkeypatch) -> None:
+    from datetime import date
 
-    late_evening = datetime(2026, 1, 15, 3, 30, tzinfo=timezone.utc)  # Jan 14 in New York
-    rows = [
-        _row(late_evening, ["skill-map", "sliding-window"], {
-            "correctness": {"label": "Correct choice", "status": "pass", "score": 100.0},
-            "nearMiss": {"label": "Near miss", "status": "not_applicable", "score": 0.0},
-        }, {"completionTime": {"label": "Speed and fluency", "status": "partial", "score": 140}}),
-        _row(late_evening - timedelta(days=1), ["skill-map", "sliding-window"], {
-            "correctness": {"label": "Correct choice", "status": "fail", "score": 0.0},
-        }),
-        _row(late_evening, ["skill-map", "no-such-algorithm"], {
-            "correctness": {"label": "Correct choice", "status": "pass", "score": 100.0},
-        }),
-    ]
+    from app.services import app_settings_service
 
-    async def _attempt_rows():
-        return rows
+    captured: dict[str, object] = {}
+
+    async def _terrain(**kwargs):
+        captured.update(kwargs)
+        return [
+            {"algorithm": "heap", "day": date(2026, 1, 1), "observed": True, "answers": 2, "signals": 8,
+             "average": 70.0, "competency": 70.0, "last_practised": date(2026, 1, 1),
+             "last_average": 70.0, "days_since": 0, "standing": "strong", "free_fall": False},
+            {"algorithm": "heap", "day": date(2026, 1, 2), "observed": False, "answers": 0, "signals": 0,
+             "average": None, "competency": 68.6, "last_practised": date(2026, 1, 1),
+             "last_average": 70.0, "days_since": 1, "standing": "review", "free_fall": True},
+            {"algorithm": "skeletons", "day": date(2026, 1, 2), "observed": True, "answers": 1, "signals": 4,
+             "average": 40.0, "competency": 40.0, "last_practised": date(2026, 1, 2),
+             "last_average": 40.0, "days_since": 0, "standing": "learn", "free_fall": False},
+            {"algorithm": "sliding-window", "day": date(2026, 1, 2), "observed": True, "answers": 1, "signals": 4,
+             "average": 90.0, "competency": 90.0, "last_practised": date(2026, 1, 2),
+             "last_average": 90.0, "days_since": 0, "standing": "strong", "free_fall": False},
+        ]
 
     async def _algorithm_rows():
-        return [{"algorithm_slug": "sliding-window", "algorithm_name": "Sliding Window"}]
+        return [
+            {"algorithm_slug": "sliding-window", "algorithm_name": "Sliding Window"},
+            {"algorithm_slug": "trees", "algorithm_name": "Trees"},
+            {"algorithm_slug": "heap", "algorithm_name": "Heap"},
+        ]
 
-    monkeypatch.setattr(history, "fetch_skill_map_overview_attempt_rows", _attempt_rows)
+    async def _grading():
+        return app_settings_service.GradingSettingsModel(competencyDecayPerDay=0.05, competencyFreeFallDays=7)
+
+    async def _signals(**kwargs):
+        captured["signals"] = kwargs
+        return [
+            {"algorithm": "heap", "key": "correctness", "label": "Correct", "average": 90.0, "answers": 2, "side": "strongest", "position": 1},
+            {"algorithm": "heap", "key": "speed", "label": "Speed", "average": 30.0, "answers": 1, "side": "weakest", "position": 1},
+        ]
+
+    monkeypatch.setattr(history, "fetch_competency_signals", _signals)
+
+    async def _overall(**kwargs):
+        captured["overall"] = kwargs
+        return [
+            {"day": date(2026, 1, 1), "competency": 70.0, "algorithms": 1, "week_change": 0.0, "trend": "maintaining"},
+            {"day": date(2026, 1, 2), "competency": 66.2, "algorithms": 3, "week_change": -3.8, "trend": "regressing"},
+        ]
+
+    monkeypatch.setattr(history, "fetch_competency_overall", _overall)
+
+    monkeypatch.setattr(history, "fetch_competency_terrain", _terrain)
     monkeypatch.setattr(history, "fetch_skill_map_overview_algorithm_rows", _algorithm_rows)
+    monkeypatch.setattr(history.app_settings_service, "grading", _grading)
 
-    signal_history = asyncio.run(history.get_signal_history("America/New_York"))
+    terrain = asyncio.run(history.get_competency_terrain("America/New_York"))
 
-    assert signal_history["signals"] == [
-        {"key": "correctness", "label": "Correct choice", "count": 2},
-        {"key": "completionTime", "label": "Speed and fluency", "count": 1},
-    ]
-    assert [(point["signal"], point["score"], point["date"]) for point in signal_history["points"]] == [
-        ("correctness", 0.0, "2026-01-13"),
-        ("correctness", 100.0, "2026-01-14"),
-        ("completionTime", 100.0, "2026-01-14"),
-    ]
-    assert signal_history["points"][0]["algorithm"] == "Sliding Window"
-    assert signal_history["points"][0]["title"] == "Window question"
+    assert captured["timezone_name"] == "America/New_York"
+    assert captured["decay_per_day"] == 0.05
+    assert captured["strong_at"] == history.STRONG_COMPETENCY
+    assert captured["free_fall_days"] == 7
+    tags = captured["tag_slugs"]
+    assert tags["heap"] == "heap" and tags["heap-priority-queue"] == "heap" and tags["sliding-window"] == "sliding-window"
+    assert "dp" not in tags  # an alias whose algorithm isn't known is left out
+    assert captured["signals"]["per_side"] == history.SIGNALS_PER_SIDE and captured["signals"]["tag_slugs"] == tags
+    assert terrain["decayPerDay"] == 0.05
+    # Catalog order, today's (latest) competency, answers summed.
+    sliding, heap, skeletons = terrain["algorithms"]
+    assert sliding == {
+        "slug": "sliding-window", "name": "Sliding Window", "kind": "algorithm", "answers": 1, "competency": 90.0,
+        "lastPractised": "2026-01-02", "lastAverage": 90.0, "daysSince": 0, "standing": "strong",
+        "freeFall": False, "strongestSignals": [], "weakestSignals": [],
+    }
+    assert heap["freeFall"] is True
+    assert heap["strongestSignals"] == [{"key": "correctness", "label": "Correct", "average": 90.0, "answers": 2}]
+    assert heap["weakestSignals"] == [{"key": "speed", "label": "Speed", "average": 30.0, "answers": 1}]
+    assert terrain["freeFallDays"] == 7
+    assert captured["overall"]["decay_per_day"] == 0.05 and captured["overall"]["tag_slugs"] == tags
+    assert captured["overall"]["steady_within"] == history.STEADY_WITHIN_POINTS
+    assert terrain["overall"] == {
+        "competency": 66.2,
+        "weekChange": -3.8,
+        "trend": "regressing",
+        "days": [{"date": "2026-01-01", "competency": 70.0}, {"date": "2026-01-02", "competency": 66.2}],
+    }
+    # Known but never practised, in catalog order (a static playlist with no answers included).
+    assert terrain["unpractised"][0] == {"slug": "trees", "name": "Trees", "kind": "algorithm"}
+    assert {"slug": "google", "name": "Google", "kind": "playlist"} in terrain["unpractised"]
+    assert (heap["competency"], heap["daysSince"], heap["lastPractised"], heap["standing"]) == (68.6, 1, "2026-01-01", "review")
+    assert (skeletons["kind"], skeletons["name"], skeletons["standing"]) == ("playlist", "Skeletons", "learn")
+    assert terrain["days"] == ["2026-01-01", "2026-01-02"]
+    assert terrain["cells"][1] == {
+        "algorithm": "heap", "date": "2026-01-02", "competency": 68.6, "observed": False,
+        "answers": 0, "signals": 0, "average": None, "lastPractised": "2026-01-01", "standing": "review",
+    }
+
+
+def test_competency_terrain_falls_back_to_utc_for_unknown_timezones(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def _terrain(**kwargs):
+        captured.update(kwargs)
+        return []
+
+    async def _no_algorithms():
+        return []
+
+    monkeypatch.setattr(history, "fetch_competency_terrain", _terrain)
+    monkeypatch.setattr(history, "fetch_skill_map_overview_algorithm_rows", _no_algorithms)
+
+    async def _no_signals(**_kwargs):
+        return []
+
+    monkeypatch.setattr(history, "fetch_competency_signals", _no_signals)
+    monkeypatch.setattr(history, "fetch_competency_overall", _no_signals)
+
+    async def _grading():
+        return history.app_settings_service.GradingSettingsModel()
+
+    monkeypatch.setattr(history.app_settings_service, "grading", _grading)
+    terrain = asyncio.run(history.get_competency_terrain("Not/AZone"))
+    assert terrain["decayPerDay"] == 0.02
+    assert terrain["overall"] == {"competency": None, "weekChange": None, "trend": None, "days": []}
+    assert captured["timezone_name"] == "UTC"
+    assert terrain["algorithms"] == [] and terrain["cells"] == []

@@ -39,7 +39,7 @@ def _assert_core_inventory_only(query: str) -> None:
     assert "p.source_type IN ('core-catalog', 'core-meta')" in query
 
 
-def test_algorithm_practice_matches_dashboard_core_inventory(monkeypatch) -> None:
+def test_algorithm_practice_reads_only_the_core_inventory(monkeypatch) -> None:
     connection = _install_connection(monkeypatch)
 
     asyncio.run(repository.fetch_problem_practice_rows("sliding-window"))

@@ -34,26 +34,26 @@
   letter-spacing: 0.14em;
 }
 
-.app > .navbar .navbar-dashboard,
+.app > .navbar .navbar-page-link,
 .app > .navbar .navbar-icon-button {
   border-color: transparent;
   border-radius: var(--workbench-radius-sm);
 }
 
-.app > .navbar .navbar-dashboard {
+.app > .navbar .navbar-page-link {
   padding: 0.4rem 0.55rem;
   color: var(--hc-fg-dim);
 }
 
-.app > .navbar .navbar-dashboard:hover,
+.app > .navbar .navbar-page-link:hover,
 .app > .navbar .navbar-icon-button:hover {
   border-color: var(--workbench-edge);
   color: var(--hc-fg);
 }
 
 /* The current page: a thin underline, no box. */
-.navbar .navbar-dashboard.active,
-.app > .navbar .navbar-dashboard.active {
+.navbar .navbar-page-link.active,
+.app > .navbar .navbar-page-link.active {
   color: var(--hc-fg);
   text-decoration: underline;
   text-decoration-thickness: 1px;

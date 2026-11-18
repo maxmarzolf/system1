@@ -3,11 +3,6 @@ import type { Flashcard, LineReview, LineReviewStatus, MultipleChoiceSpecimenFoc
 
 export const isPlaceholderLine = (line: string) => /\b(pass|something|todo|tbd)\b/i.test(line.trim())
 
-export const createInteractionId = () =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `interaction-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-
 export const summarizeRecallAttempt = (
   actualLines: string[],
   exact: boolean,

@@ -6,8 +6,7 @@ import asyncpg
 import pytest
 
 from app.models import SkillMapDrillsRequest, SkillMapNode, TemplateMode
-from app.services.evaluators import EVALUATORS
-from app.services.evaluators.defaults import register_default_evaluators
+from app.services.evaluation.pipeline import CONTEXT_BUILDERS, register_default_context_builders
 
 
 @pytest.fixture(scope="session")
@@ -33,14 +32,14 @@ def integration_schema(request):
 
 
 @pytest.fixture(autouse=True)
-def default_evaluators():
-    """Register evaluators the way the app factory does, and undo test overrides afterwards."""
-    saved = dict(EVALUATORS)
-    EVALUATORS.clear()
-    register_default_evaluators()
+def default_context_builders():
+    """Register context builders the way the app factory does, and undo test overrides afterwards."""
+    saved = dict(CONTEXT_BUILDERS)
+    CONTEXT_BUILDERS.clear()
+    register_default_context_builders()
     yield
-    EVALUATORS.clear()
-    EVALUATORS.update(saved)
+    CONTEXT_BUILDERS.clear()
+    CONTEXT_BUILDERS.update(saved)
 
 
 @pytest.fixture

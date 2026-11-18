@@ -64,6 +64,27 @@
         "title": "AdminResetPracticeHistoryResponse",
         "type": "object"
       },
+      "AdminSettings": {
+        "additionalProperties": true,
+        "properties": {
+          "generation": {
+            "$ref": "#/components/schemas/SettingsSection"
+          },
+          "grading": {
+            "$ref": "#/components/schemas/SettingsSection"
+          },
+          "practice": {
+            "$ref": "#/components/schemas/SettingsSection"
+          }
+        },
+        "required": [
+          "grading",
+          "generation",
+          "practice"
+        ],
+        "title": "AdminSettings",
+        "type": "object"
+      },
       "AdminSignal": {
         "additionalProperties": true,
         "properties": {
@@ -240,39 +261,6 @@
         "title": "AdminSignal",
         "type": "object"
       },
-      "AlgorithmSignalSpec": {
-        "additionalProperties": true,
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "seeded": {
-            "title": "Seeded",
-            "type": "boolean"
-          },
-          "slug": {
-            "title": "Slug",
-            "type": "string"
-          },
-          "spec": {
-            "$ref": "#/components/schemas/RecallSignalSpecJson"
-          },
-          "usesDefault": {
-            "title": "Usesdefault",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "slug",
-          "name",
-          "usesDefault",
-          "seeded",
-          "spec"
-        ],
-        "title": "AlgorithmSignalSpec",
-        "type": "object"
-      },
       "AttemptCreate": {
         "properties": {
           "activityFormat": {
@@ -331,6 +319,18 @@
             "minimum": 0.0,
             "title": "Elapsedms",
             "type": "integer"
+          },
+          "exerciseId": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exerciseid"
           },
           "flowRunId": {
             "anyOf": [
@@ -456,11 +456,6 @@
           "signals": {
             "additionalProperties": true,
             "title": "Signals",
-            "type": "object"
-          },
-          "submissionTuning": {
-            "additionalProperties": true,
-            "title": "Submissiontuning",
             "type": "object"
           },
           "supportLayer": {
@@ -792,9 +787,306 @@
         "title": "CoachSessionPlanResponse",
         "type": "object"
       },
+      "CompetencyAlgorithm": {
+        "additionalProperties": true,
+        "properties": {
+          "answers": {
+            "title": "Answers",
+            "type": "integer"
+          },
+          "competency": {
+            "title": "Competency",
+            "type": "number"
+          },
+          "daysSince": {
+            "title": "Dayssince",
+            "type": "integer"
+          },
+          "freeFall": {
+            "title": "Freefall",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "lastAverage": {
+            "title": "Lastaverage",
+            "type": "number"
+          },
+          "lastPractised": {
+            "title": "Lastpractised",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "standing": {
+            "title": "Standing",
+            "type": "string"
+          },
+          "strongestSignals": {
+            "items": {
+              "$ref": "#/components/schemas/CompetencySignal"
+            },
+            "title": "Strongestsignals",
+            "type": "array"
+          },
+          "weakestSignals": {
+            "items": {
+              "$ref": "#/components/schemas/CompetencySignal"
+            },
+            "title": "Weakestsignals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "kind",
+          "answers",
+          "competency",
+          "lastPractised",
+          "lastAverage",
+          "daysSince",
+          "standing",
+          "freeFall",
+          "strongestSignals",
+          "weakestSignals"
+        ],
+        "title": "CompetencyAlgorithm",
+        "type": "object"
+      },
+      "CompetencyCell": {
+        "additionalProperties": true,
+        "properties": {
+          "algorithm": {
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "answers": {
+            "title": "Answers",
+            "type": "integer"
+          },
+          "average": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average"
+          },
+          "competency": {
+            "title": "Competency",
+            "type": "number"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "lastPractised": {
+            "title": "Lastpractised",
+            "type": "string"
+          },
+          "observed": {
+            "title": "Observed",
+            "type": "boolean"
+          },
+          "signals": {
+            "title": "Signals",
+            "type": "integer"
+          },
+          "standing": {
+            "title": "Standing",
+            "type": "string"
+          }
+        },
+        "required": [
+          "algorithm",
+          "date",
+          "competency",
+          "observed",
+          "answers",
+          "signals",
+          "average",
+          "lastPractised",
+          "standing"
+        ],
+        "title": "CompetencyCell",
+        "type": "object"
+      },
+      "CompetencyOverall": {
+        "additionalProperties": true,
+        "properties": {
+          "competency": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Competency"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/CompetencyOverallDay"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "trend": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trend"
+          },
+          "weekChange": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekchange"
+          }
+        },
+        "required": [
+          "competency",
+          "weekChange",
+          "trend",
+          "days"
+        ],
+        "title": "CompetencyOverall",
+        "type": "object"
+      },
+      "CompetencyOverallDay": {
+        "additionalProperties": true,
+        "properties": {
+          "competency": {
+            "title": "Competency",
+            "type": "number"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "competency"
+        ],
+        "title": "CompetencyOverallDay",
+        "type": "object"
+      },
+      "CompetencySignal": {
+        "additionalProperties": true,
+        "properties": {
+          "answers": {
+            "title": "Answers",
+            "type": "integer"
+          },
+          "average": {
+            "title": "Average",
+            "type": "number"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "average",
+          "answers"
+        ],
+        "title": "CompetencySignal",
+        "type": "object"
+      },
+      "CompetencyTerrainResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "algorithms": {
+            "items": {
+              "$ref": "#/components/schemas/CompetencyAlgorithm"
+            },
+            "title": "Algorithms",
+            "type": "array"
+          },
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/CompetencyCell"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "decayPerDay": {
+            "title": "Decayperday",
+            "type": "number"
+          },
+          "freeFallDays": {
+            "title": "Freefalldays",
+            "type": "integer"
+          },
+          "overall": {
+            "$ref": "#/components/schemas/CompetencyOverall"
+          },
+          "unpractised": {
+            "items": {
+              "$ref": "#/components/schemas/UnpractisedAlgorithm"
+            },
+            "title": "Unpractised",
+            "type": "array"
+          }
+        },
+        "required": [
+          "decayPerDay",
+          "freeFallDays",
+          "overall",
+          "algorithms",
+          "unpractised",
+          "days",
+          "cells"
+        ],
+        "title": "CompetencyTerrainResponse",
+        "type": "object"
+      },
       "CorrectnessDirective": {
         "additionalProperties": true,
         "properties": {
+          "correctnessSource": {
+            "default": "jev",
+            "title": "Correctnesssource",
+            "type": "string"
+          },
           "correctnessWeight": {
             "title": "Correctnessweight",
             "type": "number"
@@ -891,7 +1183,7 @@
       },
       "Evaluation": {
         "additionalProperties": true,
-        "description": "A stored evaluation. Dimension and modifier keys are the referenced spec's signal keys.\n\nJev MCQ evaluations also carry ``correctness``, ``signalResults``,\n``signalSpecSnapshot`` and ``jevTrace``. Any evaluation that called an LLM while grading\ncarries ``llmTrace``: each exchange's prompt, payload, reply, usage and timing.",
+        "description": "A stored evaluation. Dimension and modifier keys are the referenced spec's signal keys.\n\nPipeline evaluations (every modality) also carry ``correctness`` (who decided and how),\n``signalResults``, ``signalSpecSnapshot`` and, when Jev was called, ``jevTrace``. Any\nevaluation that called an LLM while grading (the feedback writer) carries ``llmTrace``.",
         "properties": {
           "correctness": {
             "anyOf": [
@@ -1100,6 +1392,13 @@
             "title": "Rep",
             "type": "integer"
           },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
           "target": {
             "minLength": 1,
             "title": "Target",
@@ -1121,6 +1420,11 @@
       },
       "FlowMicroDrillResponse": {
         "properties": {
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
           "language": {
             "title": "Language",
             "type": "string"
@@ -1224,28 +1528,6 @@
         "title": "HistoryChoice",
         "type": "object"
       },
-      "HistoryDayResponse": {
-        "additionalProperties": true,
-        "properties": {
-          "date": {
-            "title": "Date",
-            "type": "string"
-          },
-          "submissions": {
-            "items": {
-              "$ref": "#/components/schemas/HistorySubmission"
-            },
-            "title": "Submissions",
-            "type": "array"
-          }
-        },
-        "required": [
-          "date",
-          "submissions"
-        ],
-        "title": "HistoryDayResponse",
-        "type": "object"
-      },
       "HistorySubmission": {
         "additionalProperties": true,
         "properties": {
@@ -1269,6 +1551,10 @@
           },
           "createdAt": {
             "title": "Createdat",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
             "type": "string"
           },
           "elapsedMs": {
@@ -1331,10 +1617,48 @@
           "successful",
           "elapsedMs",
           "algorithms",
+          "date",
           "evaluation",
           "flow"
         ],
         "title": "HistorySubmission",
+        "type": "object"
+      },
+      "HistorySubmissionsResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "algorithms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Algorithms",
+            "type": "array"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "submissions": {
+            "items": {
+              "$ref": "#/components/schemas/HistorySubmission"
+            },
+            "title": "Submissions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "date",
+          "algorithms",
+          "submissions"
+        ],
+        "title": "HistorySubmissionsResponse",
         "type": "object"
       },
       "InlineCompletionRequest": {
@@ -1408,43 +1732,6 @@
           "text"
         ],
         "title": "McqChoice",
-        "type": "object"
-      },
-      "McqSample": {
-        "additionalProperties": true,
-        "properties": {
-          "choices": {
-            "items": {
-              "$ref": "#/components/schemas/McqChoice"
-            },
-            "title": "Choices",
-            "type": "array"
-          },
-          "correctChoiceId": {
-            "title": "Correctchoiceid",
-            "type": "string"
-          },
-          "explanation": {
-            "default": "",
-            "title": "Explanation",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "question": {
-            "title": "Question",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "question",
-          "choices",
-          "correctChoiceId"
-        ],
-        "title": "McqSample",
         "type": "object"
       },
       "MultipleChoiceCard": {
@@ -1894,6 +2181,30 @@
         "title": "PlaylistQuestion",
         "type": "object"
       },
+      "PracticeSettings": {
+        "additionalProperties": true,
+        "properties": {
+          "mcqFlowMode": {
+            "title": "Mcqflowmode",
+            "type": "string"
+          },
+          "mcqQuestionCount": {
+            "title": "Mcqquestioncount",
+            "type": "integer"
+          },
+          "playlistOrder": {
+            "title": "Playlistorder",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mcqQuestionCount",
+          "mcqFlowMode",
+          "playlistOrder"
+        ],
+        "title": "PracticeSettings",
+        "type": "object"
+      },
       "PrimaryFailure": {
         "additionalProperties": true,
         "properties": {
@@ -1944,96 +2255,6 @@
           }
         },
         "title": "Provenance",
-        "type": "object"
-      },
-      "RecallSignalJson": {
-        "additionalProperties": true,
-        "properties": {
-          "axis": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Axis"
-          },
-          "guidance": {
-            "title": "Guidance",
-            "type": "string"
-          },
-          "key": {
-            "title": "Key",
-            "type": "string"
-          },
-          "kind": {
-            "title": "Kind",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "role": {
-            "title": "Role",
-            "type": "string"
-          },
-          "variationStrategy": {
-            "title": "Variationstrategy",
-            "type": "string"
-          },
-          "weight": {
-            "title": "Weight",
-            "type": "number"
-          }
-        },
-        "required": [
-          "key",
-          "label",
-          "kind",
-          "role",
-          "weight",
-          "guidance",
-          "variationStrategy"
-        ],
-        "title": "RecallSignalJson",
-        "type": "object"
-      },
-      "RecallSignalSpecJson": {
-        "additionalProperties": true,
-        "properties": {
-          "algorithm": {
-            "title": "Algorithm",
-            "type": "string"
-          },
-          "signals": {
-            "items": {
-              "$ref": "#/components/schemas/RecallSignalJson"
-            },
-            "title": "Signals",
-            "type": "array"
-          },
-          "structuralElements": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Structuralelements",
-            "type": "array"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "algorithm",
-          "version",
-          "signals",
-          "structuralElements"
-        ],
-        "title": "RecallSignalSpecJson",
         "type": "object"
       },
       "RubricEntry": {
@@ -2101,6 +2322,46 @@
           "cardId"
         ],
         "title": "SessionWeakCard",
+        "type": "object"
+      },
+      "SettingsSection": {
+        "additionalProperties": true,
+        "properties": {
+          "value": {
+            "additionalProperties": true,
+            "title": "Value",
+            "type": "object"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value",
+          "version"
+        ],
+        "title": "SettingsSection",
+        "type": "object"
+      },
+      "SettingsUpdate": {
+        "properties": {
+          "value": {
+            "additionalProperties": true,
+            "title": "Value",
+            "type": "object"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value",
+          "version"
+        ],
+        "title": "SettingsUpdate",
         "type": "object"
       },
       "SignalAdminCatalog": {
@@ -2369,6 +2630,11 @@
       },
       "SignalDirectiveUpdate": {
         "properties": {
+          "correctnessSource": {
+            "default": "jev",
+            "title": "Correctnesssource",
+            "type": "string"
+          },
           "correctnessWeight": {
             "default": 0.6,
             "title": "Correctnessweight",
@@ -2397,102 +2663,35 @@
         "title": "SignalDirectiveUpdate",
         "type": "object"
       },
-      "SignalHistoryPoint": {
+      "SignalPreview": {
         "additionalProperties": true,
         "properties": {
-          "algorithm": {
-            "title": "Algorithm",
-            "type": "string"
-          },
-          "createdAt": {
-            "title": "Createdat",
-            "type": "string"
-          },
-          "date": {
-            "title": "Date",
-            "type": "string"
-          },
-          "modality": {
-            "title": "Modality",
-            "type": "string"
-          },
-          "score": {
-            "title": "Score",
-            "type": "number"
-          },
-          "signal": {
-            "title": "Signal",
-            "type": "string"
-          },
-          "submission": {
-            "title": "Submission",
-            "type": "integer"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
+          "question": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
           }
         },
-        "required": [
-          "submission",
-          "createdAt",
-          "date",
-          "signal",
-          "score",
-          "title",
-          "modality",
-          "algorithm"
-        ],
-        "title": "SignalHistoryPoint",
+        "title": "SignalPreview",
         "type": "object"
       },
-      "SignalHistoryResponse": {
-        "additionalProperties": true,
+      "SignalPreviewRequest": {
         "properties": {
-          "points": {
-            "items": {
-              "$ref": "#/components/schemas/SignalHistoryPoint"
-            },
-            "title": "Points",
-            "type": "array"
-          },
-          "signals": {
-            "items": {
-              "$ref": "#/components/schemas/SignalHistorySignal"
-            },
-            "title": "Signals",
-            "type": "array"
+          "draft": {
+            "$ref": "#/components/schemas/SignalDefinitionDraft"
           }
         },
         "required": [
-          "signals",
-          "points"
+          "draft"
         ],
-        "title": "SignalHistoryResponse",
-        "type": "object"
-      },
-      "SignalHistorySignal": {
-        "additionalProperties": true,
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "key": {
-            "title": "Key",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          }
-        },
-        "required": [
-          "key",
-          "label",
-          "count"
-        ],
-        "title": "SignalHistorySignal",
+        "title": "SignalPreviewRequest",
         "type": "object"
       },
       "SignalResultJson": {
@@ -2607,25 +2806,53 @@
         "title": "SignalRevision",
         "type": "object"
       },
-      "SignalSpecCatalogResponse": {
+      "SignalSample": {
         "additionalProperties": true,
+        "description": "A stored item a signal draft can be tried against.",
         "properties": {
-          "algorithms": {
+          "choices": {
+            "default": [],
             "items": {
-              "$ref": "#/components/schemas/AlgorithmSignalSpec"
+              "$ref": "#/components/schemas/McqChoice"
             },
-            "title": "Algorithms",
+            "title": "Choices",
             "type": "array"
           },
-          "default": {
-            "$ref": "#/components/schemas/RecallSignalSpecJson"
+          "correctChoiceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correctchoiceid"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
-          "default",
-          "algorithms"
+          "id",
+          "title",
+          "prompt",
+          "reference"
         ],
-        "title": "SignalSpecCatalogResponse",
+        "title": "SignalSample",
         "type": "object"
       },
       "SignalStatusChange": {
@@ -2642,27 +2869,34 @@
         "type": "object"
       },
       "SignalTryRequest": {
+        "description": "Try a draft against one stored item (a sample) answered with ``answer``.\n\nMCQ: ``answer`` is a choice id. Code modalities: the code to grade. Ghost reps also take the\ntarget ``reference`` the rep is typed against.",
         "properties": {
-          "choiceId": {
-            "maxLength": 8,
+          "answer": {
+            "maxLength": 20000,
             "minLength": 1,
-            "title": "Choiceid",
+            "title": "Answer",
             "type": "string"
           },
           "draft": {
             "$ref": "#/components/schemas/SignalDefinitionDraft"
           },
-          "problemId": {
+          "reference": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Reference",
+            "type": "string"
+          },
+          "sampleId": {
             "maxLength": 80,
             "minLength": 1,
-            "title": "Problemid",
+            "title": "Sampleid",
             "type": "string"
           }
         },
         "required": [
           "draft",
-          "problemId",
-          "choiceId"
+          "sampleId",
+          "answer"
         ],
         "title": "SignalTryRequest",
         "type": "object"
@@ -2792,125 +3026,6 @@
           "timeComplexity"
         ],
         "title": "SkeletonApplicability",
-        "type": "object"
-      },
-      "SkillMapActivityDay": {
-        "properties": {
-          "count": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Count",
-            "type": "integer"
-          },
-          "date": {
-            "default": "",
-            "title": "Date",
-            "type": "string"
-          },
-          "inFuture": {
-            "default": false,
-            "title": "Infuture",
-            "type": "boolean"
-          }
-        },
-        "title": "SkillMapActivityDay",
-        "type": "object"
-      },
-      "SkillMapAlgorithmReadiness": {
-        "properties": {
-          "algorithm": {
-            "minLength": 1,
-            "title": "Algorithm",
-            "type": "string"
-          },
-          "dimensionSummary": {
-            "additionalProperties": true,
-            "default": {},
-            "title": "Dimensionsummary",
-            "type": "object"
-          },
-          "ghostRepCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Ghostrepcount",
-            "type": "integer"
-          },
-          "modes": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/SkillMapModeReadiness"
-            },
-            "default": {},
-            "title": "Modes",
-            "type": "object"
-          },
-          "overallAttemptCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Overallattemptcount",
-            "type": "integer"
-          },
-          "overallReadiness": {
-            "default": 0,
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Overallreadiness",
-            "type": "number"
-          },
-          "practicedCards": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Practicedcards",
-            "type": "integer"
-          },
-          "skills": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Skills",
-            "type": "array"
-          },
-          "slug": {
-            "minLength": 1,
-            "title": "Slug",
-            "type": "string"
-          },
-          "staleCards": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Stalecards",
-            "type": "integer"
-          },
-          "totalCards": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Totalcards",
-            "type": "integer"
-          },
-          "unsupportedAttemptCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Unsupportedattemptcount",
-            "type": "integer"
-          },
-          "untouchedCards": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Untouchedcards",
-            "type": "integer"
-          },
-          "workCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Workcount",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "algorithm",
-          "slug"
-        ],
-        "title": "SkillMapAlgorithmReadiness",
         "type": "object"
       },
       "SkillMapDrillCard": {
@@ -3080,14 +3195,6 @@
             "title": "Activedays",
             "type": "integer"
           },
-          "algorithms": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/SkillMapGhostRepAlgorithm"
-            },
-            "title": "Algorithms",
-            "type": "array"
-          },
           "days": {
             "default": [],
             "items": {
@@ -3183,76 +3290,6 @@
         "title": "SkillMapGhostRepActivityDay",
         "type": "object"
       },
-      "SkillMapGhostRepAlgorithm": {
-        "properties": {
-          "algorithm": {
-            "default": "",
-            "title": "Algorithm",
-            "type": "string"
-          },
-          "coreCardCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Corecardcount",
-            "type": "integer"
-          },
-          "daysSinceLastGhostRep": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Dayssincelastghostrep"
-          },
-          "daysSinceLastPractice": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Dayssincelastpractice"
-          },
-          "slug": {
-            "default": "",
-            "title": "Slug",
-            "type": "string"
-          },
-          "totalGhostReps": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Totalghostreps",
-            "type": "integer"
-          },
-          "totalMultipleChoice": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Totalmultiplechoice",
-            "type": "integer"
-          },
-          "totalPerfectRecalls": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Totalperfectrecalls",
-            "type": "integer"
-          },
-          "totalWork": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Totalwork",
-            "type": "integer"
-          }
-        },
-        "title": "SkillMapGhostRepAlgorithm",
-        "type": "object"
-      },
       "SkillMapGhostRepSegment": {
         "properties": {
           "algorithm": {
@@ -3310,186 +3347,20 @@
         "title": "SkillMapGhostRepSkillSegment",
         "type": "object"
       },
-      "SkillMapModeActivity": {
+      "SkillMapGridAlgorithm": {
         "properties": {
-          "activeDays": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Activedays",
-            "type": "integer"
-          },
-          "currentStreak": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Currentstreak",
-            "type": "integer"
-          },
-          "days": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/SkillMapActivityDay"
-            },
-            "title": "Days",
-            "type": "array"
-          },
-          "lastSevenDaySubmitCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Lastsevendaysubmitcount",
-            "type": "integer"
-          },
-          "longestStreak": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Longeststreak",
-            "type": "integer"
-          },
-          "peakDailyCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Peakdailycount",
-            "type": "integer"
-          },
-          "recentSubmitCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Recentsubmitcount",
-            "type": "integer"
-          },
-          "windowEnd": {
+          "algorithm": {
             "default": "",
-            "title": "Windowend",
+            "title": "Algorithm",
             "type": "string"
           },
-          "windowStart": {
+          "slug": {
             "default": "",
-            "title": "Windowstart",
+            "title": "Slug",
             "type": "string"
           }
         },
-        "title": "SkillMapModeActivity",
-        "type": "object"
-      },
-      "SkillMapModeReadiness": {
-        "properties": {
-          "activity": {
-            "$ref": "#/components/schemas/SkillMapModeActivity",
-            "default": {
-              "activeDays": 0,
-              "currentStreak": 0,
-              "days": [],
-              "lastSevenDaySubmitCount": 0,
-              "longestStreak": 0,
-              "peakDailyCount": 0,
-              "recentSubmitCount": 0,
-              "windowEnd": "",
-              "windowStart": ""
-            }
-          },
-          "attemptCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Attemptcount",
-            "type": "integer"
-          },
-          "daysSinceLastSubmit": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Dayssincelastsubmit"
-          },
-          "dimensionSummary": {
-            "additionalProperties": true,
-            "default": {},
-            "title": "Dimensionsummary",
-            "type": "object"
-          },
-          "ghostRepCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Ghostrepcount",
-            "type": "integer"
-          },
-          "lastSubmittedAt": {
-            "default": "",
-            "title": "Lastsubmittedat",
-            "type": "string"
-          },
-          "liveCoachUsedCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Livecoachusedcount",
-            "type": "integer"
-          },
-          "practicedCards": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Practicedcards",
-            "type": "integer"
-          },
-          "readiness": {
-            "default": 0,
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Readiness",
-            "type": "number"
-          },
-          "stale": {
-            "default": false,
-            "title": "Stale",
-            "type": "boolean"
-          },
-          "staleCards": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Stalecards",
-            "type": "integer"
-          },
-          "successRate": {
-            "default": 0,
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Successrate",
-            "type": "number"
-          },
-          "successfulAttempts": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Successfulattempts",
-            "type": "integer"
-          },
-          "totalCards": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Totalcards",
-            "type": "integer"
-          },
-          "unsupportedAttemptCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Unsupportedattemptcount",
-            "type": "integer"
-          },
-          "untouchedCards": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Untouchedcards",
-            "type": "integer"
-          },
-          "workCount": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Workcount",
-            "type": "integer"
-          }
-        },
-        "title": "SkillMapModeReadiness",
+        "title": "SkillMapGridAlgorithm",
         "type": "object"
       },
       "SkillMapNode": {
@@ -3537,7 +3408,7 @@
           "algorithms": {
             "default": [],
             "items": {
-              "$ref": "#/components/schemas/SkillMapAlgorithmReadiness"
+              "$ref": "#/components/schemas/SkillMapGridAlgorithm"
             },
             "title": "Algorithms",
             "type": "array"
@@ -3546,7 +3417,6 @@
             "$ref": "#/components/schemas/SkillMapGhostRepActivity",
             "default": {
               "activeDays": 0,
-              "algorithms": [],
               "days": [],
               "peakDailyCount": 0,
               "totalGhostReps": 0,
@@ -3664,6 +3534,11 @@
       },
       "SlidingWindowLadderResponse": {
         "properties": {
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
           "language": {
             "default": "python",
             "title": "Language",
@@ -3740,7 +3615,8 @@
           "total-recall",
           "ghost-rep",
           "mcq",
-          "microdrill"
+          "microdrill",
+          "ladder"
         ],
         "title": "SubmissionModality",
         "type": "string"
@@ -3805,6 +3681,30 @@
         ],
         "title": "TemplateMode",
         "type": "string"
+      },
+      "UnpractisedAlgorithm": {
+        "additionalProperties": true,
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "kind"
+        ],
+        "title": "UnpractisedAlgorithm",
+        "type": "object"
       },
       "ValidationError": {
         "properties": {
@@ -3888,9 +3788,93 @@
         ]
       }
     },
-    "/api/admin/signals": {
+    "/api/admin/settings": {
       "get": {
-        "operationId": "list_signals_api_admin_signals_get",
+        "operationId": "get_settings_api_admin_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Settings",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/settings/{section}": {
+      "put": {
+        "operationId": "update_settings_api_admin_settings__section__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "section",
+            "required": true,
+            "schema": {
+              "title": "Section",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsSection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Settings",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/signals/{modality}": {
+      "get": {
+        "operationId": "list_signals_api_admin_signals__modality__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3901,6 +3885,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "List Signals",
@@ -3909,7 +3903,18 @@
         ]
       },
       "post": {
-        "operationId": "create_signal_api_admin_signals_post",
+        "operationId": "create_signal_api_admin_signals__modality__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -3948,9 +3953,20 @@
         ]
       }
     },
-    "/api/admin/signals/directive/mcq": {
+    "/api/admin/signals/{modality}/directive": {
       "put": {
-        "operationId": "update_directive_api_admin_signals_directive_mcq_put",
+        "operationId": "update_directive_api_admin_signals__modality__directive_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -3989,10 +4005,71 @@
         ]
       }
     },
-    "/api/admin/signals/revisions/{subject}": {
-      "get": {
-        "operationId": "signal_revisions_api_admin_signals_revisions__subject__get",
+    "/api/admin/signals/{modality}/preview": {
+      "post": {
+        "operationId": "preview_signal_api_admin_signals__modality__preview_post",
         "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignalPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Signal",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/signals/{modality}/revisions/{subject}": {
+      "get": {
+        "operationId": "signal_revisions_api_admin_signals__modality__revisions__subject__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          },
           {
             "in": "path",
             "name": "subject",
@@ -4011,7 +4088,7 @@
                   "items": {
                     "$ref": "#/components/schemas/SignalRevision"
                   },
-                  "title": "Response Signal Revisions Api Admin Signals Revisions  Subject  Get",
+                  "title": "Response Signal Revisions Api Admin Signals  Modality  Revisions  Subject  Get",
                   "type": "array"
                 }
               }
@@ -4035,23 +4112,44 @@
         ]
       }
     },
-    "/api/admin/signals/samples": {
+    "/api/admin/signals/{modality}/samples": {
       "get": {
-        "operationId": "signal_samples_api_admin_signals_samples_get",
+        "operationId": "signal_samples_api_admin_signals__modality__samples_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/McqSample"
+                    "$ref": "#/components/schemas/SignalSample"
                   },
-                  "title": "Response Signal Samples Api Admin Signals Samples Get",
+                  "title": "Response Signal Samples Api Admin Signals  Modality  Samples Get",
                   "type": "array"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Signal Samples",
@@ -4060,9 +4158,20 @@
         ]
       }
     },
-    "/api/admin/signals/try": {
+    "/api/admin/signals/{modality}/try": {
       "post": {
-        "operationId": "try_signal_api_admin_signals_try_post",
+        "operationId": "try_signal_api_admin_signals__modality__try_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4101,10 +4210,19 @@
         ]
       }
     },
-    "/api/admin/signals/{key}": {
+    "/api/admin/signals/{modality}/{key}": {
       "put": {
-        "operationId": "update_signal_api_admin_signals__key__put",
+        "operationId": "update_signal_api_admin_signals__modality___key__put",
         "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          },
           {
             "in": "path",
             "name": "key",
@@ -4153,10 +4271,19 @@
         ]
       }
     },
-    "/api/admin/signals/{key}/archive": {
+    "/api/admin/signals/{modality}/{key}/archive": {
       "post": {
-        "operationId": "archive_signal_api_admin_signals__key__archive_post",
+        "operationId": "archive_signal_api_admin_signals__modality___key__archive_post",
         "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          },
           {
             "in": "path",
             "name": "key",
@@ -4205,10 +4332,19 @@
         ]
       }
     },
-    "/api/admin/signals/{key}/restore": {
+    "/api/admin/signals/{modality}/{key}/restore": {
       "post": {
-        "operationId": "restore_signal_api_admin_signals__key__restore_post",
+        "operationId": "restore_signal_api_admin_signals__modality___key__restore_post",
         "parameters": [
+          {
+            "in": "path",
+            "name": "modality",
+            "required": true,
+            "schema": {
+              "title": "Modality",
+              "type": "string"
+            }
+          },
           {
             "in": "path",
             "name": "key",
@@ -4319,22 +4455,23 @@
         ]
       }
     },
-    "/api/catalog/signal-specs": {
+    "/api/catalog/practice-settings": {
       "get": {
-        "operationId": "get_signal_specs_api_catalog_signal_specs_get",
+        "description": "What the practice screen asks for (MCQ set size and order, playlist order), set on /admin.",
+        "operationId": "get_practice_settings_api_catalog_practice_settings_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SignalSpecCatalogResponse"
+                  "$ref": "#/components/schemas/PracticeSettings"
                 }
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "Get Signal Specs",
+        "summary": "Get Practice Settings",
         "tags": [
           "catalog"
         ]
@@ -4863,29 +5000,19 @@
         ]
       }
     },
-    "/api/history/day": {
+    "/api/history/competency": {
       "get": {
-        "description": "Every submission counted in the daily work grid on ``date`` in ``tz``, with its stored evaluation.",
-        "operationId": "get_history_day_api_history_day_get",
+        "description": "Competency per algorithm per day (average of every scored signal, decayed on days without practice).",
+        "operationId": "get_competency_terrain_api_history_competency_get",
         "parameters": [
           {
-            "in": "query",
-            "name": "date",
-            "required": true,
-            "schema": {
-              "format": "date",
-              "title": "Date",
-              "type": "string"
-            }
-          },
-          {
-            "description": "IANA timezone the calendar day is in.",
+            "description": "IANA timezone whose calendar days the terrain uses.",
             "in": "query",
             "name": "tz",
             "required": false,
             "schema": {
               "default": "UTC",
-              "description": "IANA timezone the calendar day is in.",
+              "description": "IANA timezone whose calendar days the terrain uses.",
               "maxLength": 64,
               "title": "Tz",
               "type": "string"
@@ -4897,7 +5024,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HistoryDayResponse"
+                  "$ref": "#/components/schemas/CompetencyTerrainResponse"
                 }
               }
             },
@@ -4914,25 +5041,60 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get History Day",
+        "summary": "Get Competency Terrain",
         "tags": [
           "attempts"
         ]
       }
     },
-    "/api/history/signals": {
+    "/api/history/submissions": {
       "get": {
-        "description": "Every scored signal from every counted submission, all time, for the signal hologram.",
-        "operationId": "get_signal_history_api_history_signals_get",
+        "description": "Submissions counted in the daily work grid, with their stored evaluations: on ``date``, for\nthe ``algorithm`` slugs over the last year, or both.",
+        "operationId": "get_history_submissions_api_history_submissions_get",
         "parameters": [
           {
-            "description": "IANA timezone for each point's calendar date.",
+            "description": "A calendar day in tz; omit to search the last year.",
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A calendar day in tz; omit to search the last year.",
+              "title": "Date"
+            }
+          },
+          {
+            "description": "Algorithm slugs to keep (any of them); repeatable.",
+            "in": "query",
+            "name": "algorithm",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "Algorithm slugs to keep (any of them); repeatable.",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 50,
+              "title": "Algorithm",
+              "type": "array"
+            }
+          },
+          {
+            "description": "IANA timezone the calendar days are in.",
             "in": "query",
             "name": "tz",
             "required": false,
             "schema": {
               "default": "UTC",
-              "description": "IANA timezone for each point's calendar date.",
+              "description": "IANA timezone the calendar days are in.",
               "maxLength": 64,
               "title": "Tz",
               "type": "string"
@@ -4944,7 +5106,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SignalHistoryResponse"
+                  "$ref": "#/components/schemas/HistorySubmissionsResponse"
                 }
               }
             },
@@ -4961,7 +5123,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Signal History",
+        "summary": "Get History Submissions",
         "tags": [
           "attempts"
         ]

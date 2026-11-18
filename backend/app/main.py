@@ -8,7 +8,7 @@ from app.config import settings
 from app.database import connect, disconnect
 from app.endpoints import ALL_ROUTERS
 from app.endpoints.errors import register_error_handlers
-from app.services.evaluators.defaults import register_default_evaluators
+from app.services.evaluation.pipeline import register_default_context_builders
 
 
 @asynccontextmanager
@@ -35,7 +35,7 @@ def _configure_app_logging() -> None:
 def create_app() -> FastAPI:
     """Composition root: builds the app and wires its pluggable parts."""
     _configure_app_logging()
-    register_default_evaluators()
+    register_default_context_builders()
     app = FastAPI(title="System1 API", lifespan=lifespan)
 
     app.add_middleware(

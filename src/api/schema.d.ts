@@ -21,7 +21,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/signals": {
+    "/api/admin/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_api_admin_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/settings/{section}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Settings */
+        put: operations["update_settings_api_admin_settings__section__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/signals/{modality}": {
         parameters: {
             query?: never;
             header?: never;
@@ -29,17 +63,17 @@ export interface paths {
             cookie?: never;
         };
         /** List Signals */
-        get: operations["list_signals_api_admin_signals_get"];
+        get: operations["list_signals_api_admin_signals__modality__get"];
         put?: never;
         /** Create Signal */
-        post: operations["create_signal_api_admin_signals_post"];
+        post: operations["create_signal_api_admin_signals__modality__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/admin/signals/directive/mcq": {
+    "/api/admin/signals/{modality}/directive": {
         parameters: {
             query?: never;
             header?: never;
@@ -48,7 +82,7 @@ export interface paths {
         };
         get?: never;
         /** Update Directive */
-        put: operations["update_directive_api_admin_signals_directive_mcq_put"];
+        put: operations["update_directive_api_admin_signals__modality__directive_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -56,7 +90,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/signals/revisions/{subject}": {
+    "/api/admin/signals/{modality}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Signal */
+        post: operations["preview_signal_api_admin_signals__modality__preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/signals/{modality}/revisions/{subject}": {
         parameters: {
             query?: never;
             header?: never;
@@ -64,7 +115,7 @@ export interface paths {
             cookie?: never;
         };
         /** Signal Revisions */
-        get: operations["signal_revisions_api_admin_signals_revisions__subject__get"];
+        get: operations["signal_revisions_api_admin_signals__modality__revisions__subject__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -73,7 +124,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/signals/samples": {
+    "/api/admin/signals/{modality}/samples": {
         parameters: {
             query?: never;
             header?: never;
@@ -81,7 +132,7 @@ export interface paths {
             cookie?: never;
         };
         /** Signal Samples */
-        get: operations["signal_samples_api_admin_signals_samples_get"];
+        get: operations["signal_samples_api_admin_signals__modality__samples_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -90,7 +141,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/signals/try": {
+    "/api/admin/signals/{modality}/try": {
         parameters: {
             query?: never;
             header?: never;
@@ -100,14 +151,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Try Signal */
-        post: operations["try_signal_api_admin_signals_try_post"];
+        post: operations["try_signal_api_admin_signals__modality__try_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/admin/signals/{key}": {
+    "/api/admin/signals/{modality}/{key}": {
         parameters: {
             query?: never;
             header?: never;
@@ -116,7 +167,7 @@ export interface paths {
         };
         get?: never;
         /** Update Signal */
-        put: operations["update_signal_api_admin_signals__key__put"];
+        put: operations["update_signal_api_admin_signals__modality___key__put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -124,7 +175,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/signals/{key}/archive": {
+    "/api/admin/signals/{modality}/{key}/archive": {
         parameters: {
             query?: never;
             header?: never;
@@ -134,14 +185,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Archive Signal */
-        post: operations["archive_signal_api_admin_signals__key__archive_post"];
+        post: operations["archive_signal_api_admin_signals__modality___key__archive_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/admin/signals/{key}/restore": {
+    "/api/admin/signals/{modality}/{key}/restore": {
         parameters: {
             query?: never;
             header?: never;
@@ -151,7 +202,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Restore Signal */
-        post: operations["restore_signal_api_admin_signals__key__restore_post"];
+        post: operations["restore_signal_api_admin_signals__modality___key__restore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -192,15 +243,18 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/catalog/signal-specs": {
+    "/api/catalog/practice-settings": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Signal Specs */
-        get: operations["get_signal_specs_api_catalog_signal_specs_get"];
+        /**
+         * Get Practice Settings
+         * @description What the practice screen asks for (MCQ set size and order, playlist order), set on /admin.
+         */
+        get: operations["get_practice_settings_api_catalog_practice_settings_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -430,7 +484,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/history/day": {
+    "/api/history/competency": {
         parameters: {
             query?: never;
             header?: never;
@@ -438,10 +492,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get History Day
-         * @description Every submission counted in the daily work grid on ``date`` in ``tz``, with its stored evaluation.
+         * Get Competency Terrain
+         * @description Competency per algorithm per day (average of every scored signal, decayed on days without practice).
          */
-        get: operations["get_history_day_api_history_day_get"];
+        get: operations["get_competency_terrain_api_history_competency_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -450,7 +504,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/history/signals": {
+    "/api/history/submissions": {
         parameters: {
             query?: never;
             header?: never;
@@ -458,10 +512,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Signal History
-         * @description Every scored signal from every counted submission, all time, for the signal hologram.
+         * Get History Submissions
+         * @description Submissions counted in the daily work grid, with their stored evaluations: on ``date``, for
+         *     the ``algorithm`` slugs over the last year, or both.
          */
-        get: operations["get_signal_history_api_history_signals_get"];
+        get: operations["get_history_submissions_api_history_submissions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -544,6 +599,14 @@ export interface components {
              */
             clearedTables?: string[];
         };
+        /** AdminSettings */
+        AdminSettings: {
+            generation: components["schemas"]["SettingsSection"];
+            grading: components["schemas"]["SettingsSection"];
+            practice: components["schemas"]["SettingsSection"];
+        } & {
+            [key: string]: unknown;
+        };
         /** AdminSignal */
         AdminSignal: {
             /** Applieswhen */
@@ -607,20 +670,6 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** AlgorithmSignalSpec */
-        AlgorithmSignalSpec: {
-            /** Name */
-            name: string;
-            /** Seeded */
-            seeded: boolean;
-            /** Slug */
-            slug: string;
-            spec: components["schemas"]["RecallSignalSpecJson"];
-            /** Usesdefault */
-            usesDefault: boolean;
-        } & {
-            [key: string]: unknown;
-        };
         /** AttemptCreate */
         AttemptCreate: {
             /** Activityformat */
@@ -641,6 +690,8 @@ export interface components {
              * @default 0
              */
             elapsedMs?: number;
+            /** Exerciseid */
+            exerciseId?: string | null;
             /** Flowrunid */
             flowRunId?: string | null;
             /** Generatedcard */
@@ -678,10 +729,6 @@ export interface components {
             sessionId?: string | null;
             /** Signals */
             signals?: {
-                [key: string]: unknown;
-            };
-            /** Submissiontuning */
-            submissionTuning?: {
                 [key: string]: unknown;
             };
             /** @default none */
@@ -901,8 +948,118 @@ export interface components {
             /** Warmup */
             warmup: string;
         };
+        /** CompetencyAlgorithm */
+        CompetencyAlgorithm: {
+            /** Answers */
+            answers: number;
+            /** Competency */
+            competency: number;
+            /** Dayssince */
+            daysSince: number;
+            /** Freefall */
+            freeFall: boolean;
+            /** Kind */
+            kind: string;
+            /** Lastaverage */
+            lastAverage: number;
+            /** Lastpractised */
+            lastPractised: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Standing */
+            standing: string;
+            /** Strongestsignals */
+            strongestSignals: components["schemas"]["CompetencySignal"][];
+            /** Weakestsignals */
+            weakestSignals: components["schemas"]["CompetencySignal"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** CompetencyCell */
+        CompetencyCell: {
+            /** Algorithm */
+            algorithm: string;
+            /** Answers */
+            answers: number;
+            /** Average */
+            average: number | null;
+            /** Competency */
+            competency: number;
+            /** Date */
+            date: string;
+            /** Lastpractised */
+            lastPractised: string;
+            /** Observed */
+            observed: boolean;
+            /** Signals */
+            signals: number;
+            /** Standing */
+            standing: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** CompetencyOverall */
+        CompetencyOverall: {
+            /** Competency */
+            competency: number | null;
+            /** Days */
+            days: components["schemas"]["CompetencyOverallDay"][];
+            /** Trend */
+            trend: string | null;
+            /** Weekchange */
+            weekChange: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** CompetencyOverallDay */
+        CompetencyOverallDay: {
+            /** Competency */
+            competency: number;
+            /** Date */
+            date: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** CompetencySignal */
+        CompetencySignal: {
+            /** Answers */
+            answers: number;
+            /** Average */
+            average: number;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** CompetencyTerrainResponse */
+        CompetencyTerrainResponse: {
+            /** Algorithms */
+            algorithms: components["schemas"]["CompetencyAlgorithm"][];
+            /** Cells */
+            cells: components["schemas"]["CompetencyCell"][];
+            /** Days */
+            days: string[];
+            /** Decayperday */
+            decayPerDay: number;
+            /** Freefalldays */
+            freeFallDays: number;
+            overall: components["schemas"]["CompetencyOverall"];
+            /** Unpractised */
+            unpractised: components["schemas"]["UnpractisedAlgorithm"][];
+        } & {
+            [key: string]: unknown;
+        };
         /** CorrectnessDirective */
         CorrectnessDirective: {
+            /**
+             * Correctnesssource
+             * @default jev
+             */
+            correctnessSource?: string;
             /** Correctnessweight */
             correctnessWeight: number;
             /** Criteria */
@@ -939,9 +1096,9 @@ export interface components {
          * Evaluation
          * @description A stored evaluation. Dimension and modifier keys are the referenced spec's signal keys.
          *
-         *     Jev MCQ evaluations also carry ``correctness``, ``signalResults``,
-         *     ``signalSpecSnapshot`` and ``jevTrace``. Any evaluation that called an LLM while grading
-         *     carries ``llmTrace``: each exchange's prompt, payload, reply, usage and timing.
+         *     Pipeline evaluations (every modality) also carry ``correctness`` (who decided and how),
+         *     ``signalResults``, ``signalSpecSnapshot`` and, when Jev was called, ``jevTrace``. Any
+         *     evaluation that called an LLM while grading (the feedback writer) carries ``llmTrace``.
          */
         Evaluation: {
             /** Correctness */
@@ -1059,6 +1216,8 @@ export interface components {
              * @default 1
              */
             rep?: number;
+            /** Tags */
+            tags?: string[];
             /** Target */
             target: string;
             /**
@@ -1069,6 +1228,11 @@ export interface components {
         };
         /** FlowMicroDrillResponse */
         FlowMicroDrillResponse: {
+            /**
+             * Id
+             * @default
+             */
+            id?: string;
             /** Language */
             language: string;
             /** Prompt */
@@ -1115,15 +1279,6 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** HistoryDayResponse */
-        HistoryDayResponse: {
-            /** Date */
-            date: string;
-            /** Submissions */
-            submissions: components["schemas"]["HistorySubmission"][];
-        } & {
-            [key: string]: unknown;
-        };
         /** HistorySubmission */
         HistorySubmission: {
             /** Algorithms */
@@ -1134,6 +1289,8 @@ export interface components {
             correctAnswer: string;
             /** Createdat */
             createdAt: string;
+            /** Date */
+            date: string;
             /** Elapsedms */
             elapsedMs: number;
             /** Evaluation */
@@ -1163,6 +1320,17 @@ export interface components {
             title: string;
             /** Useranswer */
             userAnswer: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** HistorySubmissionsResponse */
+        HistorySubmissionsResponse: {
+            /** Algorithms */
+            algorithms: string[];
+            /** Date */
+            date: string | null;
+            /** Submissions */
+            submissions: components["schemas"]["HistorySubmission"][];
         } & {
             [key: string]: unknown;
         };
@@ -1207,24 +1375,6 @@ export interface components {
             id: string;
             /** Text */
             text: string;
-        } & {
-            [key: string]: unknown;
-        };
-        /** McqSample */
-        McqSample: {
-            /** Choices */
-            choices: components["schemas"]["McqChoice"][];
-            /** Correctchoiceid */
-            correctChoiceId: string;
-            /**
-             * Explanation
-             * @default
-             */
-            explanation?: string;
-            /** Id */
-            id: string;
-            /** Question */
-            question: string;
         } & {
             [key: string]: unknown;
         };
@@ -1483,6 +1633,17 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** PracticeSettings */
+        PracticeSettings: {
+            /** Mcqflowmode */
+            mcqFlowMode: string;
+            /** Mcqquestioncount */
+            mcqQuestionCount: number;
+            /** Playlistorder */
+            playlistOrder: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** PrimaryFailure */
         PrimaryFailure: {
             /** Evidence */
@@ -1525,40 +1686,6 @@ export interface components {
              * @default
              */
             source?: string;
-        } & {
-            [key: string]: unknown;
-        };
-        /** RecallSignalJson */
-        RecallSignalJson: {
-            /** Axis */
-            axis?: string | null;
-            /** Guidance */
-            guidance: string;
-            /** Key */
-            key: string;
-            /** Kind */
-            kind: string;
-            /** Label */
-            label: string;
-            /** Role */
-            role: string;
-            /** Variationstrategy */
-            variationStrategy: string;
-            /** Weight */
-            weight: number;
-        } & {
-            [key: string]: unknown;
-        };
-        /** RecallSignalSpecJson */
-        RecallSignalSpecJson: {
-            /** Algorithm */
-            algorithm: string;
-            /** Signals */
-            signals: components["schemas"]["RecallSignalJson"][];
-            /** Structuralelements */
-            structuralElements: string[];
-            /** Version */
-            version: number;
         } & {
             [key: string]: unknown;
         };
@@ -1608,6 +1735,26 @@ export interface components {
              * @default 0
              */
             elapsedMs?: number;
+        };
+        /** SettingsSection */
+        SettingsSection: {
+            /** Value */
+            value: {
+                [key: string]: unknown;
+            };
+            /** Version */
+            version: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SettingsUpdate */
+        SettingsUpdate: {
+            /** Value */
+            value: {
+                [key: string]: unknown;
+            };
+            /** Version */
+            version: number;
         };
         /** SignalAdminCatalog */
         SignalAdminCatalog: {
@@ -1773,6 +1920,11 @@ export interface components {
         /** SignalDirectiveUpdate */
         SignalDirectiveUpdate: {
             /**
+             * Correctnesssource
+             * @default jev
+             */
+            correctnessSource?: string;
+            /**
              * Correctnessweight
              * @default 0.6
              */
@@ -1789,46 +1941,18 @@ export interface components {
             /** Version */
             version: number;
         };
-        /** SignalHistoryPoint */
-        SignalHistoryPoint: {
-            /** Algorithm */
-            algorithm: string;
-            /** Createdat */
-            createdAt: string;
-            /** Date */
-            date: string;
-            /** Modality */
-            modality: string;
-            /** Score */
-            score: number;
-            /** Signal */
-            signal: string;
-            /** Submission */
-            submission: number;
-            /** Title */
-            title: string;
+        /** SignalPreview */
+        SignalPreview: {
+            /** Question */
+            question?: {
+                [key: string]: unknown;
+            } | null;
         } & {
             [key: string]: unknown;
         };
-        /** SignalHistoryResponse */
-        SignalHistoryResponse: {
-            /** Points */
-            points: components["schemas"]["SignalHistoryPoint"][];
-            /** Signals */
-            signals: components["schemas"]["SignalHistorySignal"][];
-        } & {
-            [key: string]: unknown;
-        };
-        /** SignalHistorySignal */
-        SignalHistorySignal: {
-            /** Count */
-            count: number;
-            /** Key */
-            key: string;
-            /** Label */
-            label: string;
-        } & {
-            [key: string]: unknown;
+        /** SignalPreviewRequest */
+        SignalPreviewRequest: {
+            draft: components["schemas"]["SignalDefinitionDraft"];
         };
         /** SignalResultJson */
         SignalResultJson: {
@@ -1884,11 +2008,26 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** SignalSpecCatalogResponse */
-        SignalSpecCatalogResponse: {
-            /** Algorithms */
-            algorithms: components["schemas"]["AlgorithmSignalSpec"][];
-            default: components["schemas"]["RecallSignalSpecJson"];
+        /**
+         * SignalSample
+         * @description A stored item a signal draft can be tried against.
+         */
+        SignalSample: {
+            /**
+             * Choices
+             * @default []
+             */
+            choices?: components["schemas"]["McqChoice"][];
+            /** Correctchoiceid */
+            correctChoiceId?: string | null;
+            /** Id */
+            id: string;
+            /** Prompt */
+            prompt: string;
+            /** Reference */
+            reference: string;
+            /** Title */
+            title: string;
         } & {
             [key: string]: unknown;
         };
@@ -1897,13 +2036,24 @@ export interface components {
             /** Version */
             version: number;
         };
-        /** SignalTryRequest */
+        /**
+         * SignalTryRequest
+         * @description Try a draft against one stored item (a sample) answered with ``answer``.
+         *
+         *     MCQ: ``answer`` is a choice id. Code modalities: the code to grade. Ghost reps also take the
+         *     target ``reference`` the rep is typed against.
+         */
         SignalTryRequest: {
-            /** Choiceid */
-            choiceId: string;
+            /** Answer */
+            answer: string;
             draft: components["schemas"]["SignalDefinitionDraft"];
-            /** Problemid */
-            problemId: string;
+            /**
+             * Reference
+             * @default
+             */
+            reference?: string;
+            /** Sampleid */
+            sampleId: string;
         };
         /** SignalTryResult */
         SignalTryResult: {
@@ -1947,95 +2097,6 @@ export interface components {
             templateStrength: number;
             /** Timecomplexity */
             timeComplexity: string;
-        };
-        /** SkillMapActivityDay */
-        SkillMapActivityDay: {
-            /**
-             * Count
-             * @default 0
-             */
-            count?: number;
-            /**
-             * Date
-             * @default
-             */
-            date?: string;
-            /**
-             * Infuture
-             * @default false
-             */
-            inFuture?: boolean;
-        };
-        /** SkillMapAlgorithmReadiness */
-        SkillMapAlgorithmReadiness: {
-            /** Algorithm */
-            algorithm: string;
-            /**
-             * Dimensionsummary
-             * @default {}
-             */
-            dimensionSummary?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Ghostrepcount
-             * @default 0
-             */
-            ghostRepCount?: number;
-            /**
-             * Modes
-             * @default {}
-             */
-            modes?: {
-                [key: string]: components["schemas"]["SkillMapModeReadiness"];
-            };
-            /**
-             * Overallattemptcount
-             * @default 0
-             */
-            overallAttemptCount?: number;
-            /**
-             * Overallreadiness
-             * @default 0
-             */
-            overallReadiness?: number;
-            /**
-             * Practicedcards
-             * @default 0
-             */
-            practicedCards?: number;
-            /**
-             * Skills
-             * @default []
-             */
-            skills?: string[];
-            /** Slug */
-            slug: string;
-            /**
-             * Stalecards
-             * @default 0
-             */
-            staleCards?: number;
-            /**
-             * Totalcards
-             * @default 0
-             */
-            totalCards?: number;
-            /**
-             * Unsupportedattemptcount
-             * @default 0
-             */
-            unsupportedAttemptCount?: number;
-            /**
-             * Untouchedcards
-             * @default 0
-             */
-            untouchedCards?: number;
-            /**
-             * Workcount
-             * @default 0
-             */
-            workCount?: number;
         };
         /** SkillMapDrillCard */
         SkillMapDrillCard: {
@@ -2133,11 +2194,6 @@ export interface components {
              */
             activeDays?: number;
             /**
-             * Algorithms
-             * @default []
-             */
-            algorithms?: components["schemas"]["SkillMapGhostRepAlgorithm"][];
-            /**
              * Days
              * @default []
              */
@@ -2211,48 +2267,6 @@ export interface components {
              */
             totalRecallCount?: number;
         };
-        /** SkillMapGhostRepAlgorithm */
-        SkillMapGhostRepAlgorithm: {
-            /**
-             * Algorithm
-             * @default
-             */
-            algorithm?: string;
-            /**
-             * Corecardcount
-             * @default 0
-             */
-            coreCardCount?: number;
-            /** Dayssincelastghostrep */
-            daysSinceLastGhostRep?: number | null;
-            /** Dayssincelastpractice */
-            daysSinceLastPractice?: number | null;
-            /**
-             * Slug
-             * @default
-             */
-            slug?: string;
-            /**
-             * Totalghostreps
-             * @default 0
-             */
-            totalGhostReps?: number;
-            /**
-             * Totalmultiplechoice
-             * @default 0
-             */
-            totalMultipleChoice?: number;
-            /**
-             * Totalperfectrecalls
-             * @default 0
-             */
-            totalPerfectRecalls?: number;
-            /**
-             * Totalwork
-             * @default 0
-             */
-            totalWork?: number;
-        };
         /** SkillMapGhostRepSegment */
         SkillMapGhostRepSegment: {
             /**
@@ -2299,149 +2313,18 @@ export interface components {
              */
             slug?: string;
         };
-        /** SkillMapModeActivity */
-        SkillMapModeActivity: {
+        /** SkillMapGridAlgorithm */
+        SkillMapGridAlgorithm: {
             /**
-             * Activedays
-             * @default 0
-             */
-            activeDays?: number;
-            /**
-             * Currentstreak
-             * @default 0
-             */
-            currentStreak?: number;
-            /**
-             * Days
-             * @default []
-             */
-            days?: components["schemas"]["SkillMapActivityDay"][];
-            /**
-             * Lastsevendaysubmitcount
-             * @default 0
-             */
-            lastSevenDaySubmitCount?: number;
-            /**
-             * Longeststreak
-             * @default 0
-             */
-            longestStreak?: number;
-            /**
-             * Peakdailycount
-             * @default 0
-             */
-            peakDailyCount?: number;
-            /**
-             * Recentsubmitcount
-             * @default 0
-             */
-            recentSubmitCount?: number;
-            /**
-             * Windowend
+             * Algorithm
              * @default
              */
-            windowEnd?: string;
+            algorithm?: string;
             /**
-             * Windowstart
+             * Slug
              * @default
              */
-            windowStart?: string;
-        };
-        /** SkillMapModeReadiness */
-        SkillMapModeReadiness: {
-            /**
-             * @default {
-             *       "activeDays": 0,
-             *       "currentStreak": 0,
-             *       "days": [],
-             *       "lastSevenDaySubmitCount": 0,
-             *       "longestStreak": 0,
-             *       "peakDailyCount": 0,
-             *       "recentSubmitCount": 0,
-             *       "windowEnd": "",
-             *       "windowStart": ""
-             *     }
-             */
-            activity?: components["schemas"]["SkillMapModeActivity"];
-            /**
-             * Attemptcount
-             * @default 0
-             */
-            attemptCount?: number;
-            /** Dayssincelastsubmit */
-            daysSinceLastSubmit?: number | null;
-            /**
-             * Dimensionsummary
-             * @default {}
-             */
-            dimensionSummary?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Ghostrepcount
-             * @default 0
-             */
-            ghostRepCount?: number;
-            /**
-             * Lastsubmittedat
-             * @default
-             */
-            lastSubmittedAt?: string;
-            /**
-             * Livecoachusedcount
-             * @default 0
-             */
-            liveCoachUsedCount?: number;
-            /**
-             * Practicedcards
-             * @default 0
-             */
-            practicedCards?: number;
-            /**
-             * Readiness
-             * @default 0
-             */
-            readiness?: number;
-            /**
-             * Stale
-             * @default false
-             */
-            stale?: boolean;
-            /**
-             * Stalecards
-             * @default 0
-             */
-            staleCards?: number;
-            /**
-             * Successrate
-             * @default 0
-             */
-            successRate?: number;
-            /**
-             * Successfulattempts
-             * @default 0
-             */
-            successfulAttempts?: number;
-            /**
-             * Totalcards
-             * @default 0
-             */
-            totalCards?: number;
-            /**
-             * Unsupportedattemptcount
-             * @default 0
-             */
-            unsupportedAttemptCount?: number;
-            /**
-             * Untouchedcards
-             * @default 0
-             */
-            untouchedCards?: number;
-            /**
-             * Workcount
-             * @default 0
-             */
-            workCount?: number;
+            slug?: string;
         };
         /** SkillMapNode */
         SkillMapNode: {
@@ -2474,11 +2357,10 @@ export interface components {
              * Algorithms
              * @default []
              */
-            algorithms?: components["schemas"]["SkillMapAlgorithmReadiness"][];
+            algorithms?: components["schemas"]["SkillMapGridAlgorithm"][];
             /**
              * @default {
              *       "activeDays": 0,
-             *       "algorithms": [],
              *       "days": [],
              *       "peakDailyCount": 0,
              *       "totalGhostReps": 0,
@@ -2547,6 +2429,11 @@ export interface components {
         /** SlidingWindowLadderResponse */
         SlidingWindowLadderResponse: {
             /**
+             * Id
+             * @default
+             */
+            id?: string;
+            /**
              * Language
              * @default python
              */
@@ -2586,7 +2473,7 @@ export interface components {
          * SubmissionModality
          * @enum {string}
          */
-        SubmissionModality: "total-recall" | "ghost-rep" | "mcq" | "microdrill";
+        SubmissionModality: "total-recall" | "ghost-rep" | "mcq" | "microdrill" | "ladder";
         /** SubmissionSignals */
         SubmissionSignals: {
             /**
@@ -2614,6 +2501,17 @@ export interface components {
          * @enum {string}
          */
         TemplateMode: "algorithm";
+        /** UnpractisedAlgorithm */
+        UnpractisedAlgorithm: {
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -2665,7 +2563,7 @@ export interface operations {
             };
         };
     };
-    list_signals_api_admin_signals_get: {
+    get_settings_api_admin_settings_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2680,16 +2578,84 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SignalAdminCatalog"];
+                    "application/json": components["schemas"]["AdminSettings"];
                 };
             };
         };
     };
-    create_signal_api_admin_signals_post: {
+    update_settings_api_admin_settings__section__put: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                section: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsSection"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_signals_api_admin_signals__modality__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                modality: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignalAdminCatalog"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_signal_api_admin_signals__modality__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                modality: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -2718,11 +2684,13 @@ export interface operations {
             };
         };
     };
-    update_directive_api_admin_signals_directive_mcq_put: {
+    update_directive_api_admin_signals__modality__directive_put: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                modality: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -2751,11 +2719,47 @@ export interface operations {
             };
         };
     };
-    signal_revisions_api_admin_signals_revisions__subject__get: {
+    preview_signal_api_admin_signals__modality__preview_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                modality: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignalPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignalPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    signal_revisions_api_admin_signals__modality__revisions__subject__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                modality: string;
                 subject: string;
             };
             cookie?: never;
@@ -2782,11 +2786,13 @@ export interface operations {
             };
         };
     };
-    signal_samples_api_admin_signals_samples_get: {
+    signal_samples_api_admin_signals__modality__samples_get: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                modality: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2797,16 +2803,27 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["McqSample"][];
+                    "application/json": components["schemas"]["SignalSample"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    try_signal_api_admin_signals_try_post: {
+    try_signal_api_admin_signals__modality__try_post: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                modality: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -2835,11 +2852,12 @@ export interface operations {
             };
         };
     };
-    update_signal_api_admin_signals__key__put: {
+    update_signal_api_admin_signals__modality___key__put: {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                modality: string;
                 key: string;
             };
             cookie?: never;
@@ -2870,11 +2888,12 @@ export interface operations {
             };
         };
     };
-    archive_signal_api_admin_signals__key__archive_post: {
+    archive_signal_api_admin_signals__modality___key__archive_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                modality: string;
                 key: string;
             };
             cookie?: never;
@@ -2905,11 +2924,12 @@ export interface operations {
             };
         };
     };
-    restore_signal_api_admin_signals__key__restore_post: {
+    restore_signal_api_admin_signals__modality___key__restore_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                modality: string;
                 key: string;
             };
             cookie?: never;
@@ -2993,7 +3013,7 @@ export interface operations {
             };
         };
     };
-    get_signal_specs_api_catalog_signal_specs_get: {
+    get_practice_settings_api_catalog_practice_settings_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -3008,7 +3028,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SignalSpecCatalogResponse"];
+                    "application/json": components["schemas"]["PracticeSettings"];
                 };
             };
         };
@@ -3413,11 +3433,10 @@ export interface operations {
             };
         };
     };
-    get_history_day_api_history_day_get: {
+    get_competency_terrain_api_history_competency_get: {
         parameters: {
-            query: {
-                date: string;
-                /** @description IANA timezone the calendar day is in. */
+            query?: {
+                /** @description IANA timezone whose calendar days the terrain uses. */
                 tz?: string;
             };
             header?: never;
@@ -3432,7 +3451,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HistoryDayResponse"];
+                    "application/json": components["schemas"]["CompetencyTerrainResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3446,10 +3465,14 @@ export interface operations {
             };
         };
     };
-    get_signal_history_api_history_signals_get: {
+    get_history_submissions_api_history_submissions_get: {
         parameters: {
             query?: {
-                /** @description IANA timezone for each point's calendar date. */
+                /** @description A calendar day in tz; omit to search the last year. */
+                date?: string | null;
+                /** @description Algorithm slugs to keep (any of them); repeatable. */
+                algorithm?: string[];
+                /** @description IANA timezone the calendar days are in. */
                 tz?: string;
             };
             header?: never;
@@ -3464,7 +3487,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SignalHistoryResponse"];
+                    "application/json": components["schemas"]["HistorySubmissionsResponse"];
                 };
             };
             /** @description Validation Error */

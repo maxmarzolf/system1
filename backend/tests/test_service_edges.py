@@ -7,35 +7,24 @@ import pytest
 from app.core.signals import registry as signal_registry
 from app.core.llm import LlmUnavailableError
 from app.models import AttemptCreate, FlowMicroDrillRequest, InlineCompletionRequest, MultipleChoiceDrillsRequest
-from app.services import drill_generation_service, inline_completion_service, micro_drill_service
-from app.services.evaluators import legacy_recall
+from app.services import app_settings_service, drill_generation_service, inline_completion_service, micro_drill_service
+
+
+@pytest.fixture(autouse=True)
+def generation_settings(monkeypatch):
+    """Generation settings without a database: the defaults, with a recognisable specimen style."""
+    settings = app_settings_service.GenerationSettingsModel(specimen={"typeHints": "include", "comments": "brief"})
+
+    async def generation():
+        return settings
+
+    monkeypatch.setattr(app_settings_service, "generation", generation)
+    return settings
 
 
 def test_unknown_deterministic_implementation() -> None:
     with pytest.raises(KeyError, match="Unknown deterministic implementation"):
         signal_registry.get_implementation("nope")
-
-
-async def test_assessor_evaluator_falls_back_to_semantic_check(monkeypatch) -> None:
-    async def spec(_body):
-        from app.core.signal_catalog import DEFAULT_SIGNAL_SPEC
-
-        return DEFAULT_SIGNAL_SPEC
-
-    async def unavailable(*_args):
-        raise LlmUnavailableError("provider_timeout", "slow", "claude")
-
-    async def semantic(request):
-        return {"sound": True, "llmUsed": False}
-
-    monkeypatch.setattr(legacy_recall, "_resolve_spec", spec)
-    monkeypatch.setattr(legacy_recall.feedback_service, "coach_submission_evaluation", unavailable)
-    monkeypatch.setattr(legacy_recall.evaluation_service, "coach_attempt_evaluation", semantic)
-
-    body = AttemptCreate(cardId="c", mode="main-recall", userAnswer="x", correctAnswer="x")
-    outcome = await legacy_recall.AssessorEvaluator().evaluate(body)
-    assert outcome.successful is True
-    assert outcome.feedback_unavailable == {"code": "provider_timeout", "message": "slow", "provider": "claude"}
 
 
 # ── drill generation service ──
@@ -66,6 +55,16 @@ async def test_multiple_choice_generator_errors_become_feedback_unavailable(monk
     with pytest.raises(LlmUnavailableError) as error:
         await drill_generation_service.coach_multiple_choice_drills(MultipleChoiceDrillsRequest(), None)
     assert error.value.code == "coach_llm_no_response"
+
+
+async def test_generated_cards_use_the_server_specimen_style(skill_map_request) -> None:
+    body = await drill_generation_service._with_server_specimen(skill_map_request.model_copy(update={"specimenTuning": {"typeHints": "omit"}}))
+    assert body.specimenTuning == {"typeHints": "include", "comments": "brief", "variableNames": "readable"}
+
+
+def test_mcq_generation_uses_the_admin_models(generation_settings) -> None:
+    call = drill_generation_service.mcq_generation_call(generation_settings)
+    assert call.models == generation_settings.mcqModels.model_dump() and call.temperature == 0.7
 
 
 # ── inline completion ──

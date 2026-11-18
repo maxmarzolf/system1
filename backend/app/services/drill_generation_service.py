@@ -19,6 +19,7 @@ from app.core.llm import (
     resolve_available_llm_provider as _resolve_available_llm_provider,
 )
 from app.models import MultipleChoiceDrillsRequest, MultipleChoiceDrillsResponse, SkillMapDrillsRequest
+from app.services import app_settings_service
 from app.services.contracts import PersistGeneratedQuestions, PersistSkillMapDrills, SkillMapProgressSummary
 
 import logging
@@ -39,11 +40,18 @@ def _make_skill_map_drill_generator(
     )
 
 
+async def _with_server_specimen(body: SkillMapDrillsRequest) -> SkillMapDrillsRequest:
+    """Generated cards use the specimen style set on /admin, not what the request carries."""
+    generation = await app_settings_service.generation()
+    return body.model_copy(update={"specimenTuning": generation.specimen.model_dump()})
+
+
 async def coach_skill_map_drills(
     body: SkillMapDrillsRequest,
     progress_summary: SkillMapProgressSummary,
     persist_skill_map_drills: PersistSkillMapDrills,
 ):
+    body = await _with_server_specimen(body)
     provider = _resolve_available_llm_provider(body.llmProvider)
     skill_map_drill_generator = _make_skill_map_drill_generator(persist_skill_map_drills)
     return await skill_map_drill_generator.generate_response(
@@ -60,6 +68,7 @@ async def coach_skill_map_drills_stream(
     progress_summary: SkillMapProgressSummary,
     persist_skill_map_drills: PersistSkillMapDrills,
 ) -> AsyncIterator[str]:
+    body = await _with_server_specimen(body)
     provider = _resolve_available_llm_provider(body.llmProvider)
     skill_map_drill_generator = _make_skill_map_drill_generator(persist_skill_map_drills)
     return skill_map_drill_generator.stream_response(
@@ -92,21 +101,18 @@ async def coach_multiple_choice_drills(
         provider_label=provider_label,
         provider_available=_llm_provider_available(provider),
         call_llm_json=_call_llm_json_with,
-        call=mcq_generation_call(),
+        call=mcq_generation_call(await app_settings_service.generation()),
         fallback_providers=fallback_providers,
         persist_generated_questions=persist_generated_questions,
         logger=logger,
     )
 
 
-def mcq_generation_call() -> LlmCall:
-    """MCQ generation's call settings: the generator timeout and the MCQ-only models."""
+def mcq_generation_call(generation: app_settings_service.GenerationSettingsModel) -> LlmCall:
+    """MCQ generation's call settings: the generator timeout and the MCQ models set on /admin
+    (defaulting to the ``COACH_MCQ_*_MODEL`` environment settings)."""
     return LlmCall(
         timeout_seconds=settings.coach_generator_timeout_seconds,
         temperature=0.7,
-        models={
-            "claude": settings.coach_mcq_anthropic_model,
-            "openai": settings.coach_mcq_openai_model,
-            "gemma": settings.coach_mcq_gemma_model,
-        },
+        models=generation.mcqModels.model_dump(),
     )
