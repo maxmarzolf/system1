@@ -4,7 +4,6 @@ import EvolvePage from '@/features/evolve/EvolvePage'
 import JourneyPage from '@/features/journey/JourneyPage'
 import PracticePage from '@/features/practice/PracticePage'
 import TunePage from '@/features/tune/TunePage'
-import PageSweep from './PageSweep'
 import { NavRevealProvider } from './NavRevealProvider'
 import { usePageHotkeys } from './usePageHotkeys'
 
@@ -29,7 +28,6 @@ export default function AppRoutes() {
         <Route path="/coach-tuning" element={<Navigate to="/tune" replace />} />
         <Route path="/submission-tuning" element={<Navigate to="/tune" replace />} />
       </Routes>
-      <PageSweep />
     </NavRevealProvider>
   )
 }

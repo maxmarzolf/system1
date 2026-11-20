@@ -254,34 +254,8 @@
 }
 
 .navbar-pages-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
   flex: 0 0 auto;
-  padding: 0.4rem 0.5rem;
-  border: 1px solid transparent;
-  border-radius: var(--workbench-radius-sm, 0.45rem);
-  background: transparent;
-  color: var(--hc-fg-dim);
-  font-size: 0.65rem;
-  font-weight: 650;
   cursor: pointer;
-}
-
-.navbar-pages-trigger:hover,
-.navbar-pages-trigger:focus-visible,
-.navbar-right-open .navbar-pages-trigger {
-  color: var(--hc-fg);
-  border-color: var(--hc-border-dim);
-}
-
-.navbar-pages-trigger span {
-  display: inline-block;
-  transition: transform 240ms ease;
-}
-
-.navbar-right-open .navbar-pages-trigger span {
-  transform: rotate(180deg);
 }
 
 .sr-only {
@@ -362,57 +336,13 @@
   }
 }
 
-/* Page change: a faint band of accent light crosses the window in the direction of travel. */
-.page-sweep {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.page-sweep::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 45%;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in srgb, var(--hc-accent) 9%, transparent) 50%,
-    transparent 100%
-  );
-  animation: page-sweep-right 520ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
-}
-
-.page-sweep-left::before {
-  animation-name: page-sweep-left;
-}
-
-@keyframes page-sweep-right {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(100vw); }
-}
-
-@keyframes page-sweep-left {
-  from { transform: translateX(100vw); }
-  to { transform: translateX(-100%); }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .navbar-pages,
-  .navbar-right-open .navbar-pages,
-  .navbar-pages-trigger span {
+  .navbar-right-open .navbar-pages {
     transition-duration: 0.01ms;
   }
 
   .navbar-right-route-reveal .navbar-pages {
     animation-duration: 0.01ms;
-  }
-
-  .page-sweep::before {
-    animation-duration: 1ms;
-    opacity: 0;
   }
 }

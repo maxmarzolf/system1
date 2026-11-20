@@ -1,7 +1,6 @@
 import { act, render, screen } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
-import PageSweep from './PageSweep'
 import { navPageIndex } from './navPages'
 import { usePageHotkeys } from './usePageHotkeys'
 
@@ -13,7 +12,6 @@ function Harness() {
       <output data-testid="path">{location.pathname}</output>
       <output data-testid="arrival">{location.state?.startTotalRecall ? 'start' : 'normal'}</output>
       <input aria-label="field" />
-      <PageSweep />
     </>
   )
 }
@@ -40,7 +38,6 @@ describe('navPageIndex', () => {
     expect(navPageIndex('/nowhere')).toBe(-1)
   })
 })
-
 describe('usePageHotkeys', () => {
   it('walks left with Cmd+A and wraps from Practice to Admin', () => {
     renderAt('/tune')
@@ -103,15 +100,5 @@ describe('usePageHotkeys', () => {
     renderAt('/somewhere')
     expect(press('d').defaultPrevented).toBe(false)
     expect(path()).toBe('/somewhere')
-  })
-})
-
-describe('PageSweep', () => {
-  it('uses the key direction, including at the wrap', () => {
-    renderAt('/admin')
-    press('d')
-    expect(screen.getByTestId('page-sweep')).toHaveClass('page-sweep-right')
-    press('a')
-    expect(screen.getByTestId('page-sweep')).toHaveClass('page-sweep-left')
   })
 })

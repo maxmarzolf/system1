@@ -23,12 +23,11 @@ export function usePageHotkeys() {
       if (key !== 'a' && key !== 'd') return
       const index = navPageIndex(pathname)
       if (index < 0) return
-      const direction = key === 'a' ? 'left' : 'right'
-      const offset = direction === 'left' ? -1 : 1
+      const offset = key === 'a' ? -1 : 1
       const target = NAV_PAGES[(index + offset + NAV_PAGES.length) % NAV_PAGES.length]
       event.preventDefault()
       event.stopPropagation()
-      navigate(target.path, { state: { pageSweep: { from: pathname, direction } } })
+      navigate(target.path)
     }
     window.addEventListener('keydown', handler, true)
     return () => window.removeEventListener('keydown', handler, true)

@@ -58,6 +58,8 @@ describe('TopNav', () => {
     const { container } = renderNav('/')
     const right = container.querySelector('.navbar-right') as HTMLDivElement
     const trigger = screen.getByRole('button', { name: /Pages/ })
+    expect(trigger).toHaveClass('navbar-icon-button', 'navbar-icon-button-light-off')
+    expect(trigger.querySelector('svg path')).toHaveAttribute('d', expect.stringContaining('M21 11.25v8.25'))
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
 
     fireEvent.mouseEnter(right)
