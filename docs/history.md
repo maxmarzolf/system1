@@ -96,3 +96,8 @@ Journey's Competency section replaced it: the ranked list with Practise buttons 
 ## 8. Daily work history and day detail merged
 
 The swimlane grid (a row per algorithm, with Week / Month / All-Time ranges) became a contribution-style grid of the last year that only marks whether you practised each day, with algorithm tags under it. The day detail moved into the same card as its **Submission Detail** subsection. `GET /api/history/day` became `GET /api/history/submissions`, which also takes algorithm slugs, so selecting algorithms with no day lists their submissions across the year.
+
+## 9. Signals are relational
+
+`submission.signals` held each answer's whole evaluation as one JSON document while the Admin page managed signal definitions as rows. Now each graded answer has a `submission_evaluation` row and one `submission_signal` row per signal, pointing at the `signal_definition` that produced it, with the version and weight it was graded with, a typed raw value, and its source (Jev, a code check, the answer key, or the retired LLM grader). The correctness question became each modality's `correctness` definition row, replacing `signal_evaluation_directive`. Migration 0016 moved every stored evaluation into the tables with the same split function the app writes with, which round-trips each one exactly; 0017 checked the copy and dropped the JSON. The APIs return the same shapes, so the frontend didn't change.
+

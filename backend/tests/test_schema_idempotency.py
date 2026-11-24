@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import json
 import sys
 import uuid
 from collections.abc import Awaitable, Callable
@@ -18,6 +17,7 @@ from app.core.signals.defaults import MODALITY_DEFAULTS
 from app.core.signals.mcq import DEFAULT_MCQ_DEFINITIONS
 from app.core.taxonomy_catalog import ALGORITHMS
 from app.migrations import runner
+from app.repositories.submission_signal_repository import fetch_evaluations
 
 BASELINE_SQL = runner.MIGRATIONS_DIR / "versions" / "0001_baseline.sql"
 
@@ -143,9 +143,12 @@ async def _startup_twice_and_read() -> tuple[list[asyncpg.Record], list[asyncpg.
         snapshots.append(await _fetch(
             "SELECT modality, count(*) AS signals FROM signal_definition GROUP BY modality ORDER BY modality"
         ))
-    unstamped = (await _fetch(
-        "SELECT COUNT(*) AS n FROM submission WHERE signals ? 'evaluation' AND NOT (signals->'evaluation' ? 'signalSpec')"
-    ))[0]["n"]
+    conn = await asyncpg.connect(settings.database_url)
+    try:
+        ids = [row["submission_id"] for row in await conn.fetch("SELECT submission_id FROM submission_evaluation")]
+        unstamped = sum("signalSpec" not in evaluation for evaluation in (await fetch_evaluations(conn, ids)).values())
+    finally:
+        await conn.close()
     migration_key_columns = (await _fetch(
         "SELECT COUNT(*) AS n FROM information_schema.columns WHERE table_name = 'submission' AND column_name = 'migration_key'"
     ))[0]["n"]
@@ -374,9 +377,7 @@ async def _legacy_database_upgrades(url: str) -> dict[str, object]:
             "signal_spec": ("algorithm", "signal_spec") in columns,
             "migration_key": ("submission", "migration_key") in columns,
             "legacy_taxonomy": {table for table, _column in columns} & {"problem_skill", "problem_technique", "skill", "technique"},
-            "stamped": json.loads(await conn.fetchval(
-                "SELECT signals->'evaluation'->'signalSpec' FROM submission WHERE id = $1", unstamped_id
-            )),
+            "stamped": (await fetch_evaluations(conn, [unstamped_id]))[unstamped_id]["signalSpec"],
             "linked": await conn.fetchval("SELECT problem_slug FROM submission WHERE id = $1", unlinked_id),
             "description": await conn.fetchval(
                 "SELECT description FROM signal_definition WHERE key = $1", default["key"]

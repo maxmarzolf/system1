@@ -42,10 +42,8 @@ async def _snapshot() -> dict:
     conn = await asyncpg.connect(settings.database_url)
     try:
         return {
+            # Every definition, correctness questions included (they are definition rows now).
             "definitions": await conn.fetchval("SELECT COALESCE(jsonb_agg(to_jsonb(s)), '[]') FROM signal_definition s"),
-            "directives": await conn.fetchval(
-                "SELECT COALESCE(jsonb_agg(to_jsonb(d)), '[]') FROM signal_evaluation_directive d"
-            ),
             "revision": await conn.fetchval("SELECT COALESCE(MAX(id), 0) FROM signal_definition_revision"),
         }
     finally:
@@ -56,17 +54,27 @@ async def _restore(snapshot: dict) -> None:
     conn = await asyncpg.connect(settings.database_url)
     try:
         async with conn.transaction():
-            await conn.execute("DELETE FROM signal_definition")
+            # Stored signals point at definitions, so rows are put back in place rather than
+            # deleted and re-inserted; only definitions the test created are removed.
+            columns = [
+                row["column_name"] for row in await conn.fetch(
+                    "SELECT column_name FROM information_schema.columns WHERE table_name = 'signal_definition' "
+                    "AND column_name NOT IN ('id', 'modality', 'key') ORDER BY ordinal_position"
+                )
+            ]
             await conn.execute(
-                "INSERT INTO signal_definition SELECT * FROM jsonb_populate_recordset(NULL::signal_definition, $1::jsonb)",
+                "INSERT INTO signal_definition SELECT * FROM jsonb_populate_recordset(NULL::signal_definition, $1::jsonb) "
+                "ON CONFLICT (modality, key) DO UPDATE SET "
+                + ", ".join(f"{column} = EXCLUDED.{column}" for column in columns),
                 snapshot["definitions"],
             )
-            await conn.execute("DELETE FROM signal_evaluation_directive")
-            await conn.execute(
-                "INSERT INTO signal_evaluation_directive "
-                "SELECT * FROM jsonb_populate_recordset(NULL::signal_evaluation_directive, $1::jsonb)",
-                snapshot["directives"],
+            created = (
+                "SELECT d.id FROM signal_definition d WHERE NOT EXISTS ("
+                "SELECT 1 FROM jsonb_to_recordset($1::jsonb) AS k(modality text, key text) "
+                "WHERE k.modality = d.modality AND k.key = d.key)"
             )
+            await conn.execute(f"DELETE FROM submission_signal WHERE signal_definition_id IN ({created})", snapshot["definitions"])
+            await conn.execute(f"DELETE FROM signal_definition WHERE id IN ({created})", snapshot["definitions"])
             await conn.execute("DELETE FROM signal_definition_revision WHERE id > $1", snapshot["revision"])
     finally:
         await conn.close()

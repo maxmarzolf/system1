@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.config import settings
 from app.main import create_app
+from app.repositories.submission_signal_repository import definition_refs, insert_evaluation
 
 # 03:30 UTC on Jan 15 is 22:30 on Jan 14 in New York.
 CREATED_AT = datetime(2026, 1, 15, 3, 30, tzinfo=timezone.utc)
@@ -35,18 +36,20 @@ async def _insert_submission(problem_id: str) -> int:
             problem_id,
             json.dumps(GENERATION_TRACE),
         )
-        return await conn.fetchval(
-            """
-            INSERT INTO submission (multiple_choice_problem_id, answer, category_tags, correct_answer,
-                                    successful, signals, modality, created_at)
-            VALUES ($1, 'A. While invalid', ARRAY['skill-map', 'sliding-window'],
-                    'A. While invalid', TRUE, $2::jsonb, 'mcq', $3)
-            RETURNING id
-            """,
-            problem_id,
-            json.dumps({"elapsed_ms": 4200, "evaluation": EVALUATION}),
-            CREATED_AT,
-        )
+        async with conn.transaction():
+            submission_id = await conn.fetchval(
+                """
+                INSERT INTO submission (multiple_choice_problem_id, answer, category_tags, correct_answer,
+                                        successful, elapsed_ms, modality, created_at)
+                VALUES ($1, 'A. While invalid', ARRAY['skill-map', 'sliding-window'],
+                        'A. While invalid', TRUE, 4200, 'mcq', $2)
+                RETURNING id
+                """,
+                problem_id,
+                CREATED_AT,
+            )
+            await insert_evaluation(conn, submission_id, EVALUATION, await definition_refs(conn, "mcq"))
+            return submission_id
     finally:
         await conn.close()
 
@@ -61,8 +64,8 @@ async def _insert_recent(problem_id: str) -> tuple[int, int]:
             ids.append(await conn.fetchval(
                 """
                 INSERT INTO submission (multiple_choice_problem_id, answer, category_tags, successful,
-                                        signals, modality, created_at)
-                VALUES ($1, 'x', $2, FALSE, '{"elapsed_ms": 1}'::jsonb, 'mcq', $3)
+                                        elapsed_ms, modality, created_at)
+                VALUES ($1, 'x', $2, FALSE, 1, 'mcq', $3)
                 RETURNING id
                 """,
                 problem_id, tags, datetime.now(timezone.utc) - timedelta(hours=1),

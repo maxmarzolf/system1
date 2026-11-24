@@ -36,6 +36,7 @@ sys.path.insert(0, str(BACKEND))
 import asyncpg  # noqa: E402
 
 from app.config import settings  # noqa: E402
+from app.repositories.submission_signal_repository import fetch_evaluations  # noqa: E402
 from app.core.jev import JevUnavailableError, choice, noul, score  # noqa: E402
 from app.services.jev_gateway import default_jev_gateway  # noqa: E402
 
@@ -187,17 +188,20 @@ async def load_cases(problem_limit: int) -> list[Case]:
             ORDER BY algorithm_slug, display_order NULLS LAST, slug
             """
         )
-        stored = await conn.fetch(
+        rows = await conn.fetch(
             """
-            SELECT id, problem_slug, answer, correct_answer, signals->'evaluation' AS evaluation,
-                   COALESCE(generated_card->>'prompt', generated_card->>'question', '') AS prompt
-            FROM submission
-            WHERE modality = 'total-recall'
-              AND signals->'evaluation'->>'verdict' IN ('sound', 'close', 'needs-work')
-              AND length(answer) > 20 AND length(correct_answer) > 20
-            ORDER BY id
+            SELECT s.id, s.problem_slug, s.answer, s.correct_answer,
+                   COALESCE(s.generated_card->>'prompt', s.generated_card->>'question', '') AS prompt
+            FROM submission s
+            JOIN submission_evaluation e ON e.submission_id = s.id
+            WHERE s.modality = 'total-recall'
+              AND e.verdict IN ('sound', 'close', 'needs-work')
+              AND length(s.answer) > 20 AND length(s.correct_answer) > 20
+            ORDER BY s.id
             """
         )
+        evaluations = await fetch_evaluations(conn, [row["id"] for row in rows])
+        stored = [{**dict(row), "evaluation": evaluations.get(row["id"], {})} for row in rows]
     finally:
         await conn.close()
 

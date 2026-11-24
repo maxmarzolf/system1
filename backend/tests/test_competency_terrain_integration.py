@@ -7,7 +7,6 @@ the rest of the database never reaches the result.
 from __future__ import annotations
 
 import asyncio
-import json
 from datetime import date, datetime, timezone
 
 import asyncpg
@@ -15,6 +14,7 @@ import pytest
 
 from app.config import settings
 from app.repositories import attempts_repository
+from app.repositories.submission_signal_repository import definition_refs, insert_evaluation
 
 TAG = "zz-competency-test"
 ALIAS = "zz-competency-alias"
@@ -22,21 +22,23 @@ OTHER = "zz-competency-other"
 INTERACTION = "competency-terrain-test"
 
 
-def _evaluation(dimensions: dict, modifiers: dict | None = None) -> str:
-    return json.dumps({"elapsed_ms": 1, "evaluation": {"dimensions": dimensions, "modifiers": modifiers or {}}})
+def _evaluation(dimensions: dict, modifiers: dict | None = None) -> dict:
+    return {"dimensions": dimensions, "modifiers": modifiers or {}}
 
 
 def _entry(status: str, score: float) -> dict:
     return {"status": status, "score": score}
 
 
-# (created_at UTC, tags, signals)
+# (created_at UTC, tags, evaluation). Keys are MCQ signal definitions; the evaluations are stored
+# relationally, exactly as the app writes them.
 SUBMISSIONS = [
     # Jan 1 (New York): two answers. Scored entries 100, 60, 80 (+ 50 from the second) → 72.5.
     # The not_applicable and unavailable entries don't count; a modifier does; 140 clamps to 100.
     (datetime(2026, 1, 1, 15, tzinfo=timezone.utc), ["skill-map", TAG],
      _evaluation({"correctness": _entry("pass", 100), "nearMiss": _entry("not_applicable", 0),
-                  "structure": _entry("partial", 60)}, {"speed": _entry("fail", 80), "x": _entry("unavailable", 0)})),
+                  "conceptRecognition": _entry("partial", 60)},
+                 {"completionTime": _entry("fail", 80), "distractorMisconception": _entry("unavailable", 0)})),
     (datetime(2026, 1, 1, 16, tzinfo=timezone.utc), ["skill-map", ALIAS],
      _evaluation({"correctness": _entry("fail", 50)})),
     # 03:30 UTC on Jan 5 is 22:30 on Jan 4 in New York: a new practice day at 100 (clamped from 140).
@@ -51,12 +53,14 @@ SUBMISSIONS = [
 
 
 async def _insert(conn: asyncpg.Connection) -> None:
-    for created_at, tags, signals in SUBMISSIONS:
-        await conn.execute(
-            """INSERT INTO submission (answer, category_tags, signals, created_at, interaction_id, modality)
-               VALUES ('a', $1, $2::jsonb, $3, $4, 'mcq')""",
-            tags, signals, created_at, INTERACTION,
+    definitions = await definition_refs(conn, "mcq")
+    for created_at, tags, evaluation in SUBMISSIONS:
+        submission_id = await conn.fetchval(
+            """INSERT INTO submission (answer, category_tags, elapsed_ms, created_at, interaction_id, modality)
+               VALUES ('a', $1, 1, $2, $3, 'mcq') RETURNING id""",
+            tags, created_at, INTERACTION,
         )
+        await insert_evaluation(conn, submission_id, evaluation, definitions)
 
 
 async def _run(strong_at: float = 70.0) -> tuple[list[dict], list[dict], list[dict]]:
@@ -120,12 +124,12 @@ def test_competency_is_the_daily_signal_average_decayed_on_days_without_practice
     # Free fall after more than 1 day without practice (the threshold passed in).
     assert [by_day[day]["free_fall"] for day in ("2026-01-01", "2026-01-02", "2026-01-03")] == [False, False, True]
 
-    # All-time signal averages: correctness 100, 50, 100 → 83.3; speed 80; structure 60. With
-    # 3 signals and 2 per side they split 2 strongest / 1 weakest, never repeating one.
+    # All-time signal averages: correctness 100, 50, 100 → 83.3; completion time 80; concept
+    # recognition 60. With 3 signals and 2 per side they split 2 strongest / 1 weakest.
     assert [(row["side"], row["key"], row["average"], row["answers"]) for row in signals] == [
         ("strongest", "correctness", 83.3, 3),
-        ("strongest", "speed", 80.0, 1),
-        ("weakest", "structure", 60.0, 1),
+        ("strongest", "completionTime", 80.0, 1),
+        ("weakest", "conceptRecognition", 60.0, 1),
     ]
 
     # Overall: the mean of every practised algorithm's competency that day. Only zz-algo until

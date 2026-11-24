@@ -70,7 +70,6 @@ class SkillMapOverviewAttemptRow(TypedDict):
     created_at: datetime
     modality: str | None
     live_coach_used: bool
-    signals: dict[str, Any] | str | None
 
 
 class CompetencyTerrainRow(TypedDict):

@@ -42,7 +42,7 @@ flowchart LR
   Admin --> Catalog
   Catalog --> DB
   Admin --> AdminAPI
-  AdminAPI <-->|"signals, directives, revisions, settings"| DB
+  AdminAPI <-->|"signals, correctness questions, revisions, settings"| DB
   AdminAPI -->|"Try it (nothing saved)"| Jev
 ```
 
@@ -79,7 +79,7 @@ sequenceDiagram
   P->>P: interpret signals, band verdict, rubric
   P->>LLM: write feedback from the results (if enabled)
   P-->>API: EvaluationOutcome(successful, evaluation, record)
-  API->>DB: INSERT submission (signals.evaluation)
+  API->>DB: INSERT submission + submission_evaluation + submission_signal rows (one transaction)
   API-->>UI: saved row + successful + evaluation
 ```
 
@@ -102,7 +102,7 @@ flowchart TD
   A["Answer<br/>stored item id + answer + elapsedMs"] --> B["Context builder<br/>state, exact check, overrides"]
   A --> C["algorithm_for_tags<br/>tags → algorithm slug<br/>(heap-priority-queue → heap, …)"]
   C --> D["load_spec(modality, slug)"]
-  D --> D1[("signal_evaluation_directive<br/>correctness question + source")]
+  D --> D1[("signal_definition role=correctness<br/>correctness question + source")]
   D --> D2[("signal_definition<br/>active · general + this algorithm")]
   D1 --> E["ModalitySignalSpec<br/>plugins + weights, hashed snapshot"]
   D2 --> E
@@ -111,7 +111,7 @@ flowchart TD
   E --> G
   G --> H{"decide"}
   H -->|"override (empty / syntax / no return)"| H1["incorrect"]
-  H -->|"deterministic directive"| H2["exact check"]
+  H -->|"deterministic correctness source"| H2["exact check"]
   H -->|"Jev answered"| H3["Jev label"]
   H -->|"Jev unavailable"| H4["exact check, flagged"]
   H1 & H2 & H3 & H4 --> I["Pass 2 (only if needed)<br/>needs_correctness signals"]
@@ -120,13 +120,13 @@ flowchart TD
   V --> K["Rubric: dimensions, modifiers,<br/>weighted score, primary failure"]
   K --> F["Feedback LLM (optional)<br/>never changes the grade"]
   F --> L["evaluation<br/>signalResults · correctness · provenance<br/>jevTrace · llmTrace · signalSpecSnapshot"]
-  L --> M[("submission.signals.evaluation")]
+  L --> M[("submission_evaluation<br/>+ submission_signal per signal")]
 ```
 
 Key points:
 
 - **One question per signal.** Each Jev signal becomes one Choice, Score or Noul question. All of them go out in a single `POST /v1/systemone` call.
-- **Correctness is a Jev question too**, unless the directive says the modality's own check decides (Ghost). For MCQ the answer key is still checked: disagreement is flagged `answer_key_disagreement`. Low confidence is flagged `low_correctness_confidence`.
+- **Correctness is a Jev question too**, unless the correctness definition says the modality's own check decides (Ghost). For MCQ the answer key is still checked: disagreement is flagged `answer_key_disagreement`. Low confidence is flagged `low_correctness_confidence`.
 - **Code is never run.** Empty, unparsable or return-less code is incorrect whatever Jev says (`deterministic_override`).
 - **A second call happens only when needed.** Signals marked `needs_correctness` are asked after correctness is known, with `answeredCorrectly` added to the state.
 - **Deterministic signals** (for example `completionTime`, `syntaxValid`) are computed locally and never sent to Jev.
@@ -170,7 +170,7 @@ sequenceDiagram
   participant Jev
 
   Admin->>API: GET (catalog: directive, signals, algorithms, implementations)
-  API->>DB: read definitions + directive
+  API->>DB: read definitions (correctness row = directive)
   API-->>Admin: signals with Jev question preview and weight share
 
   Admin->>API: POST "try" (draft, stored item id, answer)

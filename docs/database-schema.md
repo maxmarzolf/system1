@@ -24,7 +24,9 @@ erDiagram
     algorithm |o--o{ multiple_choice_problem : "algorithm_slug"
     algorithm |o..o{ signal_definition : "scope (or 'general')"
     signal_definition ||..o{ signal_definition_revision : "subject = key"
-    signal_evaluation_directive ||..o{ signal_definition_revision : "subject = directive:<modality>"
+    submission ||--o| submission_evaluation : "submission_id"
+    submission ||--o{ submission_signal : "submission_id"
+    signal_definition ||--o{ submission_signal : "signal_definition_id"
     generated_exercise ||--o{ submission : "exercise_id"
     algorithm ||--o{ generated_exercise : "algorithm_slug"
 
@@ -79,13 +81,16 @@ erDiagram
         text answer
         text correct_answer
         bool successful
-        jsonb signals "elapsed_ms, evaluation, flow, modality"
+        int elapsed_ms
+        jsonb flow_context "flow bookkeeping (anchorCardId…), nullable"
+        jsonb modality_context "modality facts (kind, line counts…)"
         text_arr category_tags
         timestamptz created_at
     }
     signal_definition {
+        bigserial id UK "what submission_signal points at"
         varchar modality PK "mcq | total-recall | ghost-rep | microdrill | ladder"
-        varchar key PK "unique per modality"
+        varchar key PK "unique per modality; 'correctness' is the correctness question"
         varchar scope "general or algorithm slug"
         text label
         text description "admin only, never sent to Jev"
@@ -95,7 +100,7 @@ erDiagram
         text instructions
         json criteria "JSON, not JSONB: keeps label order"
         jsonb score_map
-        varchar role "dimension | modifier | diagnostic"
+        varchar role "dimension | modifier | diagnostic | correctness"
         varchar axis
         varchar applies_when "always | correct | incorrect"
         bool needs_correctness
@@ -103,13 +108,40 @@ erDiagram
         varchar status "active | archived"
         int version "optimistic lock"
     }
-    signal_evaluation_directive {
-        varchar modality PK
-        text instructions
-        jsonb criteria "labels fixed to 1 / 0"
-        float correctness_weight
-        varchar correctness_source "jev | deterministic"
-        int version
+    submission_evaluation {
+        bigint submission_id PK, FK
+        varchar verdict "sound | close | needs-work"
+        float overall_score
+        jsonb scores "the other score axes"
+        varchar correctness_source "jev | deterministic-…"
+        varchar correctness_label "1 | 0"
+        float correctness_confidence
+        bool answer_key_agreement
+        text_arr flags
+        varchar engine
+        varchar model
+        varchar spec_algorithm
+        int spec_version
+        varchar spec_hash
+        jsonb feedback "documents: feedback, jev_trace, llm_trace, spec_snapshot"
+        jsonb extra "anything the columns can't hold, verbatim"
+    }
+    submission_signal {
+        bigserial id PK
+        bigint submission_id FK
+        bigint signal_definition_id FK
+        int definition_version "as graded"
+        varchar role "as graded"
+        float weight "as graded"
+        varchar status "scored | not_applicable | unavailable"
+        float score "0-100, null unless scored"
+        varchar value_kind "null | text | number | integer | boolean"
+        text value_text
+        float value_number
+        bool value_boolean
+        float confidence
+        varchar source "jev | deterministic | llm-grader | answer-key"
+        varchar model
     }
     signal_definition_revision {
         bigserial id PK
@@ -165,11 +197,10 @@ erDiagram
 
 - `modality` picks the context builder and signal spec the grading pipeline uses (see [grading.md](grading.md)).
 - `problem_slug` links recall-style answers to a catalog problem. `multiple_choice_problem_id` links MCQ answers to their question. `exercise_id` links microdrill and Ladder answers to their stored exercise.
-- `signals` is a JSONB object, and a CHECK constraint allows only these keys:
-  - `elapsed_ms` (required, a number)
-  - `evaluation`: the canonical evaluation, the same shape for every modality: verdict, scores, `signalResults`, `correctness` (who decided, overrides), `provenance` (flags, model), `jevTrace`, `llmTrace`, optional `feedback` and a `signalSpecSnapshot`, so a stored grade can always be explained even after the signals change. Evaluations stored before the pipeline (LLM-assessed recall) have the same top-level shape, but their scores were produced differently.
-  - `flow`: flow-mode bookkeeping (`anchorCardId`, …)
-  - `modality`: modality-specific extras
+- `elapsed_ms`, `flow_context` (flow bookkeeping: `anchorCardId`, run, stage…) and `modality_context` (modality facts: line counts, the chosen option…) describe how the answer was given.
+- **`submission_evaluation`** (one row per graded submission) holds the evaluation's facts as columns: verdict, overall score (other score axes in `scores`), who decided correctness and with what label and confidence, answer-key agreement, flags, engine and model, and the spec reference. Feedback, the Jev and LLM traces and the spec snapshot are JSONB documents, read whole. `extra` keeps anything the columns can't express, verbatim, so nothing an old evaluation stored is lost.
+- **`submission_signal`** (one row per signal per graded submission) points at its `signal_definition` and records the `definition_version`, `role` and `weight` it was graded with; its `status` (scored, not applicable or unavailable); its 0–100 `score`; the raw answer in one typed column (`value_text`, `value_number` or `value_boolean`, named by `value_kind`; a check allows at most one); `confidence`, `note` and `evidence`; and who produced it (`source`: `jev`, `deterministic`, `llm-grader` for the retired LLM grader, or `answer-key`) and `model`. The correctness result is a row too (its definition is the modality's `correctness` row). `grade`, `rubric_placement`, `in_results`, `position` and `extra` let the evaluation JSON be rebuilt exactly.
+- Readers never assemble the JSON themselves: `submission_signal_repository.fetch_evaluations` / `attach_signals` rebuild it with `contracts/evaluation_rows.join_evaluation`, and writes split it with `split_evaluation`. Evaluations stored before the pipeline (LLM-assessed recall) are rows like any other, with `source = 'llm-grader'`.
 - The Journey page reads from this table. The Journey day view groups rows by date in the viewer's time zone.
 
 ## Signal registry and settings
@@ -180,8 +211,9 @@ These tables make grading data-driven for every modality. See [backend-architect
   - `scope` is `general` (applies to every item of the modality) or an algorithm slug (applies only to that algorithm's items). It is checked in code, not by a foreign key.
   - Signals are archived, never deleted: past evaluations refer to their keys.
   - Every write must send the current `version`. A stale version is a 409.
-- **`signal_evaluation_directive`:** the correctness question for a modality. Its wording, weight and `correctness_source` (`jev`, or `deterministic` to let the modality's exact check decide) are editable; its labels are always `"1"` and `"0"`.
-- **`signal_definition_revision`:** an append-only log of every seed, create, update, archive and restore, with before and after snapshots. `subject` is `<modality>:<key>` for a signal, or `directive:<modality>` for the correctness question.
+  - Each modality's **correctness question** is its `correctness` row (role `correctness`): wording, weight and `source` (`jev`, or `deterministic` to let the modality's exact check decide) are editable through Admin's correctness editor; its labels are always `"1"` and `"0"`. It never appears in the signal lists.
+  - Signal keys found in old evaluations with no definition (the retired LLM grader's `syntax`) have **archived** definitions, so every stored signal points at one.
+- **`signal_definition_revision`:** an append-only log of every seed, create, update, archive and restore, with before and after snapshots. `subject` is `<modality>:<key>`, so the correctness question's history is `<modality>:correctness`.
 
 - **`app_setting`:** one JSON document per settings section (`grading`, `generation`, `practice`), validated by `services/app_settings_service.py` and versioned like signals (409 if stale). A missing section uses the defaults.
 
@@ -236,3 +268,8 @@ The unified grading pipeline:
 - **`0013`** adds `app_setting`, and drops `algorithm.signal_spec` (recall signals are `signal_definition` rows now).
 - **`0014`** removes the seeded `problem_skill`, `problem_technique`, `skill`, and `technique` tables. Core problems keep their algorithm family and general tags; no submission referenced those tables.
 - **`0015`** backfills legacy MCQ, exercise, and ghost rep modalities, then removes `submission.question_type`, `template_mode`, and `support_layer` with their indexes. Daily-work reads use the `skill-map` tag; practice history uses card IDs, flow anchors, and tags.
+
+Relational signals:
+
+- **`0016`** adds `signal_definition.id` and the `correctness` role, turns each `signal_evaluation_directive` row into a `correctness` definition (same version; history moves to `<modality>:correctness`), archives definitions for orphan keys in old evaluations, creates `submission_evaluation` and `submission_signal`, adds `submission.elapsed_ms`, `flow_context` and `modality_context`, and backfills all of them by splitting each stored evaluation with the app's own `split_evaluation`.
+- **`0017`** checks, from the JSON itself, that every evaluation has its row and every signal its row (it stops the upgrade if not), then drops `submission.signals` and `signal_evaluation_directive`.

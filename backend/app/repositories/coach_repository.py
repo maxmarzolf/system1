@@ -12,6 +12,7 @@ from app.repositories.multiple_choice_repository import (
     StoredMultipleChoiceProblem,
     stored_multiple_choice_problem,
 )
+from app.repositories.submission_signal_repository import attach_signals
 from app.repositories.types import PracticeHistoryEntry, PracticeHistoryRow
 
 _PRACTICE_HISTORY_SELECT = """
@@ -25,7 +26,10 @@ _PRACTICE_HISTORY_SELECT = """
         a.correct_answer AS "correctAnswer",
         a.answer AS "userAnswer",
         a.successful,
-        a.signals,
+        a.id,
+        a.elapsed_ms,
+        a.flow_context,
+        a.modality_context,
         a.modality,
         a.live_coach_used AS "liveCoachUsed",
         a.category_tags AS "categoryTags",
@@ -46,7 +50,7 @@ async def fetch_practice_history_rows(
             f"""
             {_PRACTICE_HISTORY_SELECT}
             WHERE COALESCE(a.generated_card_id, a.multiple_choice_problem_id, a.exercise_id) = $1
-               OR (a.signals ? 'flow' AND a.signals->'flow'->>'anchorCardId' = $1)
+               OR a.flow_context->>'anchorCardId' = $1
                OR a.category_tags && $2::text[]
             ORDER BY a.created_at DESC
             LIMIT $3
@@ -55,8 +59,10 @@ async def fetch_practice_history_rows(
             skill_tags,
             limit,
         )
+        # ``signals`` (elapsed time, evaluation, flow, modality) is put back together from the new tables.
+        records = await attach_signals(conn, [dict(row) for row in rows])
 
-    return [cast(PracticeHistoryRow, dict(row)) for row in rows]
+    return [cast(PracticeHistoryRow, record) for record in records]
 
 
 def _parse_json_field(value: Any, default_value: Any) -> Any:

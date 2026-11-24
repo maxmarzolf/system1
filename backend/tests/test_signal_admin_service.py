@@ -215,7 +215,7 @@ async def test_revision_subjects_are_scoped_to_the_modality(repo, monkeypatch) -
     monkeypatch.setattr(service.signal_definition_repository, "fetch_revisions", revisions)
     await service.signal_revisions("microdrill", "nearMiss")
     await service.signal_revisions("microdrill", "directive")
-    assert subjects == ["microdrill:nearMiss", "directive:microdrill"]
+    assert subjects == ["microdrill:nearMiss", "microdrill:correctness"]  # the page asks for "directive"
 
 
 def test_signal_view_without_a_known_implementation() -> None:

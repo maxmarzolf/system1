@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime
 from typing import Any, cast
 
 from app.contracts.catalog_ids import problem_slug_candidates
 from app.repositories.base import acquire_connection
+from app.repositories.submission_signal_repository import attach_signals, definition_refs, insert_evaluation
 from app.repositories.types import (
     AlgorithmRow,
     CompetencyOverallRow,
@@ -26,7 +28,10 @@ async def insert_submission_attempt_row(
     user_answer: str,
     mode: str,
     successful: bool,
-    signals_json: str,
+    elapsed_ms: int,
+    evaluation: dict[str, Any] | None,
+    flow_context: dict[str, Any] | None,
+    modality_context: dict[str, Any] | None,
     interaction_id: str,
     generated_card_id: str | None,
     generated_card_json: str | None,
@@ -37,7 +42,9 @@ async def insert_submission_attempt_row(
     problem_slug: str | None = None,
     exercise_id: str | None = None,
 ) -> SubmissionInsertResult | None:
-    """Insert a submission. MCQ rows reference the stored problem the evaluator graded against."""
+    """Insert a submission with its evaluation (``submission_evaluation``) and one ``submission_signal``
+    row per signal, in one transaction. MCQ rows reference the stored problem the evaluator graded
+    against."""
     del card_id, card_title, mode, question
 
     normalized_correct_answer = str(correct_answer or "")
@@ -59,10 +66,10 @@ async def insert_submission_attempt_row(
             """
             INSERT INTO submission
                 (session_id, multiple_choice_problem_id, answer, category_tags,
-                 correct_answer, successful, signals, interaction_id,
+                 correct_answer, successful, elapsed_ms, flow_context, modality_context, interaction_id,
                  generated_card_id, problem_slug, generated_card,
                  live_coach_used, modality, created_at, exercise_id)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8::text::jsonb,$9::text::jsonb,$10,$11,$12,$13,$14,$15,$16,$17)
             RETURNING id
             """,
             session_id or "0000",
@@ -71,7 +78,9 @@ async def insert_submission_attempt_row(
             category_tags,
             normalized_correct_answer,
             successful,
-            signals_json,
+            max(int(elapsed_ms or 0), 0),
+            json.dumps(flow_context) if flow_context else None,
+            json.dumps(modality_context) if modality_context is not None else None,
             interaction_id,
             generated_card_id,
             problem_slug,
@@ -83,6 +92,8 @@ async def insert_submission_attempt_row(
         )
         if not row:
             return None
+        if evaluation:
+            await insert_evaluation(conn, int(row["id"]), evaluation, await definition_refs(conn, modality))
 
     return cast(SubmissionInsertResult, dict(row)) if row else None
 
@@ -113,8 +124,7 @@ async def fetch_skill_map_overview_attempt_rows() -> list[SkillMapOverviewAttemp
                 a.successful,
                 a.created_at,
                 a.modality,
-                a.live_coach_used,
-                a.signals
+                a.live_coach_used
             FROM submission a
             LEFT JOIN multiple_choice_problem q ON q.id = a.multiple_choice_problem_id
             WHERE a.category_tags @> ARRAY['skill-map']::text[]
@@ -135,27 +145,25 @@ attributed AS (
     SELECT DISTINCT ON (a.id)
         a.id,
         m.slug AS algorithm,
-        (a.created_at AT TIME ZONE $1)::date AS day,
-        a.signals->'evaluation' AS evaluation
+        (a.created_at AT TIME ZONE $1)::date AS day
     FROM submission a
     CROSS JOIN LATERAL unnest(a.category_tags) WITH ORDINALITY AS t(tag, position)
     JOIN tag_algorithm m ON m.tag = lower(t.tag)
     WHERE a.category_tags @> ARRAY['skill-map']::text[]
     ORDER BY a.id, t.position
 ),
--- Every scored rubric entry (dimensions and modifiers), clamped to 0-100.
+-- Every graded rubric signal (dimensions and modifiers, correctness included), clamped to 0-100.
+-- A rubric entry the columns couldn't hold exactly is kept in extra->'rubric'; prefer it.
 entries AS (
-    SELECT x.id, x.algorithm, x.day, e.key, COALESCE(NULLIF(e.value->>'label', ''), e.key) AS label,
-           LEAST(GREATEST((e.value->>'score')::float, 0), 100) AS score
+    SELECT x.id, x.algorithm, x.day, d.key,
+           COALESCE(NULLIF(s.extra->'rubric'->>'label', ''), NULLIF(s.label, ''), d.key) AS label,
+           LEAST(GREATEST(COALESCE((s.extra->'rubric'->>'score')::float, s.score), 0), 100) AS score
     FROM attributed x
-    CROSS JOIN LATERAL (
-        SELECT key, value FROM jsonb_each(
-            CASE WHEN jsonb_typeof(x.evaluation->'dimensions') = 'object' THEN x.evaluation->'dimensions' ELSE '{{}}'::jsonb END)
-        UNION ALL
-        SELECT key, value FROM jsonb_each(
-            CASE WHEN jsonb_typeof(x.evaluation->'modifiers') = 'object' THEN x.evaluation->'modifiers' ELSE '{{}}'::jsonb END)
-    ) e
-    WHERE e.value->>'status' IN ('pass', 'partial', 'fail') AND jsonb_typeof(e.value->'score') = 'number'
+    JOIN submission_signal s ON s.submission_id = x.id
+    JOIN signal_definition d ON d.id = s.signal_definition_id
+    WHERE s.rubric_placement IS NOT NULL
+      AND COALESCE(s.extra->'rubric'->>'status', s.grade) IN ('pass', 'partial', 'fail')
+      AND COALESCE((s.extra->'rubric'->>'score')::float, s.score) IS NOT NULL
 )
 """
 
@@ -343,7 +351,9 @@ async def fetch_history_day_rows(day_start: datetime, day_end: datetime) -> list
                 a.successful,
                 a.answer,
                 a.correct_answer,
-                a.signals,
+                a.elapsed_ms,
+                a.flow_context,
+                a.modality_context,
                 a.multiple_choice_problem_id,
                 a.problem_slug,
                 COALESCE(NULLIF(a.generated_card->>'title', ''), a.generated_card_id, a.multiple_choice_problem_id) AS title,
@@ -360,4 +370,5 @@ async def fetch_history_day_rows(day_start: datetime, day_end: datetime) -> list
             day_start,
             day_end,
         )
-    return [dict(row) for row in rows]
+        # Each row gets its ``signals`` (elapsed time, evaluation, flow, modality) from the new tables.
+        return await attach_signals(conn, [dict(row) for row in rows])

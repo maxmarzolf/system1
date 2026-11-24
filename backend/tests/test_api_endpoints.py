@@ -143,11 +143,14 @@ def fake_acquire(connection):
 
 
 async def test_admin_repository_counts_and_clears(monkeypatch) -> None:
-    connection = FakeConnection({"submission": 4, "generated_problems": None})
+    connection = FakeConnection({"submission": 4, "submission_evaluation": 3, "submission_signal": 9, "generated_problems": None})
     monkeypatch.setattr(admin_repository, "acquire_connection", fake_acquire(connection))
-    assert await admin_repository.count_practice_history_rows() == {"submission": 4, "generated_problems": 0}
+    assert await admin_repository.count_practice_history_rows() == {
+        "submission": 4, "submission_evaluation": 3, "submission_signal": 9, "generated_problems": 0,
+    }
     await admin_repository.truncate_practice_history_tables()
-    assert connection.executed[0].startswith("TRUNCATE TABLE submission")
+    # Evaluation and signal rows are cleared with their submissions.
+    assert connection.executed[0] == "TRUNCATE TABLE submission_signal, submission_evaluation, submission RESTART IDENTITY"
     assert "generated-llm" in connection.executed[1]
 
     monkeypatch.setattr(admin_repository, "acquire_connection", fake_acquire(FakeConnection(None)))

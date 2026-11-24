@@ -128,13 +128,13 @@ Days are computed in the viewer's time zone (`resolve_timezone`, falling back to
 
 ### Reset practice history: `POST /api/admin/reset-practice-history`
 
-`admin_service.reset_practice_history` checks `ADMIN_RESET_TOKEN`, then `admin_repository` truncates `submission` and deletes generated problems.
+`admin_service.reset_practice_history` checks `ADMIN_RESET_TOKEN`, then `admin_repository` truncates `submission` with its `submission_evaluation` and `submission_signal` rows, and deletes generated problems.
 
 ## The stored evaluation
 
-`submission.signals` allows four top-level keys (a CHECK constraint enforces this): `elapsed_ms`, `evaluation`, `flow` and `modality`.
+A graded submission is stored relationally: `submission` (with `elapsed_ms`, `flow_context` and `modality_context`), one `submission_evaluation` row, and one `submission_signal` row per signal pointing at its `signal_definition` (see [database-schema.md](database-schema.md#practice-records)). `contracts/evaluation_rows.py` splits the evaluation JSON into those rows (`split_evaluation`) and joins them back exactly (`join_evaluation`); `repositories/submission_signal_repository.py` writes them in the submission's transaction and reads them back (`fetch_evaluations`, `attach_signals`), so services still see `row["signals"]` with `elapsed_ms`, `evaluation`, `flow` and `modality`.
 
-`evaluation` holds:
+The evaluation holds:
 
 - the versioned verdict and a `signalSpec` reference;
 - score, primary failure, dimensions, modifiers, recommended action, coaching feedback and provenance.

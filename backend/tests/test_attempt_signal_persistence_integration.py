@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from uuid import uuid4
 
 import asyncpg
@@ -9,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
+from app.repositories.submission_signal_repository import fetch_evaluations
 from app.core.jev import JevResponse
 from app.main import create_app
 from app.models import SubmissionModality
@@ -78,7 +78,8 @@ async def _seed_problem(question_id: str) -> None:
         await conn.close()
 
 
-async def _read_and_cleanup(attempt_id: int, question_id: str) -> asyncpg.Record:
+async def _read_and_cleanup(attempt_id: int, question_id: str) -> dict:
+    """The stored submission, its rebuilt evaluation, and its signal rows (deleted afterwards)."""
     conn = await asyncpg.connect(settings.database_url)
     try:
         submission = await conn.fetchrow(
@@ -91,19 +92,33 @@ async def _read_and_cleanup(attempt_id: int, question_id: str) -> asyncpg.Record
                 successful,
                 answer,
                 correct_answer,
-                signals->'modality'->>'kind' AS modality_signal_kind,
-                (signals->>'elapsed_ms')::int AS elapsed_ms,
-                signals->'evaluation' AS evaluation,
-                signals->'evaluation'->'signalSpec'->>'algorithm' AS signal_spec_algorithm
-            FROM submission
-            WHERE id = $1
+                modality_context->>'kind' AS modality_signal_kind,
+                elapsed_ms,
+                e.spec_algorithm AS signal_spec_algorithm,
+                e.engine, e.model, e.correctness_source, e.correctness_label
+            FROM submission s
+            JOIN submission_evaluation e ON e.submission_id = s.id
+            WHERE s.id = $1
             """,
             attempt_id,
         )
+        signals = await conn.fetch(
+            """
+            SELECT d.key, d.role AS definition_role, s.signal_definition_id, d.id AS definition_id,
+                   s.definition_version, d.version AS current_version, s.role, s.status, s.score, s.source, s.model,
+                   s.value_kind, s.value_text, s.weight
+            FROM submission_signal s JOIN signal_definition d ON d.id = s.signal_definition_id
+            WHERE s.submission_id = $1 ORDER BY s.position
+            """,
+            attempt_id,
+        )
+        evaluation = (await fetch_evaluations(conn, [attempt_id]))[attempt_id]
         await conn.execute("DELETE FROM submission WHERE id = $1", attempt_id)
         await conn.execute("DELETE FROM multiple_choice_problem WHERE id = $1", question_id)
+        # Deleting the submission deletes its evaluation and signal rows.
+        assert await conn.fetchval("SELECT COUNT(*) FROM submission_signal WHERE submission_id = $1", attempt_id) == 0
         assert submission is not None
-        return submission
+        return {**dict(submission), "evaluation": evaluation, "signals": [dict(row) for row in signals]}
     finally:
         await conn.close()
 
@@ -176,13 +191,28 @@ def test_mcq_attempt_is_graded_against_the_stored_answer_key(fake_jev, seeded_pr
     assert submission["answer"] == "B. Current value"
     assert submission["correct_answer"] == "C. Best prefix result"
     assert submission["signal_spec_algorithm"] == "dynamic-programming"
-    evaluation = json.loads(submission["evaluation"])
+    evaluation = submission["evaluation"]
     assert evaluation["provenance"]["engine"] == "jev"
     assert evaluation["provenance"]["model"] == "jev-itest"
     assert evaluation["correctness"]["answerKeyAgreement"] is True
     assert evaluation["signalSpec"]["modality"] == "mcq"
     assert evaluation["signalSpecSnapshot"]["signals"]
     assert evaluation["signalResults"]["nearMiss"]["status"] == "scored"
+
+    # Relationally: the evaluation's facts are columns, and each signal is a row pointing at its
+    # definition, with the version it was graded at, its source and model.
+    assert (submission["engine"], submission["model"], submission["correctness_source"]) == ("jev", "jev-itest", "jev")
+    rows = {row["key"]: row for row in submission["signals"]}
+    assert set(rows) >= {"correctness", "nearMiss", "completionTime"}
+    assert all(row["signal_definition_id"] == row["definition_id"] for row in rows.values())
+    assert all(row["definition_version"] == row["current_version"] for row in rows.values())
+    correctness = rows["correctness"]
+    assert (correctness["role"], correctness["definition_role"], correctness["source"]) == ("correctness", "correctness", "jev")
+    assert correctness["model"] == "jev-itest" and correctness["score"] == 0.0
+    assert (correctness["value_kind"], correctness["value_text"]) == ("text", submission["correctness_label"])
+    assert rows["nearMiss"]["source"] == "jev" and rows["nearMiss"]["model"] == "jev-itest"
+    assert rows["completionTime"]["source"] == "deterministic" and rows["completionTime"]["model"] is None
+    assert rows["completionTime"]["role"] == "modifier"
 
 
 @pytest.mark.integration

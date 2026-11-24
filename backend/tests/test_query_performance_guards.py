@@ -31,7 +31,7 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
             category_tags,
             correct_answer,
             successful,
-            signals,
+            elapsed_ms,
             interaction_id,
             generated_card_id,
             generated_card,
@@ -47,14 +47,7 @@ async def _seed_performance_fixture(conn: asyncpg.Connection) -> None:
             ARRAY['skill-map', CASE WHEN s % 2 = 0 THEN 'two-pointers' ELSE 'binary-search' END],
             'correct',
             s % 5 = 0,
-            jsonb_build_object(
-                'elapsed_ms', 1000 + s,
-                'evaluation', jsonb_build_object(
-                    'version', 1,
-                    'verdict', CASE WHEN s % 5 = 0 THEN 'sound' ELSE 'needs-work' END,
-                    'feedback', '{}'::jsonb
-                )
-            ),
+            1000 + s,
             'fx-perf-interaction-' || s::text,
             CASE WHEN s % 5 = 0 THEN 'fx-perf-card-target' ELSE 'fx-perf-card-' || (s % 17)::text END,
             jsonb_build_object('id', 'fx-perf-card-' || s::text, 'title', 'Perf Card ' || s::text),
@@ -132,7 +125,7 @@ def test_performance_guard_required_indexes_exist() -> None:
             assert "idx_submission_card_id_created_at" in submission_indexes
             assert "idx_submission_category_tags" in submission_indexes
             assert "idx_submission_created_at" in submission_indexes
-            assert "idx_submission_flow_anchor_created_at" in submission_indexes
+            assert "idx_submission_flow_context_anchor_created_at" in submission_indexes
         finally:
             await conn.close()
 

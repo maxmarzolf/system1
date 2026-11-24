@@ -41,7 +41,7 @@ flagged `reference_from_client`.
      reference;
    - `overrides`: hard failures (see [Overrides](#hard-overrides));
    - `flags`.
-2. **Spec** (`signal_registry_service.load_spec`): loads the modality's correctness directive and
+2. **Spec** (`signal_registry_service.load_spec`): loads the modality's correctness directive (its `correctness` definition row) and
    its active signals. These are the *general* signals plus those scoped to the item's algorithm.
    See [Signals](#signals).
 3. **Jev pass 1** (`jev.py`): one call asking the correctness question, plus every Jev signal
@@ -138,8 +138,16 @@ keyed by `(modality, key)`:
 - **Weight**, **applies to** (correct, incorrect or both), and **needs correctness** (asked in
   pass 2).
 
-Each modality also has one **directive** (a `signal_evaluation_directive` row): the correctness
-question, its criteria, its weight, and its source (`jev` or `deterministic`).
+Each modality also has one **correctness question**: its `correctness` definition row (role
+`correctness`), with the question, its criteria, its weight, and its source (`jev` or
+`deterministic`). Admin edits it in the correctness editor; it never shows as an ordinary signal.
+
+**Where results are stored.** Each graded answer gets a `submission_evaluation` row (verdict,
+scores, who decided correctness, model, flags; feedback and traces as documents) and one
+`submission_signal` row per signal, correctness included. A signal row points at its definition
+and records the version and weight it was graded with, its status, its 0–100 score, its raw value
+(text, number or boolean) and `source`: `jev`, `deterministic` (a code check), `answer-key` (an MCQ
+graded by its key) or `llm-grader` (answers graded by the retired LLM grader before the pipeline).
 
 Shared keys mean the same thing in every modality:
 - `nearMiss`: how close a wrong answer was;

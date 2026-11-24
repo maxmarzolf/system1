@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from datetime import datetime, timedelta, timezone
 
 from app.contracts.evaluation import Evaluation
@@ -35,11 +34,11 @@ def test_create_attempt_forwards_multiple_choice_metadata(monkeypatch) -> None:
     assert result == {"saved": True, "attemptId": 91}
     assert captured["modality"] == "mcq"
     assert "target_source" not in captured
-    assert json.loads(str(captured["signals_json"])) == {
-        "elapsed_ms": 875,
-        "evaluation": evaluation.to_stored(),
-        "modality": {"kind": "mcq"},
-    }
+    # The evaluation is written relationally beside the submission; no flow was sent.
+    assert captured["elapsed_ms"] == 875
+    assert captured["evaluation"] == evaluation.to_stored()
+    assert captured["flow_context"] is None
+    assert captured["modality_context"] == {"kind": "mcq"}
 
 
 def test_create_attempt_normalizes_legacy_activity_format(monkeypatch) -> None:
@@ -96,21 +95,17 @@ def test_create_attempt_persists_flow_and_modality_signals(monkeypatch) -> None:
     assert result == {"saved": True, "attemptId": 93}
     assert captured["session_id"] == "flow-1"
     assert captured["modality"] == "ghost-rep"
-    assert json.loads(str(captured["signals_json"])) == {
-        "elapsed_ms": 1500,
-        "evaluation": Evaluation(verdict="sound").to_stored(),
-        "flow": {
-            "runId": "flow-1",
-            "anchorCardId": "flow-card",
-            "stage": "ghost",
-            "step": 1,
-            "cycle": 1,
-        },
-        "modality": {
-            "kind": "ghost-rep",
-            "missedLineCount": 2,
-        },
+    assert captured["elapsed_ms"] == 1500
+    assert captured["evaluation"] == Evaluation(verdict="sound").to_stored()
+    assert captured["flow_context"] == {
+        "runId": "flow-1",
+        "anchorCardId": "flow-card",
+        "stage": "ghost",
+        "step": 1,
+        "cycle": 1,
     }
+    # The server sets the kind; the client's is ignored.
+    assert captured["modality_context"] == {"kind": "ghost-rep", "missedLineCount": 2}
 
 
 def test_create_attempt_prefers_explicit_session_id_over_flow_signal(monkeypatch) -> None:

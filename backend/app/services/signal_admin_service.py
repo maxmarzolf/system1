@@ -217,7 +217,9 @@ async def update_directive(modality: str, body: SignalDirectiveUpdate) -> dict[s
 async def signal_revisions(modality: str, subject: str) -> list[dict[str, Any]]:
     """History for a signal key of ``modality``, or ``directive`` for its correctness question."""
     _require_modality(modality)
-    full_subject = f"directive:{modality}" if subject == "directive" else signal_definition_repository.revision_subject(modality, subject)
+    # The page asks for "directive"; the correctness question's history lives under ``<modality>:correctness``.
+    key = signal_definition_repository.CORRECTNESS_KEY if subject == "directive" else subject
+    full_subject = signal_definition_repository.revision_subject(modality, key)
     return await signal_definition_repository.fetch_revisions(full_subject)
 
 

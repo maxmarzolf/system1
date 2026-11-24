@@ -1,4 +1,8 @@
-"""Persists a graded submission: the one write path for practice records."""
+"""Persists a graded submission: the one write path for practice records.
+
+The submission row, its evaluation (``submission_evaluation``) and one ``submission_signal`` row per
+signal are written together (see ``attempts_repository.insert_submission_attempt_row``).
+"""
 
 from __future__ import annotations
 
@@ -13,30 +17,15 @@ from app.repositories.attempts_repository import insert_submission_attempt_row
 from app.services.contracts import AttemptSaveResult
 
 
-def _submission_signals(
-    body: AttemptCreate,
-    *,
-    modality: str,
-    evaluation: Evaluation,
-) -> dict[str, Any]:
+def _contexts(body: AttemptCreate, *, modality: str) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """The flow and modality facts the client sent with the answer (stored beside the evaluation)."""
     raw_signals = body.signals if isinstance(body.signals, dict) else {}
-    signals: dict[str, Any] = {
-        "elapsed_ms": body.elapsedMs,
-        "evaluation": evaluation.to_stored(),
-    }
-    flow_signals = raw_signals.get("flow")
-    if isinstance(flow_signals, dict) and flow_signals:
-        signals["flow"] = flow_signals
-
+    flow = raw_signals.get("flow")
     modality_signals = raw_signals.get("modality")
-    if isinstance(modality_signals, dict):
-        signals["modality"] = {
-            **modality_signals,
-            "kind": modality,
-        }
-    else:
-        signals["modality"] = {"kind": modality}
-    return signals
+    return (
+        flow if isinstance(flow, dict) and flow else None,
+        {**(modality_signals if isinstance(modality_signals, dict) else {}), "kind": modality},
+    )
 
 
 async def create_attempt(
@@ -48,7 +37,7 @@ async def create_attempt(
 ) -> AttemptSaveResult:
     now = datetime.now(tz=timezone.utc)
     modality = body.resolved_modality().value
-    signals = _submission_signals(body, modality=modality, evaluation=evaluation)
+    flow_context, modality_context = _contexts(body, modality=modality)
     row = await insert_submission_attempt_row(
         session_id=body.resolved_session_id(),
         card_id=body.cardId,
@@ -62,7 +51,10 @@ async def create_attempt(
         exercise_id=record.exercise_id if record else None,
         mode=body.mode.value,
         successful=successful,
-        signals_json=json.dumps({key: value for key, value in signals.items() if value is not None}),
+        elapsed_ms=body.elapsedMs,
+        evaluation=evaluation.to_stored(),
+        flow_context=flow_context,
+        modality_context=modality_context,
         interaction_id=body.interactionId,
         generated_card_id=body.generatedCardId,
         generated_card_json=json.dumps(body.generatedCard) if body.generatedCard else None,

@@ -18,7 +18,14 @@ JSON_COLUMN_TYPES = {"criteria": "json", "score_map": "jsonb"}
 JSON_COLUMNS = tuple(JSON_COLUMN_TYPES)
 
 
-DIRECTIVE_COLUMNS = "modality, instructions, criteria, correctness_weight, correctness_source, version, updated_at"
+# Each modality's correctness question is its ``correctness`` definition row (role ``correctness``);
+# the admin API still reads and writes it as a "directive".
+CORRECTNESS_KEY = "correctness"
+DIRECTIVE_COLUMNS = (
+    "modality, instructions, criteria, weight AS correctness_weight, source AS correctness_source, version, updated_at"
+)
+# Correctness rows are edited through the directive functions below, never as ordinary signals.
+_SIGNALS_ONLY = "role <> 'correctness'"
 
 
 class SignalVersionConflict(RuntimeError):
@@ -26,7 +33,7 @@ class SignalVersionConflict(RuntimeError):
 
 
 def revision_subject(modality: str, key: str) -> str:
-    """The revision-history subject for a signal; directives use ``directive:<modality>``."""
+    """The revision-history subject for a signal (``<modality>:correctness`` for the correctness question)."""
     return f"{modality}:{key}"
 
 
@@ -74,7 +81,8 @@ async def fetch_definitions(modality: str) -> list[dict[str, Any]]:
     """Every definition for a modality, active and archived."""
     async with acquire_connection() as conn:
         rows = await conn.fetch(
-            f"SELECT {DEFINITION_COLUMNS} FROM signal_definition WHERE modality = $1 ORDER BY display_order, key",
+            f"SELECT {DEFINITION_COLUMNS} FROM signal_definition WHERE modality = $1 AND {_SIGNALS_ONLY} "
+            "ORDER BY display_order, key",
             modality,
         )
     return [_definition(row) for row in rows]
@@ -86,7 +94,7 @@ async def fetch_active_definitions(modality: str, algorithm_slug: str) -> list[d
         rows = await conn.fetch(
             f"""
             SELECT {DEFINITION_COLUMNS} FROM signal_definition
-            WHERE modality = $1 AND status = 'active' AND (scope = 'general' OR scope = $2)
+            WHERE modality = $1 AND status = 'active' AND (scope = 'general' OR scope = $2) AND role <> 'correctness'
             ORDER BY (scope <> 'general'), display_order, key
             """,
             modality,
@@ -129,7 +137,7 @@ async def update_definition(modality: str, key: str, definition: dict[str, Any],
     )
     async with acquire_connection() as conn, conn.transaction():
         before = await conn.fetchrow(
-            f"SELECT {DEFINITION_COLUMNS} FROM signal_definition WHERE modality = $1 AND key = $2 FOR UPDATE", modality, key
+            f"SELECT {DEFINITION_COLUMNS} FROM signal_definition WHERE modality = $1 AND key = $2 AND {_SIGNALS_ONLY} FOR UPDATE", modality, key
         )
         if before is None:
             return None
@@ -156,7 +164,8 @@ async def set_definition_status(modality: str, key: str, status: str, expected_v
     action = "archive" if status == "archived" else "restore"
     async with acquire_connection() as conn, conn.transaction():
         before = await conn.fetchrow(
-            f"SELECT {DEFINITION_COLUMNS} FROM signal_definition WHERE modality = $1 AND key = $2 FOR UPDATE", modality, key
+            f"SELECT {DEFINITION_COLUMNS} FROM signal_definition WHERE modality = $1 AND key = $2 AND {_SIGNALS_ONLY} FOR UPDATE",
+            modality, key,
         )
         if before is None:
             return None
@@ -182,10 +191,12 @@ async def set_definition_status(modality: str, key: str, status: str, expected_v
 
 
 async def fetch_directive(modality: str) -> dict[str, Any] | None:
+    """A modality's correctness question (its ``correctness`` definition row)."""
     async with acquire_connection() as conn:
         row = await conn.fetchrow(
-            f"SELECT {DIRECTIVE_COLUMNS} FROM signal_evaluation_directive WHERE modality = $1",
+            f"SELECT {DIRECTIVE_COLUMNS} FROM signal_definition WHERE modality = $1 AND key = $2",
             modality,
+            CORRECTNESS_KEY,
         )
     return _directive(row) if row else None
 
@@ -193,29 +204,33 @@ async def fetch_directive(modality: str) -> dict[str, Any] | None:
 async def update_directive(modality: str, directive: dict[str, Any], expected_version: int) -> dict[str, Any] | None:
     async with acquire_connection() as conn, conn.transaction():
         before = await conn.fetchrow(
-            f"SELECT {DIRECTIVE_COLUMNS} FROM signal_evaluation_directive WHERE modality = $1 FOR UPDATE",
+            f"SELECT {DIRECTIVE_COLUMNS} FROM signal_definition WHERE modality = $1 AND key = $2 FOR UPDATE",
             modality,
+            CORRECTNESS_KEY,
         )
         if before is None:
             return None
         if before["version"] != expected_version:
             raise SignalVersionConflict(f"The {modality} correctness question changed since it was loaded.")
+        source = directive.get("correctness_source") or before["correctness_source"]
         row = await conn.fetchrow(
             f"""
-            UPDATE signal_evaluation_directive
-            SET instructions = $2, criteria = $3::jsonb, correctness_weight = $4, correctness_source = $5,
+            UPDATE signal_definition
+            SET instructions = $3, criteria = $4::text::json, weight = $5, source = $6,
+                primitive = CASE WHEN $6::varchar = 'jev' THEN 'choice' END,
                 version = version + 1, updated_at = NOW()
-            WHERE modality = $1
+            WHERE modality = $1 AND key = $2
             RETURNING {DIRECTIVE_COLUMNS}
             """,
             modality,
+            CORRECTNESS_KEY,
             directive["instructions"],
             json.dumps(directive["criteria"]),
             directive["correctness_weight"],
-            directive.get("correctness_source") or before["correctness_source"],
+            source,
         )
         updated = _directive(row)
-        await _insert_revision(conn, f"directive:{modality}", "update", _directive(before), updated)
+        await _insert_revision(conn, revision_subject(modality, CORRECTNESS_KEY), "update", _directive(before), updated)
     return updated
 
 
@@ -231,22 +246,28 @@ async def seed_defaults(directive: dict[str, Any], definitions: list[dict[str, A
         for index, column in enumerate(WRITABLE_COLUMNS, start=3)
     )
     async with acquire_connection() as conn, conn.transaction():
+        source = directive.get("correctness_source", "jev")
         row = await conn.fetchrow(
             """
-            INSERT INTO signal_evaluation_directive (modality, instructions, criteria, correctness_weight, correctness_source)
-            VALUES ($1, $2, $3::jsonb, $4, $5)
-            ON CONFLICT (modality) DO NOTHING
-            RETURNING modality
+            INSERT INTO signal_definition
+                (key, modality, scope, label, description, source, primitive, implementation, instructions, criteria,
+                 role, weight, display_order)
+            VALUES ($1, $2, 'general', 'Correctness', $3, $4, CASE WHEN $4::varchar = 'jev' THEN 'choice' END, NULL,
+                    $5, $6::text::json, 'correctness', $7, 0)
+            ON CONFLICT (modality, key) DO NOTHING
+            RETURNING key
             """,
+            CORRECTNESS_KEY,
             directive["modality"],
+            'Whether the answer was correct. Labels are fixed: "1" correct, "0" incorrect.',
+            source,
             directive["instructions"],
             json.dumps(directive["criteria"]),
             directive["correctness_weight"],
-            directive.get("correctness_source", "jev"),
         )
         if row is not None:
             inserted += 1
-            await _insert_revision(conn, f"directive:{directive['modality']}", "seed", None, directive)
+            await _insert_revision(conn, revision_subject(directive["modality"], CORRECTNESS_KEY), "seed", None, directive)
         for order, definition in enumerate(definitions, start=1):
             row = await conn.fetchrow(
                 f"""
